@@ -42,7 +42,7 @@ jobs:
           path: _site
       - name: Publish demo
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
       - name: Show demo link
         env:
           DEMO_URL: ${{ steps.deployment.outputs.page_url }}
