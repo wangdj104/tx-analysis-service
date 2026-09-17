@@ -31,7 +31,7 @@ jobs:
           node-version: '20'
       - name: Check demo behavior
         run: node --test demo/tests/*.test.mjs
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - name: Prepare public files only
         run: |
           mkdir -p _site/assets
