@@ -1,0 +1,18 @@
+import request from '@/utils/request'
+export const getCareHome = () => request({ url: '/care/home' })
+export const getCareContext = patientId => request({ url: '/care/context', params: { patientId } })
+export const saveCareItem = data => request({ url: '/care/items', method: 'post', data })
+export const careAction = (id,status,note) => request({ url: `/care/items/${id}/status`, method: 'put', data: { status,note } })
+export const deleteCareItem = id => request({ url: `/care/items/${id}`, method: 'delete' })
+export const createCareInvite = patientId => request({ url: '/care/invitations', method: 'post', params: { patientId } })
+export const joinCare = (code,relation) => request({ url: '/care/join', method: 'post', data: { code,relation } })
+export const removeCareMember = (patientId,userId) => request({ url: `/care/members/${userId}`, method: 'delete', params: { patientId } })
+export const saveStock = data => request({ url: '/care/stock', method: 'post', data })
+export const purchaseStock = data => request({ url: '/care/stock/purchase', method: 'post', data })
+export const getStockHistory = (patientId,medicationId) => request({ url: '/care/stock/history', params: { patientId,medicationId } })
+export const quickVitals = data => request({ url: '/care/quick-vitals', method: 'post', data })
+export const downloadBackup = () => request({ url: '/care/backup', responseType: 'blob', timeout: 180000 })
+const uploadBackup = (url,file) => { const data=new FormData();data.append('file',file);return request({ url,method:'post',data,timeout:180000 }) }
+export const previewBackup = file => uploadBackup('/care/backup/preview',file)
+export const restoreBackup = file => uploadBackup('/care/backup/restore',file)
+export const recordIntake = (id,status,reason,quantity,recordedFor) => request({ url:`/family-health/intakes/${id}/action`,method:'put',params:{status,reason,quantity,recordedFor} })

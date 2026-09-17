@@ -1,0 +1,9 @@
+package org.familyhealthcare.interceptor;
+import org.familyhealthcare.entity.OperationAuditLog;import org.familyhealthcare.mapper.OperationAuditLogMapper;import org.springframework.beans.factory.annotation.Autowired;import org.springframework.beans.factory.annotation.Value;import org.springframework.stereotype.Component;import org.springframework.web.servlet.HandlerInterceptor;import javax.servlet.http.*;import java.time.LocalDateTime;
+@Component public class AuditLogInterceptor implements HandlerInterceptor{
+ @Autowired private OperationAuditLogMapper mapper;private static final String START="auditStart";
+ @Value("${audit.capture-client-ip:false}") private boolean captureClientIp;
+ @Override public boolean preHandle(HttpServletRequest r,HttpServletResponse s,Object h){r.setAttribute(START,System.currentTimeMillis());return true;}
+ @Override public void afterCompletion(HttpServletRequest r,HttpServletResponse s,Object h,Exception ex){if("OPTIONS".equalsIgnoreCase(r.getMethod())||r.getRequestURI().startsWith("/api/auth/")||r.getRequestURI().startsWith("/api/audit-log"))return;try{OperationAuditLog log=new OperationAuditLog();Object uid=r.getAttribute("userId");if(uid!=null)log.setUserId(Long.valueOf(uid.toString()));Object name=r.getAttribute("username");if(name!=null)log.setUsername(name.toString());log.setRequestMethod(r.getMethod());log.setRequestPath(r.getRequestURI());log.setStatusCode(s.getStatus());Object start=r.getAttribute(START);log.setDurationMs(start==null?0:System.currentTimeMillis()-Long.parseLong(start.toString()));if(captureClientIp)log.setClientIp(resolveIp(r));log.setCreatedAt(LocalDateTime.now());mapper.insert(log);}catch(Exception ignored){}}
+ private String resolveIp(HttpServletRequest r){String value=r.getHeader("X-Forwarded-For");if(value!=null&&!value.isEmpty())return value.split(",")[0].trim();return r.getRemoteAddr();}
+}

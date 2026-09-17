@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore Clarity Health with a private, interactive demo of family care, health trends, medications, and medical records.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>Clarity Health · Interactive Demo</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="model.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#content">Skip to main content</a>
+  <aside class="sidebar" aria-label="Feature navigation">
+    <a class="brand" href="#care"><img src="assets/logo.svg" width="38" height="38" alt=""><span><strong>Clarity Health</strong><small>Track thoughtfully. Live confidently.</small></span></a>
+    <span class="nav-caption">My Health Workspace</span>
+    <nav>
+      <a href="#care" data-page="care"><span aria-hidden="true">⌂</span>Family Care</a>
+      <a href="#overview" data-page="overview"><span aria-hidden="true">◷</span>Health Overview</a>
+      <a href="#medication" data-page="medication"><span aria-hidden="true">✚</span>Medications</a>
+      <a href="#records" data-page="records"><span aria-hidden="true">▤</span>Medical Records</a>
+      <a href="#guide" data-page="guide"><span aria-hidden="true">?</span>Demo Guide</a>
+    </nav>
+    <div class="sidebar-bottom"><p>Better care, every day.</p><div class="demo-account"><span class="avatar">DE</span><div><b>Demo guest</b><small>No account · fictional data</small></div></div></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><span>My Health Workspace <i>/</i> <b id="breadcrumb">Family Care</b></span><label class="patient-select">Family member <select id="patient"><option value="1">Emma Carter (demo)</option><option value="2">Daniel Carter (demo)</option></select></label></header>
+    <div class="demo-banner"><span><b>Interactive demo</b> All data is fictional and stays in this page. Refreshing resets it, and no notifications are sent.</span><button class="text-button" id="reset">Reset demo</button></div>
+    <main id="content" tabindex="-1"></main>
+    <footer class="footer">Clarity Health · Long-term family health management<span>This demo does not provide medical advice. Do not enter real health information.</span></footer>
+  </div>
+  <dialog id="record-dialog" aria-labelledby="record-title"><form id="vital-form"><div class="dialog-header"><div><span class="eyebrow">TRY A QUICK ENTRY</span><h2 id="record-title">Record blood pressure</h2></div><button type="button" class="close-button" data-close aria-label="Close blood pressure dialog">×</button></div><p class="muted">This entry only affects the current demo and is cleared on refresh.</p><div class="form-grid"><label>Systolic (mmHg) <input name="systolic" type="number" min="50" max="260" required value="126"></label><label>Diastolic (mmHg) <input name="diastolic" type="number" min="30" max="160" required value="78"></label></div><p id="form-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="button secondary" data-close>Cancel</button><button class="button" type="submit">Save demo entry</button></div></form></dialog>
+  <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-header"><h2 id="detail-title">Medical Record</h2><button class="close-button" data-close aria-label="Close record dialog">×</button></div><div id="record-detail"></div><div class="dialog-actions"><button class="button secondary" data-close>Close</button></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <noscript><p>Enable JavaScript to use this static demo. No server is required.</p></noscript>
+</body>
+</html>

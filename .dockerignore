@@ -1,0 +1,12 @@
+.git
+.idea
+.vscode
+.pnpm-store
+target
+frontend/node_modules
+frontend/dist
+frontend/dist.zip
+.env
+*.log
+uploads
+backups

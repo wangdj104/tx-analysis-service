@@ -1,0 +1,333 @@
+/**
+ * shoulduselevelvisualtoken:  and eachpage el-card / panel / sidebartocomplete, avoidfragmented colorsvaluenot onecause.
+ * needin  element-plus/dist/index.css ofafter guideenter, convenientincoverfewamount --el-* Defaultvalue.
+ */
+:root {
+  --app-brand-start: #4f6af6;
+  --app-brand-mid: #4f6af6;
+  --app-brand-end: #7c3aed;
+  --app-page-bg: #f5f7fb;
+  --app-surface: #ffffff;
+  --app-border: rgb(226 232 240 / 0.98);
+  --app-divider-soft: rgb(236 239 246 / 0.95);
+
+  --app-header-gradient: linear-gradient(145deg, #f8f9ff 0%, #ffffff 52%, #f5f3ff 100%);
+  --app-card-tint-top: linear-gradient(180deg, #fbfcff 0%, #ffffff 48%, #fafbfd 100%);
+  --app-toolbar-tint: linear-gradient(148deg, #fbfbfe 0%, #ffffff 42%, #f6f8fc 100%);
+  --app-module-tint: linear-gradient(165deg, #ffffff 0%, #fcfcfd 100%);
+
+  --app-brand-gradient-v: linear-gradient(180deg, var(--app-brand-start) 0%, var(--app-brand-end) 100%);
+  --app-brand-gradient-135: linear-gradient(135deg, var(--app-brand-start) 0%, var(--app-brand-end) 100%);
+
+  --app-radius-xl: 14px;
+  --app-radius-lg: 12px;
+  --app-radius-md: 10px;
+  --app-radius-sm: 8px;
+
+  --app-shadow-xs: 0 1px 2px rgb(15 23 42 / 5%);
+  --app-shadow-panel: var(--app-shadow-xs), 0 8px 28px rgb(48 73 142 / 6%);
+  --app-shadow-lifted: var(--app-shadow-xs), 0 14px 40px rgb(48 73 142 / 9%);
+  --app-sidebar-outline: 0 0 0 1px rgb(15 23 42 / 4%);
+
+  --app-content-max: 1340px;
+
+  /* controlitemborder radius and  Element Plus tocomplete, decreasefew「sidecornercardtablet + border radiusby button」visual disconnect */
+  --el-border-radius-base: var(--app-radius-md);
+  --el-transition-duration: 0.2s;
+  --el-transition-duration-fast: 0.15s;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  color: var(--el-text-color-primary);
+  background: var(--app-page-bg);
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* top-levelcardtabletcontainer: mildsubmitimage + systemoneborder radius (eachbusinesspagelargeamountuse el-card)  */
+.el-card {
+  border-radius: var(--app-radius-lg);
+  border-color: var(--app-border);
+  box-shadow: var(--app-shadow-panel);
+}
+
+.el-card.is-hover-shadow:focus,
+.el-card.is-hover-shadow:hover {
+  box-shadow: var(--app-shadow-lifted);
+}
+
+.el-card__header {
+  border-bottom-color: var(--el-border-color-extra-light);
+}
+
+.el-dialog {
+  border-radius: var(--app-radius-xl);
+  overflow: hidden;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--app-brand-mid);
+  --el-button-border-color: var(--app-brand-mid);
+  --el-button-hover-bg-color: #3d56e0;
+  --el-button-hover-border-color: #3d56e0;
+  box-shadow: 0 2px 8px rgb(79 106 246 / 30%);
+  transition: all 0.2s ease;
+}
+
+.el-button--primary:hover {
+  box-shadow: 0 4px 14px rgb(79 106 246 / 40%);
+  transform: translateY(-1px);
+}
+
+.el-button--primary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgb(79 106 246 / 30%);
+}
+
+.el-button {
+  transition: all 0.18s ease;
+}
+
+.el-button:hover {
+  transform: translateY(-1px);
+}
+
+.el-button:active {
+  transform: translateY(0);
+}
+
+.el-menu-item.is-active {
+  background: linear-gradient(90deg, rgb(99 102 241 / 22%) 0%, transparent 100%) !important;
+  border-radius: 8px;
+  margin: 2px 8px;
+  width: calc(100% - 16px);
+}
+
+/* tablegridemptyStatus and border radiuscontainer */
+.el-table {
+  --el-table-border-color: #f1f5f9;
+}
+
+.el-table__inner-wrapper::before {
+  display: none;
+}
+
+/* avoidtablegridin  fit modedown bystrongrowpulloverflow causescolumnbetweenlargeemptygap */
+.el-table:not(.el-table--border) .el-table__cell {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* ========== scrollitemspolish ========== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184 / 0.35);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(148 163 184 / 0.55);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.35) transparent;
+}
+
+/* ========== tablegrid Loading moresoft and  ========== */
+.el-loading-mask {
+  background-color: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(2px);
+  transition: background-color 0.3s ease;
+}
+
+.el-loading-spinner .circular {
+  width: 32px;
+  height: 32px;
+}
+
+.el-loading-spinner .path {
+  stroke: var(--app-brand-mid);
+}
+
+/* ========== emptyStatuspolish ========== */
+.el-empty__image {
+  filter: grayscale(0.15);
+  opacity: 0.85;
+}
+
+.el-empty__description {
+  color: #94a3b8;
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+/* ========== inputboxfocus ring ========== */
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--app-brand-mid) inset, 0 0 0 3px rgb(79 106 246 / 10%);
+}
+
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px var(--app-brand-mid) inset, 0 0 0 3px rgb(79 106 246 / 10%);
+}
+
+.el-select .el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--app-brand-mid) inset, 0 0 0 3px rgb(79 106 246 / 10%) !important;
+}
+
+/* ========== Tag systemoneborder radius and pasttransition ========== */
+.el-tag {
+  border-radius: 6px;
+  transition: all 0.18s ease;
+}
+
+.el-tag:hover {
+  transform: translateY(-0.5px);
+}
+
+/* ========== down pullMenunegativeimageoptimize ========== */
+.el-popper {
+  border-radius: var(--app-radius-md);
+}
+
+.el-dropdown-menu {
+  border-radius: var(--app-radius-md);
+  box-shadow: 0 4px 20px rgb(15 23 42 / 10%), 0 1px 3px rgb(15 23 42 / 6%);
+  padding: 6px;
+}
+
+.el-dropdown-menu__item {
+  border-radius: 6px;
+  margin: 1px 0;
+  transition: all 0.15s ease;
+}
+
+/* ========== pointpagedevicepolish ========== */
+.el-pagination.is-background .btn-prev,
+.el-pagination.is-background .btn-next,
+.el-pagination.is-background .el-pager li {
+  border-radius: 8px;
+  transition: all 0.18s ease;
+}
+
+.el-pagination.is-background .el-pager li:not(.is-disabled).is-active {
+  box-shadow: 0 2px 8px rgb(79 106 246 / 35%);
+}
+
+/* ========== messageNoticeset and animation ========== */
+.el-message {
+  border-radius: var(--app-radius-md);
+  box-shadow: 0 4px 16px rgb(15 23 42 / 10%), 0 1px 3px rgb(15 23 42 / 5%);
+  padding: 10px 18px;
+}
+
+/* ========== dialogheadsectionmoreprecisecause ========== */
+.el-dialog__header {
+  padding: 18px 24px 14px;
+  margin-right: 0;
+}
+
+.el-dialog__headerbtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  transition: all 0.18s ease;
+}
+
+.el-dialog__headerbtn:hover {
+  background: #f1f5f9;
+}
+
+/* ========== tablesinglelabeltocomplete ========== */
+.el-form-item__label {
+  font-weight: 500;
+  color: #475569;
+}
+
+/* ========== openclosecomponentbrand color ========== */
+.el-switch.is-checked .el-switch__core {
+  background-color: var(--app-brand-mid);
+  border-color: var(--app-brand-mid);
+}
+
+/* ========== singleselect/repeatselectbox hover ========== */
+.el-radio__input.is-checked .el-radio__inner {
+  background-color: var(--app-brand-mid);
+  border-color: var(--app-brand-mid);
+}
+
+.el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: var(--app-brand-mid);
+  border-color: var(--app-brand-mid);
+}
+
+/* ========== stepstepitemsbrand color ========== */
+.el-step__head.is-finish {
+  color: var(--app-brand-mid);
+  border-color: var(--app-brand-mid);
+}
+
+.el-step__title.is-finish {
+  color: var(--app-brand-mid);
+}
+
+/* ========== Tabs pointshowitemsbrand color ========== */
+.el-tabs__active-bar {
+  background-color: var(--app-brand-mid);
+}
+
+.el-tabs__item.is-active {
+  color: var(--app-brand-mid);
+  font-weight: 600;
+}
+
+.el-tabs__item:hover {
+  color: #3d56e0;
+}
+
+/* ========== Timelinebrand color ========== */
+.el-timeline-item__node--normal {
+  background-color: var(--app-brand-mid);
+}
+
+/* ========== bubbleConfirmbox ========== */
+.el-popconfirm__main {
+  font-size: 13px;
+  color: #334155;
+}
+
+.el-popconfirm__action {
+  margin-top: 10px;
+}
+
+/* ========== Dateselectdevicepanel ========== */
+.el-date-table td.current:not(.disabled) .el-date-table-cell__text {
+  background-color: var(--app-brand-mid);
+  color: #fff;
+}
+
+.el-date-table td.today .el-date-table-cell__text {
+  color: var(--app-brand-mid);
+}
+
+.el-date-table td.available:hover {
+  color: var(--app-brand-mid);
+}
