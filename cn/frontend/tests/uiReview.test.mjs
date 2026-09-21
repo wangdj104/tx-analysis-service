@@ -30,6 +30,7 @@ function setupSfc(file, bindings, returned) {
     .replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\r?$/gm, '');
   const dependencies = {
     console: { error() {} }, ref, reactive, computed, watch,
+    platformBranding: reactive({ platformName: '澄心健康' }),
     onMounted() {}, onUnmounted() {}, provide() {},
     useMedicationNotifications: () => ({}),
     MarkLineComponent: {},
