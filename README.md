@@ -135,7 +135,7 @@ Webhook URLs and bot secrets are sensitive. They are masked in API responses and
 
 ## Database policy
 
-- `init.sql` is the single baseline for a new installation and currently defines 39 tables.
+- `init.sql` is the single baseline for a new installation and currently defines 42 tables.
 - `demo-data.sql` is strictly optional and must never be used in production.
 - The application does not silently create or alter production tables at startup.
 - `init.sql` is not an upgrade or reset tool for a populated database. Back up data before any manual database operation.

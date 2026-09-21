@@ -57,7 +57,7 @@
                 </el-upload>
               </el-form-item>
               <el-form-item>
-                <el-button type="primary" :loading="recognizeLoading" @click="startRecognize">startrecognition</el-button>
+                <el-button type="primary" :loading="recognizeLoading" @click="startRecognize">Start recognition</el-button>
                 <el-button v-if="recognizeResult" type="success" @click="saveRecognizedDrug">
                   {{ recognizedDrugs.length > 1 ? `Save ${recognizedDrugs.length} itemsMedicationto Medicationdatabase` : 'Saveto Medicationdatabase' }}
                 </el-button>
@@ -206,7 +206,7 @@
                 </el-form-item>
               </el-form>
               <el-button type="primary" @click="showLogDialog()">
-                <el-icon><Plus /></el-icon>Addrecord
+                <el-icon><Plus /></el-icon>Add record
               </el-button>
             </div>
             <div class="table-wrap">
@@ -371,7 +371,7 @@
           />
         </el-form-item>
         <el-form-item label="prescribeClinician">
-          <el-input v-model="editingLog.prescribedBy" placeholder="Enter ClinicianName" />
+          <el-input v-model="editingLog.prescribedBy" placeholder="Enter clinician name" />
         </el-form-item>
         <el-form-item label="effect assessment">
           <el-select v-model="editingLog.effectEvaluation" placeholder="Select">
@@ -570,7 +570,7 @@ const pageSubtitle = computed(() => {
     drugs: 'maintainDialysisrelatedMedicationBasicinformation, providemedicationrecordselectuse',
     logs: 'recordPatienteach timesadministrationcondition and effect assessment',
     category: 'by MedicationcategorygroupViewdatabasewithinMedication',
-    remind: 'configurationmedication intakeTime, duplicateWeek and Dose'
+    remind: 'Configure dose times, repeat days, and quantities'
   };
   return map[activeMenu.value] || '';
 });

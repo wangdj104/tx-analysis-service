@@ -102,6 +102,14 @@ public class AiAnalysisRecord {
     @ApiModelProperty("Blood Pressuretrend summary")
     private String vitalSignTrendSummary;
 
+    @ApiModelProperty("APPROVED, REVIEW_REQUIRED or REJECTED")
+    private String reviewStatus;
+
+    private Long reviewedBy;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime reviewedAt;
+
     @ApiModelProperty("Created At")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;

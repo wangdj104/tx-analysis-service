@@ -98,6 +98,10 @@ CREATE TABLE IF NOT EXISTS `dialysis_record` (
   `interval_days` INT DEFAULT 1 COMMENT 'distanceup timesDialysisintervaldayscount',
   `weight_gain` DECIMAL(5,2) COMMENT 'interdialytic weight gain(kg)',
   `uf_amount` DECIMAL(5,2) COMMENT 'ultrafiltration volume/Fluid Removed(kg)',
+  `session_minutes` INT DEFAULT NULL COMMENT 'dialysis session duration in minutes',
+  `ktv` DECIMAL(5,2) DEFAULT NULL COMMENT 'single-pool Kt/V',
+  `urr` DECIMAL(5,2) DEFAULT NULL COMMENT 'urea reduction ratio percent',
+  `access_issue` VARCHAR(255) DEFAULT NULL COMMENT 'vascular access issue observed during treatment',
   `systolic_bp` INT COMMENT 'Blood Pressure-Systolic Pressure/systolic',
   `diastolic_bp` INT COMMENT 'Blood Pressure-Diastolic Pressure/diastolic',
   `daily_weight_gain` DECIMAL(5,2) COMMENT 'Dayaverage weight gain(kg)',
@@ -145,6 +149,12 @@ CREATE TABLE IF NOT EXISTS `medical_record` (
   `dept_name` VARCHAR(100) COMMENT 'DepartmentName',
   `doctor_name` VARCHAR(50) COMMENT 'ClinicianName',
   `ai_raw_result` TEXT COMMENT 'AIoriginalrecognitionresult(JSON)',
+  `source_type` VARCHAR(20) DEFAULT 'MANUAL' COMMENT 'MANUAL/OCR/FHIR/DEVICE',
+  `source_external_id` VARCHAR(120) DEFAULT NULL COMMENT 'source system record identifier',
+  `verification_status` VARCHAR(30) DEFAULT 'VERIFIED' COMMENT 'VERIFIED/REVIEW_REQUIRED/REJECTED',
+  `confidence_score` DECIMAL(5,4) DEFAULT NULL COMMENT 'overall import or recognition confidence',
+  `verified_by` BIGINT DEFAULT NULL COMMENT 'reviewing user',
+  `verified_at` DATETIME DEFAULT NULL COMMENT 'review time',
   `remark` VARCHAR(500) COMMENT 'Notes',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Created At',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated At',
@@ -152,7 +162,9 @@ CREATE TABLE IF NOT EXISTS `medical_record` (
   KEY `idx_record_date` (`record_date`),
   KEY `idx_record_type` (`record_type`),
   KEY `idx_user_id` (`user_id`),
-  KEY `idx_patient_id` (`patient_id`)
+  KEY `idx_patient_id` (`patient_id`),
+  KEY `idx_record_review` (`patient_id`,`verification_status`),
+  UNIQUE KEY `uk_record_external` (`patient_id`,`source_type`,`source_external_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Medical Recordsmaintable';
 
 -- 8. Examination item detailstable
@@ -271,6 +283,9 @@ CREATE TABLE IF NOT EXISTS `ai_analysis_record` (
   `complication_risk_assessment` TEXT COMMENT 'complicationRiskassessment',
   `medication_advice_details` TEXT COMMENT 'Detailedmedicationrecommendation',
   `vital_sign_trend_summary` TEXT COMMENT 'Blood Pressuretrend summary',
+  `review_status` VARCHAR(30) DEFAULT 'APPROVED' COMMENT 'APPROVED/REVIEW_REQUIRED/REJECTED',
+  `reviewed_by` BIGINT DEFAULT NULL COMMENT 'reviewing user',
+  `reviewed_at` DATETIME DEFAULT NULL COMMENT 'review time',
   `remark` VARCHAR(255) COMMENT 'Notes',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Created At',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated At',
@@ -294,6 +309,8 @@ CREATE TABLE IF NOT EXISTS `patient_clinical` (
   `allergy_drugs` TEXT COMMENT 'Medicationallergy history(JSON or text)',
   `target_dry_weight` DECIMAL(6,2) DEFAULT NULL COMMENT 'currenttargetDry Weight kg',
   `fluid_limit_ml` INT DEFAULT NULL COMMENT 'Dayfluidintakeup limit ml',
+  `dialysis_weekdays` VARCHAR(32) DEFAULT NULL COMMENT 'confirmed weekday plan, ISO 1-7 comma separated',
+  `dialysis_time` VARCHAR(5) DEFAULT NULL COMMENT 'confirmed dialysis time HH:mm',
   `remark` VARCHAR(512) DEFAULT NULL COMMENT 'Notes',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Created At',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated At',
@@ -405,13 +422,30 @@ CREATE TABLE IF NOT EXISTS `bp_self_monitor_record` (
   `blood_glucose` DECIMAL(5,2) DEFAULT NULL,
   `bg_unit` VARCHAR(10) DEFAULT 'mmol/L',
   `measure_period` VARCHAR(20) DEFAULT NULL,
+  `source_type` VARCHAR(20) DEFAULT 'MANUAL',
+  `source_external_id` VARCHAR(120) DEFAULT NULL,
+  `verification_status` VARCHAR(30) DEFAULT 'VERIFIED',
   `remark` VARCHAR(500) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY `idx_bp_patient_date` (`patient_id`,`record_date`,`record_time`),
   KEY `idx_bp_user` (`user_id`),
-  KEY `idx_bp_measure_type` (`measure_type`)
+  KEY `idx_bp_measure_type` (`measure_type`),
+  UNIQUE KEY `uk_bp_external` (`patient_id`,`source_type`,`source_external_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Blood Pressure & Glucoseself-monitoringrecord';
+
+CREATE TABLE IF NOT EXISTS `clinical_import_batch` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `source_type` VARCHAR(20) NOT NULL,
+  `status` VARCHAR(30) NOT NULL,
+  `item_count` INT NOT NULL DEFAULT 0,
+  `error_count` INT NOT NULL DEFAULT 0,
+  `summary` VARCHAR(500) DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_import_patient_time` (`patient_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='clinical import audit batch';
 
 CREATE TABLE IF NOT EXISTS `nutrition_assessment` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -513,15 +547,50 @@ CREATE TABLE IF NOT EXISTS `alert_record` (
   `alert_title` VARCHAR(200) DEFAULT NULL,
   `triggered_value` VARCHAR(100) DEFAULT NULL,
   `triggered_at` DATETIME DEFAULT NULL,
+  `source_type` VARCHAR(30) DEFAULT NULL,
+  `source_id` BIGINT DEFAULT NULL,
+  `dedupe_key` VARCHAR(160) DEFAULT NULL,
+  `occurrence_count` INT NOT NULL DEFAULT 1,
+  `last_triggered_at` DATETIME DEFAULT NULL,
   `status` VARCHAR(20) DEFAULT 'PENDING',
+  `acknowledged_by` BIGINT DEFAULT NULL,
+  `acknowledged_at` DATETIME DEFAULT NULL,
+  `resolved_by` BIGINT DEFAULT NULL,
+  `resolved_at` DATETIME DEFAULT NULL,
   `handling_note` VARCHAR(500) DEFAULT NULL,
   `remark` VARCHAR(256) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY `idx_alert_user_patient` (`user_id`,`patient_id`),
   KEY `idx_alert_patient_status_time` (`patient_id`,`status`,`triggered_at`),
-  KEY `idx_alert_triggered_at` (`triggered_at`)
+  KEY `idx_alert_triggered_at` (`triggered_at`),
+  KEY `idx_alert_dedupe` (`patient_id`,`dedupe_key`,`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='alertrecord';
+
+CREATE TABLE IF NOT EXISTS `alert_event` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `alert_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `actor_id` BIGINT DEFAULT NULL,
+  `actor_name` VARCHAR(100) DEFAULT NULL,
+  `from_status` VARCHAR(20) DEFAULT NULL,
+  `to_status` VARCHAR(20) NOT NULL,
+  `note` VARCHAR(500) DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_alert_event_alert` (`alert_id`,`created_at`),
+  KEY `idx_alert_event_patient` (`patient_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='alert status audit trail';
+
+CREATE TABLE IF NOT EXISTS `medication_safety_rule` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `ingredient_a` VARCHAR(100) NOT NULL,
+  `ingredient_b` VARCHAR(100) NOT NULL,
+  `severity` VARCHAR(20) NOT NULL,
+  `message` VARCHAR(500) NOT NULL,
+  `renal_note` VARCHAR(500) DEFAULT NULL,
+  `enabled` TINYINT NOT NULL DEFAULT 1,
+  UNIQUE KEY `uk_medication_safety_pair` (`ingredient_a`,`ingredient_b`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='curated medication safety screening rules';
 
 CREATE TABLE IF NOT EXISTS `patient_health_target` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
@@ -736,6 +805,9 @@ ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
 VALUES (36,30,'Notification Settings','notification-settings','/settings/notifications','Bell','notification:manage',1,3,1)
 ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
+INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
+VALUES (38,0,'Clinical Workbench','clinical-workbench','/clinical-workbench','FirstAidKit','clinical-workbench:view',1,1,1)
+ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
 -- 10.3 Grant every menu to the administrator role
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
 SELECT r.id, m.id FROM sys_role r, sys_menu m WHERE r.role_code = 'admin'
@@ -743,7 +815,7 @@ ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
 
 -- 10.4 Grant business menus to the standard user role (excluding administration)
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
-SELECT r.id, m.id FROM sys_role r, sys_menu m WHERE r.role_code = 'user' AND m.id IN (28,30,8,31,36,1,11,12,13,14,15,2,16,17,18,19,3,32,33,34,26,27,20,21,23,35,29,22,24,25)
+SELECT r.id, m.id FROM sys_role r, sys_menu m WHERE r.role_code = 'user' AND m.id IN (28,30,8,31,36,38,1,11,12,13,14,15,2,16,17,18,19,3,32,33,34,26,27,20,21,23,35,29,22,24,25)
 ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
 
 -- 10.5 Common health indicator dictionary
@@ -756,6 +828,14 @@ INSERT IGNORE INTO `health_indicator` (`item_code`, `item_name`, `aliases`, `uni
 ('BUN', 'Blood Urea Nitrogen', 'blood urea nitrogen,BUN', 'mmol/L', '2.9-8.2', 'KIDNEY', 60),
 ('K', 'Potassium', 'potassium,serum potassium,K', 'mmol/L', '3.5-5.5', 'BLOOD', 70),
 ('HB', 'Hemoglobin', 'hemoglobin,Hb,HGB', 'g/L', '120-160', 'BLOOD', 80);
+
+INSERT IGNORE INTO `medication_safety_rule` (`ingredient_a`,`ingredient_b`,`severity`,`message`,`renal_note`) VALUES
+('warfarin','ibuprofen','CRITICAL','Warfarin with ibuprofen can substantially increase bleeding risk. Confirm the prescriber plan.','Avoid routine NSAID use in advanced kidney disease unless explicitly directed.'),
+('warfarin','aspirin','WARNING','Warfarin with aspirin increases bleeding risk and should have a documented indication.',NULL),
+('lisinopril','potassium','WARNING','ACE inhibitor plus potassium supplementation can increase serum potassium.','Review potassium and renal function before changing therapy.'),
+('losartan','potassium','WARNING','ARB plus potassium supplementation can increase serum potassium.','Review potassium and renal function before changing therapy.'),
+('spironolactone','potassium','CRITICAL','This combination can cause severe hyperkalaemia. Confirm the prescriber plan.','Extra caution is required when kidney function is impaired.'),
+('calcium carbonate','levothyroxine','INFO','Calcium can reduce levothyroxine absorption; separate administration times when directed.',NULL);
 
 CREATE TABLE IF NOT EXISTS notification_channel (id BIGINT NOT NULL AUTO_INCREMENT,user_id BIGINT NOT NULL,channel_type VARCHAR(20) NOT NULL,channel_name VARCHAR(50) DEFAULT NULL,webhook_url VARCHAR(500) DEFAULT NULL,enabled TINYINT DEFAULT 1,last_test_at DATETIME DEFAULT NULL,last_test_result VARCHAR(255) DEFAULT NULL,created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,PRIMARY KEY (id),KEY idx_channel_user (user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='User notification channels';
 

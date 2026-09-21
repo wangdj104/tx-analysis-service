@@ -18,11 +18,12 @@ import java.util.*;
 public class DialysisScheduleService {
     @Autowired private DialysisScheduleMapper schedules;
     @Autowired private DialysisRecordMapper records;
+    @Autowired private PatientClinicalMapper clinicalRecords;
     @Autowired private org.familyhealthcare.util.DataScopeHelper scope;
 
     @Transactional
     public List<DialysisSchedule> list(Long patientId) {
-        ensureDefaultMonths(patientId, LocalDate.now());
+        scope.requirePatient(patientId);
         List<DialysisSchedule> rows = schedules.selectList(new QueryWrapper<DialysisSchedule>().eq("patient_id", patientId).orderByDesc("schedule_date"));
         Map<LocalDate, DialysisRecord> byDate = new HashMap<>();
         for (DialysisRecord r : records.selectList(new QueryWrapper<DialysisRecord>().eq("patient_id", patientId).orderByAsc("id"))) {
@@ -43,40 +44,91 @@ public class DialysisScheduleService {
         return rows;
     }
 
-    /**
-     * firsttimesViewoneMonthtime, by weekone, weekfourgenerateDefaultschedule. This MonthonlygenerateTodayandtoafter ,
-     * down MonthgeneratewholeMonth. onlyneedthis Monthalready has anyschedule (includeCancel schedule) , convenientviewfor useralready adjust,
-     * after continuenot againAutomaticcover or supplementreturn.
-     */
-    private void ensureDefaultMonths(Long patientId, LocalDate today) {
-        Long userId = null;
-        for (int offset = 0; offset <= 1; offset++) {
-            YearMonth month = YearMonth.from(today).plusMonths(offset);
-            LocalDate monthStart = month.atDay(1);
-            LocalDate monthEnd = month.atEndOfMonth();
-            long existing = schedules.selectCount(new QueryWrapper<DialysisSchedule>()
-                    .eq("patient_id", patientId)
-                    .ge("schedule_date", monthStart)
-                    .le("schedule_date", monthEnd));
-            if (existing > 0) continue;
+    public List<DialysisSchedule> previewPlan(Long patientId, String weekdays, String time,
+                                              LocalDate from, LocalDate to) {
+        scope.requirePatient(patientId);
+        if (from == null || to == null || to.isBefore(from)) throw new IllegalArgumentException("Choose a valid schedule date range.");
+        if (java.time.temporal.ChronoUnit.DAYS.between(from, to) > 92) throw new IllegalArgumentException("Preview no more than 93 days at a time.");
+        Set<Integer> days = parseWeekdays(weekdays);
+        String normalizedTime = normalizeTime(time);
+        List<DialysisSchedule> result = new ArrayList<>();
+        for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
+            if (!days.contains(date.getDayOfWeek().getValue())) continue;
+            DialysisSchedule row = new DialysisSchedule();
+            row.setPatientId(patientId);
+            row.setScheduleDate(date);
+            row.setScheduleTime(normalizedTime);
+            row.setStatus("PLANNED");
+            row.setRemark("Generated from confirmed dialysis plan");
+            result.add(row);
+        }
+        return result;
+    }
 
-            if (userId == null) userId = scope.requireUserId();
-            LocalDate firstDate = offset == 0 && today.isAfter(monthStart) ? today : monthStart;
-            for (LocalDate date = firstDate; !date.isAfter(monthEnd); date = date.plusDays(1)) {
-                if (date.getDayOfWeek() != DayOfWeek.MONDAY && date.getDayOfWeek() != DayOfWeek.THURSDAY) continue;
-                DialysisSchedule row = new DialysisSchedule();
-                row.setUserId(userId);
-                row.setPatientId(patientId);
-                row.setScheduleDate(date);
-                row.setStatus("PLANNED");
-                row.setRemark("weekone, weekfourDefaultschedule");
-                try {
-                    schedules.insert(row);
-                } catch (DuplicateKeyException ignored) {
-                    // twopagesametimeopentimebydatadatabaseonlyonekeyfallback, already has schedulekeep.
-                }
+    @Transactional
+    public Map<String, Object> generatePlan(Long patientId, String weekdays, String time,
+                                            LocalDate from, LocalDate to, boolean confirmed) {
+        List<DialysisSchedule> preview = previewPlan(patientId, weekdays, time, from, to);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("preview", preview);
+        response.put("created", 0);
+        response.put("skipped", 0);
+        response.put("requiresConfirmation", !confirmed);
+        if (!confirmed) return response;
+
+        Long userId = scope.requireUserId();
+        int created = 0;
+        int skipped = 0;
+        for (DialysisSchedule row : preview) {
+            row.setUserId(userId);
+            try {
+                schedules.insert(row);
+                created++;
+            } catch (DuplicateKeyException ignored) {
+                skipped++;
             }
         }
+        PatientClinical clinical = clinicalRecords.selectOne(new QueryWrapper<PatientClinical>().eq("patient_id", patientId).last("limit 1"));
+        if (clinical == null) {
+            clinical = new PatientClinical();
+            clinical.setPatientId(patientId);
+            clinical.setUserId(userId);
+            clinical.setDialysisWeekdays(canonicalWeekdays(weekdays));
+            clinical.setDialysisTime(normalizeTime(time));
+            clinicalRecords.insert(clinical);
+        } else {
+            clinical.setDialysisWeekdays(canonicalWeekdays(weekdays));
+            clinical.setDialysisTime(normalizeTime(time));
+            clinicalRecords.updateById(clinical);
+        }
+        response.put("created", created);
+        response.put("skipped", skipped);
+        response.put("requiresConfirmation", false);
+        return response;
+    }
+
+    private Set<Integer> parseWeekdays(String weekdays) {
+        Set<Integer> days = new TreeSet<>();
+        if (weekdays != null) {
+            for (String value : weekdays.split(",")) {
+                try {
+                    int day = Integer.parseInt(value.trim());
+                    if (day >= 1 && day <= 7) days.add(day);
+                } catch (NumberFormatException ignored) { }
+            }
+        }
+        if (days.isEmpty()) throw new IllegalArgumentException("Select at least one confirmed dialysis weekday.");
+        return days;
+    }
+
+    private String canonicalWeekdays(String weekdays) {
+        return parseWeekdays(weekdays).stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+    }
+
+    private String normalizeTime(String time) {
+        if (time == null || time.trim().isEmpty()) return null;
+        try { return LocalTime.parse(time.trim()).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")); }
+        catch (RuntimeException e) { throw new IllegalArgumentException("Dialysis time must use HH:mm."); }
     }
 
     @Transactional

@@ -51,6 +51,18 @@ public class DialysisRecord {
     @ApiModelProperty("ultrafiltration volume/Fluid Removed(kg)")
     private BigDecimal ufAmount;
 
+    @ApiModelProperty("Dialysis session duration in minutes")
+    private Integer sessionMinutes;
+
+    @ApiModelProperty("Single-pool Kt/V")
+    private BigDecimal ktv;
+
+    @ApiModelProperty("Urea reduction ratio percent")
+    private BigDecimal urr;
+
+    @ApiModelProperty("Vascular access issue observed during treatment")
+    private String accessIssue;
+
     @ApiModelProperty("Blood Pressure-systolic")
     private Integer systolicBp;
 

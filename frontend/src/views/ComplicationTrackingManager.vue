@@ -12,7 +12,7 @@
             </div>
             <div class="right">
               <el-button type="primary" @click="showAddDialog">
-                <el-icon><Plus /></el-icon>Addrecord
+                <el-icon><Plus /></el-icon>Add record
               </el-button>
             </div>
           </div>

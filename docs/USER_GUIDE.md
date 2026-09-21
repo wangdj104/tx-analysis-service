@@ -156,13 +156,24 @@ Never paste webhook URLs or signing secrets into issues, screenshots, or public 
 
 ### 9.2 Recipients and delivery
 
-Medication reminders use their selected channels. Care escalation uses the caregiver configured in **Care settings** and that account's channels. Automated analysis sends to channels selected in the automation task.
+Medication reminders use their selected channels. Care escalation uses the caregiver configured in **Care settings** and that account's channels. Automated analysis sends a draft-ready notice to the selected channels; clinical text is sent only after a user approves the draft and chooses **Approve & notify**.
 
 A successful test confirms delivery configuration, not that every future message is clinically appropriate. Keep message content minimal and avoid unnecessary sensitive details.
 
 ### 9.3 Automated health analysis
 
-Open **Health Analytics → Automated Analysis** to create a task. Choose the patient, frequency, run time, analysis range, analysis items, and notification channels. Review the last status and error before relying on a schedule.
+Open **Health Analytics → Automated Analysis** to create a task. Choose the patient, frequency, run time, analysis range, analysis items, and notification channels. Each run creates a **review-required draft**. Open **Clinical Workbench → Data Quality** to approve, approve and notify, or reject it.
+
+### 9.4 Clinical Workbench
+
+Open **Clinical Workbench** for six coordinated workflows:
+
+- **Attention Center** combines unresolved alerts, due medication tasks, low stock, and overdue care items with severity, evidence, service level, and next action.
+- **Data Quality** lists unverified imports, low-confidence OCR, incomplete context, possible duplicates, incomplete dialysis quality fields, and AI drafts.
+- **Medication Safety** screens recorded allergies, possible duplicate therapy, curated interaction rules, renal cautions, and recent adherence. It never changes a prescription automatically.
+- **Dialysis Quality** calculates IDWG percentage, UFR, Kt/V, URR, and vascular-access flags from recorded sessions. Recurring schedules must be previewed and explicitly confirmed.
+- **Emergency Card** produces a printable, minimum-necessary handoff summary. Verify it before sharing.
+- **FHIR / Device Import** parses supported observations into a preview. Confirmed imports remain marked **review required** until a person verifies them.
 
 Automation requires the backend scheduler and any configured AI provider. It should assist review, not make unattended clinical decisions.
 

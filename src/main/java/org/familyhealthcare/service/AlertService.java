@@ -6,6 +6,7 @@ import org.familyhealthcare.vo.AlertStatsVO;
 import com.baomidou.mybatisplus.extension.service.IService;
 
 import java.util.List;
+import org.familyhealthcare.entity.AlertEvent;
 
 /**
  * alertservice (sametimemanagementrule and record)
@@ -22,6 +23,8 @@ public interface AlertService extends IService<AlertRecord> {
     List<AlertRecord> listRecords(Long patientId, String status);
     boolean acknowledge(Long id);
     boolean resolve(Long id, String handlingNote);
+    boolean updateStatus(Long id, String status, String handlingNote);
+    List<AlertEvent> listEvents(Long id);
     boolean deleteRecord(Long id);
 
     // ---- alertExamination ----

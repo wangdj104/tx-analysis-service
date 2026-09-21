@@ -22,6 +22,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
 
 /**
  * Medical Recordsserviceimplement
@@ -55,6 +58,7 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
         Long userId = dataScopeHelper.requireUserId();
         record.setUserId(userId);
         syncPatient(record);
+        applySourceDefaults(record, items);
         boolean saved = this.save(record);
         if (saved && items != null && !items.isEmpty()) {
             for (MedicalRecordItem item : items) {
@@ -79,6 +83,14 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
         }
         dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
         syncPatient(record);
+        if (record.getSourceType() == null) record.setSourceType(existing.getSourceType());
+        if (record.getSourceExternalId() == null) record.setSourceExternalId(existing.getSourceExternalId());
+        applySourceDefaults(record, items);
+        if (!"MANUAL".equals(record.getSourceType())) {
+            record.setVerificationStatus("REVIEW_REQUIRED");
+            record.setVerifiedBy(null);
+            record.setVerifiedAt(null);
+        }
         boolean updated = this.updateById(record);
         if (updated) {
             // Deletelegacy Examinationitem
@@ -312,6 +324,45 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
                 item.setItemCode(resolvedCode);
             }
         }
+    }
+
+    private void applySourceDefaults(MedicalRecord record, List<MedicalRecordItem> items) {
+        boolean hasAiConfidence = items != null && items.stream().anyMatch(item -> item != null && item.getAiConfidence() != null);
+        if (record.getSourceType() == null || record.getSourceType().trim().isEmpty()) {
+            record.setSourceType(hasAiConfidence || record.getAiRawResult() != null ? "OCR" : "MANUAL");
+        } else {
+            record.setSourceType(record.getSourceType().trim().toUpperCase());
+        }
+        if (!java.util.Arrays.asList("MANUAL", "OCR", "FHIR", "DEVICE").contains(record.getSourceType())) {
+            throw new IllegalArgumentException("Unsupported medical-record source type.");
+        }
+        if (record.getConfidenceScore() == null && items != null) {
+            List<BigDecimal> scores = items.stream().filter(java.util.Objects::nonNull)
+                    .map(MedicalRecordItem::getAiConfidence).filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toList());
+            if (!scores.isEmpty()) {
+                BigDecimal total = scores.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                record.setConfidenceScore(total.divide(BigDecimal.valueOf(scores.size()), 4, RoundingMode.HALF_UP));
+            }
+        }
+        if (record.getVerificationStatus() == null || record.getVerificationStatus().trim().isEmpty()) {
+            record.setVerificationStatus("MANUAL".equals(record.getSourceType()) ? "VERIFIED" : "REVIEW_REQUIRED");
+        }
+    }
+
+    @Override
+    public boolean reviewRecord(Long id, boolean approved, String note) {
+        MedicalRecord record = getById(id);
+        if (record == null) return false;
+        dataScopeHelper.requirePatientOrOwner(record.getPatientId(), record.getUserId());
+        record.setVerificationStatus(approved ? "VERIFIED" : "REJECTED");
+        record.setVerifiedBy(dataScopeHelper.requireUserId());
+        record.setVerifiedAt(LocalDateTime.now());
+        if (note != null && !note.trim().isEmpty()) {
+            record.setRemark((record.getRemark() == null || record.getRemark().trim().isEmpty() ? "" : record.getRemark() + "\n")
+                    + "Review: " + note.trim());
+        }
+        return updateById(record);
     }
 
     private String truncateField(String value, int maxLen) {

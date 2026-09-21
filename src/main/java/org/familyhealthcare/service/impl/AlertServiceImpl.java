@@ -2,13 +2,16 @@ package org.familyhealthcare.service.impl;
 
 import org.familyhealthcare.entity.AlertRecord;
 import org.familyhealthcare.entity.AlertRule;
+import org.familyhealthcare.entity.AlertEvent;
 import org.familyhealthcare.entity.HealthIndicator;
 import org.familyhealthcare.entity.MedicalRecordItem;
 import org.familyhealthcare.mapper.AlertRecordMapper;
 import org.familyhealthcare.mapper.AlertRuleMapper;
+import org.familyhealthcare.mapper.AlertEventMapper;
 import org.familyhealthcare.mapper.MedicalRecordItemMapper;
 import org.familyhealthcare.service.AlertService;
 import org.familyhealthcare.service.HealthIndicatorService;
+import org.familyhealthcare.service.NotificationDeliveryService;
 import org.familyhealthcare.util.CurrentUserUtil;
 import org.familyhealthcare.util.DataScopeHelper;
 import org.familyhealthcare.vo.AlertStatsVO;
@@ -37,6 +40,10 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
     private MedicalRecordItemMapper medicalRecordItemMapper;
     @Autowired
     private HealthIndicatorService healthIndicatorService;
+    @Autowired
+    private AlertEventMapper alertEventMapper;
+    @Autowired
+    private NotificationDeliveryService notificationDeliveryService;
 
     // ---- rulemanagement ----
 
@@ -97,21 +104,64 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
 
     @Override
     public boolean acknowledge(Long id) {
-        AlertRecord existing = getById(id);
-        if (existing == null) return false;
-        dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
-        existing.setStatus("CONFIRMED");
-        return updateById(existing);
+        return updateStatus(id, "CONFIRMED", null);
     }
 
     @Override
     public boolean resolve(Long id, String handlingNote) {
+        return updateStatus(id, "RESOLVED", handlingNote);
+    }
+
+    @Override
+    public boolean updateStatus(Long id, String status, String handlingNote) {
         AlertRecord existing = getById(id);
         if (existing == null) return false;
         dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
-        existing.setStatus("RESOLVED");
+        if (!java.util.Arrays.asList("PENDING", "CONFIRMED", "OBSERVING", "CONSULTED", "RECHECKED", "RESOLVED").contains(status)) {
+            throw new IllegalArgumentException("Invalid alert status.");
+        }
+        if ("RESOLVED".equals(status) && (handlingNote == null || handlingNote.trim().isEmpty())) {
+            throw new IllegalArgumentException("Document the action taken before resolving an alert.");
+        }
+        String previous = existing.getStatus();
+        if ("RESOLVED".equals(previous) && !"RESOLVED".equals(status)) {
+            throw new IllegalArgumentException("A resolved alert cannot be reopened. Run a new assessment instead.");
+        }
+        existing.setStatus(status);
         existing.setHandlingNote(handlingNote);
-        return updateById(existing);
+        LocalDateTime now = LocalDateTime.now();
+        Long actorId = dataScopeHelper.requireUserId();
+        if ("CONFIRMED".equals(status) && existing.getAcknowledgedAt() == null) {
+            existing.setAcknowledgedBy(actorId);
+            existing.setAcknowledgedAt(now);
+        }
+        if ("RESOLVED".equals(status)) {
+            existing.setResolvedBy(actorId);
+            existing.setResolvedAt(now);
+        }
+        boolean changed = updateById(existing);
+        if (changed && !java.util.Objects.equals(previous, status)) {
+            AlertEvent event = new AlertEvent();
+            event.setAlertId(existing.getId());
+            event.setPatientId(existing.getPatientId());
+            event.setActorId(actorId);
+            String actorName = CurrentUserUtil.getCurrentUsername();
+            event.setActorName(actorName == null ? "SYSTEM" : actorName);
+            event.setFromStatus(previous);
+            event.setToStatus(status);
+            event.setNote(handlingNote);
+            alertEventMapper.insert(event);
+        }
+        return changed;
+    }
+
+    @Override
+    public List<AlertEvent> listEvents(Long id) {
+        AlertRecord existing = getById(id);
+        if (existing == null) return java.util.Collections.emptyList();
+        dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
+        return alertEventMapper.selectList(new QueryWrapper<AlertEvent>()
+                .eq("alert_id", id).orderByAsc("created_at"));
     }
 
     @Override
@@ -180,7 +230,21 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
             boolean breached = checkThreshold(numericValue, rule.getThresholdType(), rule.getThresholdValue());
             if (!breached) continue;
 
-            // Createalertrecord
+            String dedupeKey = "RULE:" + rule.getId() + ":ITEM:" + latestItem.getId();
+            QueryWrapper<AlertRecord> activeQw = new QueryWrapper<>();
+            activeQw.eq("patient_id", patientId).eq("dedupe_key", dedupeKey)
+                    .in("status", "PENDING", "CONFIRMED", "OBSERVING", "CONSULTED", "RECHECKED")
+                    .orderByDesc("id").last("limit 1");
+            AlertRecord active = baseMapper.selectOne(activeQw);
+            if (active != null) {
+                active.setLastTriggeredAt(LocalDateTime.now());
+                active.setTriggeredValue(latestItem.getResultValue() + (latestItem.getUnit() != null ? " " + latestItem.getUnit() : ""));
+                active.setOccurrenceCount((active.getOccurrenceCount() == null ? 1 : active.getOccurrenceCount()) + 1);
+                baseMapper.updateById(active);
+                continue;
+            }
+
+            // Create one active alert for one source observation. Repeated scans only refresh lastTriggeredAt.
             AlertRecord record = new AlertRecord();
             record.setRuleId(rule.getId());
             record.setPatientId(patientId);
@@ -190,8 +254,17 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
             record.setAlertTitle(rule.getIndicatorName() + " Health Alerts");
             record.setTriggeredValue(latestItem.getResultValue() + (latestItem.getUnit() != null ? " " + latestItem.getUnit() : ""));
             record.setTriggeredAt(LocalDateTime.now());
+            record.setLastTriggeredAt(record.getTriggeredAt());
+            record.setSourceType("MEDICAL_RECORD_ITEM");
+            record.setSourceId(latestItem.getId());
+            record.setDedupeKey(dedupeKey);
+            record.setOccurrenceCount(1);
             record.setStatus("PENDING");
             baseMapper.insert(record);
+            if ("WARNING".equals(rule.getAlertLevel()) || "CRITICAL".equals(rule.getAlertLevel())) {
+                notificationDeliveryService.notifyUser(userId, record.getAlertTitle(),
+                        "A new result crossed the configured threshold. Review it in the Attention Center; clinical action still requires confirmation.");
+            }
         }
     }
 

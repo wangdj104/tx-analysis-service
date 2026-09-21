@@ -31,7 +31,7 @@
           <div class="panel-head">
             <div class="list-panel-title">
               <el-icon><Plus /></el-icon>
-              <span>{{ editingId ? 'Editrecord' : 'Addrecord' }}</span>
+              <span>{{ editingId ? 'Edit record' : 'Add record' }}</span>
             </div>
             <el-radio-group v-model="form.measureType" class="measure-switch">
               <el-radio-button value="BP">Blood Pressure</el-radio-button>
@@ -100,7 +100,7 @@
 
             <div class="form-actions">
               <el-button type="primary" @click="handleSave" :loading="saving">
-                <el-icon><Check /></el-icon>{{ editingId ? 'updaterecord' : 'Saverecord' }}
+                <el-icon><Check /></el-icon>{{ editingId ? 'Update record' : 'Save record' }}
               </el-button>
               <el-button @click="resetForm">Reset</el-button>
             </div>
@@ -128,7 +128,7 @@
           </div>
 
           <div class="table-wrap">
-            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="Nonerecord">
+            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="No records">
               <el-table-column prop="recordDate" label="Date" width="112" />
               <el-table-column prop="recordTime" label="Time" width="86">
                 <template #default="{ row }">{{ row.recordTime || '-' }}</template>

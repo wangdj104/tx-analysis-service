@@ -19,6 +19,7 @@ public class FamilyHealthController {
  @Autowired private org.familyhealthcare.service.MedicationReminderService reminders;
  @Autowired private org.familyhealthcare.service.HealthTimelineService timelineService;
  @Autowired private org.familyhealthcare.service.DialysisScheduleService scheduleService;
+ @Autowired private org.familyhealthcare.service.AlertService alertService;
  @Autowired private org.familyhealthcare.service.MedicationStockService stockService;
  @Autowired private CareItemMapper careItems;
  @Autowired private PatientMapper patientMapper; @Autowired private MedicationMapper medicationMapper;
@@ -107,6 +108,13 @@ public class FamilyHealthController {
  public Result<List<DialysisSchedule>> schedules(@RequestParam Long patientId){scope.requirePatient(patientId);return Result.ok(scheduleService.list(patientId));}
  @PostMapping("/dialysis-schedules")
  public Result<DialysisSchedule> schedule(@RequestBody DialysisSchedule v){return Result.ok(scheduleService.save(v));}
+ @PostMapping("/dialysis-schedules/generate")
+ public Result<Map<String,Object>> generateSchedules(@RequestBody Map<String,Object> body){
+  Long patientId=Long.valueOf(String.valueOf(body.get("patientId")));
+  LocalDate from=LocalDate.parse(String.valueOf(body.get("from"))),to=LocalDate.parse(String.valueOf(body.get("to")));
+  boolean confirmed=Boolean.parseBoolean(String.valueOf(body.getOrDefault("confirmed",false)));
+  return Result.ok(scheduleService.generatePlan(patientId,String.valueOf(body.get("weekdays")),body.get("time")==null?null:String.valueOf(body.get("time")),from,to,confirmed));
+ }
 
  @GetMapping("/insights") public Result<Map<String,Object>> insights(@RequestParam Long patientId){
   scope.requirePatient(patientId); PatientHealthTarget t=targetMapper.selectOne(new QueryWrapper<PatientHealthTarget>().eq("patient_id",patientId));
@@ -117,7 +125,7 @@ public class FamilyHealthController {
  }
 
  @GetMapping("/alerts") public Result<List<AlertRecord>> alerts(@RequestParam Long patientId){scope.requirePatient(patientId);return Result.ok(alertMapper.selectList(new QueryWrapper<AlertRecord>().eq("patient_id",patientId).orderByDesc("triggered_at").last("limit 100")));}
- @PutMapping("/alerts/{id}/status") public Result<String> alertStatus(@PathVariable Long id,@RequestBody Map<String,String> body){AlertRecord a=alertMapper.selectById(id);if(a==null)return Result.error("The alert does not exist.");scope.requirePatientOrOwner(a.getPatientId(), a.getUserId());String s=body.get("status");if(!Arrays.asList("PENDING","CONFIRMED","OBSERVING","CONSULTED","RECHECKED","RESOLVED").contains(s))return Result.error("Invalid status.");a.setStatus(s);a.setHandlingNote(body.get("handlingNote"));alertMapper.updateById(a);return Result.ok("Updated successfully");}
+ @PutMapping("/alerts/{id}/status") public Result<String> alertStatus(@PathVariable Long id,@RequestBody Map<String,String> body){return alertService.updateStatus(id,body.get("status"),body.get("handlingNote"))?Result.ok("Updated successfully"):Result.error("The alert does not exist.");}
 
  @GetMapping("/visit-summary") public Result<Map<String,Object>> visitSummary(@RequestParam Long patientId){Patient p=scope.requirePatient(patientId);Map<String,Object> out=new LinkedHashMap<>();out.put("generatedAt",LocalDateTime.now());out.put("patient",p);out.put("target",targetMapper.selectOne(new QueryWrapper<PatientHealthTarget>().eq("patient_id",patientId)));out.put("medications",medicationMapper.selectList(new QueryWrapper<Medication>().eq("patient_id",patientId).eq("is_active",1)));out.put("recentMeasurements",monitorMapper.selectList(new QueryWrapper<BpSelfMonitorRecord>().eq("patient_id",patientId).orderByDesc("record_date").last("limit 30")));out.put("unresolvedAlerts",alertMapper.selectList(new QueryWrapper<AlertRecord>().eq("patient_id",patientId).and(q->q.isNull("status").or().ne("status","RESOLVED")).orderByDesc("triggered_at").last("limit 30")));out.put("recentEvents",timelineService.list(patientId,null,null,30));out.put("questions",careItems.selectList(new QueryWrapper<CareItem>().eq("patient_id",patientId).eq("kind","QUESTION").orderByDesc("id")));out.put("careSymptoms",careItems.selectList(new QueryWrapper<CareItem>().eq("patient_id",patientId).eq("kind","SYMPTOM").orderByDesc("event_at").last("limit 30")));out.put("disclaimer","This summary is based on family-entered records and is intended only to support clinical conversations. It does not replace professional diagnosis or treatment.");return Result.ok(out);}
 }

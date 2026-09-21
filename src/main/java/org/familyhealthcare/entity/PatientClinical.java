@@ -52,6 +52,12 @@ public class PatientClinical {
     @ApiModelProperty("Dayfluidintakeup limit(ml)")
     private Integer fluidLimitMl;
 
+    @ApiModelProperty("Confirmed dialysis weekdays using ISO 1-7, comma separated")
+    private String dialysisWeekdays;
+
+    @ApiModelProperty("Confirmed dialysis time in HH:mm")
+    private String dialysisTime;
+
     @ApiModelProperty("Notes")
     private String remark;
 

@@ -106,6 +106,15 @@ public class DialysisRecordServiceImpl extends ServiceImpl<DialysisRecordMapper,
      * Automaticcalculatederived field (intervaldayscountAutomaticinference, Dry Weightfrom Monthly tablequery)
      */
     private void calculateDerivedFields(DialysisRecord record) {
+        if (record.getSessionMinutes() != null && (record.getSessionMinutes() < 30 || record.getSessionMinutes() > 1440)) {
+            throw new IllegalArgumentException("Session duration must be between 30 and 1440 minutes.");
+        }
+        if (record.getKtv() != null && (record.getKtv().signum() < 0 || record.getKtv().compareTo(new BigDecimal("10")) > 0)) {
+            throw new IllegalArgumentException("Kt/V must be between 0 and 10.");
+        }
+        if (record.getUrr() != null && (record.getUrr().signum() < 0 || record.getUrr().compareTo(new BigDecimal("100")) > 0)) {
+            throw new IllegalArgumentException("URR must be between 0 and 100 percent.");
+        }
         // 1. Automaticinferenceintervaldayscount (based onmost recent oneitemsrecord Datedifference) —— datamissingrecordalsoreference and , keepTimeordercolumncontinuous
         if (record.getIntervalDays() == null && !record.isTextImport()) {
             Integer inferredDays = inferIntervalDays(record);

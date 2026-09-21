@@ -253,6 +253,15 @@ public class MedicalRecordController {
         return Result.ok(record);
     }
 
+    @PostMapping("/{id}/review")
+    @ApiOperation("Confirm or reject an imported/OCR medical record")
+    public Result<String> review(@PathVariable Long id, @RequestBody Map<String, Object> params) {
+        boolean approved = Boolean.parseBoolean(String.valueOf(params.getOrDefault("approved", false)));
+        String note = params.get("note") == null ? null : String.valueOf(params.get("note"));
+        boolean success = medicalRecordService.reviewRecord(id, approved, note);
+        return success ? Result.ok(approved ? "Record verified" : "Record rejected") : Result.error("The record does not exist.");
+    }
+
     @DeleteMapping("/delete/{id}")
     @ApiOperation("DeleteMedical Records")
     public Result<String> delete(@PathVariable Long id) {

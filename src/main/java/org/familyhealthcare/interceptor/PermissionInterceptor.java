@@ -25,6 +25,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
         RULES.put("/api/nutrition-diary", "nutrition-diary:view"); RULES.put("/api/nutrition-assessment", "nutrition-assessment:view");
         RULES.put("/api/health-report", "health-report:view"); RULES.put("/api/data-export", "data-export:view");
         RULES.put("/api/notification-channel", "notification:manage");
+        RULES.put("/api/clinical-workbench", "clinical-workbench:view"); RULES.put("/api/clinical-import", "clinical-workbench:view");
     }
     @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler)throws Exception{
         if("OPTIONS".equalsIgnoreCase(request.getMethod()))return true;

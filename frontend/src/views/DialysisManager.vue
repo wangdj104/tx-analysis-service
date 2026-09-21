@@ -26,7 +26,7 @@
       <div v-show="activeMenu === 'data'" class="content-panel">
         <div class="toolbar">
           <el-button type="primary" @click="handleAdd">
-            <el-icon><Plus /></el-icon>Addrecord
+            <el-icon><Plus /></el-icon>Add record
           </el-button>
           <DialysisTextImport :patient-id="currentPatientId" @saved="loadData"/>
           <el-button @click="loadData">
@@ -55,9 +55,9 @@
               <div class="record-card-head">
                 <div class="date-block">
                   <span class="date">{{ formatDateMain(row.recordDate) }}</span>
-                  <span class="date-week">week{{ formatDateWeek(row.recordDate) }}</span>
+                  <span class="date-week">{{ formatDateWeek(row.recordDate) }}</span>
                 </div>
-                <el-tag v-if="row.recordType === 'INCOMPLETE'" type="info" size="small" effect="dark" round>datamissing</el-tag>
+                <el-tag v-if="row.recordType === 'INCOMPLETE'" type="info" size="small" effect="dark" round>Incomplete</el-tag>
                 <el-tag v-else :type="dehydrationTagType(row.dehydrationStatus)" size="small" effect="dark" round>
                   {{ dehydrationLabel(row.dehydrationStatus) }}
                 </el-tag>
@@ -83,7 +83,7 @@
               <div class="record-grid">
                 <div class="cell"><label>pre-dialysis</label><span :class="{ 'muted': row.recordType === 'INCOMPLETE' }">{{ row.recordType === 'INCOMPLETE' ? '-' : formatNum(row.onWeight) }} kg</span></div>
                 <div class="cell"><label>post-dialysis</label><span :class="{ 'muted': row.recordType === 'INCOMPLETE' }">{{ row.recordType === 'INCOMPLETE' ? '-' : formatNum(row.offWeight) }} kg</span></div>
-                <div class="cell"><label>up timespost-dialysis</label><span :class="{ 'muted': row.recordType === 'INCOMPLETE' }">{{ row.recordType === 'INCOMPLETE' ? '-' : formatNum(row.lastOffWeight) }} kg</span></div>
+                <div class="cell"><label>Previous post-dialysis</label><span :class="{ 'muted': row.recordType === 'INCOMPLETE' }">{{ row.recordType === 'INCOMPLETE' ? '-' : formatNum(row.lastOffWeight) }} kg</span></div>
                 <div class="cell"><label>Dry Weight</label><span :class="{ 'muted': row.recordType === 'INCOMPLETE' }">{{ row.recordType === 'INCOMPLETE' ? '-' : formatNum(row.dryWeight) }} kg</span></div>
                 <div class="cell"><label>interval</label><span>{{ row.intervalDays ?? '-' }} days</span></div>
                 <div class="cell"><label>Average daily weight gain</label><span :class="[dailyWeightGainClass(row), { 'muted': row.recordType === 'INCOMPLETE' }]">{{ row.recordType === 'INCOMPLETE' ? '-' : formatNum(row.dailyWeightGain) }} kg</span></div>
@@ -100,13 +100,13 @@
             <div v-if="!loading && records.length === 0" class="list-empty-state">
               <el-empty :image-size="88">
                 <template #description>
-                  <p class="empty-title">{{ listScopeLabel }} Nonerecord</p>
-                  <p class="empty-hint">can switch「Year」ViewallYear,  or ViewAllhistoryrecord</p>
+                  <p class="empty-title">No records for {{ listScopeLabel }}</p>
+                  <p class="empty-hint">Switch to Year or View all to see more history.</p>
                 </template>
                 <div class="empty-actions">
                   <el-button size="small" @click="switchToYearFilter">Viewthis Year</el-button>
                   <el-button size="small" @click="loadAllRecords">ViewAll</el-button>
-                  <el-button type="primary" size="small" @click="handleAdd">Addrecord</el-button>
+                  <el-button type="primary" size="small" @click="handleAdd">Add record</el-button>
                 </div>
               </el-empty>
             </div>
@@ -129,7 +129,7 @@
                 <template #default="{ row }">
                   <div class="cell-date">
                     <span class="date-main">{{ row.recordDate }}</span>
-                    <span class="date-sub">week{{ formatDateWeek(row.recordDate) }}</span>
+                    <span class="date-sub">{{ formatDateWeek(row.recordDate) }}</span>
                   </div>
             </template>
           </el-table-column>
@@ -199,7 +199,7 @@
               <el-table-column v-if="dialysisColVisible('dehydrationStatus')" min-width="88" align="center">
                 <template #header><span class="col-head col-head--center">fluid removal</span></template>
                 <template #default="{ row }">
-                  <el-tag v-if="row.recordType === 'INCOMPLETE'" type="info" size="small" round effect="light">datamissing</el-tag>
+                  <el-tag v-if="row.recordType === 'INCOMPLETE'" type="info" size="small" round effect="light">Incomplete</el-tag>
                   <el-tag v-else :type="dehydrationTagType(row.dehydrationStatus)" size="small" round effect="light">
                     {{ dehydrationLabel(row.dehydrationStatus) }}
                   </el-tag>
@@ -228,13 +228,13 @@
             <div v-else-if="!loading" class="list-empty-state">
               <el-empty :image-size="96">
                 <template #description>
-                  <p class="empty-title">{{ listScopeLabel }} Nonerecord</p>
+                  <p class="empty-title">No records for {{ listScopeLabel }}</p>
                   <p class="empty-hint">you datacan canin OtherTimesection, Please tryexpandlargeFilterrange</p>
                 </template>
                 <div class="empty-actions">
                   <el-button size="small" @click="switchToYearFilter">Viewthis Year</el-button>
                   <el-button size="small" @click="loadAllRecords">ViewAll</el-button>
-                  <el-button type="primary" size="small" @click="handleAdd">Addrecord</el-button>
+                  <el-button type="primary" size="small" @click="handleAdd">Add record</el-button>
                 </div>
               </el-empty>
             </div>
@@ -596,7 +596,7 @@
           </div>
           <p class="form-tip">leave blank or point「useAutomaticcalculate」time, by  and up onetimesDialysis Dateintervalestimate</p>
         </el-form-item>
-        <el-form-item label="up timesPost-dialysis Weight(kg)">
+        <el-form-item label="Previous post-dialysis weight (kg)">
           <el-input-number v-model="form.lastOffWeight" :precision="2" :step="0.01" style="width:100%" />
         </el-form-item>
         <el-form-item label="this timesPre-dialysis Weight(kg)" prop="onWeight">
@@ -611,15 +611,27 @@
         <el-form-item label="Blood Pressure-diastolic">
           <el-input-number v-model="form.diastolicBp" :min="0" style="width:100%" />
         </el-form-item>
+        <el-form-item label="Session duration (min)">
+          <el-input-number v-model="form.sessionMinutes" :min="30" :max="1440" :step="15" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="Kt/V">
+          <el-input-number v-model="form.ktv" :min="0" :max="10" :precision="2" :step="0.1" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="URR (%)">
+          <el-input-number v-model="form.urr" :min="0" :max="100" :precision="1" :step="1" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="Vascular access note">
+          <el-input v-model="form.accessIssue" maxlength="255" placeholder="Leave blank when no access issue was observed" />
+        </el-form-item>
         <el-form-item>
-          <el-checkbox v-model="form.isIncomplete" label="dataincomplete (estimatecalculatevalue/partdatamissing) " />
+          <el-checkbox v-model="form.isIncomplete" label="Incomplete record (estimated or partially missing data)" />
         </el-form-item>
         <el-form-item label="Notes" v-if="form.isIncomplete">
-          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="can fillwritemissingreason, for example : forgetrecordcaptureWeightcaretablet, by recordmemoryestimatecalculate" />
+          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="Explain what is missing or estimated and why" />
         </el-form-item>
         <div v-if="dialogVisible" class="form-preview" :class="'form-preview--' + formPreview.level">
           <div class="form-preview__head">
-            <span class="form-preview__title">real-timepre-determine</span>
+            <span class="form-preview__title">Real-time check</span>
             <span class="form-preview__status">{{ formPreview.statusText }}</span>
           </div>
           <div class="form-preview__grid">
@@ -707,7 +719,7 @@ const loading = ref(false);
 const chartLoading = ref(false);
 const records = ref([]);
 const dialogVisible = ref(false);
-const dialogTitle = ref('Addrecord');
+const dialogTitle = ref('Add dialysis record');
 const formRef = ref(null);
 const isEdit = ref(false);
 
@@ -729,15 +741,15 @@ const aiHistory = ref([]);
 const showAiHistory = ref(false);
 
 const pageTitle = computed(() => {
-  if (activeMenu.value === 'data') return 'Dialysisdataentry';
-  if (activeMenu.value === 'analysis') return 'DialysisTrend Analysis';
-  return 'AI smartanalysis';
+  if (activeMenu.value === 'data') return 'Dialysis records';
+  if (activeMenu.value === 'analysis') return 'Dialysis trend analysis';
+  return 'AI-assisted analysis';
 });
 
 const pageSubtitle = computed(() => {
-  if (activeMenu.value === 'data') return 'recordeach timesDialysisdata, supportAdd, Edit, Delete';
-  if (activeMenu.value === 'analysis') return 'analysishistorydata, assistDialysistreatmentdecision';
-  return 'based on DeepSeek largemodel, toDialysisdataenterrowprofessionalmedicalscienceanalysis';
+  if (activeMenu.value === 'data') return 'Record each dialysis session and its clinical quality indicators.';
+  if (activeMenu.value === 'analysis') return 'Review historical trends to support clinical decisions.';
+  return 'Generate a review-required draft from the selected dialysis data.';
 });
 
 function getDefaultTimeValue() {
@@ -749,19 +761,20 @@ function getDefaultTimeValue() {
 
 const form = reactive({
   id: null, patientId: currentPatientId.value, recordDate: null, intervalDays: null, lastOffWeight: null, onWeight: null,
-  offWeight: null, systolicBp: null, diastolicBp: null, isIncomplete: false, remark: ''
+  offWeight: null, systolicBp: null, diastolicBp: null, sessionMinutes: null, ktv: null, urr: null,
+  accessIssue: '', isIncomplete: false, remark: ''
 });
 
 const formPreview = computed(() => {
   if (form.isIncomplete) {
     return {
       level: 'muted',
-      statusText: 'datamissing',
+      statusText: 'Incomplete',
       weightGain: '-',
       ufAmount: '-',
       dailyGain: '-',
       thresholdText: '-',
-      hint: 'missingrecordonlykeepDate, interval and Notes, not reference and Weightrelatedstatistics. '
+      hint: 'Incomplete records retain the date, interval, and notes but are excluded from weight statistics.'
     };
   }
 
@@ -777,22 +790,22 @@ const formPreview = computed(() => {
   const t5 = dry != null ? round2(dry * 0.05) : null;
 
   let level = 'normal';
-  let statusText = 'pendingdetermine';
-  let hint = 'fillwritepre-dialysis, post-dialysis and up timesPost-dialysis Weightafter , willAutomaticpre-determinethis timesStatus. ';
+  let statusText = 'Awaiting data';
+  let hint = 'Enter the current and previous weights to preview the session status.';
   if (gain != null && uf != null) {
     const diff = round2(uf - gain);
     if (diff > 0.3) {
       level = 'danger';
       statusText = 'Excessive ultrafiltration';
-      hint = `ultrafiltrationcompared withweight gainmultiple ${formatSignedKg(diff)}, Please ConfirmtargetPost-dialysis WeightYesNoreasonable. `;
+      hint = `Ultrafiltration exceeds weight gain by ${formatSignedKg(diff)}. Confirm that the target post-dialysis weight is appropriate.`;
     } else if (diff < -0.3) {
       level = 'warning';
       statusText = 'Insufficient ultrafiltration';
-      hint = `ultrafiltrationcompared withweight gainfew ${formatSignedKg(Math.abs(diff))}, attentionPost-dialysis Weight and fluidpointcontrol. `;
+      hint = `Ultrafiltration is ${formatSignedKg(Math.abs(diff))} below weight gain. Review post-dialysis weight and fluid management.`;
     } else {
       level = 'ok';
       statusText = 'Ultrafiltration on target';
-      hint = 'ultrafiltration volume and interdialytic weight gainbasethis match. ';
+      hint = 'Ultrafiltration and interdialytic weight gain are broadly aligned.';
     }
   }
   if (gain != null && t5 != null && gain > t5) {
@@ -1211,9 +1224,9 @@ function buildInsightTags(s) {
   }
 
   if ((s.tooMuchCount || 0) > (s.insufficientCount || 0)) {
-    tags.push({ text: 'This WeekperiodExcessive ultrafiltrationrelativelyfrequencycomplex', type: 'info' });
+    tags.push({ text: 'Excessive ultrafiltration occurred more often in this period', type: 'info' });
   } else if ((s.insufficientCount || 0) > (s.tooMuchCount || 0)) {
-    tags.push({ text: 'This WeekperiodInsufficient ultrafiltrationexcessive', type: 'info' });
+    tags.push({ text: 'Insufficient ultrafiltration occurred more often in this period', type: 'info' });
   }
 
   insightTags.value = tags;
@@ -1221,7 +1234,7 @@ function buildInsightTags(s) {
 
 function formatDateWithWeek(dateStr) {
   if (!dateStr) return '-';
-  return `${formatDateMain(dateStr)}(week${formatDateWeek(dateStr)})`;
+  return `${formatDateMain(dateStr)} (${formatDateWeek(dateStr)})`;
 }
 
 function formatDateMain(dateStr) {
@@ -1231,7 +1244,7 @@ function formatDateMain(dateStr) {
 
 function formatDateWeek(dateStr) {
   if (!dateStr) return '-';
-  const weekDays = ['Day', 'one', 'two', 'three', 'four', 'five', 'six'];
+  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '-';
   return weekDays[d.getDay()];
@@ -1447,21 +1460,23 @@ async function loadStats() {
 
 function handleAdd() {
   isEdit.value = false;
-  dialogTitle.value = 'AddDialysis Records';
+  dialogTitle.value = 'Add dialysis record';
   Object.assign(form, {
     id: null, patientId: currentPatientId.value, recordDate: null, intervalDays: null, lastOffWeight: null, onWeight: null,
-    offWeight: null, systolicBp: null, diastolicBp: null, isIncomplete: false, remark: ''
+    offWeight: null, systolicBp: null, diastolicBp: null, sessionMinutes: null, ktv: null, urr: null,
+    accessIssue: '', isIncomplete: false, remark: ''
   });
   dialogVisible.value = true;
 }
 
 function handleEdit(row) {
   isEdit.value = true;
-  dialogTitle.value = 'EditDialysis Records';
+  dialogTitle.value = 'Edit dialysis record';
   Object.assign(form, {
     id: row.id, patientId: row.patientId || currentPatientId.value, recordDate: row.recordDate, intervalDays: row.intervalDays ?? null,
     lastOffWeight: row.lastOffWeight, onWeight: row.onWeight, offWeight: row.offWeight,
     systolicBp: row.systolicBp, diastolicBp: row.diastolicBp,
+    sessionMinutes: row.sessionMinutes, ktv: row.ktv, urr: row.urr, accessIssue: row.accessIssue || '',
     isIncomplete: row.recordType === 'INCOMPLETE',
     remark: row.remark || ''
   });
@@ -1679,7 +1694,7 @@ async function handleExportData() {
       return;
     }
     const rows = res.data;
-    const headers = ['Date', 'up timesPost-dialysis Weight(kg)', 'this timesPre-dialysis Weight(kg)', 'this timesPost-dialysis Weight(kg)', 'intervaldayscount', 'interdialytic weight gain(kg)', 'ultrafiltration volume(kg)', 'systolic', 'diastolic', 'fluid removalStatus', 'Notes'];
+    const headers = ['Date', 'Previous post-dialysis weight (kg)', 'Pre-dialysis weight (kg)', 'Post-dialysis weight (kg)', 'Interval (days)', 'Interdialytic weight gain (kg)', 'Ultrafiltration (kg)', 'Systolic', 'Diastolic', 'Fluid removal status', 'Notes'];
     const statusMap = { TOO_MUCH: 'Excessive ultrafiltration', INSUFFICIENT: 'Insufficient ultrafiltration', MATCH: 'Ultrafiltration on target', '': '' };
     const csvRows = rows.map(r => [
       r.recordDate || '',

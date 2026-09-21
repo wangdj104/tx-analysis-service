@@ -90,14 +90,15 @@ public class HealthAnalysisAutomationService {
             record.setUserId(row.getUserId()); record.setPatientId(row.getPatientId());
             record.setTimeType("automation"); record.setTimeValue(LocalDate.now().toString());
             record.setPeriodLabel("most recent " + row.getAnalysisRangeDays() + "days"); record.setAnalysisContent(content);
+            record.setReviewStatus("REVIEW_REQUIRED");
             record.setRemark("Automated Analysis: " + row.getTaskName()); analysisRecords.insert(record);
             Patient patient = scope.requirePatient(row.getPatientId());
-            String title = "healthAutomated Analysis · " + (patient == null ? row.getTaskName() : patient.getName());
-            String message = content == null ? "analysisCompleted, Please enterHealth AnalyticsView. " : content.substring(0, Math.min(content.length(), 3500));
+            String title = "Health analysis draft ready · " + (patient == null ? row.getTaskName() : patient.getName());
+            String message = "An automated analysis draft is ready for review. No clinical recommendation has been sent; open the Clinical Workbench to approve or reject it.";
             boolean notified = delivery.notifyUser(row.getUserId(), parseIds(row.getNotificationChannelIds()), title, message);
             row.setLastRunAt(LocalDateTime.now()); row.setLastAnalysisRecordId(record.getId());
-            row.setLastRunStatus(notified ? "SUCCESS" : "SUCCESS_NOTIFY_FAILED");
-            row.setLastError(notified ? null : "analysisSaved successfully., butnohas can useNotificationchannel or channelsendfailed");
+            row.setLastRunStatus(notified ? "DRAFT_READY" : "DRAFT_READY_NOTIFY_FAILED");
+            row.setLastError(notified ? null : "The draft was saved, but no enabled notification channel accepted the message.");
             if (!scheduled && Integer.valueOf(1).equals(row.getEnabled())) row.setNextRunAt(calculateNextRun(row, LocalDateTime.now()));
             mapper.updateById(row);
             return record;
@@ -106,6 +107,29 @@ public class HealthAnalysisAutomationService {
             if (e instanceof RuntimeException) throw (RuntimeException) e;
             throw new IllegalStateException(e.getMessage(), e);
         }
+    }
+
+    public AiAnalysisRecord reviewAnalysis(Long id, boolean approved, boolean notify) {
+        AiAnalysisRecord record = analysisRecords.selectById(id);
+        Long userId = scope.requireUserId();
+        if (record == null || !Objects.equals(record.getUserId(), userId)) {
+            throw new IllegalArgumentException("Analysis draft does not exist.");
+        }
+        if (!"REVIEW_REQUIRED".equals(record.getReviewStatus())) {
+            throw new IllegalArgumentException("This analysis draft has already been reviewed.");
+        }
+        record.setReviewStatus(approved ? "APPROVED" : "REJECTED");
+        record.setReviewedBy(userId);
+        record.setReviewedAt(LocalDateTime.now());
+        analysisRecords.updateById(record);
+        if (approved && notify) {
+            Patient patient = scope.requirePatient(record.getPatientId());
+            String title = "Reviewed health analysis · " + (patient == null ? "Family member" : patient.getName());
+            String content = record.getAnalysisContent() == null ? "The reviewed analysis is available in Clarity Health."
+                    : record.getAnalysisContent().substring(0, Math.min(record.getAnalysisContent().length(), 3500));
+            delivery.notifyUser(userId, title, content);
+        }
+        return record;
     }
 
     private void markFailure(HealthAnalysisAutomation row, Exception e) {

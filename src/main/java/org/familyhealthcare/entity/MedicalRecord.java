@@ -11,6 +11,7 @@ import lombok.Data;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -49,6 +50,23 @@ public class MedicalRecord {
 
     @ApiModelProperty("AIoriginalrecognitionresult(JSON)")
     private String aiRawResult;
+
+    @ApiModelProperty("Data source: MANUAL, OCR, FHIR or DEVICE")
+    private String sourceType;
+
+    @ApiModelProperty("Identifier from the source system")
+    private String sourceExternalId;
+
+    @ApiModelProperty("VERIFIED, REVIEW_REQUIRED or REJECTED")
+    private String verificationStatus;
+
+    @ApiModelProperty("Overall recognition/import confidence")
+    private BigDecimal confidenceScore;
+
+    private Long verifiedBy;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime verifiedAt;
 
     @ApiModelProperty("Notes")
     private String remark;

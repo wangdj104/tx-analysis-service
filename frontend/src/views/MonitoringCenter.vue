@@ -20,7 +20,7 @@
           </el-select>
         </label>
         <label class="control-field control-field--switch">
-          <span>AutomaticExamination</span>
+          <span>Run checks</span>
           <el-tooltip :content="autoRefresh ? 'Check for new records every 30 seconds' : 'Automatic refresh is off'">
             <el-switch v-model="autoRefresh" inline-prompt active-text="open" inactive-text="close" @change="resetTimer" />
           </el-tooltip>
@@ -41,7 +41,7 @@
         </div>
         <div class="status-side">
           <div class="status-meta">
-            <span><i></i>{{ autoRefresh ? 'AutomaticExaminationnewrecord' : 'ManualExamination' }}</span>
+            <span><i></i>{{ autoRefresh ? 'Watching for new records' : 'Manual checks' }}</span>
             <small>Statusupdate {{ formatDateTime(snapshot.generatedAt) }}</small>
             <small>most recent record {{ formatRelative(snapshot.lastDataAt) }}</small>
           </div>
@@ -295,10 +295,10 @@ async function acknowledgeAlert(alert) {
 }
 
 async function resolveAlert(alert) {
-  const result = await ElMessageBox.prompt('Please fillwriteprocesscondition, remeasureresult or thenmedicalschedule', 'processalert', {
+  const result = await ElMessageBox.prompt('Describe the action taken, repeat measurement, or follow-up plan.', 'Resolve alert', {
     confirmButtonText: 'Mark as resolved', cancelButtonText: 'Cancel', inputType: 'textarea',
     inputPlaceholder: 'for example: rest 10 minutesafter remeasure 138/86, continueobserve',
-    inputValidator: value => value?.trim() ? true : 'Please fillwriteprocessrecord'
+    inputValidator: value => value?.trim() ? true : 'Enter a resolution note'
   }).catch(() => null)
   if (!result) return
   await resolve(alert.id, result.value.trim())

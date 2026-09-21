@@ -132,8 +132,8 @@ onMounted(() => {
 const rules = {
   reportType: [{ required: true, message: 'SelectReporttype', trigger: 'change' }],
   format: [{ required: true, message: 'SelectExportformat', trigger: 'change' }],
-  timeType: [{ required: true, message: 'SelectTime dimension', trigger: 'change' }],
-  timeValue: [{ required: true, message: 'SelectTime range', trigger: 'change' }]
+  timeType: [{ required: true, message: 'Select a time dimension', trigger: 'change' }],
+  timeValue: [{ required: true, message: 'Select a time range', trigger: 'change' }]
 };
 
 const commonChartConfig = {

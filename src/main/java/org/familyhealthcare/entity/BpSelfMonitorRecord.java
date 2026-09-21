@@ -55,6 +55,12 @@ public class BpSelfMonitorRecord {
     @ApiModelProperty("measurementperiod: Fasting/After Meal2h/Random")
     private String measurePeriod;
 
+    private String sourceType;
+
+    private String sourceExternalId;
+
+    private String verificationStatus;
+
     @ApiModelProperty("Notes")
     private String remark;
 

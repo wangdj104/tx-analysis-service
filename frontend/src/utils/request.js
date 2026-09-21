@@ -62,28 +62,28 @@ request.interceptors.response.use(
       switch (error.response.status) {
         case 401:
           if (isAuthSessionCurrent(error.config?.authSession) && !window.location.pathname.startsWith('/login')) {
-            ElMessage.error('not authorize, Please sign in again');
+          ElMessage.error('Your session has expired. Please sign in again.');
             clearAuthSession();
             window.location.href = '/login';
           }
           break;
         case 403:
-          ElMessage.error('rejectaccess');
+          ElMessage.error('You do not have permission to perform this action.');
           break;
         case 404:
-          ElMessage.error('requestresourcedoes not exist');
+          ElMessage.error('The requested resource does not exist.');
           break;
         case 413:
-          ElMessage.error('Uploadfiletoo large (413) : Please changemoresmallimage or contactmanagementmemberadjustlarge Nginx client_max_body_size');
+          ElMessage.error('The upload is too large. Choose a smaller file or contact an administrator.');
           break;
         case 500:
-          ElMessage.error('servicedeviceerror');
+          ElMessage.error('The service encountered an error. Please try again.');
           break;
         default:
           ElMessage.error(error.response.data?.msg || 'Request failed');
       }
     } else {
-      ElMessage.error('networkconnectionAbnormal');
+      ElMessage.error('The network connection is unavailable.');
     }
 
     return Promise.reject(error);

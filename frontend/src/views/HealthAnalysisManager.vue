@@ -59,14 +59,14 @@ const route = useRoute();
 const activeTab = ref('complication');
 
 const tabInfo = {
-  complication: { title: 'Complication Tracking', subtitle: 'recordDialysiscomplicationevent, trackoccurtrend and Severelevel' },
-  alert: { title: 'alertmanagement', subtitle: 'configurationalert rule, monitoringAbnormal Results, andtimedrypre-Risk' },
-  'bp-pattern': { title: 'Blood Pressure Pattern Analysis', subtitle: 'analysisBlood Pressurevariability, orthostatic hypotensionBlood PressureandWeightgrowth andBlood Pressure relatedproperty' },
-  nutrition: { title: 'Nutrition Diary', subtitle: 'recordeach Daydietcondition, trackNutritionhealthchange' },
-  'nutrition-assessment': { title: 'Nutrition Assessment', subtitle: 'combinediet, BMI  and healthrecordassessmentNutritionRisk and improvesidetoward' },
-  'health-report': { title: 'Health Report', subtitle: 'generateoverallhealthdataReport, includeDialysisstatistics, Blood Pressureanalysis and Nutrition Diary' },
-  'data-export': { title: 'Data Export', subtitle: 'will Dialysis, Blood Pressure, Nutritionetc.Data Exportfor CSVfile, convenientinexternalanalysis and archive' },
-  automation: { title: 'AutomaticHealth Analytics', subtitle: 'by settings WeekExaminationhealthdata, through AI analysisandsendto Notificationchannel' }
+  complication: { title: 'Complication Tracking', subtitle: 'Record dialysis-related complications and follow their severity and outcome over time.' },
+  alert: { title: 'Health Alerts', subtitle: 'Configure threshold rules and document the response to abnormal results.' },
+  'bp-pattern': { title: 'Blood Pressure Pattern Analysis', subtitle: 'Review variability, orthostatic changes, and relationships with weight gain.' },
+  nutrition: { title: 'Nutrition Diary', subtitle: 'Record daily intake and follow nutrition and fluid patterns.' },
+  'nutrition-assessment': { title: 'Nutrition Assessment', subtitle: 'Combine diet, body measurements, and laboratory data to screen nutrition risk.' },
+  'health-report': { title: 'Health Report', subtitle: 'Generate a consolidated report covering dialysis, vital signs, and nutrition.' },
+  'data-export': { title: 'Data Export', subtitle: 'Export selected health data for clinician review or personal archiving.' },
+  automation: { title: 'Automated Health Analysis', subtitle: 'Create scheduled analysis drafts that always require human review before sharing.' }
 };
 
 const currentTitle = computed(() => tabInfo[activeTab.value]?.title || 'Health Analytics');

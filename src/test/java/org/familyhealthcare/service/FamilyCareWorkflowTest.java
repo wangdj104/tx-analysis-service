@@ -48,22 +48,27 @@ class FamilyCareWorkflowTest {
         assertEquals("CANCELLED",row.getStatus());
     }
 
-    @Test void emptyMonthsGenerateMondayAndThursdaySchedulesThroughNextMonth() {
+    @Test void viewingAnEmptyScheduleNeverCreatesUnconfirmedClinicalPlans() {
         DialysisScheduleService service=new DialysisScheduleService();
         DialysisScheduleMapper schedules=mock(DialysisScheduleMapper.class);DialysisRecordMapper records=mock(DialysisRecordMapper.class);DataScopeHelper scope=mock(DataScopeHelper.class);
         ReflectionTestUtils.setField(service,"schedules",schedules);ReflectionTestUtils.setField(service,"records",records);ReflectionTestUtils.setField(service,"scope",scope);
-        when(scope.requireUserId()).thenReturn(7L);when(schedules.selectCount(any())).thenReturn(0L);when(schedules.selectList(any())).thenReturn(Collections.emptyList());when(records.selectList(any())).thenReturn(Collections.emptyList());
+        when(schedules.selectList(any())).thenReturn(Collections.emptyList());when(records.selectList(any())).thenReturn(Collections.emptyList());
 
-        service.list(2L);
+        assertTrue(service.list(2L).isEmpty());
+        verify(schedules,never()).insert(any());
+    }
 
-        org.mockito.ArgumentCaptor<DialysisSchedule> inserted=org.mockito.ArgumentCaptor.forClass(DialysisSchedule.class);
-        verify(schedules,atLeastOnce()).insert(inserted.capture());
-        LocalDate today=LocalDate.now();YearMonth nextMonth=YearMonth.from(today).plusMonths(1);
-        for(DialysisSchedule row:inserted.getAllValues()){
-            assertEquals(2L,row.getPatientId());assertEquals(7L,row.getUserId());assertEquals("PLANNED",row.getStatus());
+    @Test void recurringSchedulesRequireExplicitWeekdaysAndProduceAPreviewOnly() {
+        DialysisScheduleService service=new DialysisScheduleService();
+        DataScopeHelper scope=mock(DataScopeHelper.class);ReflectionTestUtils.setField(service,"scope",scope);
+        LocalDate monday=LocalDate.of(2026,9,21);
+        List<DialysisSchedule> preview=service.previewPlan(2L,"1,4","08:30",monday,monday.plusDays(10));
+        assertEquals(4,preview.size());
+        for(DialysisSchedule row:preview){
+            assertEquals(2L,row.getPatientId());assertEquals("PLANNED",row.getStatus());assertEquals("08:30",row.getScheduleTime());
             assertTrue(row.getScheduleDate().getDayOfWeek()==DayOfWeek.MONDAY || row.getScheduleDate().getDayOfWeek()==DayOfWeek.THURSDAY);
-            assertFalse(row.getScheduleDate().isBefore(today));assertFalse(row.getScheduleDate().isAfter(nextMonth.atEndOfMonth()));
         }
+        assertThrows(IllegalArgumentException.class,()->service.previewPlan(2L,"","08:30",monday,monday.plusDays(1)));
     }
 
     @Test void timelineReflectsSourceEditsAndDeletesWithoutCreatingCopies() {

@@ -36,6 +36,7 @@ const router = createRouter({
     { path: '/login', component: () => import('./views/Login.vue'), meta: { hideNav: true } },
     { path: '/', redirect: '/care' },
     { path: '/care', component: () => import('./views/CareCenter.vue') },
+    { path: '/clinical-workbench', component: () => import('./views/ClinicalWorkbench.vue') },
     { path: '/dashboard', redirect: '/monitoring' },
     { path: '/dialysis', component: () => import('./views/DialysisManager.vue') },
     { path: '/medical-record', component: () => import('./views/MedicalRecordManager.vue') },

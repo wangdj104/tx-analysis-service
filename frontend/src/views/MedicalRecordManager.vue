@@ -37,25 +37,25 @@
                 />
               </el-select>
             </el-form-item>
-            <el-form-item label="Examination Type">
+            <el-form-item label="Report type">
               <el-select v-model="uploadForm.recordType" placeholder="Select" style="max-width: 320px">
                 <el-option label="blood test" value="BLOOD" />
                 <el-option label="urinalysis" value="URINE" />
-                <el-option label="liverfeature" value="LIVER" />
-                <el-option label="kidneyfeature" value="KIDNEY" />
+                <el-option label="liver function" value="LIVER" />
+                <el-option label="kidney function" value="KIDNEY" />
                 <el-option label="bone metabolism" value="BONE" />
                 <el-option label="iron metabolism" value="IRON" />
-                <el-option label="imagingReport" value="IMAGE" />
+                <el-option label="imaging report" value="IMAGE" />
                 <el-option label="Other" value="OTHER" />
               </el-select>
             </el-form-item>
-            <el-form-item label="processmode">
+            <el-form-item label="Processing mode">
               <el-radio-group v-model="uploadMode">
-                <el-radio-button value="recognize">Uploadandrecognition</el-radio-button>
-                <el-radio-button value="archive">onlyarchive (not recognition) </el-radio-button>
+                <el-radio-button value="recognize">Upload and recognize</el-radio-button>
+                <el-radio-button value="archive">Archive only</el-radio-button>
               </el-radio-group>
             </el-form-item>
-            <el-form-item label="Uploadimage" required>
+            <el-form-item label="Report files" required>
               <el-upload
                 ref="uploadRef"
                 drag
@@ -68,30 +68,30 @@
                 class="upload-drop"
               >
                 <el-icon :size="40"><UploadFilled /></el-icon>
-                <div class="upload-text">will ExaminationReportdragto thisplace,  or <em>clickUpload</em>, alsocan directly<em>paste</em>image (supportmultipleimages) </div>
+                <div class="upload-text">Drag reports here, <em>click to upload</em>, or paste images. Multiple files are supported.</div>
                 <template #tip>
-                  <div class="el-upload__tip">support jpg, png, pdf; PDF most multiplerecognitionbefore  30 page. Phonetake a photowillAutomaticcompressafter Upload, avoid 413</div>
+                  <div class="el-upload__tip">JPG, PNG, and PDF are supported. PDFs are limited to the first 30 pages. Mobile photos are compressed before upload.</div>
                 </template>
               </el-upload>
               <div v-if="isMobile" class="mobile-upload-actions">
                 <el-button type="primary" plain size="small" @click="triggerCameraUpload('page')">
-                  <el-icon><Camera /></el-icon> take a photoUpload
+                  <el-icon><Camera /></el-icon> Take photo
                 </el-button>
                 <el-button type="info" plain size="small" @click="triggerAlbumUpload('page')">
-                  <el-icon><Picture /></el-icon> from photo libraryselect
+                  <el-icon><Picture /></el-icon> Choose from library
                 </el-button>
               </div>
             </el-form-item>
 
             <!-- onlyarchivemode: recordinformationtablesingle -->
             <template v-if="uploadMode === 'archive'">
-              <el-form-item label="Examination Date">
+              <el-form-item label="Report date">
                 <el-date-picker v-model="archiveForm.recordDate" type="date" value-format="YYYY-MM-DD" style="max-width: 320px" />
               </el-form-item>
-              <el-form-item label="HospitalName">
+              <el-form-item label="Hospital">
                 <el-input v-model="archiveForm.hospitalName" style="max-width: 400px" />
               </el-form-item>
-              <el-form-item label="ClinicianName">
+              <el-form-item label="Clinician">
                 <el-input v-model="archiveForm.doctorName" style="max-width: 320px" />
               </el-form-item>
               <el-form-item label="Notes">
@@ -100,20 +100,20 @@
 
               <!-- onlyarchivemode: ManualfillwriteExaminationitem -->
               <el-form-item label-width="0">
-                <el-divider content-position="left">Examination item details (Optional) </el-divider>
+                <el-divider content-position="left">Test item details (optional)</el-divider>
                 <div class="recognize-items-toolbar">
-                  <span class="recognize-items-count">total {{ archiveItems.length }} item</span>
+                  <span class="recognize-items-count">{{ archiveItems.length }} items</span>
                   <div class="recognize-items-actions">
-                    <el-button size="small" type="primary" plain @click="addArchiveItem">Addonerow</el-button>
+                    <el-button size="small" type="primary" plain @click="addArchiveItem">Add row</el-button>
                   </div>
                 </div>
                 <el-table :data="archiveItems" border size="small" max-height="280" class="app-data-table recognize-items-table">
-                  <el-table-column prop="itemName" label="Examinationitem" min-width="140">
+                  <el-table-column prop="itemName" label="Test item" min-width="140">
                     <template #default="{ row }">
-                      <el-input v-model="row.itemName" size="small" placeholder="ExaminationitemName" />
+                      <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
                     </template>
                   </el-table-column>
-                  <el-table-column prop="resultValue" label="measured value" width="120">
+                  <el-table-column prop="resultValue" label="Result" width="120">
                     <template #default="{ row }">
                       <el-input v-model="row.resultValue" size="small" />
                     </template>
@@ -132,8 +132,8 @@
                     <template #default="{ row }">
                       <el-select v-model="row.isAbnormal" size="small" style="width: 76px">
                         <el-option label="Normal" :value="0" />
-                        <el-option label="high" :value="1" />
-                        <el-option label="low" :value="-1" />
+                        <el-option label="High" :value="1" />
+                        <el-option label="Low" :value="-1" />
                       </el-select>
                     </template>
                   </el-table-column>
@@ -147,17 +147,17 @@
             </template>
 
             <el-form-item>
-              <el-button v-if="uploadMode === 'recognize'" type="primary" :loading="recognizeLoading" @click="startRecognize">startrecognition</el-button>
-              <el-button v-if="uploadMode === 'archive'" type="success" :loading="archiveSaving" @click="saveArchiveRecord">Saverecord</el-button>
+              <el-button v-if="uploadMode === 'recognize'" type="primary" :loading="recognizeLoading" @click="startRecognize">Start recognition</el-button>
+              <el-button v-if="uploadMode === 'archive'" type="success" :loading="archiveSaving" @click="saveArchiveRecord">Save record</el-button>
               <el-button v-if="recognizeResult" type="success" @click="saveRecognizedRecord">
-                {{ recognizedRecords.length > 1 ? `Save ${recognizedRecords.length} records` : 'Saverecord' }}
+                {{ recognizedRecords.length > 1 ? `Save ${recognizedRecords.length} records` : 'Save record' }}
               </el-button>
             </el-form-item>
           </el-form>
 
           <!-- onlyarchivemode: imagePreview -->
           <div v-if="uploadMode === 'archive' && selectedFiles.length > 0" class="archive-preview">
-            <el-divider content-position="left">pendingarchiveAttachmentPreview</el-divider>
+            <el-divider content-position="left">Attachment preview</el-divider>
             <div class="attachment-images">
               <div v-for="(file, index) in selectedFiles" :key="index" class="attachment-image-wrapper">
                 <el-image
@@ -172,10 +172,10 @@
 
           <div v-if="recognizeLoading" class="recognize-loading">
             <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-            <span>AI positivein recognitionin, Please wait...</span>
+            <span>AI is extracting a draft. Please wait…</span>
           </div>
           <div v-if="recognizeResult" class="recognize-result">
-            <el-divider content-position="left">recognitionresult (can Editafter Save) </el-divider>
+            <el-divider content-position="left">Recognition draft — review before saving</el-divider>
             <el-alert
               v-if="recognizeWarning"
               :title="recognizeWarning"
@@ -204,10 +204,10 @@
               <el-form-item label="Examination Date">
                 <el-date-picker v-model="currentRecognizeRecord.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%; max-width: 320px" />
               </el-form-item>
-              <el-form-item label="HospitalName">
+              <el-form-item label="Hospital">
                 <el-input v-model="currentRecognizeRecord.hospitalName" style="max-width: 400px" />
               </el-form-item>
-              <el-form-item label="ClinicianName">
+              <el-form-item label="Clinician">
                 <el-input v-model="currentRecognizeRecord.doctorName" style="max-width: 320px" />
               </el-form-item>
             </el-form>
@@ -219,9 +219,9 @@
               </div>
             </div>
             <el-table :data="currentRecognizeRecord.items" border size="small" max-height="280" class="app-data-table recognize-items-table">
-              <el-table-column prop="itemName" label="Examinationitem" min-width="140">
+              <el-table-column prop="itemName" label="Test item" min-width="140">
                 <template #default="{ row }">
-                  <el-input v-model="row.itemName" size="small" placeholder="ExaminationitemName" />
+                  <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
                 </template>
               </el-table-column>
               <el-table-column prop="resultValue" label="measured value" width="120">
@@ -273,14 +273,14 @@
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item label="Examinationitem">
+              <el-form-item label="Test item">
                 <el-select
                   v-model="trendForm.itemName"
                   filterable
                   clearable
                   allow-create
                   default-first-option
-                  placeholder="Select or inputExaminationitem"
+                  placeholder="Select or enter a test item"
                   style="width: 220px"
                 >
                   <el-option
@@ -304,7 +304,7 @@
           <div v-if="trendData.length > 0" class="table-wrap">
             <el-table :data="trendData" class="app-data-table" stripe border size="small">
               <el-table-column prop="recordDate" label="Examination Date" width="120" />
-              <el-table-column prop="itemName" label="Examinationitem" min-width="140" />
+              <el-table-column prop="itemName" label="Test item" min-width="140" />
               <el-table-column prop="resultValue" label="measured value" width="120" />
               <el-table-column prop="unit" label="Unit" width="88" />
               <el-table-column prop="referenceRange" label="Reference Range" width="140" />
@@ -317,7 +317,7 @@
             </el-table>
           </div>
           <div v-if="trendData.length === 0 && !trendLoading" class="stats-empty">
-            <el-empty description="Enter Patient and Examinationitem, queryhistorytrend" />
+            <el-empty description="Select a patient and test item to view its history" />
           </div>
         </div>
 
@@ -350,8 +350,8 @@
             <el-form-item label="Date">
               <el-date-picker v-model="filterForm.timeValue" type="date" placeholder="selectDate" value-format="YYYY-MM-DD" />
             </el-form-item>
-            <el-form-item label="Examinationitem">
-              <el-input v-model="filterForm.itemName" placeholder="by ExaminationitemNameSearch" clearable />
+            <el-form-item label="Test item">
+              <el-input v-model="filterForm.itemName" placeholder="Search by test item name" clearable />
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="loadRecords">
@@ -360,7 +360,7 @@
             </el-form-item>
             <el-form-item v-if="activeMenu === 'list' && canUpload">
               <el-button type="primary" @click="goUpload">
-                <el-icon><Upload /></el-icon>UploadExaminationReport
+                <el-icon><Upload /></el-icon>Upload report
               </el-button>
             </el-form-item>
           </el-form>
@@ -370,7 +370,7 @@
           <div class="list-panel-head">
             <div class="list-panel-title">
               <el-icon><FirstAidKit /></el-icon>
-              <span>{{ activeMenu === 'abnormal' ? 'AbnormalExaminationrecord' : 'Medical Recordslist' }}</span>
+              <span>{{ activeMenu === 'abnormal' ? 'Abnormal test records' : 'Medical records' }}</span>
               <span v-if="displayRecords.length" class="list-count">{{ displayRecords.length }} items</span>
             </div>
           </div>
@@ -390,7 +390,7 @@
               </el-table-column>
               <el-table-column v-if="listColVisible('hospitalName')" prop="hospitalName" label="Hospital" min-width="168" show-overflow-tooltip />
               <el-table-column v-if="listColVisible('doctorName')" prop="doctorName" label="Clinician" min-width="96" show-overflow-tooltip />
-              <el-table-column v-if="listColVisible('items')" label="Examinationitem" min-width="220" show-overflow-tooltip>
+              <el-table-column v-if="listColVisible('items')" label="Test items" min-width="220" show-overflow-tooltip>
                 <template #default="{ row }">
                   <span v-if="row.items && row.items.length" class="cell-ellipsis">
                     {{ row.items.map(i => i.itemName).join(', ') }}
@@ -425,7 +425,7 @@
     </el-main>
 
     <!-- Upload and Recognizedialog (listpageshortcutentry)  -->
-    <el-dialog v-model="uploadDialogVisible" title="UploadExaminationReport" width="800px" :close-on-click-modal="false" destroy-on-close>
+    <el-dialog v-model="uploadDialogVisible" title="Upload report" width="min(800px, 95vw)" :close-on-click-modal="false" destroy-on-close>
       <el-form :model="uploadForm" label-width="100px">
         <el-form-item label="PatientName" required>
           <el-input v-model="uploadForm.patientName" placeholder="Enter PatientName" />
@@ -442,7 +442,7 @@
             <el-option label="Other" value="OTHER" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Uploadimage" required>
+        <el-form-item label="Report files" required>
           <el-upload
             ref="uploadDialogRef"
             drag
@@ -454,9 +454,9 @@
             :on-change="handleFileChange"
           >
             <el-icon :size="40"><UploadFilled /></el-icon>
-            <div class="upload-text">will filedragto thisplace,  or <em>clickUpload</em>, alsocan directly<em>paste</em>image (supportmultipleimages) </div>
+            <div class="upload-text">Drag files here, <em>click to upload</em>, or paste images. Multiple files are supported.</div>
             <template #tip>
-              <div class="el-upload__tip">support jpg, png, pdf; PDF most multiplerecognitionbefore  30 page, page countmultipletimePlease please wait</div>
+              <div class="el-upload__tip">JPG, PNG, and PDF are supported. PDFs are limited to the first 30 pages.</div>
             </template>
           </el-upload>
           <div v-if="isMobile" class="mobile-upload-actions">
@@ -481,10 +481,10 @@
           <el-form-item label="Examination Date">
             <el-date-picker v-model="recognizedData.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="HospitalName">
+          <el-form-item label="Hospital">
             <el-input v-model="recognizedData.hospitalName" />
           </el-form-item>
-          <el-form-item label="ClinicianName">
+          <el-form-item label="Clinician">
             <el-input v-model="recognizedData.doctorName" />
           </el-form-item>
           <el-form-item label="Notes">
@@ -501,9 +501,9 @@
           </div>
         </div>
         <el-table :data="recognizedData.items" border size="small" max-height="300" class="app-data-table recognize-items-table">
-          <el-table-column prop="itemName" label="Examinationitem" min-width="140">
+          <el-table-column prop="itemName" label="Test item" min-width="140">
             <template #default="{ row }">
-              <el-input v-model="row.itemName" size="small" placeholder="ExaminationitemName" />
+              <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
             </template>
           </el-table-column>
           <el-table-column prop="resultValue" label="measured value" width="120">
@@ -540,13 +540,13 @@
 
       <template #footer>
         <el-button @click="uploadDialogVisible = false">Cancel</el-button>
-        <el-button v-if="!recognizeResult" type="primary" :loading="recognizeLoading" @click="startRecognize">startrecognition</el-button>
-        <el-button v-else type="success" @click="saveRecognizedRecord">Saverecord</el-button>
+        <el-button v-if="!recognizeResult" type="primary" :loading="recognizeLoading" @click="startRecognize">Start recognition</el-button>
+        <el-button v-else type="success" @click="saveRecognizedRecord">Save record</el-button>
       </template>
     </el-dialog>
 
     <!-- Detailsdialog -->
-    <el-dialog v-model="detailDialogVisible" title="Medical RecordsDetails" width="900px" destroy-on-close>
+    <el-dialog v-model="detailDialogVisible" title="Medical record details" width="min(900px, 95vw)" destroy-on-close>
       <el-descriptions :column="2" border v-if="currentRecord">
         <el-descriptions-item label="Patient">{{ currentRecord.patientName }}</el-descriptions-item>
         <el-descriptions-item label="Examination Date">{{ currentRecord.recordDate }}</el-descriptions-item>
@@ -558,7 +558,7 @@
 
       <el-divider content-position="left">Examination item details</el-divider>
       <el-table :data="currentRecord?.items || []" class="app-data-table" stripe>
-        <el-table-column prop="itemName" label="Examinationitem" width="150" />
+        <el-table-column prop="itemName" label="Test item" width="150" />
         <el-table-column prop="resultValue" label="measured value" width="120" />
         <el-table-column prop="unit" label="Unit" width="80" />
         <el-table-column prop="referenceRange" label="Reference Range" width="150" />
@@ -592,7 +592,7 @@
     </el-dialog>
 
     <!-- Editdialog -->
-    <el-dialog v-model="editDialogVisible" title="EditMedical Records" width="900px" :close-on-click-modal="false" destroy-on-close>
+    <el-dialog v-model="editDialogVisible" title="Edit medical record" width="min(900px, 95vw)" :close-on-click-modal="false" destroy-on-close>
       <el-form :model="editForm" label-width="100px">
         <el-row :gutter="16">
           <el-col :span="12">
@@ -624,14 +624,14 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="HospitalName">
+            <el-form-item label="Hospital">
               <el-input v-model="editForm.hospitalName" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="ClinicianName">
+            <el-form-item label="Clinician">
               <el-input v-model="editForm.doctorName" />
             </el-form-item>
           </el-col>
@@ -651,9 +651,9 @@
         </div>
       </div>
       <el-table :data="editItems" border size="small" max-height="300" class="app-data-table recognize-items-table">
-        <el-table-column prop="itemName" label="Examinationitem" min-width="140">
+        <el-table-column prop="itemName" label="Test item" min-width="140">
           <template #default="{ row }">
-            <el-input v-model="row.itemName" size="small" placeholder="ExaminationitemName" />
+            <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
           </template>
         </el-table-column>
         <el-table-column prop="resultValue" label="measured value" width="120">
@@ -770,7 +770,7 @@ const LIST_COLUMN_DEFS = [
   { key: 'recordType', label: 'type' },
   { key: 'hospitalName', label: 'Hospital', default: false },
   { key: 'doctorName', label: 'Clinician', default: false },
-  { key: 'items', label: 'Examinationitem' },
+  { key: 'items', label: 'Test items' },
   { key: 'abnormal', label: 'Abnormal' }
 ];
 const { visibleKeys: listVisibleCols, isVisible: listColVisible, resetColumns: resetListColumns } =
@@ -956,20 +956,20 @@ async function handleEditAttachmentChange(file) {
 
 const pageTitle = computed(() => {
   const map = {
-    list: 'Medical Recordsmanagement',
+    list: 'Medical records',
     upload: 'Upload and Recognize',
-    abnormal: 'Abnormalrecord',
+    abnormal: 'Abnormal results',
     trend: 'Result Trends'
   };
-  return map[activeMenu.value] || 'Medical Recordsmanagement';
+  return map[activeMenu.value] || 'Medical records';
 });
 
 const pageSubtitle = computed(() => {
   const map = {
-    list: 'managementhistorytimesExaminationReport, support AI Automaticrecognitionarchive',
-    upload: 'UploadReportimage, by AI AutomaticextractExaminationitemandarchive',
-    abnormal: 'Filterstorein Abnormal Results Medical Records, convenientinheavypointfollow-up',
-    trend: 'tracksomeitemExaminationindicatorin historytimesExaminationin changetrend'
+    list: 'Manage historical reports and review imported data quality.',
+    upload: 'Upload reports and review the AI-extracted draft before saving.',
+    abnormal: 'Focus follow-up on stored results marked high or low.',
+    trend: 'Track how a selected test result changes over time.'
   };
   return map[activeMenu.value] || '';
 });
@@ -1171,7 +1171,7 @@ function dedupeRecognizedItemsLocal() {
   rec.items = dedupeRecognizedItems(rec.items);
   const removed = before - rec.items.length;
   if (removed > 0) {
-    ElMessage.success(`already merge ${removed} itemsduplicateitem`);
+    ElMessage.success(`Merged ${removed} duplicate items`);
   } else {
     ElMessage.info('not sendcurrentcan merge duplicateitem');
   }
@@ -1239,7 +1239,7 @@ async function loadItemNames() {
     }
   } catch (e) {
     console.error('Failed to load test items', e);
-    ElMessage.warning('ExaminationitemlistFailed to load, stillcan Manualinput');
+    ElMessage.warning('The test item list could not be loaded; you can still enter an item manually');
   }
 }
 
@@ -1306,7 +1306,7 @@ function triggerAlbumUpload(target) {
 
 async function startRecognize() {
   if (!selectedFiles.value || selectedFiles.value.length === 0) {
-    ElMessage.warning('Please first Uploadimage');
+    ElMessage.warning('Upload at least one report file');
     return;
   }
   if (!uploadForm.patientId) {
@@ -1335,9 +1335,9 @@ async function startRecognize() {
   } catch (e) {
     const status = e.response?.status;
     if (status === 413) {
-      ElMessage.error('imagetoo largebyreject (413) , Please heavyselect or contactmanagementmemberadjustlargegatewayUploadlimit');
+      ElMessage.error('The image was rejected because it is too large. Choose a smaller file or contact an administrator.');
     } else if (e.message?.includes('timeout')) {
-      ElMessage.error('recognitionovertime: filetoo large or networkrelativelyslowly, Please laterretry');
+      ElMessage.error('Recognition timed out. Try a smaller file or retry on a faster connection.');
     } else {
       ElMessage.error('Recognition failed: ' + (e.message || 'Unknown error'));
     }
@@ -1401,7 +1401,7 @@ function removeArchiveItem(index) {
 
 async function saveArchiveRecord() {
   if (!selectedFiles.value || selectedFiles.value.length === 0) {
-    ElMessage.warning('Please first Uploadimage');
+    ElMessage.warning('Upload at least one report file');
     return;
   }
   if (!uploadForm.patientId) {
@@ -1636,7 +1636,7 @@ function handlePaste(e) {
     const file = item.getAsFile();
     if (!file) continue;
     if (selectedFiles.value.length + added >= 5) {
-      ElMessage.warning('most multiplesupport5imagesimage');
+      ElMessage.warning('You can paste up to 5 images');
       break;
     }
     targetRef.value?.handleStart(file);

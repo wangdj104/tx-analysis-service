@@ -32,7 +32,7 @@
           <div class="panel-head">
             <div class="list-panel-title">
               <el-icon><EditPen /></el-icon>
-              <span>{{ editingId ? 'Editrecord' : 'Addrecord' }}</span>
+              <span>{{ editingId ? 'Edit record' : 'Add record' }}</span>
             </div>
           </div>
 
@@ -103,7 +103,7 @@
 
             <div class="form-actions">
               <el-button type="primary" @click="handleSave" :loading="saving">
-                <el-icon><Check /></el-icon>{{ editingId ? 'updaterecord' : 'Saverecord' }}
+                <el-icon><Check /></el-icon>{{ editingId ? 'Update record' : 'Save record' }}
               </el-button>
               <el-button @click="resetForm">Reset</el-button>
             </div>

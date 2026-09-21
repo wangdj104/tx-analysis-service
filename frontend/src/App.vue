@@ -63,11 +63,11 @@
       </div>
       <template #footer><span class="workspace-search-hint">Enter to open the first result · Esc to close</span></template>
     </el-dialog>
-    <el-dialog v-model="accountVisible" title="Current Account" width="380px">
+    <el-dialog v-model="accountVisible" title="Current Account" width="min(380px, 94vw)">
       <div class="workspace-account-summary"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><div><strong>{{ accountName }}</strong><p>{{ userRoles }}</p></div></div>
       <template #footer><el-button @click="accountVisible = false">Close</el-button><el-button @click="openPasswordDialog">Change Password</el-button><el-button type="danger" plain @click="accountVisible = false; handleLogout()">Sign Out</el-button></template>
     </el-dialog>
-    <el-dialog v-model="passwordVisible" title="Change Password" width="420px" destroy-on-close>
+    <el-dialog v-model="passwordVisible" title="Change Password" width="min(420px, 94vw)" destroy-on-close>
       <el-form label-position="top" @submit.prevent="submitPasswordChange">
         <el-form-item label="Current Password"><el-input v-model="passwordForm.currentPassword" type="password" show-password autocomplete="current-password" /></el-form-item>
         <el-form-item label="New Password"><el-input v-model="passwordForm.newPassword" type="password" show-password autocomplete="new-password" /><small>Use at least 10 characters with letters, numbers, and special characters.</small></el-form-item>

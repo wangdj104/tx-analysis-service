@@ -47,8 +47,29 @@ public class AlertRecord {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime triggeredAt;
 
+    private String sourceType;
+
+    private Long sourceId;
+
+    private String dedupeKey;
+
+    private Integer occurrenceCount;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime lastTriggeredAt;
+
     @ApiModelProperty("Status: PENDING-pendingConfirm, CONFIRMED-already Confirm, RESOLVED-resolved")
     private String status;
+
+    private Long acknowledgedBy;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime acknowledgedAt;
+
+    private Long resolvedBy;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime resolvedAt;
 
     @ApiModelProperty("placesetrecord")
     private String handlingNote;

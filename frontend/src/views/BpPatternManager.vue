@@ -195,7 +195,7 @@ async function loadData() {
 
 async function handleAnalyze() {
   if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
-  if (!timeValue.value) { ElMessage.warning('SelectTime range'); return; }
+  if (!timeValue.value) { ElMessage.warning('Select a time range'); return; }
   analyzing.value = true;
   try {
     const res = await analyzeBpPattern(currentPatientId.value, timeType.value, timeValue.value);

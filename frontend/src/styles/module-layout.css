@@ -291,9 +291,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  flex-wrap: nowrap;
-  white-space: nowrap;
+  gap: 4px 8px;
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.module-page .table-actions .el-button + .el-button {
+  margin-left: 0;
 }
 
 .module-page .table-actions .el-button {

@@ -123,8 +123,8 @@ onMounted(() => {
 
 const rules = {
   dataType: [{ required: true, message: 'Selectdatatype', trigger: 'change' }],
-  timeType: [{ required: true, message: 'SelectTime dimension', trigger: 'change' }],
-  timeValue: [{ required: true, message: 'SelectTime range', trigger: 'change' }]
+  timeType: [{ required: true, message: 'Select a time dimension', trigger: 'change' }],
+  timeValue: [{ required: true, message: 'Select a time range', trigger: 'change' }]
 };
 
 async function handleExport() {

@@ -101,7 +101,7 @@
           >
             <el-table-column prop="recordDate" label="Date" width="100" />
             <el-table-column prop="patientName" label="Patient" width="80" show-overflow-tooltip />
-            <el-table-column prop="itemName" label="Examinationitem" min-width="100" show-overflow-tooltip />
+            <el-table-column prop="itemName" label="Test item" min-width="100" show-overflow-tooltip />
             <el-table-column label="result" min-width="90">
               <template #default="{ row }">
                 <span class="result-abnormal">{{ row.resultValue }}{{ row.unit ? ' ' + row.unit : '' }}</span>
@@ -505,7 +505,7 @@ const dehydrationChartOption = computed(() => {
     { value: s.match ?? 0, name: 'Ultrafiltration on target' }
   ];
   const total = raw.reduce((a, b) => a + b.value, 0);
-  const data = total > 0 ? raw.filter(d => d.value > 0) : [{ value: 1, name: 'Nonerecord', itemStyle: { color: '#e2e8f0' } }];
+  const data = total > 0 ? raw.filter(d => d.value > 0) : [{ value: 1, name: 'No records', itemStyle: { color: '#e2e8f0' } }];
   return {
     color: ['#f59e0b', '#ef4444', '#22c55e'],
     tooltip: { trigger: 'item', formatter: total > 0 ? '{b}: {c} times ({d}%)' : 'This MonthNoneDialysis Records' },

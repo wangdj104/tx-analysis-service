@@ -5,43 +5,44 @@
         <div class="page-header">
           <div class="top-bar">
             <div class="left">
-              <div><h1>real-timealert</h1><p class="subtitle">configurationalert rule, monitoringAbnormal Results, andtimedrypre-Risk</p></div>
+              <div><h1>Health Alerts</h1><p class="subtitle">Automatic checks run every 10 minutes. Review evidence and document each clinical response.</p></div>
             </div>
             <div class="right">
-              <el-button type="warning" @click="handleCheck">ManualExaminationalert</el-button>
+              <el-button plain @click="handleCheck">Run scan now</el-button>
             </div>
           </div>
         </div>
         <div class="content-panel">
           <el-tabs v-model="activeTab">
             <!-- alertrecord -->
-            <el-tab-pane label="alertrecord" name="records">
+            <el-tab-pane label="Alert records" name="records">
               <div class="toolbar">
                 <el-radio-group v-model="statusFilter" @change="loadData" class="status-radio-group">
                   <el-radio-button value="">All</el-radio-button>
-                  <el-radio-button value="PENDING">pendingConfirm</el-radio-button>
-                  <el-radio-button value="CONFIRMED">already Confirm</el-radio-button>
-                  <el-radio-button value="RESOLVED">resolved</el-radio-button>
+                  <el-radio-button value="PENDING">Pending</el-radio-button>
+                  <el-radio-button value="CONFIRMED">Acknowledged</el-radio-button>
+                  <el-radio-button value="RESOLVED">Resolved</el-radio-button>
                 </el-radio-group>
               </div>
               <el-table :data="alertRecords" stripe class="app-data-table">
-                <el-table-column prop="triggeredAt" label="triggerTime" width="160" />
-                <el-table-column prop="alertTitle" label="alerttitle" min-width="180" show-overflow-tooltip />
-                <el-table-column prop="alertLevel" label="level" width="80" align="center">
+                <el-table-column prop="triggeredAt" label="Triggered" width="160" />
+                <el-table-column prop="alertTitle" label="Alert" min-width="180" show-overflow-tooltip />
+                <el-table-column prop="alertLevel" label="Severity" width="90" align="center">
                   <template #default="{ row }">
                     <el-tag :type="levelTagType(row.alertLevel)" size="small">{{ levelLabel(row.alertLevel) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="triggeredValue" label="triggervalue" width="100" />
-                <el-table-column prop="status" label="Status" width="80" align="center">
+                <el-table-column prop="triggeredValue" label="Evidence" min-width="130" />
+                <el-table-column prop="occurrenceCount" label="Occurrences" width="105" align="center" />
+                <el-table-column prop="status" label="Status" width="105" align="center">
                   <template #default="{ row }">
                     <el-tag :type="statusTagType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="Actions" width="180" align="center" fixed="right">
+                <el-table-column label="Actions" width="210" align="center" fixed="right">
                   <template #default="{ row }">
-                    <el-button v-if="row.status === 'PENDING'" link type="primary" size="small" @click="handleAck(row.id)">Confirm</el-button>
-                    <el-button v-if="row.status === 'CONFIRMED'" link type="success" size="small" @click="showResolveDialog(row)">resolve</el-button>
+                    <el-button v-if="row.status === 'PENDING'" link type="primary" size="small" @click="handleAck(row.id)">Acknowledge</el-button>
+                    <el-button v-if="row.status === 'CONFIRMED'" link type="success" size="small" @click="showResolveDialog(row)">Resolve</el-button>
                     <el-popconfirm title="Confirm deletion?" @confirm="handleDeleteRecord(row.id)">
                       <template #reference><el-button link type="danger" size="small">Delete</el-button></template>
                     </el-popconfirm>
@@ -51,17 +52,17 @@
             </el-tab-pane>
 
             <!-- alert rule -->
-            <el-tab-pane label="alert rule" name="rules">
+            <el-tab-pane label="Alert rules" name="rules">
               <div class="toolbar">
-                <el-button type="primary" @click="showRuleDialog"><el-icon><Plus /></el-icon>Addrule</el-button>
+                <el-button type="primary" @click="showRuleDialog"><el-icon><Plus /></el-icon>Add rule</el-button>
               </div>
               <el-table :data="rules" stripe class="app-data-table">
-                <el-table-column prop="indicatorName" label="monitoringindicator" width="140" />
-                <el-table-column prop="thresholdType" label="thresholdtype" width="120">
+                <el-table-column prop="indicatorName" label="Indicator" width="160" />
+                <el-table-column prop="thresholdType" label="Threshold type" width="130">
                   <template #default="{ row }">{{ thresholdTypeLabel(row.thresholdType) }}</template>
                 </el-table-column>
-                <el-table-column prop="thresholdValue" label="threshold" width="100" />
-                <el-table-column prop="alertLevel" label="alertlevel" width="80" align="center">
+                <el-table-column prop="thresholdValue" label="Threshold" width="110" />
+                <el-table-column prop="alertLevel" label="Severity" width="90" align="center">
                   <template #default="{ row }">
                     <el-tag :type="levelTagType(row.alertLevel)" size="small">{{ levelLabel(row.alertLevel) }}</el-tag>
                   </template>
@@ -85,35 +86,34 @@
       </div>
     </el-main>
 
-    <!-- Addruledialog -->
-    <el-dialog v-model="ruleDialogVisible" title="Addalert rule" :width="isMobile ? '92%' : '500px'" destroy-on-close>
+    <el-dialog v-model="ruleDialogVisible" title="Add alert rule" :width="isMobile ? '92%' : '500px'" destroy-on-close>
       <el-form :model="ruleForm" label-width="100px" ref="ruleFormRef">
-        <el-form-item label="monitoringindicator">
-          <el-select v-model="ruleForm.indicatorCode" placeholder="selectindicator" style="width: 100%" @change="onIndicatorChange">
+        <el-form-item label="Indicator">
+          <el-select v-model="ruleForm.indicatorCode" placeholder="Select an indicator" style="width: 100%" @change="onIndicatorChange">
             <el-option v-for="ind in indicators" :key="ind.itemCode" :label="ind.itemName" :value="ind.itemCode" />
           </el-select>
         </el-form-item>
         <el-row :gutter="16">
           <el-col :xs="24" :sm="12">
-            <el-form-item label="thresholdtype">
+            <el-form-item label="Threshold type">
               <el-select v-model="ruleForm.thresholdType" style="width: 100%">
-                <el-option label="highinthreshold" value="ABOVE" />
-                <el-option label="belowthreshold" value="BELOW" />
-                <el-option label="exceedrange" value="OUT_OF_RANGE" />
+                <el-option label="Above" value="ABOVE" />
+                <el-option label="Below" value="BELOW" />
+                <el-option label="Outside range" value="OUT_OF_RANGE" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12">
-            <el-form-item label="thresholdvalue">
-              <el-input v-model="ruleForm.thresholdValue" placeholder="for example  5.5  or  2.1-2.6" />
+            <el-form-item label="Threshold value">
+              <el-input v-model="ruleForm.thresholdValue" placeholder="For example 5.5 or 2.1-2.6" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="alertlevel">
+        <el-form-item label="Severity">
           <el-select v-model="ruleForm.alertLevel" style="width: 100%">
-            <el-option label="Notice" value="INFO" />
-            <el-option label="warning" value="WARNING" />
-            <el-option label="Severe" value="CRITICAL" />
+            <el-option label="Information" value="INFO" />
+            <el-option label="Warning" value="WARNING" />
+            <el-option label="Critical" value="CRITICAL" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -123,16 +123,15 @@
       </template>
     </el-dialog>
 
-    <!-- resolvealertdialog -->
-    <el-dialog v-model="resolveDialogVisible" title="resolvealert" width="400px" destroy-on-close>
+    <el-dialog v-model="resolveDialogVisible" title="Resolve alert" width="min(440px, 94vw)" destroy-on-close>
       <el-form label-width="80px">
-        <el-form-item label="placesetrecord">
-          <el-input v-model="resolveNote" type="textarea" :rows="3" placeholder="fillwriteplacesetmeasures and result" />
+        <el-form-item label="Action taken">
+          <el-input v-model="resolveNote" type="textarea" :rows="3" placeholder="Required: document the action and outcome" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="resolveDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="handleResolve">Confirmresolve</el-button>
+        <el-button type="primary" @click="handleResolve">Confirm resolution</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -164,9 +163,9 @@ const ruleForm = reactive({
   thresholdValue: '', alertLevel: 'WARNING'
 });
 
-const LEVEL_MAP = { INFO: 'Notice', WARNING: 'warning', CRITICAL: 'Severe' };
-const STATUS_MAP = { PENDING: 'pendingConfirm', CONFIRMED: 'already Confirm', RESOLVED: 'resolved' };
-const THRESHOLD_MAP = { ABOVE: 'highinthreshold', BELOW: 'belowthreshold', OUT_OF_RANGE: 'exceedrange' };
+const LEVEL_MAP = { INFO: 'Information', WARNING: 'Warning', CRITICAL: 'Critical' };
+const STATUS_MAP = { PENDING: 'Pending', CONFIRMED: 'Acknowledged', OBSERVING: 'Observing', CONSULTED: 'Consulted', RECHECKED: 'Rechecked', RESOLVED: 'Resolved' };
+const THRESHOLD_MAP = { ABOVE: 'Above', BELOW: 'Below', OUT_OF_RANGE: 'Outside range' };
 
 function levelLabel(v) { return LEVEL_MAP[v] || v; }
 function statusLabel(v) { return STATUS_MAP[v] || v; }
@@ -199,7 +198,7 @@ function showRuleDialog() {
 async function handleSaveRule() {
   try {
     const res = await saveRule(ruleForm);
-    if (res.code === 200) { ElMessage.success('ruleSaved successfully'); ruleDialogVisible.value = false; loadData(); }
+    if (res.code === 200) { ElMessage.success('Alert rule saved.'); ruleDialogVisible.value = false; loadData(); }
     else ElMessage.error(res.msg || 'Failed to save');
   } catch (e) { ElMessage.error('Failed to save'); }
 }
@@ -216,7 +215,7 @@ async function handleDeleteRule(id) {
 
 async function handleAck(id) {
   const res = await acknowledge(id);
-  if (res.code === 200) { ElMessage.success('already Confirm'); loadData(); }
+  if (res.code === 200) { ElMessage.success('Alert acknowledged.'); loadData(); }
 }
 
 function showResolveDialog(row) {
@@ -226,8 +225,9 @@ function showResolveDialog(row) {
 }
 
 async function handleResolve() {
+  if (!resolveNote.value.trim()) { ElMessage.warning('Document the action taken before resolving the alert.'); return; }
   const res = await resolve(resolveId.value, resolveNote.value);
-  if (res.code === 200) { ElMessage.success('resolved'); resolveDialogVisible.value = false; loadData(); }
+  if (res.code === 200) { ElMessage.success('Alert resolved.'); resolveDialogVisible.value = false; loadData(); }
 }
 
 async function handleDeleteRecord(id) {
@@ -238,7 +238,7 @@ async function handleDeleteRecord(id) {
 async function handleCheck() {
   if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
   const res = await checkThresholds(currentPatientId.value);
-  if (res.code === 200) { ElMessage.success('alertExaminationcomplete'); loadData(); }
+  if (res.code === 200) { ElMessage.success('Alert scan complete.'); loadData(); }
 }
 
 watch(currentPatientId, () => loadData());

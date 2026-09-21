@@ -218,11 +218,16 @@ a:focus-visible,
 .el-dialog__footer {
   padding: 14px 22px 20px !important;
   border-top: 1px solid var(--line-soft);
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .el-message-box__btns .el-button,
 .el-dialog__footer .el-button {
   min-width: 88px;
+  margin-left: 0 !important;
 }
 
 .el-dropdown-menu__item {
@@ -323,7 +328,18 @@ a:focus-visible,
 }
 
 .module-page .table-actions {
-  min-width: max-content;
+  min-width: 0;
+}
+
+/* Embedded analytics pages already sit inside a panel; remove the second frame. */
+.health-analysis-manager > .main-content > .page-inner > .content-panel .module-page .page-inner {
+  padding: 0 !important;
+}
+.health-analysis-manager > .main-content > .page-inner > .content-panel .module-page .content-panel {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 
 /* ---------- firstpage and familypage ---------- */
@@ -537,6 +553,8 @@ a:focus-visible,
   .dashboard, .family-page { padding: 20px 14px 28px !important; }
   .family-page .workspace { padding: 14px !important; }
   .el-dialog__body { padding: 16px !important; }
+  .el-dialog__footer { display: grid; grid-template-columns: 1fr; padding: 12px 16px 16px !important; }
+  .el-dialog__footer .el-button { width: 100%; margin: 0 !important; }
   .el-button--small { min-height: 36px; }
 }
 @media (prefers-reduced-motion: reduce) {

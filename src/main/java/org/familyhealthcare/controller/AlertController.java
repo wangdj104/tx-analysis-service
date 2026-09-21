@@ -3,6 +3,7 @@ package org.familyhealthcare.controller;
 import org.familyhealthcare.common.Result;
 import org.familyhealthcare.entity.AlertRecord;
 import org.familyhealthcare.entity.AlertRule;
+import org.familyhealthcare.entity.AlertEvent;
 import org.familyhealthcare.service.AlertService;
 import org.familyhealthcare.vo.AlertStatsVO;
 import io.swagger.annotations.Api;
@@ -104,6 +105,12 @@ public class AlertController {
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
+    }
+
+    @GetMapping("/record/{id}/events")
+    @ApiOperation("Query alert status history")
+    public Result<List<AlertEvent>> events(@PathVariable Long id) {
+        return Result.ok(alertService.listEvents(id));
     }
 
     @DeleteMapping("/record/delete/{id}")
