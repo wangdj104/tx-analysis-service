@@ -1,6 +1,6 @@
 # healthmaintitleillustration
 
-for Clarity HealthSign Inpage and overviewpagesystemas, usewithinset image_gen worktoolgenerate, againuseitemitemalready has  Sharp compresscompletekeeptransparentchannel  WebP. not increasedependency. imagefor decoration, not includerealPatientinformation, visittherapyrecommendation or can readdata.
+Illustrations for Chengxin Health sign-in and overview pages are generated assets compressed to WebP. They are decorative only and must not contain real patient information, treatment advice, or readable health data.
 
 | file | size | useset |
 | --- | --- | --- |

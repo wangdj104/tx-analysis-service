@@ -34,7 +34,7 @@ Text import is an entry aid, not a clinical interpretation tool.
 
 ## Notification bots
 
-Outbound WeCom and DingTalk bots are configured under **Notification Settings**. Create a bot in the target group, copy its webhook URL, add the channel in Clarity Health, and send a test message. Use bot security controls such as keywords or signatures where supported.
+Outbound WeCom and DingTalk bots are configured under **Notification Settings**. Create a bot in the target group, copy its webhook URL, add the channel in Chengxin Health, and send a test message. Use bot security controls such as keywords or signatures where supported.
 
 Webhook URLs and signing secrets are credentials. Store them only in the platform configuration, never in screenshots, issues, sample files, or source control.
 

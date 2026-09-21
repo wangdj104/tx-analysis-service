@@ -1,0 +1,323 @@
+/**
+ * mobilealllayoutstyleoptimize
+ * injectiontosmallscreensetbackup touchexperience, layout and interactiveoptimize
+ */
+
+/* ========== Basictouchoptimize ========== */
+@media (max-width: 768px) {
+  /* touchtargetminimumsize (excludetop barhorizontaltowardnavigation, avoidcompresslayout)  */
+  .el-button,
+  .el-menu-item,
+  .el-radio-button__inner,
+  .mobile-nav-item,
+  .mobile-nav-subitem,
+  .menu-toggle,
+  .mobile-nav-toggle,
+  [role="button"]:not(.nav-item),
+  button,
+  a:not(.nav-item):not(.dropdown-link) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* optimizetouchfeedback */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* preventiOScompressplace */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* optimizescrollexperience */
+  body {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* preventlongby selectintext */
+  .no-select {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* ========== mobiledialogoptimize ========== */
+@media (max-width: 768px) {
+  .el-dialog {
+    width: 92% !important;
+    margin: 20px auto !important;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .el-dialog__header {
+    padding: 16px 20px;
+  }
+
+  .el-dialog__body {
+    padding: 16px 20px;
+  }
+
+  .el-dialog__footer {
+    padding: 12px 20px;
+  }
+
+  /* dialogwithintablesingleoptimize */
+  .el-dialog .el-form-item__label {
+    float: none !important;
+    text-align: left !important;
+    margin-bottom: 8px;
+  }
+
+  .el-dialog .el-form-item__content {
+    margin-left: 0 !important;
+    width: 100%;
+  }
+}
+
+/* ========== mobiletablesingleoptimize ========== */
+@media (max-width: 768px) {
+  .el-form--inline .el-form-item {
+    display: block;
+    width: 100%;
+    margin-bottom: 12px;
+  }
+
+  .el-form--inline .el-form-item__label {
+    float: none;
+    text-align: left;
+    margin-bottom: 6px;
+  }
+
+  .el-form--inline .el-form-item__content {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .el-form--inline .el-input,
+  .el-form--inline .el-select,
+  .el-form--inline .el-date-picker {
+    width: 100% !important;
+  }
+}
+
+/* ========== mobiletablegridoptimize ========== */
+@media (max-width: 768px) {
+  .el-table {
+    font-size: 13px;
+  }
+
+  .el-table .el-table__cell {
+    padding: 10px 8px;
+  }
+
+  /* tablegridhorizontaltowardscrolloptimize */
+  .el-table--scrollable-x .el-table__body-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ========== mobilecardtabletoptimize ========== */
+@media (max-width: 768px) {
+  .el-card {
+    border-radius: 12px;
+    margin-bottom: 12px;
+  }
+
+  .el-card__header {
+    padding: 14px 16px;
+  }
+
+  .el-card__body {
+    padding: 14px 16px;
+  }
+}
+
+/* ========== mobileby buttongroupoptimize ========== */
+@media (max-width: 768px) {
+  .el-button-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .el-button-group .el-button {
+    flex: 1;
+    min-width: calc(50% - 4px);
+  }
+}
+
+/* ========== mobilelabeloptimize ========== */
+@media (max-width: 768px) {
+  .el-tag {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+}
+
+/* ========== mobilepointpageoptimize ========== */
+@media (max-width: 768px) {
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .el-pagination__sizes,
+  .el-pagination__jump {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* ========== mobileloadoptimize ========== */
+@media (max-width: 768px) {
+  .el-loading-mask {
+    background-color: rgba(255, 255, 255, 0.9);
+  }
+}
+
+/* ========== mobilemessageNoticeoptimize ========== */
+@media (max-width: 768px) {
+  .el-message {
+    min-width: calc(100vw - 32px) !important;
+    left: 16px !important;
+    right: 16px !important;
+    max-width: none !important;
+  }
+
+  .el-message-box {
+    width: 90% !important;
+    max-width: 320px;
+  }
+}
+
+/* ========== mobileemptyStatusoptimize ========== */
+@media (max-width: 768px) {
+  .el-empty {
+    padding: 24px 0;
+  }
+
+  .el-empty__image {
+    width: 120px !important;
+    height: 120px !important;
+  }
+
+  .el-empty__description {
+    font-size: 13px;
+  }
+}
+
+/* ========== mobileUploadcomponentoptimize ========== */
+@media (max-width: 768px) {
+  .el-upload-dragger {
+    padding: 20px 16px;
+  }
+
+  .el-upload__tip {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+/* ========== mobileMenuoptimize ========== */
+@media (max-width: 768px) {
+  .el-menu--horizontal {
+    border-bottom: none;
+  }
+
+  .el-menu--horizontal > .el-menu-item {
+    height: 48px;
+    line-height: 48px;
+  }
+}
+
+/* ========== mobilegridgridoptimize ========== */
+@media (max-width: 768px) {
+  .el-row {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .el-col {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* ========== small-screen adaptation (375pxandtodown ) ========== */
+@media (max-width: 375px) {
+  html {
+    font-size: 14px;
+  }
+
+  .el-button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .el-input__inner {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  .el-form-item__label {
+    font-size: 13px;
+  }
+}
+
+/* ========== horizontalscreenfitconfigure ========== */
+@media (max-width: 896px) and (orientation: landscape) {
+  .el-dialog {
+    max-height: 90vh;
+  }
+
+  .mobile-sidebar {
+    width: 280px !important;
+  }
+}
+
+/* ========== safeallrangedomainfitconfigure (iPhone Xandtoup ) ========== */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .app-topbar {
+    padding-left: max(24px, env(safe-area-inset-left));
+    padding-right: max(24px, env(safe-area-inset-right));
+  }
+
+  .app-main {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ========== darkmodeoptimize ========== */
+@media (prefers-color-scheme: dark) {
+  @media (max-width: 768px) {
+    .el-message {
+      background-color: #1f2937;
+      color: #f9fafb;
+    }
+
+    .el-message-box {
+      background-color: #1f2937;
+      border-color: #374151;
+    }
+
+    .el-message-box__title {
+      color: #f9fafb;
+    }
+
+    .el-message-box__message {
+      color: #d1d5db;
+    }
+  }
+}

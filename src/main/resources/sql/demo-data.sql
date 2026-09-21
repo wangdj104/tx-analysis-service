@@ -1,5 +1,5 @@
 -- ============================================================
--- Clarity Health demo data
+-- Chengxin Health demo data
 -- Use only with the Docker demo profile. Never load this file in production.
 -- Sign-in account: demo / Demo@123456
 -- All identities, contact details, and health records below are fictional.

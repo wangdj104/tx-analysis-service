@@ -1,0 +1,10 @@
+body.care-senior { font-size: 19px; }
+.care-senior .care-center { max-width: 1450px; }
+.care-senior .care-center p, .care-senior .care-center strong, .care-senior .el-form-item__label { font-size: 20px; line-height: 1.7; }
+.care-senior .care-center small { font-size: 17px; }
+.care-senior .el-button { min-height: 48px; font-size: 18px; padding: 12px 18px; }
+.care-senior .el-input__inner, .care-senior .el-textarea__inner, .care-senior .el-select__placeholder { font-size: 19px; }
+.care-senior .el-input__wrapper, .care-senior .el-select__wrapper { min-height: 44px; }
+.care-senior .el-table, .care-senior .el-tabs__item { font-size: 18px; }
+.care-senior .el-checkbox__label, .care-senior .el-radio__label, .care-senior .el-tag { font-size: 17px; }
+.care-senior .quick-actions { position: sticky; top: 0; z-index: 5; background: white; padding: 12px 0; }

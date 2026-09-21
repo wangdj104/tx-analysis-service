@@ -1,0 +1,61 @@
+server:
+  port: ${SERVER_PORT:8082}
+  tomcat:
+    connection-timeout: ${SERVER_CONNECTION_TIMEOUT:30s}
+
+rest-template:
+  read-timeout: ${HTTP_READ_TIMEOUT_MS:30000}
+  connection-timeout: ${HTTP_CONNECT_TIMEOUT_MS:5000}
+
+# AI capabilities are optional. Inject real credentials through environment variables.
+deepseek:
+  api:
+    key: ${DEEPSEEK_API_KEY:}
+    url: ${DEEPSEEK_API_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    model: ${DEEPSEEK_API_MODEL:deepseek-v3}
+
+bailian:
+  api-key: ${BAILIAN_API_KEY:}
+
+ocr:
+  vision:
+    api-key: ${OCR_API_KEY:${BAILIAN_API_KEY:}}
+    base-url: ${OCR_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    model: ${OCR_MODEL:qwen-vl-max}
+    temperature: ${OCR_TEMPERATURE:0.1}
+    max-tokens: ${OCR_MAX_TOKENS:8192}
+
+langflow:
+  enabled: ${LANGFLOW_ENABLED:false}
+  base-url: ${LANGFLOW_BASE_URL:http://localhost:7860/api}
+  api-key: ${LANGFLOW_API_KEY:}
+  default-flow-id: ${LANGFLOW_DEFAULT_FLOW_ID:}
+
+spring:
+  application:
+    name: family-health-care
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/family_health?useUnicode=true&characterEncoding=utf-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:family_health}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      keepalive-time: 120000
+      pool-name: family-health-hikari
+      register-mbeans: false
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 200MB
+
+mybatis-plus:
+  configuration:
+    log-impl: ${MYBATIS_LOG_IMPL:org.apache.ibatis.logging.nologging.NoLoggingImpl}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION_MS:86400000}

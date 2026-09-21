@@ -5,6 +5,7 @@ on:
     branches: [main, master]
     paths:
       - 'demo/**'
+      - 'cn/demo/**'
       - '.github/workflows/demo-pages.yml'
   workflow_dispatch:
 
@@ -34,9 +35,11 @@ jobs:
       - uses: actions/configure-pages@v5
       - name: Prepare public files only
         run: |
-          mkdir -p _site/assets
+          mkdir -p _site/assets _site/cn/assets
           cp demo/index.html demo/style.css demo/model.js demo/app.js _site/
           cp demo/assets/* _site/assets/
+          cp cn/demo/index.html cn/demo/style.css cn/demo/model.js cn/demo/app.js _site/cn/
+          cp cn/demo/assets/* _site/cn/assets/
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
@@ -47,4 +50,4 @@ jobs:
         env:
           DEMO_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
-          printf '### static Demo already release\n\n[openin linedemo](%s)\n\nREADME link: `[in lineexperience](%s)`\n' "$DEMO_URL" "$DEMO_URL" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Chengxin Health demos published\n\n- [English demo](%s)\n- [中文演示](%scn/)\n' "$DEMO_URL" "$DEMO_URL" >> "$GITHUB_STEP_SUMMARY"

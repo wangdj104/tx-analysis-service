@@ -1,6 +1,6 @@
-# Clarity Health Platform User Guide
+# Chengxin Health Platform User Guide
 
-This guide explains everyday operation of the full Clarity Health application. Screens and features depend on account permissions and the selected family member.
+This guide explains everyday operation of the full Chengxin Health application. Screens and features depend on account permissions and the selected family member.
 
 ## Contents
 

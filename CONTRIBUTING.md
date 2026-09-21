@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping improve Clarity Health. Contributions should preserve patient privacy, data ownership, accessibility, and the clarity of everyday care workflows.
+Thank you for helping improve Chengxin Health. Contributions should preserve patient privacy, data ownership, accessibility, and the clarity of everyday care workflows.
 
 ## Development workflow
 

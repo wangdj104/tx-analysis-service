@@ -4,7 +4,7 @@ export const APP_LOCALE = 'en-US';
 export const I18N_KEY = Symbol('family-health-i18n');
 
 const messages = {
-  appName: 'Clarity Health',
+  appName: 'Chengxin Health',
   appTagline: 'Thoughtful tracking for healthier days',
   common: {
     save: 'Save',

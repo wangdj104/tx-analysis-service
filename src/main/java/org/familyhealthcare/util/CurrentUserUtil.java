@@ -50,6 +50,12 @@ public class CurrentUserUtil {
      */
     @SuppressWarnings("unchecked")
     public static boolean isAdmin() {
+        return hasRole("admin");
+    }
+
+    /** Return whether the current authenticated account has the requested role code. */
+    @SuppressWarnings("unchecked")
+    public static boolean hasRole(String roleCode) {
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (attributes == null) {
             return false;
@@ -59,7 +65,7 @@ public class CurrentUserUtil {
         if (roleCodes == null) {
             return false;
         }
-        return ((List<String>) roleCodes).contains("admin");
+        return ((List<String>) roleCodes).contains(roleCode);
     }
 
     /** provideafter platformsettimetaskin specifieduser datarangewithinrun, endafter Automaticclearmanagelineprocessup down text.  */

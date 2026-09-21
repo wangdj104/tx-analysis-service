@@ -109,6 +109,7 @@ export function getFallbackWorkspaceMenus(menuPaths = [], roleCodes = []) {
   return normalizeWorkspaceMenus([
     { path: '/monitoring', label: 'Health Overview', icon: 'Monitor' },
     { path: '/clinical-workbench', label: 'Clinical Workbench', icon: 'FirstAidKit' },
+    { path: '/doctor-workspace', label: 'Doctor Workspace', icon: 'FirstAidKit' },
     MODULE_MENUS['/dialysis'],
     { path: '/bp-self-monitor', label: 'Blood Pressure & Glucose', icon: 'Odometer' },
     MODULE_MENUS['/medical-record'],

@@ -1,0 +1,76 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log
+log/
+*.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.npm-cache/
+frontend/dist.zip
+.pnpm-store/
+frontend/.env.local
+frontend/.env.*.local
+
+# Environment specific files
+*.yml.local
+*.yaml.local
+config/database-profiles.local.yaml
+
+.env
+
+.env.dev
+
+.env.test
+
+.env.prod
+
+.code/.env
+
+.code/.env.dev
+
+.code/.env.test
+
+.code/.env.prod
+
+.codex/.env
+
+.codex/.env.dev
+
+.codex/.env.test
+
+.codex/.env.prod
+
+# Runtime data and secrets
+uploads/
+backups/
+*.pem
+*.key
+*.p12
+*.jks
+
+# Superpowers isolated worktrees and task artifacts
+.worktrees/
+.superpowers/

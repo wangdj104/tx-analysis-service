@@ -3,9 +3,9 @@
     <template v-if="!route.meta.hideNav">
       <a class="skip-content" href="#workspace-content">Skip to main content</a>
       <aside v-if="!isMobile" class="workspace-sidebar">
-        <router-link to="/care" class="workspace-brand" aria-label="Clarity Health home">
+        <router-link to="/care" class="workspace-brand" aria-label="Chengxin Health home">
           <span class="workspace-brand__mark"><img src="/logo.svg" alt="" width="30" height="30" /></span>
-          <span><strong>Clarity Health</strong><small>Track thoughtfully. Live confidently.</small></span>
+          <span><strong>Chengxin Health</strong><small>Connected care for every family.</small></span>
         </router-link>
         <button class="workspace-search" type="button" @click="openSearch"><el-icon><Search /></el-icon><span>Find a feature</span><kbd>Ctrl K</kbd></button>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" />
@@ -23,7 +23,7 @@
         <div class="workspace-topbar__location">
           <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="Open navigation menu" @click="mobileNavVisible = true"><el-icon :size="21"><Menu /></el-icon></button>
           <span class="workspace-breadcrumb">My Health Workspace<span>/</span><strong>{{ activeModule?.label || 'Health Management' }}</strong></span>
-          <strong v-if="isMobile" class="workspace-mobile-brand">Clarity Health</strong>
+          <strong v-if="isMobile" class="workspace-mobile-brand">Chengxin Health</strong>
         </div>
         <div class="workspace-topbar__actions">
           <span class="workspace-date">{{ todayLabel }}</span>
@@ -33,7 +33,7 @@
       </header>
 
       <el-drawer v-model="mobileNavVisible" direction="ltr" size="min(300px, 88vw)" :with-header="false" class="workspace-drawer" append-to-body>
-        <div class="workspace-drawer__heading"><strong>Clarity Health</strong><button type="button" class="workspace-icon-button" aria-label="Close navigation menu" @click="mobileNavVisible = false"><el-icon><Close /></el-icon></button></div>
+        <div class="workspace-drawer__heading"><strong>Chengxin Health</strong><button type="button" class="workspace-icon-button" aria-label="Close navigation menu" @click="mobileNavVisible = false"><el-icon><Close /></el-icon></button></div>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" @navigate="mobileNavVisible = false" />
         <button type="button" class="workspace-account" @click="mobileNavVisible = false; accountVisible = true"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><span><strong>{{ accountName }}</strong><small>Account and sign out</small></span><el-icon><Setting /></el-icon></button>
       </el-drawer>
@@ -157,7 +157,7 @@ const userRoles = computed(() => {
 });
 
 const mobilePrimaryNav = computed(() => {
-  const preferredPaths = ['/care', '/monitoring', '/medication'];
+  const preferredPaths = userInfo.value.roles?.some(role => role.roleCode === 'doctor') ? ['/doctor-workspace', '/clinical-workbench', '/monitoring'] : ['/care', '/monitoring', '/medication'];
   const pathItems = [...navItems.value.filter(item => item.path && item.path !== '/dashboard'), ...navItems.value.flatMap(item => item.children || []).filter(item => item.path === '/bp-self-monitor')];
   const preferred = preferredPaths
     .map(path => pathItems.find(item => item.path === path))
@@ -193,7 +193,7 @@ const activeModule = computed(() => {
     || allNavigation.value.find(item => item.path && router.resolve(item.path).path === route.path)
     || allNavigation.value.find(item => item.children?.some(child => router.resolve(child.path).path === route.path));
 });
-watch(activeModule, item => { document.title = (item?.label ? item.label + ' · ' : '') + 'Clarity Health'; }, { immediate: true });
+watch(activeModule, item => { document.title = (item?.label ? item.label + ' · ' : '') + 'Chengxin Health'; }, { immediate: true });
 const contextTabs = computed(() => {
   const item = activeModule.value;
   const children = item?.children || [];
@@ -406,6 +406,9 @@ function resolveNavIcon(menu) {
   const name = (menu.menuName || menu.label || '').toLowerCase();
 
   // Workspace and Patient
+  if (path.includes('/doctor-workspace') || code === 'doctor-workspace') {
+    return { icon: 'FirstAidKit', theme: 'medical' };
+  }
   if (path.includes('/monitoring') || code === 'monitoring' || code === 'workspace' || name.includes('monitoring') || name.includes('Workspace')) {
     return { icon: 'Monitor', theme: 'monitoring' };
   }

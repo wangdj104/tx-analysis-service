@@ -756,6 +756,60 @@ CREATE TABLE IF NOT EXISTS `notification_robot_config` (
   `keyword` VARCHAR(100) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='NotificationBotextendconfiguration';
 
+CREATE TABLE IF NOT EXISTS `doctor_patient_assignment` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `doctor_user_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `assigned_by` BIGINT DEFAULT NULL,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  `care_team_role` VARCHAR(40) NOT NULL DEFAULT 'ATTENDING',
+  `assigned_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_doctor_patient` (`doctor_user_id`,`patient_id`),
+  KEY `idx_doctor_assignment_patient` (`patient_id`,`status`),
+  KEY `idx_doctor_assignment_doctor` (`doctor_user_id`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Doctor-to-patient care-team assignments';
+
+CREATE TABLE IF NOT EXISTS `doctor_clinical_note` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `doctor_user_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `note_type` VARCHAR(40) NOT NULL DEFAULT 'FOLLOW_UP',
+  `note_text` TEXT NOT NULL,
+  `visibility` VARCHAR(20) NOT NULL DEFAULT 'CARE_TEAM',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY `idx_doctor_note_patient` (`patient_id`,`created_at`),
+  KEY `idx_doctor_note_doctor` (`doctor_user_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Doctor clinical notes with visibility controls';
+
+CREATE TABLE IF NOT EXISTS `doctor_care_plan` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `doctor_user_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `title` VARCHAR(160) NOT NULL,
+  `plan_type` VARCHAR(40) NOT NULL DEFAULT 'FOLLOW_UP',
+  `instructions` TEXT NOT NULL,
+  `target_date` DATE DEFAULT NULL,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY `idx_doctor_plan_patient` (`patient_id`,`status`,`target_date`),
+  KEY `idx_doctor_plan_doctor` (`doctor_user_id`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Clinician-authored patient care plans';
+
+CREATE TABLE IF NOT EXISTS `doctor_review_log` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `doctor_user_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `source_type` VARCHAR(30) NOT NULL,
+  `source_id` BIGINT NOT NULL,
+  `decision` VARCHAR(20) NOT NULL,
+  `review_note` VARCHAR(1000) DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_doctor_review_patient` (`patient_id`,`created_at`),
+  KEY `idx_doctor_review_source` (`source_type`,`source_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Immutable clinician review audit log';
+
 -- ============================================================
 -- 10. Baseline data (does not create a default account)
 -- ============================================================
@@ -763,8 +817,11 @@ CREATE TABLE IF NOT EXISTS `notification_robot_config` (
 -- 10.1 System roles
 INSERT INTO `sys_role` (`role_code`, `role_name`, `description`, `status`) VALUES
 ('admin', 'Administrator', 'System administrator with full permissions', 1),
-('user', 'Standard User', 'Standard application user', 1)
-ON DUPLICATE KEY UPDATE `role_code` = `role_code`;
+('user', 'Standard User', 'Backward-compatible standard application role', 1),
+('doctor', 'Doctor', 'Clinical review and assigned-patient management', 1),
+('patient', 'Patient', 'Self-management and personal health records', 1),
+('family', 'Family Caregiver', 'Authorized family care and coordination', 1)
+ON DUPLICATE KEY UPDATE `role_name` = VALUES(`role_name`), `description` = VALUES(`description`), `status` = VALUES(`status`);
 
 -- 10.2 Navigation: top-level domains, task entries, and stable menu codes
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`) VALUES
@@ -808,9 +865,23 @@ ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
 VALUES (38,0,'Clinical Workbench','clinical-workbench','/clinical-workbench','FirstAidKit','clinical-workbench:view',1,1,1)
 ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
+INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
+VALUES (39,0,'Doctor Workspace','doctor-workspace','/doctor-workspace','FirstAidKit','doctor-workspace:view',1,1,1)
+ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
 -- 10.3 Grant every menu to the administrator role
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
 SELECT r.id, m.id FROM sys_role r, sys_menu m WHERE r.role_code = 'admin'
+ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
+
+-- Role-specific workspaces. Stable codes remain in English while labels are localized per edition.
+INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
+SELECT r.id, m.id FROM sys_role r, sys_menu m WHERE r.role_code = 'doctor' AND m.id IN (28,39,38,30,8,2,16,18,19,26,27,20,21,35,29,22,24,25,36)
+ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
+INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
+SELECT r.id, m.id FROM sys_role r, sys_menu m WHERE r.role_code = 'patient' AND m.id IN (28,30,31,36,1,11,12,13,14,15,2,16,17,18,19,3,32,33,34,26,27,20,21,23,35,29,22,24,25)
+ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
+INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
+SELECT r.id, m.id FROM sys_role r, sys_menu m WHERE r.role_code = 'family' AND m.id IN (28,30,31,36,1,11,12,15,2,16,17,18,19,3,32,33,34,26,27,20,21,23,29,24,25)
 ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
 
 -- 10.4 Grant business menus to the standard user role (excluding administration)

@@ -1,6 +1,8 @@
-# Clarity Health
+# Chengxin Health
 
-An open-source family health management platform for organizing care tasks, vital signs, medications, medical records, dialysis data, health analytics, notifications, and family collaboration in one workspace.
+**English** · [简体中文](cn/README.md) · [Live demo](https://wangdj104.github.io/tx-analysis-service/) · [中文演示](https://wangdj104.github.io/tx-analysis-service/cn/)
+
+Chengxin Health is an open-source continuous-care platform that connects clinicians, patients, and families around one longitudinal health record. It combines clinical review, care plans, daily measurements, medication adherence, medical records, dialysis, nutrition, alerts, and family coordination without confusing decision support with medical diagnosis.
 
 [![Backend CI](https://img.shields.io/badge/backend-Spring%20Boot-6DB33F)](pom.xml)
 [![Frontend CI](https://img.shields.io/badge/frontend-Vue%203-42B883)](frontend/package.json)
@@ -10,6 +12,8 @@ An open-source family health management platform for organizing care tasks, vita
 
 ## Product capabilities
 
+- Role-specific workspaces and menus for doctors, patients, and family caregivers.
+- Doctor workspace with assigned-patient scope, priority alerts, clinical notes, care plans, and human review of imported records and AI-assisted analysis.
 - Family-care workspace with patient switching, daily tasks, handovers, shared caregivers, symptom tracking, and visit questions.
 - Medication catalog, prescription history, reminders, dose check-ins, inventory, restocking, and low-stock warnings.
 - Blood-pressure and glucose tracking, personal targets, health timeline, and CSV export.
@@ -21,13 +25,18 @@ An open-source family health management platform for organizing care tasks, vita
 
 ## Try the static demo
 
-The repository includes a backend-free interactive demo with fictional data:
+The repository includes a backend-free, bilingual product tour with fictional data:
 
-- Source: [demo/index.html](demo/index.html)
+- **English:** [open the live demo](https://wangdj104.github.io/tx-analysis-service/) · [source](demo/index.html)
+- **中文:** [打开中文演示](https://wangdj104.github.io/tx-analysis-service/cn/) · [source](cn/demo/index.html)
 - Local preview: serve the `demo` directory with any static HTTP server.
-- Public GitHub Pages deployment: enable the included [workflow](.github/workflows/demo-pages.yml) after pushing the project to GitHub. The final public URL depends on your GitHub account and repository name.
+- GitHub Pages deploys both languages from `main` through the included [workflow](.github/workflows/demo-pages.yml).
 
-The demo supports patient switching, care-task completion, medication inventory updates, blood-pressure entry, trend ranges, sample records, CSV export, and reset. It sends no network requests and stores no data.
+Switch among doctor, patient, and family roles to explore assigned-patient panels, review decisions, care plans, vital-sign trends, medication check-ins, medical records, dialysis, nutrition, appointments, handovers, CSV export, and reset. The page sends no network requests and stores no data.
+
+## Language layout
+
+The repository root is the English edition. The complete Chinese edition lives in [`cn/`](cn/), including backend, frontend, SQL, documentation, and demo files. When adding a feature, update both editions in the same pull request; shared protocol fields, permission keys, table names, and API paths should remain identical while user-facing text is localized.
 
 ## Full local demo with Docker
 
@@ -73,7 +82,7 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 mysql -u root -p family_health < src/main/resources/sql/init.sql
 ```
 
-This is the first public release. Run [init.sql](src/main/resources/sql/init.sql) once for a new database; no migration scripts are required. It contains the complete schema and baseline configuration, creates no user account, and includes no real business data. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
+Run [init.sql](src/main/resources/sql/init.sql) once for a new database. It contains the complete schema and baseline configuration, creates no user account, and includes no real business data. Existing installations can apply the idempotent [doctor workspace migration](src/main/resources/sql/doctor_workspace_20260921.sql). [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
 
 ### 2. Configure environment variables
 

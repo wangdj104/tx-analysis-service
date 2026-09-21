@@ -1,0 +1,45 @@
+/**
+ * enoughglobuleamounttransformanalysis — TradingView / Betfair stylegriddarktoken
+ * onlyasused for .fq-page container, not imageresponsealllayoutlightmaintitle
+ */
+.fq-page {
+  --fq-bg-deep: #0b0e14;
+  --fq-bg-panel: #131722;
+  --fq-bg-elevated: #1a1f2e;
+  --fq-bg-hover: #242b3d;
+  --fq-border: #2a2e39;
+  --fq-border-glow: rgb(41 98 255 / 35%);
+  --fq-text: #d1d4dc;
+  --fq-text-muted: #787b86;
+  --fq-text-dim: #5d606b;
+  --fq-green: #26a69a;
+  --fq-green-dim: rgb(38 166 154 / 22%);
+  --fq-red: #ef5350;
+  --fq-red-dim: rgb(239 83 80 / 20%);
+  --fq-amber: #f7931a;
+  --fq-amber-dim: rgb(247 147 26 / 18%);
+  --fq-blue: #2962ff;
+  --fq-blue-dim: rgb(41 98 255 / 20%);
+  --fq-draw: #9b9fab;
+  --fq-radius: 10px;
+  --fq-radius-sm: 6px;
+  --fq-font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  --fq-shadow: 0 4px 24px rgb(0 0 0 / 45%);
+  --fq-glow-green: 0 0 12px rgb(38 166 154 / 45%);
+  --fq-glow-red: 0 0 12px rgb(239 83 80 / 40%);
+
+  color: var(--fq-text);
+  background: var(--fq-bg-deep);
+  border-radius: var(--app-radius-lg, 12px);
+  padding: 16px;
+  min-height: 480px;
+  box-shadow: var(--fq-shadow);
+  border: 1px solid var(--fq-border);
+}
+
+@media (max-width: 959px) {
+  .fq-page {
+    padding: 12px;
+    border-radius: var(--app-radius-md, 10px);
+  }
+}

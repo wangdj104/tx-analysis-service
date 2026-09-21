@@ -3,7 +3,7 @@
     <header class="login-brand">
       <img src="/logo.svg?v=5" alt="" class="brand-logo" />
       <div class="brand-copy">
-        <span class="brand-name">Clarity Health</span>
+        <span class="brand-name">Chengxin Health</span>
         <span class="brand-description">Personal Health Management Platform</span>
       </div>
     </header>
@@ -42,7 +42,7 @@
               decoding="async"
             />
           </div>
-          <h2 id="login-title">Sign in to Clarity Health</h2>
+          <h2 id="login-title">Sign in to Chengxin Health</h2>
           <p class="login-subtitle">Keep tracking and understand how your health changes.</p>
         </div>
 
@@ -94,7 +94,7 @@
       </section>
     </div>
 
-    <footer class="page-footer">Clarity Health <span>Health management for every day</span></footer>
+    <footer class="page-footer">Chengxin Health <span>Connected care for every family</span></footer>
   </main>
 </template>
 

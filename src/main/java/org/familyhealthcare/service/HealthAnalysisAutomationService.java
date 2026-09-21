@@ -125,7 +125,7 @@ public class HealthAnalysisAutomationService {
         if (approved && notify) {
             Patient patient = scope.requirePatient(record.getPatientId());
             String title = "Reviewed health analysis · " + (patient == null ? "Family member" : patient.getName());
-            String content = record.getAnalysisContent() == null ? "The reviewed analysis is available in Clarity Health."
+            String content = record.getAnalysisContent() == null ? "The reviewed analysis is available in Chengxin Health."
                     : record.getAnalysisContent().substring(0, Math.min(record.getAnalysisContent().length(), 3500));
             delivery.notifyUser(userId, title, content);
         }

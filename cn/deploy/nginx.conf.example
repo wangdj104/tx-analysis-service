@@ -1,0 +1,27 @@
+# Production Nginx example using the backend's /api prefix.
+server {
+    listen 80;
+    server_name your.domain.com;
+
+    root /var/www/family-health-care;
+    index index.html;
+
+    # Phone photos often exceed 5 MB; Nginx's 1 MB default would return 413 for report uploads.
+    client_max_body_size 100m;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8082;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout    120s;
+        proxy_read_timeout    120s;
+    }
+}

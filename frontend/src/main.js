@@ -37,6 +37,7 @@ const router = createRouter({
     { path: '/', redirect: '/care' },
     { path: '/care', component: () => import('./views/CareCenter.vue') },
     { path: '/clinical-workbench', component: () => import('./views/ClinicalWorkbench.vue') },
+    { path: '/doctor-workspace', component: () => import('./views/DoctorWorkspace.vue') },
     { path: '/dashboard', redirect: '/monitoring' },
     { path: '/dialysis', component: () => import('./views/DialysisManager.vue') },
     { path: '/medical-record', component: () => import('./views/MedicalRecordManager.vue') },

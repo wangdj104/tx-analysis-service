@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Dayloglevelfrom lowto highpointfor TRACE < DEBUG < INFO < WARN < ERROR < FATAL, ifsettingsfor WARN, thenbelowWARN informationallnot willoutput -->
+<!-- scan:when thisbelongpropertysettingsfor truetime, configurationfileifoccurchange, will willbyagainload, Defaultvaluefor true -->
+<!-- scanPeriod:settingsmonitoringconfigurationfileYesNohas Edit Timeinterval, ifnohas provideTimeUnit, DefaultUnitYesmilliseconds. when scanfor truetime, thisbelongpropertytake effect. Default Timeintervalfor 1minutes.  -->
+<!-- debug:when thisbelongpropertysettingsfor truetime, will PrintoutputlogbackwithinsectionDayloginformation, real-timeViewlogbackrunrowStatus. Defaultvaluefor false.  -->
+<configuration scan="true" scanPeriod="10 seconds">
+
+    <contextName>logback</contextName>
+    <!-- name valueYesvariable Name, value valuetimevariablesetmeaning value. throughsetmeaning valuewillbyinsertenterto loggerup down textin. setmeaningvariableafter , canuse“${}”comeusevariable-->
+    <property name="log.path" value="./log"/>
+
+    <property name="CONSOLE_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg %n"/>
+
+
+    <!--outputto controlplatform-->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <!--thisDaylogappenderYesfor developuse, onlyconfigurationmost bottomlevel, controlplatformoutput DayloglevelYesgreater than or etc.inthislevel Dayloginformation-->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>debug</level>
+        </filter>
+        <encoder>
+            <Pattern>${CONSOLE_LOG_PATTERN}</Pattern>
+            <!-- settingscharacter set -->
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+
+    <!--outputto file-->
+    <!-- Timerolling output levelfor  DEBUG Daylog -->
+    <appender name="DEBUG_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${log.path}/data-analysis-service/log_debug.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+            <charset>UTF-8</charset> <!-- settingscharacter set -->
+        </encoder>
+        <!-- Daylogrecorddevice rolling policy, by Date, by sizerecord -->
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${log.path}/data-analysis-service/debug/log-debug-%d{yyyy-MM-dd_HH-mm}.%i.log
+            </fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>15</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>debug</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+
+    <!-- Timerolling output levelfor  INFO Daylog -->
+    <appender name="INFO_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- positivein record Daylogfile Pathandfilename -->
+        <file>${log.path}/data-analysis-service/log_info.log</file>
+        <!--Daylogfileoutputformat-->
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <!-- Daylogrecorddevice rolling policy, by Date, by sizerecord -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${log.path}/data-analysis-service/info/log-info-%d{yyyy-MM-dd}.%i.log.gz
+            </fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>15</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>info</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+
+    <!-- Timerolling output levelfor  WARN Daylog -->
+    <appender name="WARN_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- positivein record Daylogfile Pathandfilename -->
+        <file>${log.path}/data-analysis-service/log_warn.log</file>
+        <!--Daylogfileoutputformat-->
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+            <charset>UTF-8</charset> <!-- thisplacesettingscharacter set -->
+        </encoder>
+        <!-- Daylogrecorddevice rolling policy, by Date, by sizerecord -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${log.path}/data-analysis-service/warn/log-warn-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <!--Daylogfilekeepdayscount-->
+            <maxHistory>15</maxHistory>
+            <!--has  Daylogfilemaximum5G, exceedthenwillDeletelegacy Daylog-->
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <!-- thisDaylogfileonlyrecordwarnlevel  -->
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>warn</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+
+
+    <!-- Timerolling output levelfor  ERROR Daylog -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- positivein record Daylogfile Pathandfilename -->
+        <file>${log.path}/data-analysis-service/log_error.log</file>
+        <!--Daylogfileoutputformat-->
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+            <charset>UTF-8</charset> <!-- thisplacesettingscharacter set -->
+        </encoder>
+        <!-- Daylogrecorddevice rolling policy, by Date, by sizerecord -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${log.path}/data-analysis-service/error/log-error-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <!--Daylogfilekeepdayscount-->
+            <maxHistory>15</maxHistory>
+            <!--has  Daylogfilemaximum5G, exceedthenwillDeletelegacy Daylog-->
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <!-- thisDaylogfileonlyrecordERRORlevel  -->
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+
+    <!--configurationmultipleenvironmentDaylogoutput  canin application.propertiesinconfigurationselectwhichprofiles : spring.profiles.active=dev-->
+    <!--productionenvironment:outputto file-->
+    <springProfile name="prod">
+        <root level="info">
+            <appender-ref ref="STDOUT"/>
+            <appender-ref ref="INFO_FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+            <appender-ref ref="WARN_FILE"/>
+        </root>
+    </springProfile>
+    <!--developenvironment:Printcontrolplatform-->
+    <springProfile name="dev">
+        <root level="info">
+            <appender-ref ref="STDOUT"/>
+        </root>
+    </springProfile>
+    <!--testenvironment:outputto file-->
+    <springProfile name="test">
+        <root level="info">
+            <appender-ref ref="STDOUT"/>
+            <appender-ref ref="DEBUG_FILE"/>
+            <appender-ref ref="INFO_FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+            <appender-ref ref="WARN_FILE"/>
+        </root>
+    </springProfile>
+
+</configuration>
