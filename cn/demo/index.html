@@ -2,24 +2,25 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="澄心健康交互式演示：面向医生、患者和家属的连续健康管理工作台。">
+  <meta name="description" content="澄心健康全功能交互式演示：面向医生、患者、家属和管理员的连续健康管理平台。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>澄心健康 · 交互演示</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
-  <script src="model.js" defer></script><script src="app.js" defer></script>
+  <title>澄心健康 · 交互演示</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=20260921-2"><link rel="stylesheet" href="branding.css?v=20260921">
+  <script src="model.js?v=20260921-2" defer></script><script src="app.js?v=20260921-2" defer></script>
 </head>
 <body>
   <a class="skip" href="#content">跳到主要内容</a>
   <aside class="sidebar" aria-label="工作台导航">
-    <a class="brand" href="#overview"><img src="assets/logo.svg" width="38" height="38" alt=""><span><strong>澄心健康</strong><small>用心记录，从容生活</small></span></a>
+    <a class="brand" href="#overview"><img id="brand-logo" src="assets/logo.svg" width="38" height="38" alt=""><span><strong id="brand-name">澄心健康</strong><small id="brand-organization">澄心健康</small></span></a>
     <span class="nav-caption" id="role-caption">医生工作台</span><div class="role-switch" id="role-switch" aria-label="演示身份"></div><nav id="nav"></nav>
-    <div class="sidebar-bottom"><p>一份档案，一个照护团队</p><div class="demo-account"><span class="avatar" id="account-avatar">医</span><div><b id="account-name">陈医生</b><small>演示账号 · 虚构数据</small></div></div></div>
+    <div class="sidebar-bottom"><button class="guide-entry" id="guide-start" type="button"><b>新手指引</b><small>逐步讲解 · 每步需要确认</small></button><p>一份档案，一个照护团队</p><div class="demo-account"><span class="avatar" id="account-avatar">医</span><div><b id="account-name">陈医生</b><small>演示账号 · 虚构数据</small></div></div></div>
   </aside>
   <div class="workspace">
     <header class="topbar"><span><b id="workspace-label">医生工作台</b> <i>/</i> <strong id="breadcrumb">工作概览</strong></span><div class="top-actions"><label class="patient-select"><span id="member-label">患者</span><select id="patient"></select></label><a class="language-link" href="../">English</a></div></header>
-    <div class="demo-banner"><span><b>交互产品演示</b> 页面使用虚构数据，仅保留在当前标签页；刷新后恢复，不会发送消息或通知。</span><button class="text-button" id="reset">重置演示</button></div>
-    <main id="content" tabindex="-1"></main><footer class="footer">澄心健康 · 连接医生、患者与家人<span>仅供产品演示，不构成医疗建议，请勿输入真实健康信息。</span></footer>
+    <div class="demo-banner"><span><b>全功能交互演示</b> 流程与真实平台对应，使用虚构且仅保留在当前标签页的数据；不会上传文件、调用 AI 或发送任何消息。</span><button class="text-button" id="reset">重置演示</button></div>
+    <main id="content" tabindex="-1"></main><footer class="footer"><strong id="ownership">© 2026 澄心健康 版权所有</strong><span>仅供产品演示，不构成医疗建议，请勿输入真实健康信息。</span></footer>
   </div>
   <dialog id="action-dialog" aria-labelledby="action-title"><form id="action-form"><div class="dialog-header"><div><span class="eyebrow" id="action-kicker">演示操作</span><h2 id="action-title">新增记录</h2></div><button type="button" class="close-button" data-close aria-label="关闭">×</button></div><p class="muted" id="action-help"></p><div id="action-fields" class="form-grid"></div><p id="form-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="button secondary" data-close>取消</button><button class="button" type="submit" id="action-submit">保存</button></div></form></dialog>
   <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-header"><h2 id="detail-title">详情</h2><button class="close-button" data-close aria-label="关闭">×</button></div><div id="record-detail"></div><div class="dialog-actions"><button class="button secondary" data-close>关闭</button></div></dialog><div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="guide-dialog" class="guide-dialog" aria-labelledby="guide-title"><div class="dialog-header"><span class="eyebrow" id="guide-progress">新手指引</span><button class="close-button" id="guide-pause" type="button" aria-label="暂停">×</button></div><h2 id="guide-title"></h2><p id="guide-description"></p><div class="guide-do"><b id="guide-do-label">请尝试</b><span id="guide-action"></span></div><label class="guide-confirm"><input id="guide-confirm" type="checkbox"> <span id="guide-confirm-label">我已看懂并完成本步骤。</span></label><div class="dialog-actions"><button class="button secondary" id="guide-previous" type="button">上一步</button><button class="button" id="guide-next" type="button" disabled>确认并继续</button></div></dialog>
   <noscript><p>请启用 JavaScript 使用静态演示，无需部署后端服务。</p></noscript>
 </body></html>

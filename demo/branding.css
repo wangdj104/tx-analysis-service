@@ -1,0 +1,11 @@
+.footer{display:grid!important;text-align:center!important;justify-content:stretch!important;gap:5px!important}
+.footer strong{font-weight:600;color:#788b82}
+.branding-form{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.branding-form label{display:grid;gap:8px;color:#617d6c;font-size:12px}
+.branding-form input,.branding-form textarea{width:100%;padding:12px;border:1px solid #ccddd1;border-radius:8px;color:var(--ink);background:#fff;font:inherit}
+.branding-form .full{grid-column:1/-1}
+.branding-form small{color:var(--muted)}
+.color-config{display:grid;grid-template-columns:54px 1fr;gap:9px}
+.color-config input[type=color]{height:44px;padding:3px}
+@media(max-width:720px){.branding-form{grid-template-columns:1fr}.branding-form .full{grid-column:auto}}
+.guide-entry{width:100%;padding:11px 12px;margin-bottom:12px;border:1px solid #d6e7df;border-radius:10px;background:#f0f8f4;color:#246d60;text-align:left}.guide-entry b,.guide-entry small{display:block}.guide-entry small{margin-top:3px;color:#71867e}.guide-do{display:grid;gap:4px;padding:13px;margin:18px 0;border-radius:10px;background:#f1f7f4}.guide-do b{font-size:11px;color:#267064}.guide-do span{font-size:13px}.guide-confirm{display:flex;gap:8px;align-items:flex-start;margin:18px 0;color:#49655e}.guide-confirm input{margin-top:4px}.guide-dialog{width:min(620px,calc(100% - 28px))}

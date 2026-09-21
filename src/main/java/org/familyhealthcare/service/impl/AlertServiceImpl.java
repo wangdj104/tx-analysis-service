@@ -12,6 +12,7 @@ import org.familyhealthcare.mapper.MedicalRecordItemMapper;
 import org.familyhealthcare.service.AlertService;
 import org.familyhealthcare.service.HealthIndicatorService;
 import org.familyhealthcare.service.NotificationDeliveryService;
+import org.familyhealthcare.service.NotificationAudienceService;
 import org.familyhealthcare.util.CurrentUserUtil;
 import org.familyhealthcare.util.DataScopeHelper;
 import org.familyhealthcare.vo.AlertStatsVO;
@@ -44,6 +45,8 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
     private AlertEventMapper alertEventMapper;
     @Autowired
     private NotificationDeliveryService notificationDeliveryService;
+    @Autowired
+    private NotificationAudienceService notificationAudienceService;
 
     // ---- rulemanagement ----
 
@@ -262,7 +265,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
             record.setStatus("PENDING");
             baseMapper.insert(record);
             if ("WARNING".equals(rule.getAlertLevel()) || "CRITICAL".equals(rule.getAlertLevel())) {
-                notificationDeliveryService.notifyUser(userId, record.getAlertTitle(),
+                notificationAudienceService.notifyCareTeam(patientId, "INDICATOR_ALERT", record.getAlertTitle(),
                         "A new result crossed the configured threshold. Review it in the Attention Center; clinical action still requires confirmation.");
             }
         }

@@ -68,9 +68,12 @@ public class DataScopeHelper {
         return patient;
     }
 
-    /** 汇总患者本人、家庭成员和医生分配关系所允许访问的患者。 */
+    /** Patients visible through ownership, family membership, or an active doctor assignment. */
     public java.util.List<Long> accessiblePatientIds(Long userId) {
         java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>(careMembership.accessiblePatients(userId));
+        ids.addAll(jdbcTemplate.queryForList(
+                "SELECT patient_id FROM care_access_grant WHERE grantee_user_id=? AND status='ACTIVE' AND (expires_at IS NULL OR expires_at>NOW())",
+                Long.class, userId));
         if (CurrentUserUtil.hasRole("doctor")) {
             ids.addAll(jdbcTemplate.queryForList(
                     "SELECT patient_id FROM doctor_patient_assignment WHERE doctor_user_id=? AND status='ACTIVE'",

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../model.js';
 
-const { createState, current, complete, addVital, review, addPlan, addHandover, csv } = globalThis.HealthDemo;
+const { createState, current, complete, addVital, review, addPlan, addHandover, runFeature, toggleUser, updateBranding, csv } = globalThis.HealthDemo;
 
 test('task completion deducts once and never affects another family member', () => {
   const state = createState();
@@ -14,7 +14,6 @@ test('task completion deducts once and never affects another family member', () 
   assert.equal(current(state).stocks[1], 16);
   assert.equal(complete(state, 2), false);
 });
-
 test('new measurement updates selected family only and invalid input changes nothing', () => {
   const state = createState();
   state.patientId = 2;
@@ -49,6 +48,18 @@ test('family handover and localized exports are supported', () => {
   assert.ok(csv(state, 'zh').startsWith('\uFEFF日期,时间'));
 });
 
+test('full-system demo actions update state and remain auditable', () => {
+  const state = createState();
+  assert.equal(runFeature(state, 'clinical-import'), true);
+  assert.equal(runFeature(state, 'clinical-import'), true);
+  assert.equal(state.featureRuns['clinical-import'], 2);
+  assert.match(state.audit[0].action.en, /clinical-import/);
+  assert.equal(toggleUser(state, 2), true);
+  assert.equal(state.users.find(user => user.id === 2).active, false);
+  assert.match(state.audit[0].action.en, /Disabled/);
+  assert.equal(toggleUser(state, 999), false);
+});
+
 test('reset creates fresh data; export contains selected records and explicit demo labels', () => {
   const state = createState();
   addVital(state, 126, 78);
@@ -58,4 +69,13 @@ test('reset creates fresh data; export contains selected records and explicit de
   assert.ok(output.includes('126,78,Fictional demo data'));
   assert.equal(current(createState()).records.length, 30);
   assert.equal(current(createState()).stocks[1], 8);
+});
+
+test('platform branding validates and updates every configurable identity field', () => {
+  const state = createState();
+  assert.equal(updateBranding(state, { platformName: 'Morning Star Health', organizationName: 'Demo Hospital', logo: 'assets/logo.svg', pageBackground: '#eef6f2', ownershipText: '© Demo Hospital' }), true);
+  assert.equal(state.branding.platformName.en, 'Morning Star Health');
+  assert.equal(state.branding.organizationName.zh, 'Demo Hospital');
+  assert.equal(state.branding.pageBackground, '#eef6f2');
+  assert.throws(() => updateBranding(state, { platformName: '', logo: 'javascript:alert(1)', pageBackground: 'red', ownershipText: '' }), /invalid-branding/);
 });

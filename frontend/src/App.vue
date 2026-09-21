@@ -3,13 +3,14 @@
     <template v-if="!route.meta.hideNav">
       <a class="skip-content" href="#workspace-content">Skip to main content</a>
       <aside v-if="!isMobile" class="workspace-sidebar">
-        <router-link to="/care" class="workspace-brand" aria-label="Chengxin Health home">
-          <span class="workspace-brand__mark"><img src="/logo.svg" alt="" width="30" height="30" /></span>
-          <span><strong>Chengxin Health</strong><small>Connected care for every family.</small></span>
+        <router-link to="/care" class="workspace-brand" :aria-label="`${platformBranding.platformName} home`">
+          <span class="workspace-brand__mark"><img :src="platformBranding.logo" alt="" width="30" height="30" /></span>
+          <span><strong>{{ platformBranding.platformName }}</strong><small>{{ platformBranding.organizationName }}</small></span>
         </router-link>
         <button class="workspace-search" type="button" @click="openSearch"><el-icon><Search /></el-icon><span>Find a feature</span><kbd>Ctrl K</kbd></button>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" />
         <div class="workspace-sidebar__footer">
+          <button type="button" class="workspace-guide" @click="guideRef?.start()"><el-icon><Guide /></el-icon><span><strong>New User Guide</strong><small>Step-by-step, confirmation required</small></span></button>
           <span class="workspace-sidebar__note"><el-icon><FirstAidKit /></el-icon>Better care, every day.</span>
           <button type="button" class="workspace-account" @click="accountVisible = true">
             <span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span>
@@ -23,7 +24,7 @@
         <div class="workspace-topbar__location">
           <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="Open navigation menu" @click="mobileNavVisible = true"><el-icon :size="21"><Menu /></el-icon></button>
           <span class="workspace-breadcrumb">My Health Workspace<span>/</span><strong>{{ activeModule?.label || 'Health Management' }}</strong></span>
-          <strong v-if="isMobile" class="workspace-mobile-brand">Chengxin Health</strong>
+          <strong v-if="isMobile" class="workspace-mobile-brand">{{ platformBranding.platformName }}</strong>
         </div>
         <div class="workspace-topbar__actions">
           <span class="workspace-date">{{ todayLabel }}</span>
@@ -33,8 +34,9 @@
       </header>
 
       <el-drawer v-model="mobileNavVisible" direction="ltr" size="min(300px, 88vw)" :with-header="false" class="workspace-drawer" append-to-body>
-        <div class="workspace-drawer__heading"><strong>Chengxin Health</strong><button type="button" class="workspace-icon-button" aria-label="Close navigation menu" @click="mobileNavVisible = false"><el-icon><Close /></el-icon></button></div>
+        <div class="workspace-drawer__heading"><strong>{{ platformBranding.platformName }}</strong><button type="button" class="workspace-icon-button" aria-label="Close navigation menu" @click="mobileNavVisible = false"><el-icon><Close /></el-icon></button></div>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" @navigate="mobileNavVisible = false" />
+        <button type="button" class="workspace-guide" @click="mobileNavVisible = false; guideRef?.start()"><el-icon><Guide /></el-icon><span><strong>New User Guide</strong><small>Learn one step at a time</small></span></button>
         <button type="button" class="workspace-account" @click="mobileNavVisible = false; accountVisible = true"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><span><strong>{{ accountName }}</strong><small>Account and sign out</small></span><el-icon><Setting /></el-icon></button>
       </el-drawer>
 
@@ -53,7 +55,10 @@
         <router-link v-for="item in contextTabs" :key="item.path" :to="item.entryPath || item.path" :class="{ 'is-active': isTabActive(item) }" :aria-current="isTabActive(item) ? 'page' : undefined"><el-icon :size="16"><component :is="item.icon" /></el-icon>{{ item.label }}</router-link>
       </nav>
       <router-view v-slot="{ Component }"><component :is="Component" :key="routerViewKey" /></router-view>
+      <footer v-if="!route.meta.hideNav" class="platform-ownership">{{ platformBranding.ownershipText }}</footer>
     </main>
+
+    <OnboardingGuide v-if="!route.meta.hideNav" ref="guideRef" :account-id="userInfo.id || ''" :role-codes="userInfo.roles?.map(role => role.roleCode) || []" />
 
     <el-dialog v-model="searchVisible" title="Find a feature" width="520px" class="workspace-search-dialog" @opened="searchInput?.focus()">
       <el-input ref="searchInput" v-model="searchQuery" placeholder="Search blood pressure, medications, reports, and more" :prefix-icon="Search" clearable size="large" aria-label="Search features" @keydown.enter="openFirstResult" />
@@ -84,10 +89,11 @@ useMedicationNotifications();
 import { ref, reactive, computed, onMounted, onUnmounted, watch, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  Search, ArrowRight, FirstAidKit, Setting, Menu, Close
+  Search, ArrowRight, FirstAidKit, Setting, Menu, Close, Guide
 } from '@element-plus/icons-vue';
 import WorkspaceNav from '@/components/WorkspaceNav.vue';
 import PatientSwitcher from '@/components/PatientSwitcher.vue';
+import OnboardingGuide from '@/components/OnboardingGuide.vue';
 import { logout, getUserInfo } from '@/api/auth';
 import { normalizeWorkspaceMenus, getFallbackWorkspaceMenus } from '@/utils/workspaceNavigation';
 import { getAuthSessionKey, saveAuthSession, captureAuthSession, isAuthSessionCurrent, clearPermissionCache, savePermissionCache, readPermissionCache } from '@/utils/authSession';
@@ -97,6 +103,7 @@ import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import { useMobile } from '@/composables/useMobile';
 import { ElMessage } from 'element-plus';
 import { changePassword } from '@/api/user';
+import { platformBranding } from '@/utils/platformBranding';
 
 const route = useRoute();
 const router = useRouter();
@@ -170,6 +177,7 @@ const searchVisible = ref(false);
 const searchInput = ref(null);
 const searchQuery = ref('');
 const accountVisible = ref(false);
+const guideRef = ref(null);
 const accountName = computed(() => userInfo.value.realName || userInfo.value.username || 'My Account');
 const todayLabel = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
 const navigationGroups = computed(() => {
@@ -193,7 +201,7 @@ const activeModule = computed(() => {
     || allNavigation.value.find(item => item.path && router.resolve(item.path).path === route.path)
     || allNavigation.value.find(item => item.children?.some(child => router.resolve(child.path).path === route.path));
 });
-watch(activeModule, item => { document.title = (item?.label ? item.label + ' · ' : '') + 'Chengxin Health'; }, { immediate: true });
+watch([activeModule, () => platformBranding.platformName], ([item]) => { document.title = (item?.label ? item.label + ' · ' : '') + platformBranding.platformName; }, { immediate: true });
 const contextTabs = computed(() => {
   const item = activeModule.value;
   const children = item?.children || [];

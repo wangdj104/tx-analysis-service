@@ -12,7 +12,7 @@ Chengxin Health is an open-source continuous-care platform that connects clinici
 
 ## Product capabilities
 
-- Role-specific workspaces and menus for doctors, patients, and family caregivers.
+- Role-specific workspaces, menus, and data scopes for doctors, patients, family caregivers, and administrators.
 - Doctor workspace with assigned-patient scope, priority alerts, clinical notes, care plans, and human review of imported records and AI-assisted analysis.
 - Family-care workspace with patient switching, daily tasks, handovers, shared caregivers, symptom tracking, and visit questions.
 - Medication catalog, prescription history, reminders, dose check-ins, inventory, restocking, and low-stock warnings.
@@ -32,7 +32,7 @@ The repository includes a backend-free, bilingual product tour with fictional da
 - Local preview: serve the `demo` directory with any static HTTP server.
 - GitHub Pages deploys both languages from `main` through the included [workflow](.github/workflows/demo-pages.yml).
 
-Switch among doctor, patient, and family roles to explore assigned-patient panels, review decisions, care plans, vital-sign trends, medication check-ins, medical records, dialysis, nutrition, appointments, handovers, CSV export, and reset. The page sends no network requests and stores no data.
+Switch among doctor, patient, family, and administrator roles to explore the real system's capability map. The **Care journey** page covers all 40 requested workflows across chronic-disease monitoring, appointments, remote consultation, recovery, home care, emergency information, child and maternity care, mental health, privacy, and operations. Actions update tab-local demo state and audit events; no network request or real clinical processing occurs.
 
 ## Language layout
 
@@ -82,7 +82,7 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 mysql -u root -p family_health < src/main/resources/sql/init.sql
 ```
 
-Run [init.sql](src/main/resources/sql/init.sql) once for a new database. It contains the complete schema and baseline configuration, creates no user account, and includes no real business data. Existing installations can apply the idempotent [doctor workspace migration](src/main/resources/sql/doctor_workspace_20260921.sql). [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
+Run [init.sql](src/main/resources/sql/init.sql) once for the original baseline. Existing installations can apply the idempotent [doctor workspace migration](src/main/resources/sql/doctor_workspace_20260921.sql) and [care-platform migration](src/main/resources/sql/care_platform_upgrade_20260921.sql). The latter adds the complete care-journey schema, access grants, schedules, consultations, recovery, emergency, specialty, mental-health, audit, and delivery-log structures. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
 
 ### 2. Configure environment variables
 

@@ -2,7 +2,9 @@
 
 Open [index.html](index.html) locally or use the [public demo](https://wangdj104.github.io/tx-analysis-service/). The demo requires no account, application server, or database. It uses fictional data and is separate from the full Vue application.
 
-Switch among doctor, patient, and family roles. The demo covers assigned-patient scope, clinician review, care plans, care tasks, medication check-ins and inventory, blood-pressure trends, medical records, dialysis, nutrition, appointments, handovers, CSV export, and reset. State stays in the current tab and is cleared on refresh. Simulated review and AI labels never contact a real service; the Content Security Policy blocks network connections.
+Switch among doctor, patient, family, and administrator roles. The demo mirrors the full platform's menu and workflow boundaries: patient assignment and clinical review; care plans and daily tasks; measurements, medication, medical records, dialysis and dry weight; nutrition and health analytics; appointments and handovers; notification channels; users, roles, menus, auditing, automation, and scoped data export. State stays in the current tab and is cleared on refresh.
+
+Controls perform visible local state changes and write demo audit events. File recognition, AI analysis, channel delivery, and server-side scheduling are safely simulated because this static build has no backend; its Content Security Policy blocks network connections. The workflow and review gates match the real product, but no real clinical processing is claimed.
 
 ## Publish with GitHub Pages
 
@@ -24,6 +26,6 @@ node --test demo/tests/*.test.mjs
 node --check demo/app.js
 ```
 
-For browser QA, switch all three roles and patients; approve or reject a review; add a care plan; complete a medication task and verify inventory; add a blood-pressure reading and verify the table, chart, and task state; add a handover; open a record; export CSV; then reset.
+For browser QA, switch all four roles and patients; approve or reject a review; add a care plan; complete a medication task and verify inventory; add a blood-pressure reading and verify the table, chart, and task state; run a module action and verify its audit event; toggle a demo user; open a record; export CSV; then reset.
 
 Images under `assets/` are copied from project-owned assets so the demo can deploy independently. Update the corresponding demo asset whenever the product logo or illustration changes.

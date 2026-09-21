@@ -74,3 +74,6 @@ backups/
 # Superpowers isolated worktrees and task artifacts
 .worktrees/
 .superpowers/
+# Local database backups may contain sensitive production data.
+database-backups/
+scripts/*.class

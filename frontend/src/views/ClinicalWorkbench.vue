@@ -89,7 +89,7 @@
           <el-tab-pane label="Emergency Card" name="emergency">
             <div class="section-heading no-print"><div><h2>Emergency & Clinician Handoff Card</h2><p>A concise, printable snapshot. Recheck identity, allergies, and medication details before sharing.</p></div><el-button type="primary" @click="printCard"><el-icon><Printer /></el-icon>Print card</el-button></div>
             <article class="emergency-card" id="emergency-card">
-              <header><div><span>CLARITY HEALTH · EMERGENCY SUMMARY</span><h2>{{ overview.emergencyCard?.patient?.name || currentPatientName }}</h2><p>Generated {{ formatDate(overview.emergencyCard?.generatedAt) }}</p></div><el-tag type="danger" effect="dark">Verify before use</el-tag></header>
+              <header><div><span>{{ platformBranding.platformName.toUpperCase() }} · EMERGENCY SUMMARY</span><h2>{{ overview.emergencyCard?.patient?.name || currentPatientName }}</h2><p>Generated {{ formatDate(overview.emergencyCard?.generatedAt) }}</p></div><el-tag type="danger" effect="dark">Verify before use</el-tag></header>
               <div class="emergency-grid">
                 <section><h3>Identity & contact</h3><dl><dt>Date of birth</dt><dd>{{ overview.emergencyCard?.patient?.birthDate || '—' }}</dd><dt>Phone</dt><dd>{{ overview.emergencyCard?.patient?.phone || '—' }}</dd><dt>Emergency contact</dt><dd>{{ emergencyContact }}</dd></dl></section>
                 <section><h3>Renal care</h3><dl><dt>Dialysis type</dt><dd>{{ overview.emergencyCard?.clinical?.dialysisType || '—' }}</dd><dt>Vascular access</dt><dd>{{ overview.emergencyCard?.clinical?.vascularAccess || '—' }}</dd><dt>Target dry weight</dt><dd>{{ metric(overview.emergencyCard?.clinical?.targetDryWeight, ' kg') }}</dd><dt>Fluid limit</dt><dd>{{ overview.emergencyCard?.clinical?.fluidLimitMl ? `${overview.emergencyCard.clinical.fluidLimitMl} mL/day` : '—' }}</dd></dl></section>
@@ -125,6 +125,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
+import { platformBranding } from '@/utils/platformBranding'
 import { getClinicalWorkbenchOverview, getDialysisQuality, reviewMedicalRecord, reviewAnalysisDraft, generateDialysisSchedule, previewClinicalImport, commitClinicalImport } from '@/api/clinicalWorkbench'
 
 const router = useRouter()

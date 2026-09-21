@@ -25,4 +25,7 @@ public class DataExportRequestVO {
 
     @ApiModelProperty("Exportformat: csv")
     private String format;
+
+    @ApiModelProperty("De-identify phone numbers and identity-card-like values in free-text fields")
+    private Boolean masked;
 }

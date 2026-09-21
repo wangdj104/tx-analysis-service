@@ -36,9 +36,9 @@ jobs:
       - name: Prepare public files only
         run: |
           mkdir -p _site/assets _site/cn/assets
-          cp demo/index.html demo/style.css demo/model.js demo/app.js _site/
+          cp demo/index.html demo/style.css demo/branding.css demo/model.js demo/app.js _site/
           cp demo/assets/* _site/assets/
-          cp cn/demo/index.html cn/demo/style.css cn/demo/model.js cn/demo/app.js _site/cn/
+          cp cn/demo/index.html cn/demo/style.css cn/demo/branding.css cn/demo/model.js cn/demo/app.js _site/cn/
           cp cn/demo/assets/* _site/cn/assets/
       - uses: actions/upload-pages-artifact@v4
         with:

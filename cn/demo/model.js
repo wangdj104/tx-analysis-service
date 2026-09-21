@@ -19,6 +19,7 @@
     }));
     return {
       role: 'doctor', patientId: 1, patients,
+      branding: { platformName: bi('Chengxin Health', '澄心健康'), organizationName: bi('Chengxin Health', '澄心健康'), logo: 'assets/logo.svg', pageBackground: '#f7faf8', ownershipText: bi('© 2026 Chengxin Health. All rights reserved.', '© 2026 澄心健康 版权所有') },
       reviews: [
         { id: 101, patientId: 1, kind: 'record', title: bi('Imported metabolic panel', '导入的生化检验报告'), date: day(now), confidence: 96, status: 'pending' },
         { id: 102, patientId: 2, kind: 'ai', title: bi('AI-assisted risk summary', 'AI 辅助风险摘要'), date: day(now), confidence: 88, status: 'pending' },
@@ -31,7 +32,17 @@
       notes: [{ id: 301, patientId: 1, author: bi('Dr. Sarah Chen', '陈医生'), text: bi('Monitor morning readings; contact the clinic if symptoms change.', '继续观察晨间读数，如症状变化请联系门诊。'), visibility: 'patient', date: day(now) }],
       handovers: [{ id: 401, patientId: 1, author: bi('Wei Zhang', '张伟'), text: bi('Friday reports are in the shared record folder.', '周五复诊材料已放入共享档案。'), time: '09:20' }],
       alerts: [{ id: 501, patientId: 1, level: 'critical', title: bi('Blood pressure needs clinician review', '血压读数需要医生复核'), status: 'open' }],
-      appointments: [{ id: 601, patientId: 1, date: day(new Date(now.getTime() + 3 * 86400000)), time: '09:00', clinic: bi('Nephrology follow-up', '肾内科复诊') }]
+      appointments: [{ id: 601, patientId: 1, date: day(new Date(now.getTime() + 3 * 86400000)), time: '09:00', clinic: bi('Nephrology follow-up', '肾内科复诊') }],
+      featureRuns: {},
+      audit: [
+        { time: clock(now), actor: bi('Dr. Sarah Chen', '陈医生'), action: bi('Reviewed imported medical record', '复核导入的医疗记录'), result: 'success' },
+        { time: '08:42', actor: bi('System automation', '系统自动化'), action: bi('Generated health alert candidates', '生成健康预警候选项'), result: 'success' }
+      ],
+      users: [
+        { id: 1, name: bi('Dr. Sarah Chen', '陈医生'), role: bi('Doctor', '医生'), active: true },
+        { id: 2, name: bi('Aihua Zhang', '张爱华'), role: bi('Patient', '患者'), active: true },
+        { id: 3, name: bi('Wei Zhang', '张伟'), role: bi('Family caregiver', '家属照护者'), active: true }
+      ]
     };
   }
   const current = state => state.patients.find(item => item.id === Number(state.patientId));
@@ -40,6 +51,9 @@
   function review(state, id, decision) { const item = state.reviews.find(row => row.id === Number(id)); if (!item || item.status !== 'pending' || !['approved', 'rejected'].includes(decision)) return false; item.status = decision; return true; }
   function addPlan(state, title, target) { const clean = String(title || '').trim(); if (!clean || !target) throw new Error('invalid-plan'); state.plans.unshift({ id: Date.now(), patientId: state.patientId, title: bi(clean, clean), owner: bi('Dr. Sarah Chen', '陈医生'), target, status: 'active' }); }
   function addHandover(state, text) { const clean = String(text || '').trim(); if (!clean) throw new Error('invalid-handover'); state.handovers.unshift({ id: Date.now(), patientId: state.patientId, author: bi('Demo family member', '演示家属'), text: bi(clean, clean), time: clock(new Date()) }); }
+  function runFeature(state, key) { const clean=String(key||'').trim(); if(!clean) return false; state.featureRuns[clean]=(state.featureRuns[clean]||0)+1; state.audit.unshift({time:clock(new Date()),actor:bi('Demo operator','演示操作者'),action:bi(`Ran ${clean}`,`执行 ${clean}`),result:'success'}); return true; }
+  function toggleUser(state, id) { const user=state.users.find(item=>item.id===Number(id)); if(!user)return false; user.active=!user.active; state.audit.unshift({time:clock(new Date()),actor:bi('Platform administrator','平台管理员'),action:bi(`${user.active?'Enabled':'Disabled'} ${user.name.en}`,`${user.active?'启用':'停用'} ${user.name.zh}`),result:'success'}); return true; }
+  function updateBranding(state, input) { const color=String(input.pageBackground||'').trim(), name=String(input.platformName||'').trim(), org=String(input.organizationName||'').trim(), owner=String(input.ownershipText||'').trim(), logo=String(input.logo||'').trim(); if(!name||name.length>80||org.length>120||!/^#[0-9a-f]{6}$/i.test(color)||!owner||owner.length>240||!(/^(assets\/|data:image\/(png|jpeg|webp|svg\+xml);base64,)/i.test(logo))) throw new Error('invalid-branding'); state.branding={platformName:bi(name,name),organizationName:bi(org,org),logo,pageBackground:color.toLowerCase(),ownershipText:bi(owner,owner)}; return true; }
   function csv(state, language = 'en') { const zh = language === 'zh'; const head = zh ? '日期,时间,收缩压 (mmHg),舒张压 (mmHg),数据来源' : 'Date,Time,Systolic (mmHg),Diastolic (mmHg),Data source'; const source = zh ? '虚构演示数据' : 'Fictional demo data'; return '\uFEFF' + head + '\r\n' + current(state).records.map(r => `${r.date},${r.time},${r.systolic},${r.diastolic},${source}`).join('\r\n'); }
-  globalThis.HealthDemo = { createState, current, complete, addVital, review, addPlan, addHandover, csv };
+  globalThis.HealthDemo = { createState, current, complete, addVital, review, addPlan, addHandover, runFeature, toggleUser, updateBranding, csv };
 })();

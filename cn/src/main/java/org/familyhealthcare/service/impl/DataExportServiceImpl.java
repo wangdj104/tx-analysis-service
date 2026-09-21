@@ -71,6 +71,8 @@ public class DataExportServiceImpl implements DataExportService {
                 throw new IllegalStateException("Unsupported data type: " + dataType);
         }
 
+        if (Boolean.TRUE.equals(request.getMasked())) csv = deidentifyCsv(csv);
+
         // Include a UTF-8 BOM so spreadsheet applications detect the encoding correctly.
         byte[] bom = {(byte)0xEF, (byte)0xBB, (byte)0xBF};
         byte[] csvBytes = csv.getBytes(StandardCharsets.UTF_8);
@@ -200,4 +202,11 @@ public class DataExportServiceImpl implements DataExportService {
 
     private String nvl(Object v) { return v != null ? v.toString() : ""; }
     private String yn(Boolean v) { return Boolean.TRUE.equals(v) ? "Yes" : "No"; }
+
+    private String deidentifyCsv(String value) {
+        if (value == null) return "";
+        return value
+                .replaceAll("(?<!\\d)(1\\d{2})\\d{4}(\\d{4})(?!\\d)", "$1****$2")
+                .replaceAll("(?<![0-9A-Za-z])(\\d{3})\\d{11}([0-9Xx]{4})(?![0-9A-Za-z])", "$1***********$2");
+    }
 }

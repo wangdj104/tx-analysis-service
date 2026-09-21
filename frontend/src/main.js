@@ -11,6 +11,7 @@ import '@/styles/care-accessibility.css';
 import * as ElementPlusIconsVue from '@element-plus/icons-vue';
 import faviconUrl from '@/assets/logo.svg?url';
 import i18n from '@/i18n';
+import { loadPlatformBranding } from '@/utils/platformBranding';
 
 function applyFavicon(href) {
   if (!href) return;
@@ -25,6 +26,7 @@ function applyFavicon(href) {
 }
 
 applyFavicon(faviconUrl);
+loadPlatformBranding();
 
 const app = createApp(App);
 app.use(i18n);
@@ -48,6 +50,7 @@ const router = createRouter({
     { path: '/system/patient', component: () => import('./views/PatientManager.vue') },
     { path: '/system/menu', component: () => import('./views/MenuManager.vue') },
     { path: '/system/audit', component: () => import('./views/AuditLogManager.vue') },
+    { path: '/system/branding', component: () => import('./views/PlatformBrandingManager.vue') },
     { path: '/settings/notifications', component: () => import('./views/NotificationSettings.vue') },
     { path: '/health-analysis', component: () => import('./views/HealthAnalysisManager.vue') },
     { path: '/complication', redirect: '/health-analysis?tab=complication' },
@@ -58,7 +61,8 @@ const router = createRouter({
     { path: '/data-export', redirect: '/health-analysis?tab=data-export' },
     { path: '/bp-self-monitor', component: () => import('./views/BpSelfMonitorManager.vue') },
     { path: '/family-health', component: () => import('./views/FamilyHealthManager.vue') },
-    { path: '/monitoring', component: () => import('./views/MonitoringCenter.vue') }
+    { path: '/monitoring', component: () => import('./views/MonitoringCenter.vue') },
+    { path: '/care-journey', component: () => import('./views/CareJourneyManager.vue') }
   ]
 });
 
@@ -93,7 +97,7 @@ router.beforeEach((to, from, next) => {
   const medicationLegacyTabAllowed =
     ['/medication?tab=upload', '/medication?tab=category', '/medication?tab=remind'].includes(exactTarget) &&
     menuPaths.includes('/medication');
-  const basicCarePath = ['/care','/family-health','/medication','/bp-self-monitor','/medical-record','/settings/notifications'].includes(to.path);
+  const basicCarePath = ['/care','/family-health','/medication','/bp-self-monitor','/medical-record','/settings/notifications','/care-journey'].includes(to.path);
   const allowed = basicCarePath || isAdmin || medicationLegacyTabAllowed || menuPaths.length === 0 || menuPaths.includes(exactTarget) ||
     (!hasQuery && (menuPaths.includes(to.path) || menuPaths.some(path => path.startsWith(`${to.path}?`))));
 
@@ -121,3 +125,7 @@ app.use(ElementPlus, {
   }
 });
 app.mount('#app');
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}

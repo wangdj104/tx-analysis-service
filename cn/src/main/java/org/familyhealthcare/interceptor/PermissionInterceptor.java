@@ -27,9 +27,10 @@ public class PermissionInterceptor implements HandlerInterceptor {
         RULES.put("/api/notification-channel", "notification:manage");
         RULES.put("/api/clinical-workbench", "clinical-workbench:view"); RULES.put("/api/clinical-import", "clinical-workbench:view");
         RULES.put("/api/doctor-workspace", "doctor-workspace:view");
+        RULES.put("/api/platform-branding", "branding:manage");
     }
     @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler)throws Exception{
-        if("OPTIONS".equalsIgnoreCase(request.getMethod()))return true;
+        if("OPTIONS".equalsIgnoreCase(request.getMethod()) || request.getRequestURI().equals("/api/platform-branding/public"))return true;
         Object roles=request.getAttribute("roleCodes");
         if(roles instanceof List && ((List<?>)roles).contains("admin"))return true;
         // Daily family-care pages are available to every signed-in account; each record still checks the selected patient's membership.

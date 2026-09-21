@@ -1,10 +1,10 @@
 <template>
   <main class="login-page">
     <header class="login-brand">
-      <img src="/logo.svg?v=5" alt="" class="brand-logo" />
+      <img :src="platformBranding.logo" alt="" class="brand-logo" />
       <div class="brand-copy">
-        <span class="brand-name">澄心健康</span>
-        <span class="brand-description">个人健康管理平台</span>
+        <span class="brand-name">{{ platformBranding.platformName }}</span>
+        <span class="brand-description">{{ platformBranding.organizationName }}</span>
       </div>
     </header>
 
@@ -42,7 +42,7 @@
               decoding="async"
             />
           </div>
-          <h2 id="login-title">登录澄心健康</h2>
+          <h2 id="login-title">登录{{ platformBranding.platformName }}</h2>
           <p class="login-subtitle">持续记录，更清楚地了解健康变化。</p>
         </div>
 
@@ -94,7 +94,7 @@
       </section>
     </div>
 
-    <footer class="page-footer">澄心健康 <span>医患家属，同心照护</span></footer>
+    <footer class="page-footer">{{ platformBranding.ownershipText }}</footer>
   </main>
 </template>
 
@@ -106,6 +106,7 @@ import { User, Lock, ArrowRight } from '@element-plus/icons-vue';
 import { login, saveAuthSession, clearAuthSession } from '@/api/auth';
 import careMoments from '@/assets/illustrations/care-moments.webp';
 import careMomentsSmall from '@/assets/illustrations/care-moments-small.webp';
+import { platformBranding } from '@/utils/platformBranding';
 
 const router = useRouter();
 const loginFormRef = ref(null);

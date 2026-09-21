@@ -89,7 +89,7 @@
           <el-tab-pane label="急救卡" name="emergency">
             <div class="section-heading no-print"><div><h2>急救与医生交接卡</h2><p>简洁、可打印的患者摘要。分享前请再次核对身份、过敏和用药信息。</p></div><el-button type="primary" @click="printCard"><el-icon><Printer /></el-icon>打印卡片</el-button></div>
             <article class="emergency-card" id="emergency-card">
-              <header><div><span>澄心健康 · 急救摘要</span><h2>{{ overview.emergencyCard?.patient?.name || currentPatientName }}</h2><p>生成时间：{{ formatDate(overview.emergencyCard?.generatedAt) }}</p></div><el-tag type="danger" effect="dark">使用前请核验</el-tag></header>
+              <header><div><span>{{ platformBranding.platformName }} · 急救摘要</span><h2>{{ overview.emergencyCard?.patient?.name || currentPatientName }}</h2><p>生成时间：{{ formatDate(overview.emergencyCard?.generatedAt) }}</p></div><el-tag type="danger" effect="dark">使用前请核验</el-tag></header>
               <div class="emergency-grid">
                 <section><h3>身份与联系方式</h3><dl><dt>出生日期</dt><dd>{{ overview.emergencyCard?.patient?.birthDate || '—' }}</dd><dt>联系电话</dt><dd>{{ overview.emergencyCard?.patient?.phone || '—' }}</dd><dt>紧急联系人</dt><dd>{{ emergencyContact }}</dd></dl></section>
                 <section><h3>肾脏照护</h3><dl><dt>透析类型</dt><dd>{{ overview.emergencyCard?.clinical?.dialysisType || '—' }}</dd><dt>血管通路</dt><dd>{{ overview.emergencyCard?.clinical?.vascularAccess || '—' }}</dd><dt>目标干体重</dt><dd>{{ metric(overview.emergencyCard?.clinical?.targetDryWeight, ' kg') }}</dd><dt>液体限制</dt><dd>{{ overview.emergencyCard?.clinical?.fluidLimitMl ? `${overview.emergencyCard.clinical.fluidLimitMl} mL/天` : '—' }}</dd></dl></section>
@@ -125,6 +125,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
+import { platformBranding } from '@/utils/platformBranding'
 import { getClinicalWorkbenchOverview, getDialysisQuality, reviewMedicalRecord, reviewAnalysisDraft, generateDialysisSchedule, previewClinicalImport, commitClinicalImport } from '@/api/clinicalWorkbench'
 
 const router = useRouter()

@@ -43,6 +43,9 @@
                 </el-form-item>
               </el-col>
             </el-row>
+            <el-form-item label="Privacy">
+              <el-checkbox v-model="form.masked">Mask phone numbers and identity numbers for portable export</el-checkbox>
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="handleExport" :loading="exporting">
                 <el-icon><Download /></el-icon>ExportCSV
@@ -111,7 +114,8 @@ const DATA_TYPE_LABELS = {
 const form = reactive({
   dataType: '',
   timeType: 'month',
-  timeValue: ''
+  timeValue: '',
+  masked: true
 });
 
 // initializetimebased onOptionaltypeDefaultselectinNo. one

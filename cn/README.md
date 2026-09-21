@@ -12,7 +12,7 @@
 
 ## 产品能力
 
-- 医生、患者和家属拥有不同的工作台、菜单与数据范围。
+- 医生、患者、家属和管理员拥有不同的工作台、菜单与数据范围。
 - 医生工作台支持已分配患者、重点风险、临床笔记、照护计划，以及对导入记录和 AI 辅助分析的人工复核。
 - 家庭照护工作台：患者切换、每日任务、照护交接、共享照护、症状跟踪和就诊问题。
 - 用药管理：药品库、用药记录、提醒、服药确认、库存、补货和低库存预警。
@@ -30,7 +30,7 @@
 - **中文：**[在线体验](https://wangdj104.github.io/tx-analysis-service/cn/) · [源文件](demo/index.html)
 - **English:** [Live demo](https://wangdj104.github.io/tx-analysis-service/) · [source](../demo/index.html)
 
-演示可切换医生、患者和家属身份，覆盖患者面板、医生复核、照护计划、生命体征、用药打卡、医疗记录、透析、营养、复诊、家庭交接、CSV 导出和一键重置。页面不会发送网络请求，也不会保存真实数据。
+演示可切换医生、患者、家属和管理员身份。“照护全流程”页面完整映射本次 40 项需求，覆盖慢病管理、预约复诊、远程问诊、住院康复、居家照护、急救、儿童孕产、心理健康、权限隐私和系统运营。操作会更新当前标签页中的演示状态和审计事件，不会发送网络请求或执行真实临床处理。
 
 ## 中英文目录约定
 
@@ -75,7 +75,7 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 mysql -u root -p family_health < src/main/resources/sql/init.sql
 ```
 
-新建数据库时执行一次 [init.sql](src/main/resources/sql/init.sql)。它包含完整表结构和基础配置，不创建用户账号，也不包含真实业务数据。已有数据库可执行幂等的[医生工作台升级脚本](src/main/resources/sql/doctor_workspace_20260921.sql)。[demo-data.sql](src/main/resources/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
+原始基线使用 [init.sql](src/main/resources/sql/init.sql)。已有数据库可依次执行幂等的[医生工作台升级脚本](src/main/resources/sql/doctor_workspace_20260921.sql)和[照护平台升级脚本](src/main/resources/sql/care_platform_upgrade_20260921.sql)；后者新增全流程照护、授权、排班、问诊、康复、急救、专项健康、心理健康、审计和通知投递表。[demo-data.sql](src/main/resources/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
 
 ### 2. 配置环境变量
 

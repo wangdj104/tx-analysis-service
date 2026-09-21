@@ -7,7 +7,7 @@
             <div class="left">
               <div>
                 <h1>数据导出</h1>
-                <p class="subtitle">将透析、血压、营养等数据导出为 CSV 文件，便于外部分析与归档。</p>
+                <p class="subtitle">will Dialysis, Blood Pressure, Nutritionetc.数据导出for CSVfile, convenientinexternalanalysis and archive</p>
               </div>
             </div>
           </div>
@@ -43,6 +43,9 @@
                 </el-form-item>
               </el-col>
             </el-row>
+            <el-form-item label="隐私保护">
+              <el-checkbox v-model="form.masked">脱敏手机号和证件号码后导出</el-checkbox>
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="handleExport" :loading="exporting">
                 <el-icon><Download /></el-icon>导出 CSV
@@ -68,50 +71,51 @@ const { hasMenu, hasMenuName } = useMenuPermission();
 const exporting = ref(false);
 const formRef = ref(null);
 
-// based onRolePermissiondynamicbuilddatatypeselectitem
+// based onRolePermissiondynamicbuild数据类型selectitem
 const dataTypeOptions = computed(() => {
   const options = [];
 
   // Dialysis Records: needneedDialysisMenuPermission
   if (hasMenu('/dialysis')) {
-    options.push({ label: '透析记录', value: 'dialysis' });
+    options.push({ label: 'Dialysis Records', value: 'dialysis' });
   }
   // Blood Pressure Pattern Analysis
-  if (hasMenuName('血压模式分析')) {
-    options.push({ label: '血压规律分析', value: 'bp_analysis' });
+  if (hasMenuName('Blood Pressure Pattern Analysis')) {
+    options.push({ label: 'Blood Pressure Pattern Analysis', value: 'bp_analysis' });
   }
   // Nutrition Diary
-  if (hasMenuName('营养日记')) {
-    options.push({ label: '营养日记', value: 'nutrition' });
+  if (hasMenuName('Nutrition Diary')) {
+    options.push({ label: 'Nutrition Diary', value: 'nutrition' });
   }
   // Complication Tracking
-  if (hasMenuName('并发症跟踪')) {
-    options.push({ label: '并发症记录', value: 'complication' });
+  if (hasMenuName('Complication Tracking')) {
+    options.push({ label: 'complicationrecord', value: 'complication' });
   }
   // medicationrecord: needneedMedicationmanagementPermission
   if (hasMenu('/medication')) {
-    options.push({ label: '用药记录', value: 'medication' });
+    options.push({ label: 'medicationrecord', value: 'medication' });
   }
   // Blood GlucoseBlood Pressurerecord
-  if (hasMenuName('血压血糖记录')) {
-    options.push({ label: '血压血糖记录', value: 'bp_self_monitor' });
+  if (hasMenuName('Blood GlucoseBlood Pressurerecord')) {
+    options.push({ label: 'Blood GlucoseBlood Pressurerecord', value: 'bp_self_monitor' });
   }
   return options;
 });
 
 const DATA_TYPE_LABELS = {
-  dialysis: '透析记录',
-  bp_analysis: '血压规律分析',
-  nutrition: '营养日记',
-  complication: '并发症记录',
-  medication: '用药记录',
-  bp_self_monitor: '血压血糖记录'
+  dialysis: 'Dialysis Records',
+  bp_analysis: 'Blood Pressure Pattern Analysis',
+  nutrition: 'Nutrition Diary',
+  complication: 'complicationrecord',
+  medication: 'medicationrecord',
+  bp_self_monitor: 'Blood GlucoseBlood Pressurerecord'
 };
 
 const form = reactive({
   dataType: '',
   timeType: 'month',
-  timeValue: ''
+  timeValue: '',
+  masked: true
 });
 
 // initializetimebased onOptionaltypeDefaultselectinNo. one
@@ -122,7 +126,7 @@ onMounted(() => {
 });
 
 const rules = {
-  dataType: [{ required: true, message: '请选择数据类型', trigger: 'change' }],
+  dataType: [{ required: true, message: 'Select数据类型', trigger: 'change' }],
   timeType: [{ required: true, message: '请选择时间维度', trigger: 'change' }],
   timeValue: [{ required: true, message: '请选择时间范围', trigger: 'change' }]
 };

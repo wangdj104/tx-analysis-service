@@ -36,6 +36,11 @@ class CareDatabaseWorkflowTest {
         try(java.io.InputStream input=new ClassPathResource("sql/init.sql").getInputStream()){
             sql=org.springframework.util.StreamUtils.copyToString(input,java.nio.charset.StandardCharsets.UTF_8);
         }
+        try(java.io.InputStream input=new ClassPathResource("sql/care_platform_upgrade_20260921.sql").getInputStream()){
+            String upgrade=org.springframework.util.StreamUtils.copyToString(input,java.nio.charset.StandardCharsets.UTF_8);
+            int mysqlAlter=upgrade.indexOf("SET @ddl");
+            sql += "\n"+(mysqlAlter<0?upgrade:upgrade.substring(0,mysqlAlter));
+        }
         // MySQL index names are table-local; H2 requires schema-wide uniqueness.
         // Rename only indexes for H2, preserving all columns, constraints and seed data.
         java.util.regex.Matcher indexes=java.util.regex.Pattern.compile("(?m)^(\\s*(?:UNIQUE )?KEY\\s+)`([^`]+)`").matcher(sql);
@@ -96,6 +101,17 @@ class CareDatabaseWorkflowTest {
         String code=service.invite(1L);MockHttpServletRequest r=new MockHttpServletRequest();r.setAttribute("userId",8L);RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(r));
         assertEquals(1L,service.join(code,"Femalechild"));assertTrue(service.isMember(1L,8L));assertEquals(Collections.singletonList(1L),service.accessiblePatients(8L));
         assertThrows(IllegalArgumentException.class,()->service.join(code,"Femalechild"));
+    }
+
+    @Test void careJourneyPersistsMeasurementsAndRejectsPrivateFamilyConsultation(){
+        CareJourneyService service=new CareJourneyService();NotificationAudienceService audience=mock(NotificationAudienceService.class);
+        ReflectionTestUtils.setField(service,"jdbc",jdbc);ReflectionTestUtils.setField(service,"scope",scope);ReflectionTestUtils.setField(service,"audience",audience);
+        Map<String,Object> measurement=new HashMap<>();measurement.put("patientId",1L);measurement.put("metricType","BP");measurement.put("valuePrimary",168);measurement.put("valueSecondary",102);measurement.put("unit","mmHg");
+        Map<String,Object> saved=service.saveMeasurement(measurement);assertEquals("ABNORMAL",saved.get("status"));verify(audience).notifyCareTeam(eq(1L),eq("MEASUREMENT_ALERT"),anyString(),anyString());
+        jdbc.update("INSERT INTO consultation(id,patient_id,mode,status,symptom,family_visibility,created_by) VALUES(20,1,'TEXT','OPEN','private symptom','PRIVATE',7)");
+        jdbc.update("INSERT INTO care_member(patient_id,user_id,relation_name) VALUES(1,8,'Family')");
+        MockHttpServletRequest family=new MockHttpServletRequest();family.setAttribute("userId",8L);family.setAttribute("roleCodes",Collections.singletonList("family"));RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(family));
+        assertThrows(IllegalStateException.class,()->service.consultation(20L));
     }
     FamilyBackupService backup(){FamilyBackupService service=new FamilyBackupService();ReflectionTestUtils.setField(service,"jdbc",jdbc);ReflectionTestUtils.setField(service,"scope",scope);ReflectionTestUtils.setField(service,"membership",members);return service;}
 }

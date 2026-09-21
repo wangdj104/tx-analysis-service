@@ -46,6 +46,9 @@ public class PatientClinical {
     @ApiModelProperty("Medicationallergy history")
     private String allergyDrugs;
 
+    @ApiModelProperty("Blood type for the emergency medical card")
+    private String bloodType;
+
     @ApiModelProperty("currenttargetDry Weight(kg)")
     private BigDecimal targetDryWeight;
 

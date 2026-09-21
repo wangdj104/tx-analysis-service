@@ -2,24 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Explore Chengxin Health through an interactive, role-based care demo for clinicians, patients, and families.">
+  <meta name="description" content="Explore Chengxin Health through a full-system interactive demo for clinicians, patients, families, and administrators.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>Chengxin Health · Interactive Demo</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
-  <script src="model.js" defer></script><script src="app.js" defer></script>
+  <title>Chengxin Health · Interactive Demo</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=20260921-2"><link rel="stylesheet" href="branding.css?v=20260921">
+  <script src="model.js?v=20260921-2" defer></script><script src="app.js?v=20260921-2" defer></script>
 </head>
 <body>
   <a class="skip" href="#content">Skip to main content</a>
   <aside class="sidebar" aria-label="Workspace navigation">
-    <a class="brand" href="#overview"><img src="assets/logo.svg" width="38" height="38" alt=""><span><strong>Chengxin Health</strong><small>Care made clear.</small></span></a>
+    <a class="brand" href="#overview"><img id="brand-logo" src="assets/logo.svg" width="38" height="38" alt=""><span><strong id="brand-name">Chengxin Health</strong><small id="brand-organization">Chengxin Health</small></span></a>
     <span class="nav-caption" id="role-caption">Clinical workspace</span><div class="role-switch" id="role-switch" aria-label="Demo role"></div><nav id="nav"></nav>
-    <div class="sidebar-bottom"><p>One record. One care team.</p><div class="demo-account"><span class="avatar" id="account-avatar">DR</span><div><b id="account-name">Dr. Sarah Chen</b><small>Demo account · fictional data</small></div></div></div>
+    <div class="sidebar-bottom"><button class="guide-entry" id="guide-start" type="button"><b>New User Guide</b><small>Step-by-step · confirmation required</small></button><p>One record. One care team.</p><div class="demo-account"><span class="avatar" id="account-avatar">DR</span><div><b id="account-name">Dr. Sarah Chen</b><small>Demo account · fictional data</small></div></div></div>
   </aside>
   <div class="workspace">
     <header class="topbar"><span><b id="workspace-label">Clinical workspace</b> <i>/</i> <strong id="breadcrumb">Overview</strong></span><div class="top-actions"><label class="patient-select"><span id="member-label">Patient</span><select id="patient"></select></label><a class="language-link" href="cn/">中文</a></div></header>
-    <div class="demo-banner"><span><b>Interactive product tour</b> Everything here is fictional, stored only in this tab, and reset on refresh. No message or notification is sent.</span><button class="text-button" id="reset">Reset demo</button></div>
-    <main id="content" tabindex="-1"></main><footer class="footer">Chengxin Health · Connected care for every role<span>Demo only—not medical advice. Do not enter real health information.</span></footer>
+    <div class="demo-banner"><span><b>Full-system interactive demo</b> The workflows mirror the real platform with fictional, tab-local data. No message, upload, AI request, or notification leaves this page.</span><button class="text-button" id="reset">Reset demo</button></div>
+    <main id="content" tabindex="-1"></main><footer class="footer"><strong id="ownership">© 2026 Chengxin Health. All rights reserved.</strong><span>Demo only—not medical advice. Do not enter real health information.</span></footer>
   </div>
   <dialog id="action-dialog" aria-labelledby="action-title"><form id="action-form"><div class="dialog-header"><div><span class="eyebrow" id="action-kicker">DEMO ACTION</span><h2 id="action-title">Add entry</h2></div><button type="button" class="close-button" data-close aria-label="Close">×</button></div><p class="muted" id="action-help"></p><div id="action-fields" class="form-grid"></div><p id="form-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="button secondary" data-close>Cancel</button><button class="button" type="submit" id="action-submit">Save</button></div></form></dialog>
   <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-header"><h2 id="detail-title">Details</h2><button class="close-button" data-close aria-label="Close">×</button></div><div id="record-detail"></div><div class="dialog-actions"><button class="button secondary" data-close>Close</button></div></dialog><div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="guide-dialog" class="guide-dialog" aria-labelledby="guide-title"><div class="dialog-header"><span class="eyebrow" id="guide-progress">GUIDED MODE</span><button class="close-button" id="guide-pause" type="button" aria-label="Pause">×</button></div><h2 id="guide-title"></h2><p id="guide-description"></p><div class="guide-do"><b id="guide-do-label">Try this</b><span id="guide-action"></span></div><label class="guide-confirm"><input id="guide-confirm" type="checkbox"> <span id="guide-confirm-label">I have reviewed and completed this step.</span></label><div class="dialog-actions"><button class="button secondary" id="guide-previous" type="button">Previous</button><button class="button" id="guide-next" type="button" disabled>Confirm and continue</button></div></dialog>
   <noscript><p>Enable JavaScript to use this static demo. No server is required.</p></noscript>
 </body></html>

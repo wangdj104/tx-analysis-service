@@ -1,6 +1,20 @@
 import { canAccessWorkspace, resolveWorkspaceEntry } from './workspaceAccess.js';
 
 const MODULE_MENUS = {
+  '/care-journey': {
+    path: '/care-journey', label: 'Care Journey', icon: 'Connection',
+    children: [
+      { path: '/care-journey?tab=measurements', label: 'All Measurements', icon: 'Odometer' },
+      { path: '/care-journey?tab=appointments', label: 'Appointments & Visits', icon: 'Calendar' },
+      { path: '/care-journey?tab=consultation', label: 'Remote Consultation', icon: 'VideoCamera' },
+      { path: '/care-journey?tab=recovery', label: 'Inpatient & Recovery', icon: 'FirstAidKit' },
+      { path: '/care-journey?tab=emergency', label: 'Emergency Card', icon: 'WarnTriangleFilled' },
+      { path: '/care-journey?tab=specialty', label: 'Children & Maternity', icon: 'UserFilled' },
+      { path: '/care-journey?tab=mental', label: 'Mental Health', icon: 'ChatDotRound' },
+      { path: '/care-journey?tab=privacy', label: 'Privacy & Access', icon: 'Lock' },
+      { path: '/care-journey?tab=operations', label: 'Care Operations', icon: 'DataAnalysis' }
+    ]
+  },
   '/dialysis': {
     path: '/dialysis', label: 'Dialysis Management', icon: 'Histogram',
     children: [
@@ -110,6 +124,7 @@ export function getFallbackWorkspaceMenus(menuPaths = [], roleCodes = []) {
     { path: '/monitoring', label: 'Health Overview', icon: 'Monitor' },
     { path: '/clinical-workbench', label: 'Clinical Workbench', icon: 'FirstAidKit' },
     { path: '/doctor-workspace', label: 'Doctor Workspace', icon: 'FirstAidKit' },
+    MODULE_MENUS['/care-journey'],
     MODULE_MENUS['/dialysis'],
     { path: '/bp-self-monitor', label: 'Blood Pressure & Glucose', icon: 'Odometer' },
     MODULE_MENUS['/medical-record'],
@@ -125,6 +140,7 @@ export function getFallbackWorkspaceMenus(menuPaths = [], roleCodes = []) {
         { path: '/system/role', label: 'Role Management', icon: 'Avatar' },
         { path: '/system/menu', label: 'Menu Management', icon: 'Menu' },
         { path: '/system/audit', label: 'Audit Log', icon: 'Document' }
+        ,{ path: '/system/branding', label: 'Platform Branding', icon: 'Brush' }
       ]
     }
   ], { menuPaths, roleCodes });
