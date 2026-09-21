@@ -2,54 +2,54 @@ import { canAccessWorkspace, resolveWorkspaceEntry } from './workspaceAccess.js'
 
 const MODULE_MENUS = {
   '/dialysis': {
-    path: '/dialysis', label: 'Dialysis Management', icon: 'Histogram',
+    path: '/dialysis', label: '透析管理', icon: 'Histogram',
     children: [
-      { path: '/dialysis?tab=data', label: 'Dialysis Records', icon: 'DocumentChecked' },
-      { path: '/dialysis?tab=analysis', label: 'Trend Analysis', icon: 'TrendCharts' },
-      { path: '/dialysis?tab=ai', label: 'AI analysis', icon: 'Cpu' },
-      { path: '/dry-weight', label: 'Dry Weight', icon: 'ScaleToOriginal' }
+      { path: '/dialysis?tab=data', label: '透析记录', icon: 'DocumentChecked' },
+      { path: '/dialysis?tab=analysis', label: '趋势分析', icon: 'TrendCharts' },
+      { path: '/dialysis?tab=ai', label: 'AI 分析', icon: 'Cpu' },
+      { path: '/dry-weight', label: '干体重管理', icon: 'ScaleToOriginal' }
     ]
   },
   '/medical-record': {
-    path: '/medical-record', label: 'Medical Records', icon: 'FolderOpened',
+    path: '/medical-record', label: '医疗记录', icon: 'FolderOpened',
     children: [
-      { path: '/medical-record?tab=list', label: 'Record List', icon: 'FolderOpened' },
-      { path: '/medical-record?tab=upload', label: 'Upload Report', icon: 'Upload' },
-      { path: '/medical-record?tab=abnormal', label: 'Abnormal Results', icon: 'WarningFilled' },
-      { path: '/medical-record?tab=trend', label: 'Result Trends', icon: 'DataLine' }
+      { path: '/medical-record?tab=list', label: '记录列表', icon: 'FolderOpened' },
+      { path: '/medical-record?tab=upload', label: '上传报告', icon: 'Upload' },
+      { path: '/medical-record?tab=abnormal', label: '异常结果', icon: 'WarningFilled' },
+      { path: '/medical-record?tab=trend', label: '指标趋势', icon: 'DataLine' }
     ]
   },
   '/medication': {
-    path: '/medication', label: 'Medication Management', icon: 'FirstAidKit',
+    path: '/medication', label: '用药管理', icon: 'FirstAidKit',
     children: [
-      { path: '/medication?tab=drugs', label: 'Medication List', icon: 'Box' },
-      { path: '/medication?tab=upload', label: 'Upload and Recognize', icon: 'Camera' },
-      { path: '/medication?tab=logs', label: 'Medication Log', icon: 'Notebook' },
-      { path: '/medication?tab=category', label: 'Browse Categories', icon: 'Grid' },
-      { path: '/medication?tab=remind', label: 'Medication Reminders', icon: 'Bell' }
+      { path: '/medication?tab=drugs', label: '药品列表', icon: 'Box' },
+      { path: '/medication?tab=upload', label: '上传识别', icon: 'Camera' },
+      { path: '/medication?tab=logs', label: '用药记录', icon: 'Notebook' },
+      { path: '/medication?tab=category', label: '分类浏览', icon: 'Grid' },
+      { path: '/medication?tab=remind', label: '用药提醒', icon: 'Bell' }
     ]
   },
   '/health-analysis': {
-    path: '/health-analysis', label: 'Health Analytics', icon: 'DataAnalysis',
+    path: '/health-analysis', label: '健康分析', icon: 'DataAnalysis',
     children: [
-      { path: '/health-analysis?tab=complication', label: 'Complication Tracking', icon: 'Warning' },
-      { path: '/health-analysis?tab=alert', label: 'Health Alerts', icon: 'Bell' },
-      { path: '/health-analysis?tab=bp-pattern', label: 'Blood Pressure Pattern Analysis', icon: 'TrendCharts' },
-      { path: '/health-analysis?tab=nutrition', label: 'Nutrition Diary', icon: 'Apple' },
-      { path: '/health-analysis?tab=nutrition-assessment', label: 'Nutrition Assessment', icon: 'DataAnalysis' },
-      { path: '/health-analysis?tab=health-report', label: 'Health Report', icon: 'DocumentChecked' },
-      { path: '/health-analysis?tab=automation', label: 'Automated Analysis', icon: 'Timer' },
-      { path: '/health-analysis?tab=data-export', label: 'Data Export', icon: 'Download' }
+      { path: '/health-analysis?tab=complication', label: '并发症跟踪', icon: 'Warning' },
+      { path: '/health-analysis?tab=alert', label: '健康告警', icon: 'Bell' },
+      { path: '/health-analysis?tab=bp-pattern', label: '血压规律分析', icon: 'TrendCharts' },
+      { path: '/health-analysis?tab=nutrition', label: '营养日记', icon: 'Apple' },
+      { path: '/health-analysis?tab=nutrition-assessment', label: '营养评估', icon: 'DataAnalysis' },
+      { path: '/health-analysis?tab=health-report', label: '健康报告', icon: 'DocumentChecked' },
+      { path: '/health-analysis?tab=automation', label: '自动分析', icon: 'Timer' },
+      { path: '/health-analysis?tab=data-export', label: '数据导出', icon: 'Download' }
     ]
   },
   '/family-health': {
-    path: '/family-health', label: 'Care Plan', icon: 'Calendar',
+    path: '/family-health', label: '照护计划', icon: 'Calendar',
     children: [
-      { path: '/family-health?tab=today', label: "Today's Tasks", icon: 'Calendar' },
-      { path: '/family-health?tab=timeline', label: 'Health Timeline', icon: 'Clock' },
-      { path: '/family-health?tab=schedule', label: 'Dialysis Schedule', icon: 'Date' },
-      { path: '/family-health?tab=target', label: 'Personal Goals', icon: 'Aim' },
-      { path: '/family-health?tab=summary', label: 'Visit Summary', icon: 'DocumentChecked' }
+      { path: '/family-health?tab=today', label: '今日任务', icon: 'Calendar' },
+      { path: '/family-health?tab=timeline', label: '健康时间线', icon: 'Clock' },
+      { path: '/family-health?tab=schedule', label: '透析排班', icon: 'Date' },
+      { path: '/family-health?tab=target', label: '个人目标', icon: 'Aim' },
+      { path: '/family-health?tab=summary', label: '就诊摘要', icon: 'DocumentChecked' }
     ]
   }
 };
@@ -107,23 +107,23 @@ export function normalizeWorkspaceMenus(items, { menuPaths = [], roleCodes = [] 
 /** MenuAPIcannot usetimeuserelativesamePermissionrulebuildstandardnavigation.  */
 export function getFallbackWorkspaceMenus(menuPaths = [], roleCodes = []) {
   return normalizeWorkspaceMenus([
-    { path: '/monitoring', label: 'Health Overview', icon: 'Monitor' },
-    { path: '/clinical-workbench', label: 'Clinical Workbench', icon: 'FirstAidKit' },
+    { path: '/monitoring', label: '健康总览', icon: 'Monitor' },
+    { path: '/clinical-workbench', label: '临床工作台', icon: 'FirstAidKit' },
     MODULE_MENUS['/dialysis'],
-    { path: '/bp-self-monitor', label: 'Blood Pressure & Glucose', icon: 'Odometer' },
+    { path: '/bp-self-monitor', label: '血压与血糖', icon: 'Odometer' },
     MODULE_MENUS['/medical-record'],
     MODULE_MENUS['/medication'],
     MODULE_MENUS['/health-analysis'],
     MODULE_MENUS['/family-health'],
-    { path: '/system/patient', label: 'Patient Management', icon: 'UserFilled' },
-    { path: '/settings/notifications', label: 'Notification Settings', icon: 'Bell' },
+    { path: '/system/patient', label: '患者管理', icon: 'UserFilled' },
+    { path: '/settings/notifications', label: '通知设置', icon: 'Bell' },
     {
-      path: '', label: 'System Administration', icon: 'Setting',
+      path: '', label: '系统管理', icon: 'Setting',
       children: [
-        { path: '/system/user', label: 'User Management', icon: 'User' },
-        { path: '/system/role', label: 'Role Management', icon: 'Avatar' },
-        { path: '/system/menu', label: 'Menu Management', icon: 'Menu' },
-        { path: '/system/audit', label: 'Audit Log', icon: 'Document' }
+        { path: '/system/user', label: '用户管理', icon: 'User' },
+        { path: '/system/role', label: '角色管理', icon: 'Avatar' },
+        { path: '/system/menu', label: '菜单管理', icon: 'Menu' },
+        { path: '/system/audit', label: '审计日志', icon: 'Document' }
       ]
     }
   ], { menuPaths, roleCodes });

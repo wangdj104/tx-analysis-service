@@ -1,30 +1,30 @@
-# Interactive Static Demo
+# 交互式静态演示
 
-Open [index.html](index.html) in a browser. The demo requires no account, Node.js service, or database. It uses fictional data to demonstrate the core family-care workflow and is separate from the full Vue application.
+在浏览器中打开 [index.html](index.html) 即可体验。演示版无需账号、Node.js 服务或数据库，使用虚构数据展示核心家庭照护流程，与完整 Vue 应用相互独立。
 
-The demo includes family-member switching, care tasks, medication check-ins with inventory updates, blood-pressure entry, 7/30-reading trends, sample medical records, CSV export, and one-click reset. State stays in the current page and is cleared on refresh. Notifications, OCR, uploads, AI, and family invitations never contact a real service. The Content Security Policy blocks all network connections.
+演示版支持家庭成员切换、照护任务、用药确认与库存联动、血压录入、最近 7/30 次读数趋势、示例健康档案、CSV 导出和一键重置。数据仅保留在当前页面中，刷新后即清除。通知、OCR、上传、AI 和家庭邀请均不会连接真实服务；内容安全策略会阻止所有网络连接。
 
-## Publish with GitHub Pages
+## 使用 GitHub Pages 发布
 
-The repository includes a [GitHub Pages workflow](../.github/workflows/demo-pages.yml).
+仓库已包含 [GitHub Pages 工作流](../.github/workflows/demo-pages.yml)。
 
-1. Push the project to the target GitHub repository.
-2. Open **Settings → Pages → Build and deployment → Source** and select **GitHub Actions**.
-3. Run **Actions → Publish static demo → Run workflow**. Later changes under `demo/` on `main` or `master` deploy automatically.
-4. When the workflow completes, open its **Open live demo** link or the repository's `github-pages` deployment URL.
-5. Add that public URL to the main README once the final GitHub repository name is known.
+1. 将项目推送到目标 GitHub 仓库。
+2. 打开 **Settings → Pages → Build and deployment → Source**，选择 **GitHub Actions**。
+3. 运行 **Actions → Publish static demo → Run workflow**。之后 `main` 或 `master` 分支下 `demo/` 的变更会自动部署。
+4. 工作流完成后，打开 **Open live demo** 链接或仓库的 `github-pages` 部署地址。
+5. 确定最终仓库名称后，将公开演示地址补充到主 README。
 
-Only the static page, scripts, styles, and demo images are uploaded. Backend configuration, SQL files, tests, and the rest of the repository are excluded.
+发布内容仅包括静态页面、脚本、样式和演示图片，不会上传后端配置、SQL 文件、测试及仓库中的其他内容。
 
-GitHub reference: [Using custom workflows with GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+GitHub 参考文档：[通过自定义工作流使用 GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。
 
-## Verify
+## 验证
 
 ```bash
 node --test demo/tests/*.test.mjs
 node --check demo/app.js
 ```
 
-For browser QA, switch family members; complete a medication task and verify inventory; add a blood-pressure reading and verify the table, chart, and task state; open a record; export CSV; then refresh or reset and verify that fictional data returns to its initial state.
+浏览器验收时，请依次切换家庭成员；完成用药任务并核对库存；新增血压读数并核对表格、图表和任务状态；打开一份档案；导出 CSV；最后刷新或重置页面，确认虚构数据恢复初始状态。
 
-Images under `assets/` are copied from project-owned assets so the demo can deploy independently. Update the corresponding demo asset whenever the product logo or illustration changes.
+`assets/` 下的图片来自项目自有资源，以确保演示版可以独立部署。产品标志或插图更新时，请同步更新对应的演示资源。

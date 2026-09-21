@@ -27,8 +27,8 @@
         <!-- Upload and Recognize -->
         <div v-show="activeMenu === 'upload'" class="upload-panel">
           <el-form :model="uploadForm" label-width="100px" class="upload-form">
-            <el-form-item label="Patient" required>
-              <el-select v-model="uploadForm.patientId" placeholder="Select a patient" filterable allow-create style="max-width: 320px">
+            <el-form-item label="患者" required>
+              <el-select v-model="uploadForm.patientId" placeholder="选择患者" filterable allow-create style="max-width: 320px">
                 <el-option
                   v-for="patient in patientList"
                   :key="patient.id"
@@ -37,25 +37,25 @@
                 />
               </el-select>
             </el-form-item>
-            <el-form-item label="Report type">
-              <el-select v-model="uploadForm.recordType" placeholder="Select" style="max-width: 320px">
-                <el-option label="blood test" value="BLOOD" />
-                <el-option label="urinalysis" value="URINE" />
-                <el-option label="liver function" value="LIVER" />
-                <el-option label="kidney function" value="KIDNEY" />
-                <el-option label="bone metabolism" value="BONE" />
-                <el-option label="iron metabolism" value="IRON" />
-                <el-option label="imaging report" value="IMAGE" />
-                <el-option label="Other" value="OTHER" />
+            <el-form-item label="报告类型">
+              <el-select v-model="uploadForm.recordType" placeholder="请选择" style="max-width: 320px">
+                <el-option label="血液检查" value="BLOOD" />
+                <el-option label="尿液检查" value="URINE" />
+                <el-option label="肝功能" value="LIVER" />
+                <el-option label="肾功能" value="KIDNEY" />
+                <el-option label="骨代谢" value="BONE" />
+                <el-option label="铁代谢" value="IRON" />
+                <el-option label="影像报告" value="IMAGE" />
+                <el-option label="其他" value="OTHER" />
               </el-select>
             </el-form-item>
-            <el-form-item label="Processing mode">
+            <el-form-item label="处理方式">
               <el-radio-group v-model="uploadMode">
-                <el-radio-button value="recognize">Upload and recognize</el-radio-button>
-                <el-radio-button value="archive">Archive only</el-radio-button>
+                <el-radio-button value="recognize">上传并识别</el-radio-button>
+                <el-radio-button value="archive">仅归档</el-radio-button>
               </el-radio-group>
             </el-form-item>
-            <el-form-item label="Report files" required>
+            <el-form-item label="报告文件" required>
               <el-upload
                 ref="uploadRef"
                 drag
@@ -68,78 +68,78 @@
                 class="upload-drop"
               >
                 <el-icon :size="40"><UploadFilled /></el-icon>
-                <div class="upload-text">Drag reports here, <em>click to upload</em>, or paste images. Multiple files are supported.</div>
+                <div class="upload-text">将报告拖到此处、<em>点击上传</em>或粘贴图片，支持多文件。</div>
                 <template #tip>
-                  <div class="el-upload__tip">JPG, PNG, and PDF are supported. PDFs are limited to the first 30 pages. Mobile photos are compressed before upload.</div>
+                  <div class="el-upload__tip">支持 JPG、PNG 和 PDF；PDF 最多处理前 30 页，手机照片会在上传前压缩。</div>
                 </template>
               </el-upload>
               <div v-if="isMobile" class="mobile-upload-actions">
                 <el-button type="primary" plain size="small" @click="triggerCameraUpload('page')">
-                  <el-icon><Camera /></el-icon> Take photo
+                  <el-icon><Camera /></el-icon> 拍照
                 </el-button>
                 <el-button type="info" plain size="small" @click="triggerAlbumUpload('page')">
-                  <el-icon><Picture /></el-icon> Choose from library
+                  <el-icon><Picture /></el-icon> 从相册选择
                 </el-button>
               </div>
             </el-form-item>
 
             <!-- onlyarchivemode: recordinformationtablesingle -->
             <template v-if="uploadMode === 'archive'">
-              <el-form-item label="Report date">
+              <el-form-item label="报告日期">
                 <el-date-picker v-model="archiveForm.recordDate" type="date" value-format="YYYY-MM-DD" style="max-width: 320px" />
               </el-form-item>
-              <el-form-item label="Hospital">
+              <el-form-item label="医院">
                 <el-input v-model="archiveForm.hospitalName" style="max-width: 400px" />
               </el-form-item>
-              <el-form-item label="Clinician">
+              <el-form-item label="医生">
                 <el-input v-model="archiveForm.doctorName" style="max-width: 320px" />
               </el-form-item>
-              <el-form-item label="Notes">
+              <el-form-item label="备注">
                 <el-input v-model="archiveForm.remark" type="textarea" :rows="2" style="max-width: 400px" />
               </el-form-item>
 
               <!-- onlyarchivemode: ManualfillwriteExaminationitem -->
               <el-form-item label-width="0">
-                <el-divider content-position="left">Test item details (optional)</el-divider>
+                <el-divider content-position="left">检验项目明细（可选）</el-divider>
                 <div class="recognize-items-toolbar">
-                  <span class="recognize-items-count">{{ archiveItems.length }} items</span>
+                  <span class="recognize-items-count">共 {{ archiveItems.length }} 项</span>
                   <div class="recognize-items-actions">
-                    <el-button size="small" type="primary" plain @click="addArchiveItem">Add row</el-button>
+                    <el-button size="small" type="primary" plain @click="addArchiveItem">新增一行</el-button>
                   </div>
                 </div>
                 <el-table :data="archiveItems" border size="small" max-height="280" class="app-data-table recognize-items-table">
-                  <el-table-column prop="itemName" label="Test item" min-width="140">
+                  <el-table-column prop="itemName" label="检验项目" min-width="140">
                     <template #default="{ row }">
-                      <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
+                      <el-input v-model="row.itemName" size="small" placeholder="检验项目名称" />
                     </template>
                   </el-table-column>
-                  <el-table-column prop="resultValue" label="Result" width="120">
+                  <el-table-column prop="resultValue" label="结果" width="120">
                     <template #default="{ row }">
                       <el-input v-model="row.resultValue" size="small" />
                     </template>
                   </el-table-column>
-                  <el-table-column prop="unit" label="Unit" width="88">
+                  <el-table-column prop="unit" label="单位" width="88">
                     <template #default="{ row }">
                       <el-input v-model="row.unit" size="small" />
                     </template>
                   </el-table-column>
-                  <el-table-column prop="referenceRange" label="Reference Range" width="120">
+                  <el-table-column prop="referenceRange" label="参考范围" width="120">
                     <template #default="{ row }">
                       <el-input v-model="row.referenceRange" size="small" />
                     </template>
                   </el-table-column>
-                  <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
+                  <el-table-column prop="isAbnormal" label="状态" width="88" align="center">
                     <template #default="{ row }">
                       <el-select v-model="row.isAbnormal" size="small" style="width: 76px">
-                        <el-option label="Normal" :value="0" />
-                        <el-option label="High" :value="1" />
-                        <el-option label="Low" :value="-1" />
+                        <el-option label="正常" :value="0" />
+                        <el-option label="偏高" :value="1" />
+                        <el-option label="偏低" :value="-1" />
                       </el-select>
                     </template>
                   </el-table-column>
-                  <el-table-column label="Actions" width="72" fixed="right" align="center">
+                  <el-table-column label="操作" width="72" fixed="right" align="center">
                     <template #default="{ $index }">
-                      <el-button link type="danger" size="small" @click="removeArchiveItem($index)">Delete</el-button>
+                      <el-button link type="danger" size="small" @click="removeArchiveItem($index)">删除</el-button>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -147,17 +147,17 @@
             </template>
 
             <el-form-item>
-              <el-button v-if="uploadMode === 'recognize'" type="primary" :loading="recognizeLoading" @click="startRecognize">Start recognition</el-button>
-              <el-button v-if="uploadMode === 'archive'" type="success" :loading="archiveSaving" @click="saveArchiveRecord">Save record</el-button>
+              <el-button v-if="uploadMode === 'recognize'" type="primary" :loading="recognizeLoading" @click="startRecognize">开始识别</el-button>
+              <el-button v-if="uploadMode === 'archive'" type="success" :loading="archiveSaving" @click="saveArchiveRecord">保存记录</el-button>
               <el-button v-if="recognizeResult" type="success" @click="saveRecognizedRecord">
-                {{ recognizedRecords.length > 1 ? `Save ${recognizedRecords.length} records` : 'Save record' }}
+                {{ recognizedRecords.length > 1 ? `保存 ${recognizedRecords.length} 份记录` : '保存记录' }}
               </el-button>
             </el-form-item>
           </el-form>
 
           <!-- onlyarchivemode: imagePreview -->
           <div v-if="uploadMode === 'archive' && selectedFiles.length > 0" class="archive-preview">
-            <el-divider content-position="left">Attachment preview</el-divider>
+            <el-divider content-position="left">附件预览</el-divider>
             <div class="attachment-images">
               <div v-for="(file, index) in selectedFiles" :key="index" class="attachment-image-wrapper">
                 <el-image
@@ -172,10 +172,10 @@
 
           <div v-if="recognizeLoading" class="recognize-loading">
             <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-            <span>AI is extracting a draft. Please wait…</span>
+            <span>AI 正在提取草稿，请稍候……</span>
           </div>
           <div v-if="recognizeResult" class="recognize-result">
-            <el-divider content-position="left">Recognition draft — review before saving</el-divider>
+            <el-divider content-position="left">识别草稿——保存前请核对</el-divider>
             <el-alert
               v-if="recognizeWarning"
               :title="recognizeWarning"
@@ -193,64 +193,64 @@
               />
             </el-tabs>
             <el-form :model="currentRecognizeRecord" label-width="100px">
-              <el-form-item v-if="recognizedRecords.length <= 1" label="Examination Type">
+              <el-form-item v-if="recognizedRecords.length <= 1" label="检查类型">
                 <el-select v-model="currentRecognizeRecord.recordType" style="max-width: 320px">
                   <el-option v-for="(label, val) in recordTypeMap" :key="val" :label="label" :value="val" />
                 </el-select>
               </el-form-item>
-              <el-form-item v-else label="Examination Type">
+              <el-form-item v-else label="检查类型">
                 <el-tag type="primary">{{ getRecordTypeName(currentRecognizeRecord.recordType) }}</el-tag>
               </el-form-item>
-              <el-form-item label="Examination Date">
+              <el-form-item label="检查日期">
                 <el-date-picker v-model="currentRecognizeRecord.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%; max-width: 320px" />
               </el-form-item>
-              <el-form-item label="Hospital">
+              <el-form-item label="医院">
                 <el-input v-model="currentRecognizeRecord.hospitalName" style="max-width: 400px" />
               </el-form-item>
-              <el-form-item label="Clinician">
+              <el-form-item label="医生">
                 <el-input v-model="currentRecognizeRecord.doctorName" style="max-width: 320px" />
               </el-form-item>
             </el-form>
             <div class="recognize-items-toolbar">
-              <span class="recognize-items-count">total {{ currentRecognizeRecord.items.length }} item</span>
+              <span class="recognize-items-count">共 {{ currentRecognizeRecord.items.length }} 项</span>
               <div class="recognize-items-actions">
-                <el-button size="small" @click="dedupeRecognizedItemsLocal">mergeduplicateitem</el-button>
-                <el-button size="small" type="primary" plain @click="addRecognizedItem">Addonerow</el-button>
+                <el-button size="small" @click="dedupeRecognizedItemsLocal">合并重复项</el-button>
+                <el-button size="small" type="primary" plain @click="addRecognizedItem">新增一行</el-button>
               </div>
             </div>
             <el-table :data="currentRecognizeRecord.items" border size="small" max-height="280" class="app-data-table recognize-items-table">
-              <el-table-column prop="itemName" label="Test item" min-width="140">
+              <el-table-column prop="itemName" label="检验项目" min-width="140">
                 <template #default="{ row }">
-                  <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
+                  <el-input v-model="row.itemName" size="small" placeholder="检验项目名称" />
                 </template>
               </el-table-column>
-              <el-table-column prop="resultValue" label="measured value" width="120">
+              <el-table-column prop="resultValue" label="检测值" width="120">
                 <template #default="{ row }">
                   <el-input v-model="row.resultValue" size="small" />
                 </template>
               </el-table-column>
-              <el-table-column prop="unit" label="Unit" width="88">
+              <el-table-column prop="unit" label="单位" width="88">
                 <template #default="{ row }">
                   <el-input v-model="row.unit" size="small" />
                 </template>
               </el-table-column>
-              <el-table-column prop="referenceRange" label="Reference Range" width="120">
+              <el-table-column prop="referenceRange" label="参考范围" width="120">
                 <template #default="{ row }">
                   <el-input v-model="row.referenceRange" size="small" />
                 </template>
               </el-table-column>
-              <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
+              <el-table-column prop="isAbnormal" label="状态" width="88" align="center">
                 <template #default="{ row }">
                   <el-select v-model="row.isAbnormal" size="small" style="width: 76px">
-                    <el-option label="Normal" :value="0" />
-                    <el-option label="high" :value="1" />
-                    <el-option label="low" :value="-1" />
+                    <el-option label="正常" :value="0" />
+                    <el-option label="偏高" :value="1" />
+                    <el-option label="偏低" :value="-1" />
                   </el-select>
                 </template>
               </el-table-column>
-              <el-table-column label="Actions" width="72" fixed="right" align="center">
+              <el-table-column label="操作" width="72" fixed="right" align="center">
                 <template #default="{ $index }">
-                  <el-button link type="danger" size="small" @click="removeRecognizedItem($index)">Delete</el-button>
+                  <el-button link type="danger" size="small" @click="removeRecognizedItem($index)">删除</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -263,8 +263,8 @@
         <div v-show="activeMenu === 'trend'" class="trend-panel">
           <div class="toolbar">
             <el-form :inline="true" class="filter-form">
-              <el-form-item label="Patient">
-                <el-select v-model="trendForm.patientId" placeholder="Select a patient" filterable clearable style="width: 220px">
+              <el-form-item label="患者">
+                <el-select v-model="trendForm.patientId" placeholder="选择患者" filterable clearable style="width: 220px">
                   <el-option
                     v-for="patient in patientList"
                     :key="patient.id"
@@ -273,14 +273,14 @@
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item label="Test item">
+              <el-form-item label="检验项目">
                 <el-select
                   v-model="trendForm.itemName"
                   filterable
                   clearable
                   allow-create
                   default-first-option
-                  placeholder="Select or enter a test item"
+                  placeholder="选择或输入检验项目"
                   style="width: 220px"
                 >
                   <el-option
@@ -293,7 +293,7 @@
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" :loading="trendLoading" @click="loadTrend">
-                  <el-icon><Search /></el-icon>querytrend
+                  <el-icon><Search /></el-icon>查询趋势
                 </el-button>
               </el-form-item>
             </el-form>
@@ -303,21 +303,21 @@
           </div>
           <div v-if="trendData.length > 0" class="table-wrap">
             <el-table :data="trendData" class="app-data-table" stripe border size="small">
-              <el-table-column prop="recordDate" label="Examination Date" width="120" />
-              <el-table-column prop="itemName" label="Test item" min-width="140" />
-              <el-table-column prop="resultValue" label="measured value" width="120" />
-              <el-table-column prop="unit" label="Unit" width="88" />
-              <el-table-column prop="referenceRange" label="Reference Range" width="140" />
-              <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
+              <el-table-column prop="recordDate" label="检查日期" width="120" />
+              <el-table-column prop="itemName" label="检验项目" min-width="140" />
+              <el-table-column prop="resultValue" label="检测值" width="120" />
+              <el-table-column prop="unit" label="单位" width="88" />
+              <el-table-column prop="referenceRange" label="参考范围" width="140" />
+              <el-table-column prop="isAbnormal" label="状态" width="88" align="center">
                 <template #default="{ row }">
                   <el-tag :type="getAbnormalType(row.isAbnormal)" size="small">{{ getAbnormalText(row.isAbnormal) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="hospitalName" label="Hospital" min-width="160" show-overflow-tooltip />
+              <el-table-column prop="hospitalName" label="医院" min-width="160" show-overflow-tooltip />
             </el-table>
           </div>
           <div v-if="trendData.length === 0 && !trendLoading" class="stats-empty">
-            <el-empty description="Select a patient and test item to view its history" />
+            <el-empty description="选择患者和检验项目后查看历史趋势" />
           </div>
         </div>
 
@@ -325,8 +325,8 @@
         <template v-if="activeMenu === 'list' || activeMenu === 'abnormal'">
         <div class="toolbar">
           <el-form :inline="true" :model="filterForm" class="filter-form">
-            <el-form-item label="Patient">
-              <el-select v-model="filterForm.patientId" placeholder="AllPatient" filterable clearable style="width: 200px">
+            <el-form-item label="患者">
+              <el-select v-model="filterForm.patientId" placeholder="全部患者" filterable clearable style="width: 200px">
                 <el-option
                   v-for="patient in patientList"
                   :key="patient.id"
@@ -335,32 +335,32 @@
                 />
               </el-select>
             </el-form-item>
-            <el-form-item label="Examination Type">
-              <el-select v-model="filterForm.recordType" placeholder="Select" clearable>
-                <el-option label="blood test" value="BLOOD" />
-                <el-option label="urinalysis" value="URINE" />
-                <el-option label="liverfeature" value="LIVER" />
-                <el-option label="kidneyfeature" value="KIDNEY" />
-                <el-option label="bone metabolism" value="BONE" />
-                <el-option label="iron metabolism" value="IRON" />
-                <el-option label="imagingReport" value="IMAGE" />
-                <el-option label="Other" value="OTHER" />
+            <el-form-item label="检查类型">
+              <el-select v-model="filterForm.recordType" placeholder="请选择" clearable>
+                <el-option label="血液检查" value="BLOOD" />
+                <el-option label="尿液检查" value="URINE" />
+                <el-option label="肝功能" value="LIVER" />
+                <el-option label="肾功能" value="KIDNEY" />
+                <el-option label="骨代谢" value="BONE" />
+                <el-option label="铁代谢" value="IRON" />
+                <el-option label="影像报告" value="IMAGE" />
+                <el-option label="其他" value="OTHER" />
               </el-select>
             </el-form-item>
-            <el-form-item label="Date">
-              <el-date-picker v-model="filterForm.timeValue" type="date" placeholder="selectDate" value-format="YYYY-MM-DD" />
+            <el-form-item label="日期">
+              <el-date-picker v-model="filterForm.timeValue" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" />
             </el-form-item>
-            <el-form-item label="Test item">
-              <el-input v-model="filterForm.itemName" placeholder="Search by test item name" clearable />
+            <el-form-item label="检验项目">
+              <el-input v-model="filterForm.itemName" placeholder="按检验项目名称搜索" clearable />
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="loadRecords">
-                <el-icon><Search /></el-icon>query
+                <el-icon><Search /></el-icon>查询
               </el-button>
             </el-form-item>
             <el-form-item v-if="activeMenu === 'list' && canUpload">
               <el-button type="primary" @click="goUpload">
-                <el-icon><Upload /></el-icon>Upload report
+                <el-icon><Upload /></el-icon>上传报告
               </el-button>
             </el-form-item>
           </el-form>
@@ -370,8 +370,8 @@
           <div class="list-panel-head">
             <div class="list-panel-title">
               <el-icon><FirstAidKit /></el-icon>
-              <span>{{ activeMenu === 'abnormal' ? 'Abnormal test records' : 'Medical records' }}</span>
-              <span v-if="displayRecords.length" class="list-count">{{ displayRecords.length }} items</span>
+              <span>{{ activeMenu === 'abnormal' ? '异常检验记录' : '医疗记录' }}</span>
+              <span v-if="displayRecords.length" class="list-count">共 {{ displayRecords.length }} 条</span>
             </div>
           </div>
           <div class="table-wrap">
@@ -381,16 +381,16 @@
               stripe
               style="width: 100%"
             >
-              <el-table-column v-if="listColVisible('recordDate')" prop="recordDate" label="Date" min-width="108" />
-              <el-table-column v-if="listColVisible('patientName')" prop="patientName" label="Patient" min-width="100" show-overflow-tooltip />
-              <el-table-column v-if="listColVisible('recordType')" prop="recordType" label="type" min-width="96" show-overflow-tooltip>
+              <el-table-column v-if="listColVisible('recordDate')" prop="recordDate" label="日期" min-width="108" />
+              <el-table-column v-if="listColVisible('patientName')" prop="patientName" label="患者" min-width="100" show-overflow-tooltip />
+              <el-table-column v-if="listColVisible('recordType')" prop="recordType" label="类型" min-width="96" show-overflow-tooltip>
                 <template #default="{ row }">
                   <el-tag size="small">{{ getRecordTypeName(row.recordType) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column v-if="listColVisible('hospitalName')" prop="hospitalName" label="Hospital" min-width="168" show-overflow-tooltip />
-              <el-table-column v-if="listColVisible('doctorName')" prop="doctorName" label="Clinician" min-width="96" show-overflow-tooltip />
-              <el-table-column v-if="listColVisible('items')" label="Test items" min-width="220" show-overflow-tooltip>
+              <el-table-column v-if="listColVisible('hospitalName')" prop="hospitalName" label="医院" min-width="168" show-overflow-tooltip />
+              <el-table-column v-if="listColVisible('doctorName')" prop="doctorName" label="医生" min-width="96" show-overflow-tooltip />
+              <el-table-column v-if="listColVisible('items')" label="检验项目" min-width="220" show-overflow-tooltip>
                 <template #default="{ row }">
                   <span v-if="row.items && row.items.length" class="cell-ellipsis">
                     {{ row.items.map(i => i.itemName).join(', ') }}
@@ -398,21 +398,21 @@
                   <span v-else class="text-muted">-</span>
                 </template>
               </el-table-column>
-              <el-table-column v-if="listColVisible('abnormal')" label="Abnormal" min-width="72" align="center">
+              <el-table-column v-if="listColVisible('abnormal')" label="异常" min-width="72" align="center">
                 <template #default="{ row }">
                   <el-tag v-if="hasAbnormal(row)" type="danger" size="small">{{ countAbnormal(row) }}</el-tag>
                   <span v-else class="text-muted">-</span>
                 </template>
               </el-table-column>
-              <el-table-column label="Actions" width="168" fixed="right" align="center">
+              <el-table-column label="操作" width="168" fixed="right" align="center">
                 <template #header>
                   <TableActionHeader v-model="listVisibleCols" :columns="LIST_COLUMN_DEFS" @reset="resetListColumns" />
                 </template>
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" @click="viewDetail(row)">View</el-button>
-                    <el-button link type="primary" size="small" @click="openEditDialog(row)">Edit</el-button>
-                    <el-button link type="danger" size="small" @click="deleteRecord(row)">Delete</el-button>
+                    <el-button link type="primary" size="small" @click="viewDetail(row)">查看</el-button>
+                    <el-button link type="primary" size="small" @click="openEditDialog(row)">编辑</el-button>
+                    <el-button link type="danger" size="small" @click="deleteRecord(row)">删除</el-button>
                   </div>
                 </template>
               </el-table-column>
@@ -425,24 +425,24 @@
     </el-main>
 
     <!-- Upload and Recognizedialog (listpageshortcutentry)  -->
-    <el-dialog v-model="uploadDialogVisible" title="Upload report" width="min(800px, 95vw)" :close-on-click-modal="false" destroy-on-close>
+    <el-dialog v-model="uploadDialogVisible" title="上传报告" width="min(800px, 95vw)" :close-on-click-modal="false" destroy-on-close>
       <el-form :model="uploadForm" label-width="100px">
-        <el-form-item label="PatientName" required>
-          <el-input v-model="uploadForm.patientName" placeholder="Enter PatientName" />
+        <el-form-item label="患者姓名" required>
+          <el-input v-model="uploadForm.patientName" placeholder="请输入患者姓名" />
         </el-form-item>
-        <el-form-item label="Examination Type">
-          <el-select v-model="uploadForm.recordType" placeholder="Select">
-            <el-option label="blood test" value="BLOOD" />
-            <el-option label="urinalysis" value="URINE" />
-            <el-option label="liverfeature" value="LIVER" />
-            <el-option label="kidneyfeature" value="KIDNEY" />
-            <el-option label="bone metabolism" value="BONE" />
-            <el-option label="iron metabolism" value="IRON" />
-            <el-option label="imagingReport" value="IMAGE" />
-            <el-option label="Other" value="OTHER" />
+        <el-form-item label="检查类型">
+          <el-select v-model="uploadForm.recordType" placeholder="请选择">
+            <el-option label="血液检查" value="BLOOD" />
+            <el-option label="尿液检查" value="URINE" />
+            <el-option label="肝功能" value="LIVER" />
+            <el-option label="肾功能" value="KIDNEY" />
+            <el-option label="骨代谢" value="BONE" />
+            <el-option label="铁代谢" value="IRON" />
+            <el-option label="影像报告" value="IMAGE" />
+            <el-option label="其他" value="OTHER" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Report files" required>
+        <el-form-item label="报告文件" required>
           <el-upload
             ref="uploadDialogRef"
             drag
@@ -454,17 +454,17 @@
             :on-change="handleFileChange"
           >
             <el-icon :size="40"><UploadFilled /></el-icon>
-            <div class="upload-text">Drag files here, <em>click to upload</em>, or paste images. Multiple files are supported.</div>
+            <div class="upload-text">将文件拖到此处、<em>点击上传</em>或粘贴图片，支持多文件。</div>
             <template #tip>
-              <div class="el-upload__tip">JPG, PNG, and PDF are supported. PDFs are limited to the first 30 pages.</div>
+              <div class="el-upload__tip">支持 JPG、PNG 和 PDF；PDF 最多处理前 30 页。</div>
             </template>
           </el-upload>
           <div v-if="isMobile" class="mobile-upload-actions">
             <el-button type="primary" plain size="small" @click="triggerCameraUpload('dialog')">
-              <el-icon><Camera /></el-icon> take a photoUpload
+              <el-icon><Camera /></el-icon> 拍照上传
             </el-button>
             <el-button type="info" plain size="small" @click="triggerAlbumUpload('dialog')">
-              <el-icon><Picture /></el-icon> from photo libraryselect
+              <el-icon><Picture /></el-icon> 从相册选择
             </el-button>
           </div>
         </el-form-item>
@@ -472,104 +472,104 @@
 
       <div v-if="recognizeLoading" class="recognize-loading">
         <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-        <span>AI positivein recognitionin, largefilecan canneedneed 1~3 minutes, Please please wait...</span>
+        <span>AI 正在识别，大文件可能需要 1～3 分钟，请耐心等待……</span>
       </div>
 
       <div v-if="recognizeResult" class="recognize-result">
-        <el-divider content-position="left">AI recognitionresult</el-divider>
+        <el-divider content-position="left">AI 识别结果</el-divider>
         <el-form :model="recognizedData" label-width="100px">
-          <el-form-item label="Examination Date">
+          <el-form-item label="检查日期">
             <el-date-picker v-model="recognizedData.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="Hospital">
+          <el-form-item label="医院">
             <el-input v-model="recognizedData.hospitalName" />
           </el-form-item>
-          <el-form-item label="Clinician">
+          <el-form-item label="医生">
             <el-input v-model="recognizedData.doctorName" />
           </el-form-item>
-          <el-form-item label="Notes">
+          <el-form-item label="备注">
             <el-input v-model="recognizedData.remark" type="textarea" :rows="2" />
           </el-form-item>
         </el-form>
 
-        <el-divider content-position="left">Examination item details</el-divider>
+        <el-divider content-position="left">检验项目明细</el-divider>
         <div class="recognize-items-toolbar">
-          <span class="recognize-items-count">total {{ recognizedData.items.length }} item</span>
+          <span class="recognize-items-count">共 {{ recognizedData.items.length }} 项</span>
           <div class="recognize-items-actions">
-            <el-button size="small" @click="dedupeRecognizedItemsLocal">mergeduplicateitem</el-button>
-            <el-button size="small" type="primary" plain @click="addRecognizedItem">Addonerow</el-button>
+            <el-button size="small" @click="dedupeRecognizedItemsLocal">合并重复项</el-button>
+            <el-button size="small" type="primary" plain @click="addRecognizedItem">新增一行</el-button>
           </div>
         </div>
         <el-table :data="recognizedData.items" border size="small" max-height="300" class="app-data-table recognize-items-table">
-          <el-table-column prop="itemName" label="Test item" min-width="140">
+          <el-table-column prop="itemName" label="检验项目" min-width="140">
             <template #default="{ row }">
-              <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
+              <el-input v-model="row.itemName" size="small" placeholder="检验项目名称" />
             </template>
           </el-table-column>
-          <el-table-column prop="resultValue" label="measured value" width="120">
+          <el-table-column prop="resultValue" label="检测值" width="120">
             <template #default="{ row }">
               <el-input v-model="row.resultValue" size="small" />
             </template>
           </el-table-column>
-          <el-table-column prop="unit" label="Unit" width="88">
+          <el-table-column prop="unit" label="单位" width="88">
             <template #default="{ row }">
               <el-input v-model="row.unit" size="small" />
             </template>
           </el-table-column>
-          <el-table-column prop="referenceRange" label="Reference Range" width="120">
+          <el-table-column prop="referenceRange" label="参考范围" width="120">
             <template #default="{ row }">
               <el-input v-model="row.referenceRange" size="small" />
             </template>
           </el-table-column>
-          <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
+          <el-table-column prop="isAbnormal" label="状态" width="88" align="center">
             <template #default="{ row }">
               <el-select v-model="row.isAbnormal" size="small" style="width: 76px">
-                <el-option label="Normal" :value="0" />
-                <el-option label="high" :value="1" />
-                <el-option label="low" :value="-1" />
+                <el-option label="正常" :value="0" />
+                <el-option label="偏高" :value="1" />
+                <el-option label="偏低" :value="-1" />
               </el-select>
             </template>
           </el-table-column>
-          <el-table-column label="Actions" width="72" fixed="right" align="center">
+          <el-table-column label="操作" width="72" fixed="right" align="center">
             <template #default="{ $index }">
-              <el-button link type="danger" size="small" @click="removeRecognizedItem($index)">Delete</el-button>
+              <el-button link type="danger" size="small" @click="removeRecognizedItem($index)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
       </div>
 
       <template #footer>
-        <el-button @click="uploadDialogVisible = false">Cancel</el-button>
-        <el-button v-if="!recognizeResult" type="primary" :loading="recognizeLoading" @click="startRecognize">Start recognition</el-button>
-        <el-button v-else type="success" @click="saveRecognizedRecord">Save record</el-button>
+        <el-button @click="uploadDialogVisible = false">取消</el-button>
+        <el-button v-if="!recognizeResult" type="primary" :loading="recognizeLoading" @click="startRecognize">开始识别</el-button>
+        <el-button v-else type="success" @click="saveRecognizedRecord">保存记录</el-button>
       </template>
     </el-dialog>
 
     <!-- Detailsdialog -->
-    <el-dialog v-model="detailDialogVisible" title="Medical record details" width="min(900px, 95vw)" destroy-on-close>
+    <el-dialog v-model="detailDialogVisible" title="医疗记录详情" width="min(900px, 95vw)" destroy-on-close>
       <el-descriptions :column="2" border v-if="currentRecord">
-        <el-descriptions-item label="Patient">{{ currentRecord.patientName }}</el-descriptions-item>
-        <el-descriptions-item label="Examination Date">{{ currentRecord.recordDate }}</el-descriptions-item>
-        <el-descriptions-item label="Examination Type">{{ getRecordTypeName(currentRecord.recordType) }}</el-descriptions-item>
-        <el-descriptions-item label="Hospital">{{ currentRecord.hospitalName }}</el-descriptions-item>
-        <el-descriptions-item label="Department">{{ currentRecord.deptName }}</el-descriptions-item>
-        <el-descriptions-item label="Clinician">{{ currentRecord.doctorName }}</el-descriptions-item>
+        <el-descriptions-item label="患者">{{ currentRecord.patientName }}</el-descriptions-item>
+        <el-descriptions-item label="检查日期">{{ currentRecord.recordDate }}</el-descriptions-item>
+        <el-descriptions-item label="检查类型">{{ getRecordTypeName(currentRecord.recordType) }}</el-descriptions-item>
+        <el-descriptions-item label="医院">{{ currentRecord.hospitalName }}</el-descriptions-item>
+        <el-descriptions-item label="科室">{{ currentRecord.deptName }}</el-descriptions-item>
+        <el-descriptions-item label="医生">{{ currentRecord.doctorName }}</el-descriptions-item>
       </el-descriptions>
 
-      <el-divider content-position="left">Examination item details</el-divider>
+      <el-divider content-position="left">检验项目明细</el-divider>
       <el-table :data="currentRecord?.items || []" class="app-data-table" stripe>
-        <el-table-column prop="itemName" label="Test item" width="150" />
-        <el-table-column prop="resultValue" label="measured value" width="120" />
-        <el-table-column prop="unit" label="Unit" width="80" />
-        <el-table-column prop="referenceRange" label="Reference Range" width="150" />
-        <el-table-column prop="isAbnormal" label="Status" width="100">
+        <el-table-column prop="itemName" label="检验项目" width="150" />
+        <el-table-column prop="resultValue" label="检测值" width="120" />
+        <el-table-column prop="unit" label="单位" width="80" />
+        <el-table-column prop="referenceRange" label="参考范围" width="150" />
+        <el-table-column prop="isAbnormal" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getAbnormalType(row.isAbnormal)">{{ getAbnormalText(row.isAbnormal) }}</el-tag>
           </template>
         </el-table-column>
       </el-table>
 
-      <el-divider content-position="left">Attachmentimage</el-divider>
+      <el-divider content-position="left">附件图片</el-divider>
       <div v-if="detailImageAttachments.length" class="attachment-images">
         <el-image
           v-for="(att, index) in detailImageAttachments"
@@ -581,113 +581,113 @@
           class="attachment-image"
         />
       </div>
-      <el-empty v-else description="No image attachments. Save the record before uploading images." :image-size="64" />
+      <el-empty v-else description="暂无图片附件，请先保存记录再上传。" :image-size="64" />
       <div v-if="detailOtherAttachments.length" class="detail-other-attachments">
         <div v-for="att in detailOtherAttachments" :key="att.id" class="detail-pdf-item">
           <el-icon><Document /></el-icon>
-          <span>{{ att.fileName || 'PDF Attachment' }}</span>
-          <el-tag size="small" type="info">Archived file; preview unavailable</el-tag>
+          <span>{{ att.fileName || 'PDF 附件' }}</span>
+          <el-tag size="small" type="info">文件已归档，暂不支持预览</el-tag>
         </div>
       </div>
     </el-dialog>
 
     <!-- Editdialog -->
-    <el-dialog v-model="editDialogVisible" title="Edit medical record" width="min(900px, 95vw)" :close-on-click-modal="false" destroy-on-close>
+    <el-dialog v-model="editDialogVisible" title="编辑医疗记录" width="min(900px, 95vw)" :close-on-click-modal="false" destroy-on-close>
       <el-form :model="editForm" label-width="100px">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Patient">
-              <el-select v-model="editForm.patientId" placeholder="Select a patient" filterable style="width: 100%">
+            <el-form-item label="患者">
+              <el-select v-model="editForm.patientId" placeholder="选择患者" filterable style="width: 100%">
                 <el-option v-for="patient in patientList" :key="patient.id" :label="patient.patientName" :value="patient.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Examination Date">
+            <el-form-item label="检查日期">
               <el-date-picker v-model="editForm.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Examination Type">
-              <el-select v-model="editForm.recordType" placeholder="Select" style="width: 100%">
-                <el-option label="blood test" value="BLOOD" />
-                <el-option label="urinalysis" value="URINE" />
-                <el-option label="liverfeature" value="LIVER" />
-                <el-option label="kidneyfeature" value="KIDNEY" />
-                <el-option label="bone metabolism" value="BONE" />
-                <el-option label="iron metabolism" value="IRON" />
-                <el-option label="imagingReport" value="IMAGE" />
-                <el-option label="Other" value="OTHER" />
+            <el-form-item label="检查类型">
+              <el-select v-model="editForm.recordType" placeholder="请选择" style="width: 100%">
+                <el-option label="血液检查" value="BLOOD" />
+                <el-option label="尿液检查" value="URINE" />
+                <el-option label="肝功能" value="LIVER" />
+                <el-option label="肾功能" value="KIDNEY" />
+                <el-option label="骨代谢" value="BONE" />
+                <el-option label="铁代谢" value="IRON" />
+                <el-option label="影像报告" value="IMAGE" />
+                <el-option label="其他" value="OTHER" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Hospital">
+            <el-form-item label="医院">
               <el-input v-model="editForm.hospitalName" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Clinician">
+            <el-form-item label="医生">
               <el-input v-model="editForm.doctorName" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Notes">
+            <el-form-item label="备注">
               <el-input v-model="editForm.remark" type="textarea" :rows="1" />
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
 
-      <el-divider content-position="left">Examination item details</el-divider>
+      <el-divider content-position="left">检验项目明细</el-divider>
       <div class="recognize-items-toolbar">
-        <span class="recognize-items-count">total {{ editItems.length }} item</span>
+        <span class="recognize-items-count">共 {{ editItems.length }} 项</span>
         <div class="recognize-items-actions">
-          <el-button size="small" type="primary" plain @click="addEditItem">Addonerow</el-button>
+          <el-button size="small" type="primary" plain @click="addEditItem">新增一行</el-button>
         </div>
       </div>
       <el-table :data="editItems" border size="small" max-height="300" class="app-data-table recognize-items-table">
-        <el-table-column prop="itemName" label="Test item" min-width="140">
+        <el-table-column prop="itemName" label="检验项目" min-width="140">
           <template #default="{ row }">
-            <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
+            <el-input v-model="row.itemName" size="small" placeholder="检验项目名称" />
           </template>
         </el-table-column>
-        <el-table-column prop="resultValue" label="measured value" width="120">
+        <el-table-column prop="resultValue" label="检测值" width="120">
           <template #default="{ row }">
             <el-input v-model="row.resultValue" size="small" />
           </template>
         </el-table-column>
-        <el-table-column prop="unit" label="Unit" width="88">
+        <el-table-column prop="unit" label="单位" width="88">
           <template #default="{ row }">
             <el-input v-model="row.unit" size="small" />
           </template>
         </el-table-column>
-        <el-table-column prop="referenceRange" label="Reference Range" width="120">
+        <el-table-column prop="referenceRange" label="参考范围" width="120">
           <template #default="{ row }">
             <el-input v-model="row.referenceRange" size="small" />
           </template>
         </el-table-column>
-        <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
+        <el-table-column prop="isAbnormal" label="状态" width="88" align="center">
           <template #default="{ row }">
             <el-select v-model="row.isAbnormal" size="small" style="width: 76px">
-              <el-option label="Normal" :value="0" />
-              <el-option label="high" :value="1" />
-              <el-option label="low" :value="-1" />
+              <el-option label="正常" :value="0" />
+              <el-option label="偏高" :value="1" />
+              <el-option label="偏低" :value="-1" />
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="Actions" width="72" fixed="right" align="center">
+        <el-table-column label="操作" width="72" fixed="right" align="center">
           <template #default="{ $index }">
-            <el-button link type="danger" size="small" @click="removeEditItem($index)">Delete</el-button>
+            <el-button link type="danger" size="small" @click="removeEditItem($index)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <el-divider content-position="left">Attachmentimage</el-divider>
+      <el-divider content-position="left">附件图片</el-divider>
       <el-upload
         ref="editAttachmentUploadRef"
         action="#"
@@ -700,10 +700,10 @@
         class="edit-attachment-upload"
       >
         <el-button type="primary" plain size="small">
-          <el-icon><Upload /></el-icon> UploadnewAttachment
+          <el-icon><Upload /></el-icon> 上传新附件
         </el-button>
         <template #tip>
-          <div class="el-upload__tip">can UploadReportimageasfor Attachmentarchive, support jpg, png, pdf</div>
+          <div class="el-upload__tip">可上传报告图片作为附件归档，支持 JPG、PNG、PDF。</div>
         </template>
       </el-upload>
 
@@ -731,8 +731,8 @@
       </template>
 
       <template #footer>
-        <el-button @click="editDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="saveEditRecord">Save</el-button>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveEditRecord">保存</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -765,13 +765,13 @@ import { compressImageFile, formatFileSize, isImageFile } from '@/utils/imageCom
 use([CanvasRenderer, EchartsLineChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent]);
 
 const LIST_COLUMN_DEFS = [
-  { key: 'recordDate', label: 'Date' },
-  { key: 'patientName', label: 'Patient' },
-  { key: 'recordType', label: 'type' },
-  { key: 'hospitalName', label: 'Hospital', default: false },
-  { key: 'doctorName', label: 'Clinician', default: false },
-  { key: 'items', label: 'Test items' },
-  { key: 'abnormal', label: 'Abnormal' }
+  { key: 'recordDate', label: '日期' },
+  { key: 'patientName', label: '患者' },
+  { key: 'recordType', label: '类型' },
+  { key: 'hospitalName', label: '医院', default: false },
+  { key: 'doctorName', label: '医生', default: false },
+  { key: 'items', label: '检验项目' },
+  { key: 'abnormal', label: '异常' }
 ];
 const { visibleKeys: listVisibleCols, isVisible: listColVisible, resetColumns: resetListColumns } =
   useTableColumns('medical-record-list', LIST_COLUMN_DEFS);
@@ -840,7 +840,7 @@ const uploadMode = ref('recognize');
 
 const archiveForm = reactive({
   recordDate: '',
-  hospitalName: 'Huangchuan CountypersonpeopleHospital',
+  hospitalName: '县人民医院',
   doctorName: '',
   remark: ''
 });
@@ -883,14 +883,14 @@ const trendLoading = ref(false);
 const allItemNames = ref([]);
 
 const recordTypeMap = {
-  BLOOD: 'blood test',
-  URINE: 'urinalysis',
-  LIVER: 'liverfeature',
-  KIDNEY: 'kidneyfeature',
-  BONE: 'bone metabolism',
-  IRON: 'iron metabolism',
-  IMAGE: 'imagingReport',
-  OTHER: 'Other'
+  BLOOD: '血液检查',
+  URINE: '尿液检查',
+  LIVER: '肝功能',
+  KIDNEY: '肾功能',
+  BONE: '骨代谢',
+  IRON: '铁代谢',
+  IMAGE: '影像报告',
+  OTHER: '其他'
 };
 
 function getRecordTypeName(type) {
@@ -948,28 +948,28 @@ async function handleEditAttachmentChange(file) {
       fileSize: rawFile.size,
       fileContent: base64
     });
-    ElMessage.success('Attachment added');
+    ElMessage.success('附件已添加');
   } catch (e) {
-    ElMessage.error('Failed to process attachment: ' + e.message);
+    ElMessage.error('附件处理失败：' + e.message);
   }
 }
 
 const pageTitle = computed(() => {
   const map = {
-    list: 'Medical records',
-    upload: 'Upload and Recognize',
-    abnormal: 'Abnormal results',
-    trend: 'Result Trends'
+    list: '医疗记录',
+    upload: '上传并识别',
+    abnormal: '异常结果',
+    trend: '指标趋势'
   };
-  return map[activeMenu.value] || 'Medical records';
+  return map[activeMenu.value] || '医疗记录';
 });
 
 const pageSubtitle = computed(() => {
   const map = {
-    list: 'Manage historical reports and review imported data quality.',
-    upload: 'Upload reports and review the AI-extracted draft before saving.',
-    abnormal: 'Focus follow-up on stored results marked high or low.',
-    trend: 'Track how a selected test result changes over time.'
+    list: '管理历史报告并核对导入数据质量。',
+    upload: '上传报告，并在保存前审核 AI 提取的草稿。',
+    abnormal: '集中跟进已标记为偏高或偏低的结果。',
+    trend: '跟踪选定检验指标随时间的变化。'
   };
   return map[activeMenu.value] || '';
 });
@@ -1043,7 +1043,7 @@ function resetUploadState() {
   uploadForm.recordType = '';
   uploadMode.value = 'recognize';
   archiveForm.recordDate = '';
-  archiveForm.hospitalName = 'Huangchuan CountypersonpeopleHospital';
+  archiveForm.hospitalName = '潢川县人民医院';
   archiveForm.doctorName = '';
   archiveForm.remark = '';
   archiveItems.value = [];
@@ -1051,7 +1051,7 @@ function resetUploadState() {
   activeRecognizeTab.value = '0';
   recognizedData.items = [];
   recognizedData.recordDate = '';
-  recognizedData.hospitalName = 'Huangchuan CountypersonpeopleHospital';
+  recognizedData.hospitalName = '潢川县人民医院';
   recognizedData.doctorName = '';
   recognizedData.remark = '';
   recognizeResult.value = false;
@@ -1111,7 +1111,7 @@ function getAbnormalType(status) {
 function getAbnormalText(status) {
   if (status === 1) return 'high';
   if (status === -1) return 'low';
-  return 'Normal';
+  return '正常';
 }
 
 function normalizeItemDedupeKey(item) {
@@ -1171,9 +1171,9 @@ function dedupeRecognizedItemsLocal() {
   rec.items = dedupeRecognizedItems(rec.items);
   const removed = before - rec.items.length;
   if (removed > 0) {
-    ElMessage.success(`Merged ${removed} duplicate items`);
+    ElMessage.success(`已合并 ${removed} 个重复项目`);
   } else {
-    ElMessage.info('not sendcurrentcan merge duplicateitem');
+    ElMessage.info('当前没有可合并的重复项目');
   }
 }
 
@@ -1185,7 +1185,7 @@ async function loadRecords() {
       records.value = res.data || [];
     }
   } catch (e) {
-    ElMessage.error('Failed to load: ' + e.message);
+    ElMessage.error('加载失败：' + e.message);
   } finally {
     loading.value = false;
   }
@@ -1195,7 +1195,7 @@ async function loadTrend() {
   const patient = patientList.value.find(p => p.id === trendForm.patientId);
   trendForm.patientName = patient?.patientName || '';
   if (!trendForm.patientId || !trendForm.itemName) {
-    ElMessage.warning('Select a patient and a test item');
+    ElMessage.warning('请选择患者和检验项目');
     return;
   }
   trendLoading.value = true;
@@ -1204,13 +1204,13 @@ async function loadTrend() {
     if (res.code === 200) {
       trendData.value = res.data || [];
       if (trendData.value.length === 0) {
-        ElMessage.info('not findto this indicator historyrecord');
+        ElMessage.info('未找到该指标的历史记录');
       }
     } else {
-      ElMessage.error(res.message || 'Query failed');
+      ElMessage.error(res.message || '查询失败');
     }
   } catch (e) {
-    ElMessage.error('Query failed: ' + e.message);
+    ElMessage.error('查询失败：' + e.message);
   } finally {
     trendLoading.value = false;
   }
@@ -1239,7 +1239,7 @@ async function loadItemNames() {
     }
   } catch (e) {
     console.error('Failed to load test items', e);
-    ElMessage.warning('The test item list could not be loaded; you can still enter an item manually');
+    ElMessage.warning('检验项目列表加载失败，你仍可手动输入项目');
   }
 }
 
@@ -1267,7 +1267,7 @@ async function handleFileChange(file) {
       const before = raw.size;
       const next = await compressImageFile(raw);
       if (next.size < before) {
-        ElMessage.info(`Compressed: ${formatFileSize(before)} → ${formatFileSize(next.size)}`);
+        ElMessage.info(`已压缩：${formatFileSize(before)} → ${formatFileSize(next.size)}`);
       }
       selectedFiles.value.push(next);
       return;
@@ -1306,11 +1306,11 @@ function triggerAlbumUpload(target) {
 
 async function startRecognize() {
   if (!selectedFiles.value || selectedFiles.value.length === 0) {
-    ElMessage.warning('Upload at least one report file');
+    ElMessage.warning('请至少上传一份报告文件');
     return;
   }
   if (!uploadForm.patientId) {
-    ElMessage.warning('Select a patient');
+    ElMessage.warning('请选择患者');
     return;
   }
   recognizeLoading.value = true;
@@ -1330,16 +1330,16 @@ async function startRecognize() {
         ElMessage.warning(data.warning);
       }
     } else {
-      ElMessage.error(res.msg || res.message || 'Recognition failed');
+      ElMessage.error(res.msg || res.message || '识别失败');
     }
   } catch (e) {
     const status = e.response?.status;
     if (status === 413) {
-      ElMessage.error('The image was rejected because it is too large. Choose a smaller file or contact an administrator.');
+      ElMessage.error('图片过大而被拒绝，请选择较小的文件或联系管理员。');
     } else if (e.message?.includes('timeout')) {
-      ElMessage.error('Recognition timed out. Try a smaller file or retry on a faster connection.');
+      ElMessage.error('识别超时，请尝试较小的文件或在网络更稳定时重试。');
     } else {
-      ElMessage.error('Recognition failed: ' + (e.message || 'Unknown error'));
+      ElMessage.error('识别失败：' + (e.message || '未知错误'));
     }
   } finally {
     recognizeLoading.value = false;
@@ -1401,11 +1401,11 @@ function removeArchiveItem(index) {
 
 async function saveArchiveRecord() {
   if (!selectedFiles.value || selectedFiles.value.length === 0) {
-    ElMessage.warning('Upload at least one report file');
+    ElMessage.warning('请至少上传一份报告文件');
     return;
   }
   if (!uploadForm.patientId) {
-    ElMessage.warning('Select a patient');
+    ElMessage.warning('请选择患者');
     return;
   }
   archiveSaving.value = true;
@@ -1431,15 +1431,15 @@ async function saveArchiveRecord() {
     }));
     const res = await api.saveRecord(record, items, attachments);
     if (res.code === 200) {
-      ElMessage.success('Record saved successfully');
+      ElMessage.success('记录保存成功');
       resetUploadState();
       uploadRef.value?.clearFiles();
       loadRecords();
     } else {
-      ElMessage.error(res.message || res.msg || 'Failed to save');
+      ElMessage.error(res.message || res.msg || '保存失败');
     }
   } catch (e) {
-    ElMessage.error('Failed to save: ' + e.message);
+    ElMessage.error('保存失败：' + e.message);
   } finally {
     archiveSaving.value = false;
   }
@@ -1466,12 +1466,12 @@ async function saveRecognizedRecord() {
       const itemsList = list.map(rec => mapItemsForSave(rec.items));
       const res = await api.saveRecordsBatch(records, itemsList, attachments);
       if (res.code === 200) {
-        ElMessage.success(res.data || res.msg || 'Saved successfully');
+        ElMessage.success(res.data || res.msg || '保存成功');
         uploadDialogVisible.value = false;
         resetUploadState();
         loadRecords();
       } else {
-        ElMessage.error(res.message || res.msg || 'Failed to save');
+        ElMessage.error(res.message || res.msg || '保存失败');
       }
       return;
     }
@@ -1490,15 +1490,15 @@ async function saveRecognizedRecord() {
     const items = mapItemsForSave(rec.items);
     const res = await api.saveRecord(record, items, attachments);
     if (res.code === 200) {
-      ElMessage.success('Saved successfully');
+      ElMessage.success('保存成功');
       uploadDialogVisible.value = false;
       resetUploadState();
       loadRecords();
     } else {
-      ElMessage.error(res.message || res.msg || 'Failed to save');
+      ElMessage.error(res.message || res.msg || '保存失败');
     }
   } catch (e) {
-    ElMessage.error('Failed to save: ' + e.message);
+    ElMessage.error('保存失败：' + e.message);
   }
 }
 
@@ -1510,22 +1510,22 @@ async function viewDetail(row) {
       detailDialogVisible.value = true;
     }
   } catch (e) {
-    ElMessage.error('Failed to load details: ' + e.message);
+    ElMessage.error('详情加载失败：' + e.message);
   }
 }
 
 async function deleteRecord(row) {
   try {
-    await ElMessageBox.confirm('ConfirmneedDeletethisitemsMedical Records?', 'Notice', { type: 'warning' });
+    await ElMessageBox.confirm('确认删除这条医疗记录吗？', '提示', { type: 'warning' });
     const res = await api.deleteRecord(row.id);
     if (res.code === 200) {
-      ElMessage.success('Deleted successfully');
+      ElMessage.success('删除成功');
       loadRecords();
     } else {
-      ElMessage.error(res.message || 'Failed to delete');
+      ElMessage.error(res.message || '删除失败');
     }
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error('Failed to delete: ' + e.message);
+    if (e !== 'cancel') ElMessage.error('删除失败：' + e.message);
   }
 }
 
@@ -1561,7 +1561,7 @@ async function openEditDialog(row) {
       editDialogVisible.value = true;
     }
   } catch (e) {
-    ElMessage.error('Failed to load form data: ' + e.message);
+    ElMessage.error('表单数据加载失败：' + e.message);
   }
 }
 
@@ -1611,14 +1611,14 @@ async function saveEditRecord() {
       : [];
     const res = await api.updateRecord(record, items, attachments);
     if (res.code === 200) {
-      ElMessage.success('Saved successfully');
+      ElMessage.success('保存成功');
       editDialogVisible.value = false;
       loadRecords();
     } else {
-      ElMessage.error(res.message || 'Failed to save');
+      ElMessage.error(res.message || '保存失败');
     }
   } catch (e) {
-    ElMessage.error('Failed to save: ' + e.message);
+    ElMessage.error('保存失败：' + e.message);
   }
 }
 
@@ -1636,14 +1636,14 @@ function handlePaste(e) {
     const file = item.getAsFile();
     if (!file) continue;
     if (selectedFiles.value.length + added >= 5) {
-      ElMessage.warning('You can paste up to 5 images');
+      ElMessage.warning('最多可粘贴 5 张图片');
       break;
     }
     targetRef.value?.handleStart(file);
     added++;
   }
   if (added > 0) {
-    ElMessage.success(`Pasted ${added} images`);
+    ElMessage.success(`已粘贴 ${added} 张图片`);
   }
 }
 

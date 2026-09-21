@@ -74,7 +74,7 @@ class MedicationReminderWorkflowTest {
         when(intakes.selectOne(any())).thenReturn(task);
         service.checkAndTriggerReminders();
         assertEquals("MISSED", task.getStatus());
-        verify(delivery).notifyUser(eq(7L), eq("Medication Reminders"), contains("testMedication"));
+        verify(delivery).notifyUser(eq(7L), eq("用药提醒"), contains("testMedication"));
         service.checkAndTriggerReminders();
         verify(delivery, times(1)).notifyUser(any(), anyString(), anyString());
     }

@@ -53,7 +53,7 @@ public class ClinicalWorkbenchService {
                 .orderByDesc("triggered_at").last("limit 100"));
         for (AlertRecord alert : activeAlerts) {
             Map<String, Object> item = attentionItem("ALERT", alert.getAlertLevel(), alert.getAlertTitle(),
-                    alert.getTriggeredValue(), alert.getTriggeredAt(), "Review and document the clinical response",
+                    alert.getTriggeredValue(), alert.getTriggeredAt(), "复核并记录临床处置情况",
                     "/health-analysis?tab=alert", alert.getId());
             item.put("status", alert.getStatus());
             item.put("occurrenceCount", alert.getOccurrenceCount());
@@ -70,16 +70,16 @@ public class ClinicalWorkbenchService {
             Medication medication = medicationById.get(task.getMedicationId());
             String severity = "MISSED".equals(task.getStatus()) ? "WARNING" : "INFO";
             items.add(attentionItem("MEDICATION", severity,
-                    (medication == null ? "Medication" : medication.getDrugName()) + " · " + task.getStatus(),
-                    task.getDosage(), task.getScheduledAt(), "Confirm taken, snooze, or record the reason",
+                    (medication == null ? "药品" : medication.getDrugName()) + " · " + intakeStatus(task.getStatus()),
+                    task.getDosage(), task.getScheduledAt(), "确认已服、稍后提醒或记录原因",
                     "/family-health?tab=today", task.getId()));
         }
 
         for (Map<String, Object> row : stockService.list(patientId)) {
             if (!Boolean.TRUE.equals(row.get("low"))) continue;
-            items.add(attentionItem("STOCK", "WARNING", "Low medication stock · " + row.get("drugName"),
-                    "Remaining " + row.get("quantity") + " " + row.get("unit"), null,
-                    "Replenish stock or revise the active prescription", "/care", row.get("id")));
+            items.add(attentionItem("STOCK", "WARNING", "药品库存不足 · " + row.get("drugName"),
+                    "剩余 " + row.get("quantity") + " " + row.get("unit"), null,
+                    "补充库存或修订当前医嘱", "/care", row.get("id")));
         }
 
         for (CareItem care : careItems.selectList(new QueryWrapper<CareItem>().eq("patient_id", patientId).orderByAsc("event_at"))) {
@@ -87,7 +87,7 @@ public class ClinicalWorkbenchService {
             LocalDateTime due = care.getEventAt() != null ? care.getEventAt() : care.getNotifyAt();
             if (due == null || due.isAfter(now)) continue;
             Map<String, Object> item = attentionItem("CARE", "WARNING", care.getTitle(), care.getKind(), due,
-                    "Complete, reassign, or document why it is deferred", "/care", care.getId());
+                    "完成任务、重新指派或记录延期原因", "/care", care.getId());
             item.put("ownerId", care.getAssignedUserId() == null ? care.getUserId() : care.getAssignedUserId());
             items.add(item);
         }
@@ -110,22 +110,22 @@ public class ClinicalWorkbenchService {
                 .collect(Collectors.groupingBy(r -> r.getSourceType() + ":" + r.getSourceExternalId()));
         for (MedicalRecord record : records) {
             if ("REVIEW_REQUIRED".equals(record.getVerificationStatus())) {
-                issues.add(issue("REVIEW", "WARNING", "Imported record needs review", recordLabel(record),
+                issues.add(issue("REVIEW", "WARNING", "导入记录需要审核", recordLabel(record),
                         "medical-record", record.getId(), record.getConfidenceScore()));
             }
             if (record.getConfidenceScore() != null && record.getConfidenceScore().compareTo(new BigDecimal("0.80")) < 0) {
-                issues.add(issue("LOW_CONFIDENCE", "WARNING", "Low-confidence recognition", recordLabel(record),
+                issues.add(issue("LOW_CONFIDENCE", "WARNING", "识别置信度较低", recordLabel(record),
                         "medical-record", record.getId(), record.getConfidenceScore()));
             }
             if (record.getRecordDate() == null || record.getHospitalName() == null || record.getHospitalName().trim().isEmpty()) {
-                issues.add(issue("MISSING_CONTEXT", "INFO", "Record context is incomplete",
-                        recordLabel(record) + " · add date and facility", "medical-record", record.getId(), null));
+                issues.add(issue("MISSING_CONTEXT", "INFO", "记录上下文不完整",
+                        recordLabel(record) + " · 请补充日期和医疗机构", "medical-record", record.getId(), null));
             }
         }
         for (Map.Entry<String, List<MedicalRecord>> entry : externalIds.entrySet()) {
             if (entry.getValue().size() > 1) {
-                issues.add(issue("DUPLICATE", "WARNING", "Possible duplicate imported records",
-                        entry.getKey() + " appears " + entry.getValue().size() + " times", "medical-record",
+                issues.add(issue("DUPLICATE", "WARNING", "可能存在重复导入记录",
+                        entry.getKey() + " 出现 " + entry.getValue().size() + " 次", "medical-record",
                         entry.getValue().get(0).getId(), null));
             }
         }
@@ -133,15 +133,15 @@ public class ClinicalWorkbenchService {
                 .eq("patient_id", patientId).orderByDesc("record_date").last("limit 60"));
         for (DialysisRecord row : dialysis) {
             if ("INCOMPLETE".equals(row.getRecordType()) || row.getSessionMinutes() == null || row.getKtv() == null && row.getUrr() == null) {
-                issues.add(issue("DIALYSIS_COMPLETENESS", "INFO", "Dialysis quality fields are incomplete",
-                        String.valueOf(row.getRecordDate()) + " · add duration and Kt/V or URR when available",
+                issues.add(issue("DIALYSIS_COMPLETENESS", "INFO", "透析质量字段不完整",
+                        String.valueOf(row.getRecordDate()) + " · 如有数据，请补充时长及 Kt/V 或 URR",
                         "dialysis", row.getId(), null));
             }
         }
         List<AiAnalysisRecord> drafts = analysisRecords.selectList(new QueryWrapper<AiAnalysisRecord>()
                 .eq("patient_id", patientId).eq("review_status", "REVIEW_REQUIRED").orderByDesc("created_at").last("limit 50"));
         for (AiAnalysisRecord draft : drafts) {
-            issues.add(issue("AI_DRAFT", "WARNING", "AI analysis draft needs clinical review",
+            issues.add(issue("AI_DRAFT", "WARNING", "AI 分析草稿需要临床审核",
                     draft.getPeriodLabel(), "ai-analysis", draft.getId(), null));
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -162,21 +162,21 @@ public class ClinicalWorkbenchService {
         Map<String, List<Medication>> byGeneric = active.stream().collect(Collectors.groupingBy(this::normalizedMedicationName));
         for (Map.Entry<String, List<Medication>> entry : byGeneric.entrySet()) {
             if (!entry.getKey().isEmpty() && entry.getValue().size() > 1) {
-                findings.add(safetyFinding("DUPLICATE", "WARNING", "Possible duplicate therapy",
+                findings.add(safetyFinding("DUPLICATE", "WARNING", "可能存在重复用药",
                         entry.getValue().stream().map(Medication::getDrugName).collect(Collectors.joining(" + ")),
-                        "Confirm whether both active entries are intended."));
+                        "请确认这两条启用记录是否均为预期医嘱。"));
             }
         }
         for (Medication medication : active) {
             String name = normalizedMedicationName(medication);
             if (!name.isEmpty() && allergies.contains(name)) {
-                findings.add(safetyFinding("ALLERGY", "CRITICAL", "Medication matches the recorded allergy list",
-                        medication.getDrugName(), "Do not change treatment in the app; contact the prescribing clinician or pharmacist promptly."));
+                findings.add(safetyFinding("ALLERGY", "CRITICAL", "药品与已记录的过敏清单匹配",
+                        medication.getDrugName(), "请勿在平台内自行变更治疗方案，应尽快联系开方医生或药师。"));
             }
             String haystack = (medication.getDrugName() + " " + medication.getGenericName() + " " + medication.getCategory()).toLowerCase(Locale.ROOT);
             if (haystack.contains("nsaid") || haystack.contains("ibuprofen") || haystack.contains("naproxen")) {
-                findings.add(safetyFinding("RENAL", "WARNING", "Renal-dose/renal-safety review suggested",
-                        medication.getDrugName(), "NSAIDs may be unsuitable in advanced kidney disease; verify the prescriber plan."));
+                findings.add(safetyFinding("RENAL", "WARNING", "建议复核肾功能剂量与用药安全",
+                        medication.getDrugName(), "NSAIDs 可能不适合晚期肾病患者，请核实开方方案。"));
             }
         }
         List<Map<String, Object>> rules = jdbc.queryForList("SELECT * FROM medication_safety_rule WHERE enabled=1 ORDER BY id");
@@ -187,7 +187,7 @@ public class ClinicalWorkbenchService {
             String b = String.valueOf(rule.get("ingredient_b")).toLowerCase(Locale.ROOT);
             if (containsMedication(names, a) && containsMedication(names, b)) {
                 findings.add(safetyFinding("INTERACTION", String.valueOf(rule.get("severity")),
-                        "Potential medication interaction", a + " + " + b,
+                        "潜在药物相互作用", a + " + " + b,
                         String.valueOf(rule.get("message")) + (rule.get("renal_note") == null ? "" : " " + rule.get("renal_note"))));
             }
         }
@@ -204,7 +204,7 @@ public class ClinicalWorkbenchService {
         out.put("adherenceRate", adherence);
         out.put("taken", taken);
         out.put("missedOrSkipped", missed);
-        out.put("disclaimer", "Screening is decision support only. A clinician or pharmacist must confirm every medication change.");
+        out.put("disclaimer", "筛查结果仅用于辅助决策，任何用药变更都必须由医生或药师确认。");
         return out;
     }
 
@@ -236,18 +236,18 @@ public class ClinicalWorkbenchService {
         }
         List<Map<String, Object>> flags = new ArrayList<>();
         BigDecimal avgIdwg = average(idwgValues), avgUfr = average(ufrValues), avgKtv = average(ktvValues), avgUrr = average(urrValues);
-        if (avgIdwg != null && avgIdwg.compareTo(new BigDecimal("4.0")) > 0) flags.add(metricFlag("IDWG", "WARNING", "Average interdialytic weight gain is above 4% of target dry weight."));
-        if (avgUfr != null && avgUfr.compareTo(new BigDecimal("13")) > 0) flags.add(metricFlag("UFR", "CRITICAL", "Average ultrafiltration rate is above 13 mL/kg/hour."));
-        if (avgKtv != null && avgKtv.compareTo(new BigDecimal("1.2")) < 0) flags.add(metricFlag("KT/V", "WARNING", "Average recorded Kt/V is below 1.2."));
-        if (avgUrr != null && avgUrr.compareTo(new BigDecimal("65")) < 0) flags.add(metricFlag("URR", "WARNING", "Average recorded URR is below 65%."));
-        if (accessIssues > 0) flags.add(metricFlag("ACCESS", "WARNING", accessIssues + " sessions include a vascular-access concern."));
+        if (avgIdwg != null && avgIdwg.compareTo(new BigDecimal("4.0")) > 0) flags.add(metricFlag("IDWG", "WARNING", "平均透析间期增重超过目标干体重的 4%。"));
+        if (avgUfr != null && avgUfr.compareTo(new BigDecimal("13")) > 0) flags.add(metricFlag("UFR", "CRITICAL", "平均超滤率超过 13 mL/kg/小时。"));
+        if (avgKtv != null && avgKtv.compareTo(new BigDecimal("1.2")) < 0) flags.add(metricFlag("KT/V", "WARNING", "记录的平均 Kt/V 低于 1.2。"));
+        if (avgUrr != null && avgUrr.compareTo(new BigDecimal("65")) < 0) flags.add(metricFlag("URR", "WARNING", "记录的平均 URR 低于 65%。"));
+        if (accessIssues > 0) flags.add(metricFlag("ACCESS", "WARNING", accessIssues + " 次透析存在血管通路问题。"));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rangeDays", range); out.put("sessions", sessions); out.put("sessionCount", rows.size());
         out.put("avgIdwgPercent", avgIdwg); out.put("avgUfr", avgUfr); out.put("avgKtv", avgKtv); out.put("avgUrr", avgUrr);
         out.put("accessIssueCount", accessIssues); out.put("flags", flags);
         out.put("scheduleWeekdays", profile == null ? null : profile.getDialysisWeekdays());
         out.put("scheduleTime", profile == null ? null : profile.getDialysisTime());
-        out.put("disclaimer", "Thresholds are screening cues, not treatment targets. The dialysis team must interpret them in clinical context.");
+        out.put("disclaimer", "阈值仅用于风险筛查，并非治疗目标；应由透析团队结合临床情况解读。");
         return out;
     }
 
@@ -267,7 +267,7 @@ public class ClinicalWorkbenchService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("patient", safePatient); out.put("clinical", profile); out.put("target", target); out.put("medications", active);
         out.put("latestDialysis", latest); out.put("unresolvedAlerts", unresolved); out.put("generatedAt", LocalDateTime.now());
-        out.put("disclaimer", "For emergency communication only. Verify identity, medication list, and allergies with the patient or treating team.");
+        out.put("disclaimer", "仅用于急救沟通。请与患者或诊疗团队核验身份、用药清单和过敏史。");
         return out;
     }
 
@@ -294,8 +294,16 @@ public class ClinicalWorkbenchService {
     }
 
     private String recordLabel(MedicalRecord record) {
-        return (record.getRecordDate() == null ? "Date missing" : record.getRecordDate()) + " · "
-                + (record.getHospitalName() == null ? "Facility missing" : record.getHospitalName());
+        return (record.getRecordDate() == null ? "日期缺失" : record.getRecordDate()) + " · "
+                + (record.getHospitalName() == null ? "医疗机构缺失" : record.getHospitalName());
+    }
+
+    private String intakeStatus(String status) {
+        if ("TAKEN".equals(status)) return "已服用";
+        if ("MISSED".equals(status)) return "已错过";
+        if ("SNOOZED".equals(status)) return "已稍后提醒";
+        if ("SKIPPED".equals(status)) return "已跳过";
+        return "待处理";
     }
 
     private String normalizedMedicationName(Medication medication) {

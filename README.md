@@ -1,69 +1,58 @@
-# Clarity Health
+# 澄明健康
 
-An open-source family health management platform for organizing care tasks, vital signs, medications, medical records, dialysis data, health analytics, notifications, and family collaboration in one workspace.
+一个开源的家庭健康管理平台，用于在同一工作台内组织照护任务、生命体征、用药、医疗记录、透析数据、健康分析、通知和家庭协作。
 
-[![Backend CI](https://img.shields.io/badge/backend-Spring%20Boot-6DB33F)](pom.xml)
-[![Frontend CI](https://img.shields.io/badge/frontend-Vue%203-42B883)](frontend/package.json)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![后端](https://img.shields.io/badge/backend-Spring%20Boot-6DB33F)](pom.xml)
+[![前端](https://img.shields.io/badge/frontend-Vue%203-42B883)](frontend/package.json)
+[![许可证：MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> This project helps people record and organize health information. It does not diagnose conditions or replace professional medical advice.
+> 本项目用于记录和整理健康信息，不提供疾病诊断，也不能替代专业医疗建议。
 
-## Product capabilities
+## 产品能力
 
-- Family-care workspace with patient switching, daily tasks, handovers, shared caregivers, symptom tracking, and visit questions.
-- Medication catalog, prescription history, reminders, dose check-ins, inventory, restocking, and low-stock warnings.
-- Blood-pressure and glucose tracking, personal targets, health timeline, and CSV export.
-- Medical-record upload, attachments, optional OCR, structured results, abnormal-result review, and trend charts.
-- Dialysis records, schedules, dry-weight management, text import, statistics, and AI-assisted analysis.
-- Nutrition diary and assessment, complication tracking, alert rules, reports, and scheduled analysis.
-- WeCom/DingTalk webhook notifications, browser notifications, delivery channels, and audit logs.
-- Account, role, menu, permission, privacy-masking, backup, and restore controls.
+- 家庭照护工作台：患者切换、每日任务、照护交接、共享照护、症状跟踪和就诊问题。
+- 用药管理：药品库、用药记录、提醒、服药确认、库存、补货和低库存预警。
+- 血压血糖：日常记录、个人目标、健康时间线和 CSV 导出。
+- 医疗记录：报告上传、附件、可选 OCR、结构化结果、异常复核和趋势图。
+- 透析管理：透析记录、排班、干体重、文本导入、统计和 AI 辅助分析。
+- 营养日记与评估、并发症跟踪、预警规则、健康报告和定时分析。
+- 企业微信／钉钉机器人通知、浏览器通知、通知渠道和操作审计。
+- 账号、角色、菜单、权限、隐私脱敏、备份和恢复。
 
-## Try the static demo
+## 静态演示
 
-The repository includes a backend-free interactive demo with fictional data:
+仓库内包含使用虚构数据、无需后端的交互演示：[demo/index.html](demo/index.html)。使用任意静态 HTTP 服务器启动 `demo` 目录即可预览。演示不会发送网络请求，也不会保存真实数据。
 
-- Source: [demo/index.html](demo/index.html)
-- Local preview: serve the `demo` directory with any static HTTP server.
-- Public GitHub Pages deployment: enable the included [workflow](.github/workflows/demo-pages.yml) after pushing the project to GitHub. The final public URL depends on your GitHub account and repository name.
+## 使用 Docker 启动完整演示
 
-The demo supports patient switching, care-task completion, medication inventory updates, blood-pressure entry, trend ranges, sample records, CSV export, and reset. It sends no network requests and stores no data.
-
-## Full local demo with Docker
-
-Requirements: Docker Engine 24+ and Docker Compose v2.
+要求：Docker Engine 24+、Docker Compose v2。
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Open `http://localhost:8088`. The optional Docker demo data creates this local-only account:
+打开 `http://localhost:8088`。可选演示数据会创建仅供本地使用的账号：
 
 ```text
-Username: demo
-Password: Demo@123456
+用户名：demo
+密码：Demo@123456
 ```
 
-Change all secrets before exposing a deployment to any network. The Docker demo is intended for evaluation, not production.
+将服务暴露到任何网络前，请更换全部密钥。Docker 演示仅用于评估，不应用于生产环境。
 
-## Technology stack
+## 技术栈
 
-- Backend: Java 8, Spring Boot 2.5, MyBatis-Plus, MySQL 8, JWT.
-- Frontend: Vue 3, Vite, Vue Router, Element Plus, ECharts.
-- Testing: JUnit 5, Mockito, H2 MySQL mode, Node test runner.
-- Deployment: Docker Compose, Nginx, GitHub Actions, GitHub Pages for the static demo.
+- 后端：Java 8、Spring Boot 2.5、MyBatis-Plus、MySQL 8、JWT。
+- 前端：Vue 3、Vite、Vue Router、Element Plus、ECharts。
+- 测试：JUnit 5、Mockito、H2 MySQL 模式、Node.js 测试运行器。
+- 部署：Docker Compose、Nginx、GitHub Actions、GitHub Pages。
 
-## Local development
+## 本地开发
 
-### Requirements
+环境要求：JDK 8、Maven 3.8+、Node.js 20+、MySQL 8.0+。
 
-- JDK 8
-- Maven 3.8+
-- Node.js 20+
-- MySQL 8.0+
-
-### 1. Create the database
+### 1. 创建数据库
 
 ```sql
 CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
@@ -73,11 +62,11 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 mysql -u root -p family_health < src/main/resources/sql/init.sql
 ```
 
-This is the first public release. Run [init.sql](src/main/resources/sql/init.sql) once for a new database; no migration scripts are required. It contains the complete schema and baseline configuration, creates no user account, and includes no real business data. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
+新建数据库时仅需执行一次 [init.sql](src/main/resources/sql/init.sql)。它包含完整表结构和基础配置，不创建用户账号，也不包含真实业务数据。[demo-data.sql](src/main/resources/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
 
-### 2. Configure environment variables
+### 2. 配置环境变量
 
-Copy `.env.example` and set at least:
+复制 `.env.example`，至少填写以下变量：
 
 ```dotenv
 DB_URL=jdbc:mysql://127.0.0.1:3306/family_health?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
@@ -89,17 +78,17 @@ BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=replace-with-a-strong-password
 ```
 
-The bootstrap administrator is created only when explicitly enabled and only if no account exists. Disable it after first sign-in and change the password immediately.
+仅当显式启用且数据库中没有账号时，系统才会创建初始管理员。首次登录并修改密码后，请关闭该功能。
 
-### 3. Start the backend
+### 3. 启动后端
 
 ```bash
 mvn spring-boot:run
 ```
 
-The API listens on `http://localhost:9090` by default.
+API 默认监听 `http://localhost:9090`。
 
-### 4. Start the frontend
+### 4. 启动前端
 
 ```bash
 cd frontend
@@ -107,41 +96,31 @@ npm ci
 npm run dev
 ```
 
-Vite prints the local URL. Set `VITE_API_BASE_URL` when the API is not available through `/api` on the same origin.
+Vite 会输出本地访问地址。当 API 不通过同源 `/api` 提供时，请配置 `VITE_API_BASE_URL`。
 
-## Key configuration
+## 关键配置
 
-| Variable | Purpose | Production guidance |
+| 变量 | 用途 | 生产建议 |
 | --- | --- | --- |
-| `DB_URL` | MySQL connection | Use TLS and a least-privilege database user |
-| `DB_USERNAME` / `DB_PASSWORD` | Database credentials | Store in a secret manager |
-| `JWT_SECRET` | Token signature | At least 32 random bytes; rotate deliberately |
-| `JWT_EXPIRATION` | Token lifetime | Use a short, risk-appropriate duration |
-| `APP_CORS_ALLOWED_ORIGINS` | Browser origins | List exact HTTPS origins |
-| `BOOTSTRAP_ADMIN_*` | First administrator | Enable once, then disable |
-| `OCR_VISION_*` | Optional OCR provider | Keep API keys server-side |
-| `AI_*` | Optional AI analysis | Review privacy and retention policies first |
-| `VITE_API_BASE_URL` | Frontend API prefix | Usually `/api` behind a reverse proxy |
+| `DB_URL` | MySQL 连接 | 启用 TLS，并使用最小权限数据库账号 |
+| `DB_USERNAME` / `DB_PASSWORD` | 数据库凭据 | 存放在密钥管理服务中 |
+| `JWT_SECRET` | 令牌签名 | 至少 32 个随机字节，并有计划地轮换 |
+| `JWT_EXPIRATION` | 令牌有效期 | 使用符合风险要求的较短时长 |
+| `APP_CORS_ALLOWED_ORIGINS` | 浏览器来源 | 仅填写明确的 HTTPS 来源 |
+| `BOOTSTRAP_ADMIN_*` | 初始管理员 | 仅启用一次，随后关闭 |
+| `OCR_VISION_*` | 可选 OCR 服务 | API 密钥仅保存在服务端 |
+| `AI_*` | 可选 AI 分析 | 先审查隐私和数据保留策略 |
+| `VITE_API_BASE_URL` | 前端 API 前缀 | 反向代理后通常为 `/api` |
 
-See [.env.example](.env.example) and [application.yml](src/main/resources/application.yml) for the complete list.
+完整配置请查看 [.env.example](.env.example) 和 [application.yml](src/main/resources/application.yml)。
 
-## Notifications
+## 通知与数据安全
 
-The platform can send proactive notifications through configured WeCom or DingTalk bot webhooks and browser notifications. A public IP is not required for outbound webhook delivery; the server only needs outbound HTTPS access.
+平台可通过企业微信或钉钉机器人 Webhook 及浏览器通知主动发送消息。Webhook 地址和机器人密钥属于敏感信息，API 返回时会脱敏，严禁提交到版本库。
 
-Receiving and processing inbound WeCom messages is a separate integration. It requires a WeCom custom application or a supported long-connection bot, signature verification, replay protection, permission scoping, and message-processing rules. A callback-based deployment normally needs a public HTTPS endpoint; a supported long-connection mode can avoid that requirement.
+`init.sql` 是新安装的唯一基线；`demo-data.sql` 只用于本地演示。应用启动时不会静默创建或修改生产表。对已有数据库执行人工操作前必须备份数据；后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
 
-Webhook URLs and bot secrets are sensitive. They are masked in API responses and must never be committed to source control.
-
-## Database policy
-
-- `init.sql` is the single baseline for a new installation and currently defines 42 tables.
-- `demo-data.sql` is strictly optional and must never be used in production.
-- The application does not silently create or alter production tables at startup.
-- `init.sql` is not an upgrade or reset tool for a populated database. Back up data before any manual database operation.
-- After the first public release, use versioned Flyway or Liquibase migrations for schema upgrades.
-
-## Test and build
+## 测试与构建
 
 ```bash
 mvn clean test
@@ -152,46 +131,33 @@ cd ../
 node --test demo/tests/*.test.mjs
 ```
 
-Convenience commands are also available through the [Makefile](Makefile):
+也可使用 [Makefile](Makefile) 执行 `make test` 和 `make build`。
 
-```bash
-make test
-make build
-```
+## 生产检查
 
-## Production checklist
+- 轮换数据库、JWT、AI、Webhook 和初始管理员凭据。
+- 首次初始化后关闭初始管理员创建功能。
+- 启用 HTTPS、精确 CORS 来源、安全反向代理头和请求大小限制。
+- 制定 MySQL 备份策略并定期验证恢复流程。
+- 大型附件应存放在带访问控制、恶意软件扫描和生命周期策略的对象存储中。
+- 上线前审查 [安全策略](SECURITY.md)、[开源发布检查表](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md) 和 [产品评审](docs/PRODUCT_REVIEW.md)。
+- Java 8 / Spring Boot 2.5 基线以兼容性为主；长期生产部署前应升级到受支持的运行时和框架。
 
-- Rotate all database, JWT, AI, webhook, and bootstrap credentials.
-- Disable bootstrap administrator creation after initial setup.
-- Use HTTPS, exact CORS origins, secure reverse-proxy headers, and request-size limits.
-- Use a managed MySQL backup policy and test restore procedures.
-- Store large attachments in access-controlled object storage with malware scanning and lifecycle rules.
-- Review the [security policy](SECURITY.md), [release checklist](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md), and [product review](docs/PRODUCT_REVIEW.md).
-- This Java 8 / Spring Boot 2.5 baseline favors compatibility. Upgrade to a supported runtime and framework before a long-lived public production deployment.
-
-## Documentation
-
-- [Platform User Guide](docs/USER_GUIDE.md)
-- [Family Care Guide](docs/family-care-guide.md)
-- [Everyday Health Workflows](docs/family-health-workflows.md)
-- [Open-source Release Checklist](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md)
-- [Product Review](docs/PRODUCT_REVIEW.md)
-
-## Project structure
+## 项目结构
 
 ```text
-├── deploy/                         # Backend image and Nginx examples
-├── demo/                           # Standalone interactive static demo
-├── docs/                           # User, deployment, and product documentation
-├── frontend/                       # Vue 3 web application
+├── deploy/                         # 后端镜像和 Nginx 示例
+├── demo/                           # 独立静态交互演示
+├── docs/                           # 用户、部署和产品文档
+├── frontend/                       # Vue 3 Web 应用
 ├── src/main/java/                  # Spring Boot API
 ├── src/main/resources/sql/
-│   ├── init.sql                    # Complete baseline for a new database
-│   └── demo-data.sql               # Optional local demo data
-├── .env.example                    # Configuration template without real secrets
-└── docker-compose.yml              # Local full-stack demo
+│   ├── init.sql                    # 新数据库完整基线
+│   └── demo-data.sql               # 可选本地演示数据
+├── .env.example                    # 不含真实密钥的配置模板
+└── docker-compose.yml              # 本地全栈演示
 ```
 
-## License
+## 许可证
 
-Released under the [MIT License](LICENSE).
+本项目采用 [MIT 许可证](LICENSE) 发布。

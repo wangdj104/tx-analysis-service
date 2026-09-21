@@ -3,16 +3,16 @@
     <header class="login-brand">
       <img src="/logo.svg?v=5" alt="" class="brand-logo" />
       <div class="brand-copy">
-        <span class="brand-name">Clarity Health</span>
-        <span class="brand-description">Personal Health Management Platform</span>
+        <span class="brand-name">澄明健康</span>
+        <span class="brand-description">个人健康管理平台</span>
       </div>
     </header>
 
     <div class="login-layout">
       <section class="login-intro" aria-labelledby="intro-title">
-        <p class="intro-eyebrow"><span></span> Make every health record meaningful</p>
-        <h1 id="intro-title">Track with care,<br />manage your health with confidence.</h1>
-        <p class="intro-description">Bring daily readings and medical records together,<br />so changes are clear and every day feels more secure.</p>
+        <p class="intro-eyebrow"><span></span> 让每一条健康记录都更有价值</p>
+        <h1 id="intro-title">用心记录，<br />从容管理健康。</h1>
+        <p class="intro-description">汇集日常监测与医疗记录，<br />看清变化，让每一天更安心。</p>
 
         <picture class="health-illustration">
           <source media="(max-width: 800px)" :srcset="careMomentsSmall" />
@@ -25,13 +25,13 @@
             decoding="async"
           />
         </picture>
-        <p class="intro-footer">Medical Records <span>·</span> Daily Monitoring <span>·</span> Trend Analysis</p>
+        <p class="intro-footer">医疗记录 <span>·</span> 日常监测 <span>·</span> 趋势分析</p>
       </section>
 
       <section class="login-card" aria-labelledby="login-title">
         <div class="login-heading">
           <div class="login-welcome">
-            <p class="welcome-label">Welcome back</p>
+            <p class="welcome-label">欢迎回来</p>
             <img
               :src="careMomentsSmall"
               alt=""
@@ -42,8 +42,8 @@
               decoding="async"
             />
           </div>
-          <h2 id="login-title">Sign in to Clarity Health</h2>
-          <p class="login-subtitle">Keep tracking and understand how your health changes.</p>
+          <h2 id="login-title">登录澄明健康</h2>
+          <p class="login-subtitle">持续记录，更清楚地了解健康变化。</p>
         </div>
 
         <el-form
@@ -54,24 +54,24 @@
           label-position="top"
           @submit.prevent="handleLogin"
         >
-          <el-form-item prop="username" label="Username">
+          <el-form-item prop="username" label="用户名">
             <el-input
               v-model="loginForm.username"
               name="username"
               autocomplete="username"
-              placeholder="Enter your username"
+              placeholder="请输入用户名"
               size="large"
               :prefix-icon="User"
             />
           </el-form-item>
 
-          <el-form-item prop="password" label="Password">
+          <el-form-item prop="password" label="密码">
             <el-input
               v-model="loginForm.password"
               name="password"
               autocomplete="current-password"
               type="password"
-              placeholder="Enter your password"
+              placeholder="请输入密码"
               size="large"
               :prefix-icon="Lock"
               show-password
@@ -85,16 +85,16 @@
             :loading="loading"
             class="login-button"
           >
-            {{ loading ? 'Signing in…' : 'Sign In' }}
+            {{ loading ? '正在登录…' : '登录' }}
             <el-icon v-if="!loading"><ArrowRight /></el-icon>
           </el-button>
         </el-form>
 
-        <p class="login-note"><el-icon><Lock /></el-icon>Sign in with an active account</p>
+        <p class="login-note"><el-icon><Lock /></el-icon>请使用已启用的账号登录</p>
       </section>
     </div>
 
-    <footer class="page-footer">Clarity Health <span>Health management for every day</span></footer>
+    <footer class="page-footer">澄明健康 <span>守护每一天的健康</span></footer>
   </main>
 </template>
 
@@ -118,11 +118,11 @@ const loginForm = reactive({
 
 const loginRules = {
   username: [
-    { required: true, message: 'Enter your username', trigger: 'blur' }
+    { required: true, message: '请输入用户名', trigger: 'blur' }
   ],
   password: [
-    { required: true, message: 'Enter your password', trigger: 'blur' },
-    { min: 6, message: 'Password must be at least 6 characters', trigger: 'blur' }
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, message: '密码至少需要 6 个字符', trigger: 'blur' }
   ]
 };
 
@@ -138,13 +138,13 @@ const handleLogin = async () => {
 
         if (res.code === 200) {
           saveAuthSession(res.data);
-          ElMessage.success('Signed in successfully');
+          ElMessage.success('登录成功');
           router.replace('/monitoring');
         } else {
-          ElMessage.error(res.msg || 'Sign-in failed');
+          ElMessage.error(res.msg || '登录失败');
         }
       } catch (error) {
-        ElMessage.error(error.message || 'Sign-in failed. Check your network connection.');
+        ElMessage.error(error.message || '登录失败，请检查网络连接。');
       } finally {
         loading.value = false;
       }

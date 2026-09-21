@@ -149,7 +149,7 @@ test('fallback navigation includes only authorized entries and preserves orphane
   assert.deepEqual(allPaths(result), [
     '/monitoring', '/dry-weight', '/health-analysis', '/health-analysis?tab=data-export', '/system/patient'
   ]);
-  assert.equal(result.find(item => item.label === 'Dialysis Management').path, '');
+  assert.equal(result.find(item => item.label === '透析管理').path, '');
 });
 
 test('normalization is idempotent and fallback definitions are not mutated between calls', () => {

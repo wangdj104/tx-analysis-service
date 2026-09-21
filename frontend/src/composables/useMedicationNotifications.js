@@ -28,8 +28,8 @@ export function useMedicationNotifications() {
         const dueTime = new Date(due?.replace(' ', 'T')).getTime()
         const key = `${task.id}:${due}`
         if (!Number.isFinite(dueTime) || dueTime > Date.now() || history.sent.includes(key)) continue
-        const notification = new Notification(`${currentPatientName.value || 'Family Member'} · Medication Reminders`, {
-          body: `${task.drugName || 'medication intake'} · ${task.dosage || 'As prescribed'}`,
+        const notification = new Notification(`${currentPatientName.value || '家庭成员'} · 用药提醒`, {
+          body: `${task.drugName || '服药任务'} · ${task.dosage || '遵医嘱服用'}`,
           tag: `medication-${task.id}`, requireInteraction: true
         })
         notification.onclick = () => { window.focus(); notification.close() }

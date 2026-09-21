@@ -12,6 +12,20 @@ import java.time.LocalDate;
 import java.util.Collections;
 
 class DialysisTextImportTest {
+    @Test void acceptsChineseTemplateAndUnits(){
+        DialysisTextImportService.Preview p=new DialysisTextImportService().parse("日期：2026-09-21\n上次透后体重：60.5 千克\n透前体重：62.3 公斤\n透后体重：60.2 kg\n超滤量：2.1 公斤\n间隔天数：2 天\n血压：128/76 毫米汞柱\n状态：正常");
+        assertTrue(p.getErrors().isEmpty());
+        assertEquals(1,p.getRows().size());
+        DialysisRecord row=p.getRows().get(0);
+        assertEquals(LocalDate.of(2026,9,21),row.getRecordDate());
+        assertEquals(new BigDecimal("62.3"),row.getOnWeight());
+        assertEquals(new BigDecimal("60.2"),row.getOffWeight());
+        assertEquals(new BigDecimal("2.1"),row.getUfAmount());
+        assertEquals(2,row.getIntervalDays());
+        assertEquals(128,row.getSystolicBp());
+        assertEquals(76,row.getDiastolicBp());
+    }
+
     @Test void missingDayAndPartialValuesStayMissing(){
         DialysisTextImportService.Preview p=new DialysisTextImportService().parse("Date: 2026-09-14\nPre-dialysis weight: 65.2\nPost-dialysis weight: missing\nBlood pressure: 120/80\nDate: 2026-09-16\nStatus: Missing\nMissing reason: Not retained\nDate: 2026-09-20; Pre-dialysis weight: 66kg; Fluid removed: 2.1");
         assertTrue(p.getErrors().isEmpty());assertEquals(3,p.getRows().size());assertNull(p.getRows().get(0).getOffWeight());assertNull(p.getRows().get(0).getIntervalDays());assertNull(p.getRows().get(1).getOnWeight());assertEquals("INCOMPLETE",p.getRows().get(1).getRecordType());assertEquals(new BigDecimal("2.1"),p.getRows().get(2).getUfAmount());

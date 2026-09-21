@@ -762,51 +762,51 @@ CREATE TABLE IF NOT EXISTS `notification_robot_config` (
 
 -- 10.1 System roles
 INSERT INTO `sys_role` (`role_code`, `role_name`, `description`, `status`) VALUES
-('admin', 'Administrator', 'System administrator with full permissions', 1),
-('user', 'Standard User', 'Standard application user', 1)
+('admin', '系统管理员', '拥有全部权限的系统管理员', 1),
+('user', '普通用户', '平台普通用户', 1)
 ON DUPLICATE KEY UPDATE `role_code` = `role_code`;
 
 -- 10.2 Navigation: top-level domains, task entries, and stable menu codes
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`) VALUES
-(28,0,'Workspace','workspace','/monitoring','Monitor','monitoring:view',1,0,1),
-(30,0,'Patient Center','patient-center','','UserFilled','patient:view',1,1,1),
-(8,30,'Patient Profiles','patient-profile','/system/patient','Avatar','patient:manage',1,1,1),
-(31,30,'Care Plan','patient-care','/family-health','Calendar','family-health:view',1,2,1),
-(1,0,'Dialysis Management','dialysis','/dialysis','Histogram','dialysis:view',1,2,1),
-(11,1,'Dialysis Records','dialysis-record','/dialysis?tab=data','Document','dialysis:record:view',1,1,1),
-(12,1,'Trend Analysis','dialysis-trend','/dialysis?tab=analysis','TrendCharts','dialysis:trend:view',1,2,1),
-(13,1,'Dry Weight Management','dialysis-dry-weight','/dry-weight','ScaleToOriginal','dry-weight:view',1,3,1),
-(14,1,'AI Health Analytics','dialysis-ai','/dialysis?tab=ai','Cpu','dialysis:ai:view',1,4,1),
-(15,1,'Dialysis Schedule','dialysis-schedule','/family-health?tab=schedule','Calendar','dialysis:schedule:view',1,5,1),
-(2,0,'Medical Records','clinical-record','/medical-record','FolderOpened','medical:view',1,3,1),
-(16,2,'Record List','clinical-record-list','/medical-record?tab=list','FolderOpened','medical:list:view',1,1,1),
-(17,2,'Upload Report','clinical-record-upload','/medical-record?tab=upload','Camera','medical:upload',1,2,1),
-(18,2,'Abnormal Results','clinical-abnormal','/medical-record?tab=abnormal','WarningFilled','medical:abnormal:view',1,3,1),
-(19,2,'Result Trends','clinical-trend','/medical-record?tab=trend','DataLine','medical:trend:view',1,4,1),
-(3,0,'Medication Management','medication','/medication','Goods','medication:view',1,4,1),
-(32,3,'Medication List','medication-catalog','/medication?tab=drugs','Box','medication:catalog:view',1,1,1),
-(33,3,'Medication Log','medication-log','/medication?tab=logs','Notebook','medication:log:view',1,2,1),
-(34,3,'Medication Reminders','medication-reminder','/medication?tab=remind','Bell','medication:reminder:view',1,3,1),
-(26,0,'Health Monitoring','health-monitoring','','Odometer','health-monitoring:view',1,5,1),
-(27,26,'Blood Pressure & Glucose','health-vitals','/bp-self-monitor','Odometer','bp-self-monitor:view',1,1,1),
-(20,26,'Complication Tracking','health-complication','/health-analysis?tab=complication','Warning','complication:view',1,2,1),
-(21,26,'Health Alerts','health-alert','/health-analysis?tab=alert','Bell','alert:view',1,3,1),
-(23,26,'Nutrition Diary','health-nutrition','/health-analysis?tab=nutrition','Apple','nutrition-diary:view',1,4,1),
-(35,26,'Nutrition Assessment','health-nutrition-assessment','/health-analysis?tab=nutrition-assessment','DataAnalysis','nutrition-assessment:view',1,5,1),
-(29,0,'Analytics & Reports','analysis-report','','DataAnalysis','analysis-report:view',1,6,1),
-(22,29,'Blood Pressure Pattern Analysis','analysis-bp-pattern','/health-analysis?tab=bp-pattern','TrendCharts','bp-pattern:view',1,1,1),
-(24,29,'Health Report','analysis-health-report','/health-analysis?tab=health-report','DocumentChecked','health-report:view',1,2,1),
-(25,29,'Data Export','analysis-data-export','/health-analysis?tab=data-export','Download','data-export:view',1,3,1),
-(5,0,'System Administration','system','','Setting','system:manage',1,7,1),
-(6,5,'User Management','system-user','/system/user','User','user:manage',1,1,1),
-(7,5,'Role Management','system-role','/system/role','UserFilled','role:manage',1,2,1),
-(9,5,'Menu Management','system-menu','/system/menu','Menu','menu:manage',1,3,1)
+(28,0,'健康总览','workspace','/monitoring','Monitor','monitoring:view',1,0,1),
+(30,0,'患者中心','patient-center','','UserFilled','patient:view',1,1,1),
+(8,30,'患者档案','patient-profile','/system/patient','Avatar','patient:manage',1,1,1),
+(31,30,'照护计划','patient-care','/family-health','Calendar','family-health:view',1,2,1),
+(1,0,'透析管理','dialysis','/dialysis','Histogram','dialysis:view',1,2,1),
+(11,1,'透析记录','dialysis-record','/dialysis?tab=data','Document','dialysis:record:view',1,1,1),
+(12,1,'趋势分析','dialysis-trend','/dialysis?tab=analysis','TrendCharts','dialysis:trend:view',1,2,1),
+(13,1,'干体重管理','dialysis-dry-weight','/dry-weight','ScaleToOriginal','dry-weight:view',1,3,1),
+(14,1,'AI 健康分析','dialysis-ai','/dialysis?tab=ai','Cpu','dialysis:ai:view',1,4,1),
+(15,1,'透析排班','dialysis-schedule','/family-health?tab=schedule','Calendar','dialysis:schedule:view',1,5,1),
+(2,0,'医疗记录','clinical-record','/medical-record','FolderOpened','medical:view',1,3,1),
+(16,2,'记录列表','clinical-record-list','/medical-record?tab=list','FolderOpened','medical:list:view',1,1,1),
+(17,2,'上传报告','clinical-record-upload','/medical-record?tab=upload','Camera','medical:upload',1,2,1),
+(18,2,'异常结果','clinical-abnormal','/medical-record?tab=abnormal','WarningFilled','medical:abnormal:view',1,3,1),
+(19,2,'指标趋势','clinical-trend','/medical-record?tab=trend','DataLine','medical:trend:view',1,4,1),
+(3,0,'用药管理','medication','/medication','Goods','medication:view',1,4,1),
+(32,3,'药品列表','medication-catalog','/medication?tab=drugs','Box','medication:catalog:view',1,1,1),
+(33,3,'用药记录','medication-log','/medication?tab=logs','Notebook','medication:log:view',1,2,1),
+(34,3,'用药提醒','medication-reminder','/medication?tab=remind','Bell','medication:reminder:view',1,3,1),
+(26,0,'健康监测','health-monitoring','','Odometer','health-monitoring:view',1,5,1),
+(27,26,'血压与血糖','health-vitals','/bp-self-monitor','Odometer','bp-self-monitor:view',1,1,1),
+(20,26,'并发症跟踪','health-complication','/health-analysis?tab=complication','Warning','complication:view',1,2,1),
+(21,26,'健康告警','health-alert','/health-analysis?tab=alert','Bell','alert:view',1,3,1),
+(23,26,'营养日记','health-nutrition','/health-analysis?tab=nutrition','Apple','nutrition-diary:view',1,4,1),
+(35,26,'营养评估','health-nutrition-assessment','/health-analysis?tab=nutrition-assessment','DataAnalysis','nutrition-assessment:view',1,5,1),
+(29,0,'分析与报告','analysis-report','','DataAnalysis','analysis-report:view',1,6,1),
+(22,29,'血压规律分析','analysis-bp-pattern','/health-analysis?tab=bp-pattern','TrendCharts','bp-pattern:view',1,1,1),
+(24,29,'健康报告','analysis-health-report','/health-analysis?tab=health-report','DocumentChecked','health-report:view',1,2,1),
+(25,29,'数据导出','analysis-data-export','/health-analysis?tab=data-export','Download','data-export:view',1,3,1),
+(5,0,'系统管理','system','','Setting','system:manage',1,7,1),
+(6,5,'用户管理','system-user','/system/user','User','user:manage',1,1,1),
+(7,5,'角色管理','system-role','/system/role','UserFilled','role:manage',1,2,1),
+(9,5,'菜单管理','system-menu','/system/menu','Menu','menu:manage',1,3,1)
 ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),menu_type=VALUES(menu_type),sort_order=VALUES(sort_order),status=VALUES(status);
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
-VALUES (36,30,'Notification Settings','notification-settings','/settings/notifications','Bell','notification:manage',1,3,1)
+VALUES (36,30,'通知设置','notification-settings','/settings/notifications','Bell','notification:manage',1,3,1)
 ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
-VALUES (38,0,'Clinical Workbench','clinical-workbench','/clinical-workbench','FirstAidKit','clinical-workbench:view',1,1,1)
+VALUES (38,0,'临床工作台','clinical-workbench','/clinical-workbench','FirstAidKit','clinical-workbench:view',1,1,1)
 ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
 -- 10.3 Grant every menu to the administrator role
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
@@ -820,22 +820,22 @@ ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
 
 -- 10.5 Common health indicator dictionary
 INSERT IGNORE INTO `health_indicator` (`item_code`, `item_name`, `aliases`, `unit`, `ref_range_male`, `category`, `sort_order`) VALUES
-('FERRITIN', 'Ferritin', 'ferritin,serum ferritin', 'ng/mL', '27-375', 'IRON', 10),
-('PTH', 'Parathyroid Hormone', 'parathyroid hormone,intact PTH,iPTH', 'pg/mL', '15-65', 'BONE', 20),
-('CA', 'serum calcium', 'calcium,Ca', 'mmol/L', '2.1-2.6', 'BONE', 30),
-('P', 'serum phosphorus', 'phosphorus,P', 'mmol/L', '0.87-1.45', 'BONE', 40),
-('CREA', 'Creatinine', 'creatinine,serum creatinine,Cr', 'μmol/L', '44-133', 'KIDNEY', 50),
-('BUN', 'Blood Urea Nitrogen', 'blood urea nitrogen,BUN', 'mmol/L', '2.9-8.2', 'KIDNEY', 60),
-('K', 'Potassium', 'potassium,serum potassium,K', 'mmol/L', '3.5-5.5', 'BLOOD', 70),
-('HB', 'Hemoglobin', 'hemoglobin,Hb,HGB', 'g/L', '120-160', 'BLOOD', 80);
+('FERRITIN', '铁蛋白', '铁蛋白,ferritin,serum ferritin', 'ng/mL', '27-375', 'IRON', 10),
+('PTH', '甲状旁腺激素', '甲状旁腺激素,parathyroid hormone,intact PTH,iPTH', 'pg/mL', '15-65', 'BONE', 20),
+('CA', '血钙', '血钙,钙,calcium,Ca', 'mmol/L', '2.1-2.6', 'BONE', 30),
+('P', '血磷', '血磷,磷,phosphorus,P', 'mmol/L', '0.87-1.45', 'BONE', 40),
+('CREA', '肌酐', '肌酐,creatinine,serum creatinine,Cr', 'μmol/L', '44-133', 'KIDNEY', 50),
+('BUN', '尿素氮', '尿素氮,blood urea nitrogen,BUN', 'mmol/L', '2.9-8.2', 'KIDNEY', 60),
+('K', '血钾', '血钾,钾,potassium,serum potassium,K', 'mmol/L', '3.5-5.5', 'BLOOD', 70),
+('HB', '血红蛋白', '血红蛋白,hemoglobin,Hb,HGB', 'g/L', '120-160', 'BLOOD', 80);
 
 INSERT IGNORE INTO `medication_safety_rule` (`ingredient_a`,`ingredient_b`,`severity`,`message`,`renal_note`) VALUES
-('warfarin','ibuprofen','CRITICAL','Warfarin with ibuprofen can substantially increase bleeding risk. Confirm the prescriber plan.','Avoid routine NSAID use in advanced kidney disease unless explicitly directed.'),
-('warfarin','aspirin','WARNING','Warfarin with aspirin increases bleeding risk and should have a documented indication.',NULL),
-('lisinopril','potassium','WARNING','ACE inhibitor plus potassium supplementation can increase serum potassium.','Review potassium and renal function before changing therapy.'),
-('losartan','potassium','WARNING','ARB plus potassium supplementation can increase serum potassium.','Review potassium and renal function before changing therapy.'),
-('spironolactone','potassium','CRITICAL','This combination can cause severe hyperkalaemia. Confirm the prescriber plan.','Extra caution is required when kidney function is impaired.'),
-('calcium carbonate','levothyroxine','INFO','Calcium can reduce levothyroxine absorption; separate administration times when directed.',NULL);
+('warfarin','ibuprofen','CRITICAL','华法林与布洛芬合用可显著增加出血风险，请核实开方方案。','除非医生明确要求，晚期肾病患者应避免常规使用 NSAIDs。'),
+('warfarin','aspirin','WARNING','华法林与阿司匹林合用会增加出血风险，应有明确且已记录的适应证。',NULL),
+('lisinopril','potassium','WARNING','ACE 抑制剂与钾补充剂合用可能升高血钾。','调整治疗前请复核血钾和肾功能。'),
+('losartan','potassium','WARNING','ARB 与钾补充剂合用可能升高血钾。','调整治疗前请复核血钾和肾功能。'),
+('spironolactone','potassium','CRITICAL','该组合可能导致严重高钾血症，请核实开方方案。','肾功能受损时需要格外谨慎。'),
+('calcium carbonate','levothyroxine','INFO','钙剂可能降低左甲状腺素吸收；如医嘱要求，请错开服用时间。',NULL);
 
 CREATE TABLE IF NOT EXISTS notification_channel (id BIGINT NOT NULL AUTO_INCREMENT,user_id BIGINT NOT NULL,channel_type VARCHAR(20) NOT NULL,channel_name VARCHAR(50) DEFAULT NULL,webhook_url VARCHAR(500) DEFAULT NULL,enabled TINYINT DEFAULT 1,last_test_at DATETIME DEFAULT NULL,last_test_result VARCHAR(255) DEFAULT NULL,created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,PRIMARY KEY (id),KEY idx_channel_user (user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='User notification channels';
 
@@ -865,7 +865,7 @@ CREATE TABLE IF NOT EXISTS `operation_audit_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Operation audit log';
 
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
-VALUES (37,5,'Audit Log','system-audit','/system/audit','Document','audit:view',1,4,1)
+VALUES (37,5,'审计日志','system-audit','/system/audit','Document','audit:view',1,4,1)
 ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
 
 INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)

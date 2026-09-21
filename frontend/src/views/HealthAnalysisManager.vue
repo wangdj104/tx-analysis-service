@@ -59,17 +59,17 @@ const route = useRoute();
 const activeTab = ref('complication');
 
 const tabInfo = {
-  complication: { title: 'Complication Tracking', subtitle: 'Record dialysis-related complications and follow their severity and outcome over time.' },
-  alert: { title: 'Health Alerts', subtitle: 'Configure threshold rules and document the response to abnormal results.' },
-  'bp-pattern': { title: 'Blood Pressure Pattern Analysis', subtitle: 'Review variability, orthostatic changes, and relationships with weight gain.' },
-  nutrition: { title: 'Nutrition Diary', subtitle: 'Record daily intake and follow nutrition and fluid patterns.' },
-  'nutrition-assessment': { title: 'Nutrition Assessment', subtitle: 'Combine diet, body measurements, and laboratory data to screen nutrition risk.' },
-  'health-report': { title: 'Health Report', subtitle: 'Generate a consolidated report covering dialysis, vital signs, and nutrition.' },
-  'data-export': { title: 'Data Export', subtitle: 'Export selected health data for clinician review or personal archiving.' },
-  automation: { title: 'Automated Health Analysis', subtitle: 'Create scheduled analysis drafts that always require human review before sharing.' }
+  complication: { title: '并发症跟踪', subtitle: '记录透析相关并发症，持续跟踪严重程度与转归。' },
+  alert: { title: '健康告警', subtitle: '配置阈值规则，并记录异常结果的处置过程。' },
+  'bp-pattern': { title: '血压规律分析', subtitle: '分析血压波动、体位变化及其与体重增长的关系。' },
+  nutrition: { title: '营养日记', subtitle: '记录每日摄入，跟踪营养和液体摄入规律。' },
+  'nutrition-assessment': { title: '营养评估', subtitle: '结合饮食、人体测量和检验数据筛查营养风险。' },
+  'health-report': { title: '健康报告', subtitle: '生成涵盖透析、生命体征和营养状况的综合报告。' },
+  'data-export': { title: '数据导出', subtitle: '导出选定健康数据，供医生查看或个人归档。' },
+  automation: { title: '自动健康分析', subtitle: '创建定时分析草稿，分享前始终需要人工审核。' }
 };
 
-const currentTitle = computed(() => tabInfo[activeTab.value]?.title || 'Health Analytics');
+const currentTitle = computed(() => tabInfo[activeTab.value]?.title || '健康分析');
 const currentSubtitle = computed(() => tabInfo[activeTab.value]?.subtitle || '');
 
 function resolveTab(query) {

@@ -1,24 +1,24 @@
 import { inject } from 'vue';
 
-export const APP_LOCALE = 'en-US';
+export const APP_LOCALE = 'zh-CN';
 export const I18N_KEY = Symbol('family-health-i18n');
 
 const messages = {
-  appName: 'Clarity Health',
-  appTagline: 'Thoughtful tracking for healthier days',
+  appName: '澄明健康',
+  appTagline: '用心记录，守护每一天的健康',
   common: {
-    save: 'Save',
-    cancel: 'Cancel',
-    close: 'Close',
-    confirm: 'Confirm',
-    delete: 'Delete',
-    edit: 'Edit',
-    search: 'Search',
-    reset: 'Reset',
-    loading: 'Loading…',
-    noData: 'No data',
-    success: 'Operation completed',
-    failed: 'Operation failed'
+    save: '保存',
+    cancel: '取消',
+    close: '关闭',
+    confirm: '确认',
+    delete: '删除',
+    edit: '编辑',
+    search: '查询',
+    reset: '重置',
+    loading: '加载中…',
+    noData: '暂无数据',
+    success: '操作成功',
+    failed: '操作失败'
   }
 };
 

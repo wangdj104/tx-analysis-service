@@ -27,8 +27,8 @@
           <!-- Upload and Recognize -->
           <div v-show="activeMenu === 'upload'" class="upload-panel">
             <el-form :model="uploadForm" label-width="100px" class="upload-form">
-              <el-form-item label="Patient">
-                <el-select v-model="uploadForm.patientId" placeholder="Select a patient (Optional) " filterable clearable style="max-width: 320px">
+              <el-form-item label="患者">
+                <el-select v-model="uploadForm.patientId" placeholder="选择患者（可选）" filterable clearable style="max-width: 320px">
                   <el-option
                     v-for="patient in patientList"
                     :key="patient.id"
@@ -37,7 +37,7 @@
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item label="Uploadfile" required>
+              <el-form-item label="上传文件" required>
                 <el-upload
                   ref="uploadRef"
                   drag
@@ -50,27 +50,27 @@
                   class="upload-drop"
                 >
                   <el-icon :size="40"><UploadFilled /></el-icon>
-                  <div class="upload-text">will Medicationpackage or instructionsdocumentdragto thisplace,  or <em>clickUpload</em>, alsocan <em>paste</em>image (supportmultipleimages) </div>
+                  <div class="upload-text">将药盒或说明书拖到此处，或<em>点击上传</em>，也可<em>粘贴</em>图片（支持多图）。</div>
                   <template #tip>
-                    <div class="el-upload__tip">supportimage(jpg/png), PDF, Word(doc/docx), largefilerecognitioncan canneedneedrelativelylongTime, Please please wait</div>
+                    <div class="el-upload__tip">支持图片（JPG/PNG）、PDF 和 Word（DOC/DOCX），大文件识别耗时可能较长。</div>
                   </template>
                 </el-upload>
               </el-form-item>
               <el-form-item>
-                <el-button type="primary" :loading="recognizeLoading" @click="startRecognize">Start recognition</el-button>
+                <el-button type="primary" :loading="recognizeLoading" @click="startRecognize">开始识别</el-button>
                 <el-button v-if="recognizeResult" type="success" @click="saveRecognizedDrug">
-                  {{ recognizedDrugs.length > 1 ? `Save ${recognizedDrugs.length} itemsMedicationto Medicationdatabase` : 'Saveto Medicationdatabase' }}
+                  {{ recognizedDrugs.length > 1 ? `将 ${recognizedDrugs.length} 种药品保存到药品库` : '保存到药品库' }}
                 </el-button>
               </el-form-item>
             </el-form>
 
             <div v-if="recognizeLoading" class="recognize-loading">
               <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-              <span>AI positivein recognitionin, largefilecan canneedneed 1~3 minutes, Please please wait...</span>
+              <span>AI 正在识别，大文件可能需要 1～3 分钟，请耐心等待……</span>
             </div>
 
             <div v-if="recognizeResult" class="recognize-result">
-              <el-divider content-position="left">recognitionresult (can Editafter Save) </el-divider>
+              <el-divider content-position="left">识别结果（可编辑后保存）</el-divider>
               <el-alert
                 v-if="recognizeWarning"
                 :title="recognizeWarning"
@@ -83,56 +83,56 @@
                 <el-tab-pane
                   v-for="(drug, idx) in recognizedDrugs"
                   :key="idx"
-                  :label="(drug.drugName || 'Medication ' + (idx + 1))"
+                  :label="(drug.drugName || '药品 ' + (idx + 1))"
                   :name="String(idx)"
                 />
               </el-tabs>
               <el-form :model="currentRecognizeDrug" label-width="100px">
-                <el-form-item label="Medication Name" required>
+                <el-form-item label="药品名称" required>
                   <el-input v-model="currentRecognizeDrug.drugName" />
                 </el-form-item>
-                <el-form-item label="Generic Name">
+                <el-form-item label="通用名称">
                   <el-input v-model="currentRecognizeDrug.genericName" />
                 </el-form-item>
-                <el-form-item label="Specification">
-                  <el-input v-model="currentRecognizeDrug.specification" placeholder="for example : 10mg*28tablet" />
+                <el-form-item label="规格">
+                  <el-input v-model="currentRecognizeDrug.specification" placeholder="例如：10mg×28片" />
                 </el-form-item>
-                <el-form-item label="Unit">
-                  <el-input v-model="currentRecognizeDrug.unit" placeholder="tablet/dose/bottle" />
+                <el-form-item label="单位">
+                  <el-input v-model="currentRecognizeDrug.unit" placeholder="片 / 支 / 瓶" />
                 </el-form-item>
-                <el-form-item label="dosage form">
-                  <el-select v-model="currentRecognizeDrug.dosageForm" placeholder="Select">
-                    <el-option label="tablet" value="TABLET" />
-                    <el-option label="capsule" value="CAPSULE" />
-                    <el-option label="injection" value="INJECTION" />
-                    <el-option label="oral solution" value="SOLUTION" />
-                    <el-option label="powder" value="POWDER" />
+                <el-form-item label="剂型">
+                  <el-select v-model="currentRecognizeDrug.dosageForm" placeholder="请选择">
+                    <el-option label="片剂" value="TABLET" />
+                    <el-option label="胶囊" value="CAPSULE" />
+                    <el-option label="注射剂" value="INJECTION" />
+                    <el-option label="口服液" value="SOLUTION" />
+                    <el-option label="粉剂" value="POWDER" />
                   </el-select>
                 </el-form-item>
-                <el-form-item label="Medicationcategory">
-                  <el-select v-model="currentRecognizeDrug.category" placeholder="Select">
-                    <el-option label="antihypertensive" value="ANTIHYPERTENSIVE" />
-                    <el-option label="phosphate binder" value="PHOSPHATE_BINDER" />
-                    <el-option label="iron supplement" value="IRON_SUPPLEMENT" />
-                    <el-option label="vitamin" value="VITAMIN" />
-                    <el-option label="erythropoietin" value="ESA" />
-                    <el-option label="calcium supplement" value="CALCIUM" />
-                    <el-option label="active vitamin DD" value="VD" />
-                    <el-option label="diuretic" value="DIURETIC" />
-                    <el-option label="antibiotic" value="ANTIBIOTIC" />
-                    <el-option label="Other" value="OTHER" />
+                <el-form-item label="药品分类">
+                  <el-select v-model="currentRecognizeDrug.category" placeholder="请选择">
+                    <el-option label="降压药" value="ANTIHYPERTENSIVE" />
+                    <el-option label="磷结合剂" value="PHOSPHATE_BINDER" />
+                    <el-option label="铁剂" value="IRON_SUPPLEMENT" />
+                    <el-option label="维生素" value="VITAMIN" />
+                    <el-option label="促红细胞生成素" value="ESA" />
+                    <el-option label="钙剂" value="CALCIUM" />
+                    <el-option label="活性维生素 D" value="VD" />
+                    <el-option label="利尿剂" value="DIURETIC" />
+                    <el-option label="抗生素" value="ANTIBIOTIC" />
+                    <el-option label="其他" value="OTHER" />
                   </el-select>
                 </el-form-item>
-                <el-form-item label="manufacturer">
+                <el-form-item label="生产厂家">
                   <el-input v-model="currentRecognizeDrug.manufacturer" />
                 </el-form-item>
-                <el-form-item label="approval number">
+                <el-form-item label="批准文号">
                   <el-input v-model="currentRecognizeDrug.approvalNumber" />
                 </el-form-item>
-                <el-form-item label="DefaultDose">
-                  <el-input v-model="currentRecognizeDrug.defaultDosage" placeholder="for example : each times1tablet, each days1times" />
+                <el-form-item label="默认剂量">
+                  <el-input v-model="currentRecognizeDrug.defaultDosage" placeholder="例如：每次 1 片，每日 1 次" />
                 </el-form-item>
-                <el-form-item label="Notes">
+                <el-form-item label="备注">
                   <el-input v-model="currentRecognizeDrug.remark" type="textarea" :rows="2" />
                 </el-form-item>
               </el-form>
@@ -143,41 +143,41 @@
           <div v-show="activeMenu === 'drugs'">
             <div class="toolbar">
               <el-button type="primary" @click="showDrugDialog()">
-                <el-icon><Plus /></el-icon>AddMedication
+                <el-icon><Plus /></el-icon>新增药品
               </el-button>
             </div>
             <div class="table-wrap">
               <el-table :data="drugs" class="app-data-table app-data-table--list" stripe style="width: 100%">
-                <el-table-column v-if="drugColVisible('drugName')" prop="drugName" label="Medication" min-width="120" show-overflow-tooltip />
-                <el-table-column v-if="drugColVisible('genericName')" prop="genericName" label="Generic Name" min-width="120" show-overflow-tooltip />
-                <el-table-column v-if="drugColVisible('specification')" prop="specification" label="Specification" min-width="112" show-overflow-tooltip />
-                <el-table-column v-if="drugColVisible('dosageForm')" prop="dosageForm" label="dosage form" min-width="92" show-overflow-tooltip>
+                <el-table-column v-if="drugColVisible('drugName')" prop="drugName" label="药品" min-width="120" show-overflow-tooltip />
+                <el-table-column v-if="drugColVisible('genericName')" prop="genericName" label="通用名称" min-width="120" show-overflow-tooltip />
+                <el-table-column v-if="drugColVisible('specification')" prop="specification" label="规格" min-width="112" show-overflow-tooltip />
+                <el-table-column v-if="drugColVisible('dosageForm')" prop="dosageForm" label="剂型" min-width="92" show-overflow-tooltip>
                   <template #default="{ row }">
                     <el-tag size="small">{{ getDosageFormName(row.dosageForm) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column v-if="drugColVisible('category')" prop="category" label="category" min-width="108" show-overflow-tooltip>
+                <el-table-column v-if="drugColVisible('category')" prop="category" label="分类" min-width="108" show-overflow-tooltip>
                   <template #default="{ row }">
                     <el-tag type="info" size="small">{{ getCategoryName(row.category) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column v-if="drugColVisible('manufacturer')" prop="manufacturer" label="manufacturer" min-width="140" show-overflow-tooltip />
-                <el-table-column v-if="drugColVisible('defaultDosage')" prop="defaultDosage" label="DefaultDose" min-width="120" show-overflow-tooltip />
-                <el-table-column v-if="drugColVisible('isActive')" prop="isActive" label="Status" min-width="80" align="center">
+                <el-table-column v-if="drugColVisible('manufacturer')" prop="manufacturer" label="生产厂家" min-width="140" show-overflow-tooltip />
+                <el-table-column v-if="drugColVisible('defaultDosage')" prop="defaultDosage" label="默认剂量" min-width="120" show-overflow-tooltip />
+                <el-table-column v-if="drugColVisible('isActive')" prop="isActive" label="状态" min-width="80" align="center">
                   <template #default="{ row }">
                     <el-tag :type="row.isActive === 1 ? 'success' : 'info'" size="small">
-                      {{ row.isActive === 1 ? 'Enabled' : 'Disabled' }}
+                      {{ row.isActive === 1 ? '启用' : '停用' }}
                     </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="Actions" width="132" fixed="right" align="center">
+                <el-table-column label="操作" width="132" fixed="right" align="center">
                   <template #header>
                     <TableActionHeader v-model="drugVisibleCols" :columns="DRUG_COLUMN_DEFS" @reset="resetDrugColumns" />
                   </template>
                   <template #default="{ row }">
                     <div class="table-actions">
-                      <el-button link type="primary" size="small" @click="showDrugDialog(row)">Edit</el-button>
-                      <el-button link type="danger" size="small" @click="deleteDrug(row)">Delete</el-button>
+                      <el-button link type="primary" size="small" @click="showDrugDialog(row)">编辑</el-button>
+                      <el-button link type="danger" size="small" @click="deleteDrug(row)">删除</el-button>
                     </div>
                   </template>
                 </el-table-column>
@@ -189,8 +189,8 @@
           <div v-show="activeMenu === 'logs'">
             <div class="toolbar">
               <el-form :inline="true" class="filter-form">
-                <el-form-item label="Patient">
-                  <el-select v-model="logFilter.patientId" placeholder="Select a patient" filterable clearable style="width: 200px">
+                <el-form-item label="患者">
+                  <el-select v-model="logFilter.patientId" placeholder="选择患者" filterable clearable style="width: 200px">
                     <el-option
                       v-for="patient in patientList"
                       :key="patient.id"
@@ -201,40 +201,40 @@
                 </el-form-item>
                 <el-form-item>
                   <el-button type="primary" @click="loadLogs">
-                    <el-icon><Search /></el-icon>query
+                    <el-icon><Search /></el-icon>查询
                   </el-button>
                 </el-form-item>
               </el-form>
               <el-button type="primary" @click="showLogDialog()">
-                <el-icon><Plus /></el-icon>Add record
+                <el-icon><Plus /></el-icon>新增记录
               </el-button>
             </div>
             <div class="table-wrap">
               <el-table :data="logs" class="app-data-table app-data-table--list" stripe style="width: 100%">
-                <el-table-column v-if="logColVisible('administrationTime')" prop="administrationTime" label="administrationTime" min-width="148" />
-                <el-table-column v-if="logColVisible('patientName')" prop="patientName" label="Patient" min-width="100" show-overflow-tooltip />
-                <el-table-column v-if="logColVisible('drugName')" prop="medication.drugName" label="Medication" min-width="120" show-overflow-tooltip />
-                <el-table-column v-if="logColVisible('dosage')" prop="dosage" label="Dose" min-width="80" show-overflow-tooltip />
-                <el-table-column v-if="logColVisible('adminRoute')" prop="adminRoute" label="route" min-width="80" show-overflow-tooltip>
+                <el-table-column v-if="logColVisible('administrationTime')" prop="administrationTime" label="用药时间" min-width="148" />
+                <el-table-column v-if="logColVisible('patientName')" prop="patientName" label="患者" min-width="100" show-overflow-tooltip />
+                <el-table-column v-if="logColVisible('drugName')" prop="medication.drugName" label="药品" min-width="120" show-overflow-tooltip />
+                <el-table-column v-if="logColVisible('dosage')" prop="dosage" label="剂量" min-width="80" show-overflow-tooltip />
+                <el-table-column v-if="logColVisible('adminRoute')" prop="adminRoute" label="途径" min-width="80" show-overflow-tooltip>
                   <template #default="{ row }">
                     {{ getAdminRouteName(row.adminRoute) }}
                   </template>
                 </el-table-column>
-                <el-table-column v-if="logColVisible('prescribedBy')" prop="prescribedBy" label="Clinician" min-width="88" show-overflow-tooltip />
-                <el-table-column v-if="logColVisible('effectEvaluation')" prop="effectEvaluation" label="validresult" min-width="80" show-overflow-tooltip>
+                <el-table-column v-if="logColVisible('prescribedBy')" prop="prescribedBy" label="开方医生" min-width="88" show-overflow-tooltip />
+                <el-table-column v-if="logColVisible('effectEvaluation')" prop="effectEvaluation" label="效果" min-width="80" show-overflow-tooltip>
                   <template #default="{ row }">
                     <el-tag :type="getEffectType(row.effectEvaluation)" size="small">{{ getEffectName(row.effectEvaluation) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column v-if="logColVisible('sideEffect')" prop="sideEffect" label="adverse reaction" min-width="120" show-overflow-tooltip />
-                <el-table-column label="Actions" width="132" fixed="right" align="center">
+                <el-table-column v-if="logColVisible('sideEffect')" prop="sideEffect" label="不良反应" min-width="120" show-overflow-tooltip />
+                <el-table-column label="操作" width="132" fixed="right" align="center">
                   <template #header>
                     <TableActionHeader v-model="logVisibleCols" :columns="LOG_COLUMN_DEFS" @reset="resetLogColumns" />
                   </template>
                   <template #default="{ row }">
                     <div class="table-actions">
-                      <el-button link type="primary" size="small" @click="showLogDialog(row)">Edit</el-button>
-                      <el-button link type="danger" size="small" @click="deleteLog(row)">Delete</el-button>
+                      <el-button link type="primary" size="small" @click="showLogDialog(row)">编辑</el-button>
+                      <el-button link type="danger" size="small" @click="deleteLog(row)">删除</el-button>
                     </div>
                   </template>
                 </el-table-column>
@@ -245,22 +245,22 @@
           <!-- Browse Categories -->
           <div v-show="activeMenu === 'category'" class="category-panel">
             <div v-if="drugsByCategory.length === 0" class="category-empty">
-              <el-empty description="No medication data" />
+              <el-empty description="暂无药品数据" />
             </div>
             <div v-for="group in drugsByCategory" :key="group.category" class="category-group">
               <div class="category-group-head">
                 <span class="category-group-title">{{ group.name }}</span>
-                <span class="category-group-count">{{ group.items.length }} type</span>
+                <span class="category-group-count">{{ group.items.length }} 种</span>
               </div>
               <div class="table-wrap table-wrap--compact">
               <el-table :data="group.items" class="app-data-table app-data-table--compact" stripe size="small" :fit="false">
-                <el-table-column prop="drugName" label="Medication Name" width="160" show-overflow-tooltip />
-                <el-table-column prop="specification" label="Specification" width="120" show-overflow-tooltip />
-                <el-table-column prop="defaultDosage" label="DefaultDose" width="140" show-overflow-tooltip />
-                <el-table-column prop="isActive" label="Status" width="88" align="center">
+                <el-table-column prop="drugName" label="药品名称" width="160" show-overflow-tooltip />
+                <el-table-column prop="specification" label="规格" width="120" show-overflow-tooltip />
+                <el-table-column prop="defaultDosage" label="默认剂量" width="140" show-overflow-tooltip />
+                <el-table-column prop="isActive" label="状态" width="88" align="center">
                   <template #default="{ row }">
                     <el-tag :type="row.isActive === 1 ? 'success' : 'info'" size="small">
-                      {{ row.isActive === 1 ? 'Enabled' : 'Disabled' }}
+                      {{ row.isActive === 1 ? '启用' : '停用' }}
                     </el-tag>
                   </template>
                 </el-table-column>
@@ -279,90 +279,90 @@
     </el-main>
 
     <!-- MedicationEditdialog -->
-    <el-dialog v-model="drugDialogVisible" :title="editingDrug.id ? 'EditMedication' : 'AddMedication'" width="600px" destroy-on-close>
+    <el-dialog v-model="drugDialogVisible" :title="editingDrug.id ? '编辑药品' : '新增药品'" width="600px" destroy-on-close>
       <el-form :model="editingDrug" label-width="100px">
-        <el-form-item label="Medication Name" required>
-          <el-input v-model="editingDrug.drugName" placeholder="Enter Medication Name" />
+        <el-form-item label="药品名称" required>
+          <el-input v-model="editingDrug.drugName" placeholder="请输入药品名称" />
         </el-form-item>
-        <el-form-item label="Generic Name">
-          <el-input v-model="editingDrug.genericName" placeholder="Enter Generic Name" />
+        <el-form-item label="通用名称">
+          <el-input v-model="editingDrug.genericName" placeholder="请输入通用名称" />
         </el-form-item>
-        <el-form-item label="Specification">
-          <el-input v-model="editingDrug.specification" placeholder="for example : 10mg*28tablet" />
+        <el-form-item label="规格">
+          <el-input v-model="editingDrug.specification" placeholder="例如：10mg×28片" />
         </el-form-item>
-        <el-form-item label="Unit">
-          <el-input v-model="editingDrug.unit" placeholder="tablet/dose/bottle" />
+        <el-form-item label="单位">
+          <el-input v-model="editingDrug.unit" placeholder="片 / 支 / 瓶" />
         </el-form-item>
-        <el-form-item label="dosage form">
-          <el-select v-model="editingDrug.dosageForm" placeholder="Select">
-            <el-option label="tablet" value="TABLET" />
-            <el-option label="capsule" value="CAPSULE" />
-            <el-option label="injection" value="INJECTION" />
-            <el-option label="oral solution" value="SOLUTION" />
-            <el-option label="powder" value="POWDER" />
+        <el-form-item label="剂型">
+          <el-select v-model="editingDrug.dosageForm" placeholder="请选择">
+            <el-option label="片剂" value="TABLET" />
+            <el-option label="胶囊" value="CAPSULE" />
+            <el-option label="注射剂" value="INJECTION" />
+            <el-option label="口服液" value="SOLUTION" />
+            <el-option label="粉剂" value="POWDER" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Medicationcategory">
-          <el-select v-model="editingDrug.category" placeholder="Select">
-            <el-option label="antihypertensive" value="ANTIHYPERTENSIVE" />
-            <el-option label="phosphate binder" value="PHOSPHATE_BINDER" />
-            <el-option label="iron supplement" value="IRON_SUPPLEMENT" />
-            <el-option label="vitamin" value="VITAMIN" />
-            <el-option label="erythropoietin" value="ESA" />
-            <el-option label="calcium supplement" value="CALCIUM" />
-            <el-option label="active vitamin DD" value="VD" />
-            <el-option label="diuretic" value="DIURETIC" />
-            <el-option label="antibiotic" value="ANTIBIOTIC" />
-            <el-option label="Other" value="OTHER" />
+        <el-form-item label="药品分类">
+          <el-select v-model="editingDrug.category" placeholder="请选择">
+            <el-option label="降压药" value="ANTIHYPERTENSIVE" />
+            <el-option label="磷结合剂" value="PHOSPHATE_BINDER" />
+            <el-option label="铁剂" value="IRON_SUPPLEMENT" />
+            <el-option label="维生素" value="VITAMIN" />
+            <el-option label="促红细胞生成素" value="ESA" />
+            <el-option label="钙剂" value="CALCIUM" />
+            <el-option label="活性维生素 D" value="VD" />
+            <el-option label="利尿剂" value="DIURETIC" />
+            <el-option label="抗生素" value="ANTIBIOTIC" />
+            <el-option label="其他" value="OTHER" />
           </el-select>
         </el-form-item>
-        <el-form-item label="manufacturer">
-          <el-input v-model="editingDrug.manufacturer" placeholder="Enter manufacturer" />
+        <el-form-item label="生产厂家">
+          <el-input v-model="editingDrug.manufacturer" placeholder="请输入生产厂家" />
         </el-form-item>
-        <el-form-item label="approval number">
-          <el-input v-model="editingDrug.approvalNumber" placeholder="Enter approval number" />
+        <el-form-item label="批准文号">
+          <el-input v-model="editingDrug.approvalNumber" placeholder="请输入批准文号" />
         </el-form-item>
-        <el-form-item label="DefaultDose">
-          <el-input v-model="editingDrug.defaultDosage" placeholder="for example : each times1tablet, each days1times" />
+        <el-form-item label="默认剂量">
+          <el-input v-model="editingDrug.defaultDosage" placeholder="例如：每次 1 片，每日 1 次" />
         </el-form-item>
-        <el-form-item label="Notes">
+        <el-form-item label="备注">
           <el-input v-model="editingDrug.remark" type="textarea" :rows="2" />
         </el-form-item>
-        <el-form-item label="YesNoEnabled">
+        <el-form-item label="是否启用">
           <el-switch v-model="editingDrug.isActive" :active-value="1" :inactive-value="0" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="drugDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="saveDrug">Save</el-button>
+        <el-button @click="drugDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveDrug">保存</el-button>
       </template>
     </el-dialog>
 
     <!-- medicationrecordEditdialog -->
-    <el-dialog v-model="logDialogVisible" :title="editingLog.id ? 'Editmedicationrecord' : 'Addmedicationrecord'" width="600px" destroy-on-close>
+    <el-dialog v-model="logDialogVisible" :title="editingLog.id ? '编辑用药记录' : '新增用药记录'" width="600px" destroy-on-close>
       <el-form :model="editingLog" label-width="100px">
-        <el-form-item label="Patient" required>
-          <el-select v-model="editingLog.patientId" placeholder="Select a patient" filterable>
+        <el-form-item label="患者" required>
+          <el-select v-model="editingLog.patientId" placeholder="选择患者" filterable>
             <el-option v-for="patient in patientList" :key="patient.id" :label="patient.patientName" :value="patient.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Medication" required>
-          <el-select v-model="editingLog.medicationId" placeholder="SelectMedication" filterable>
+        <el-form-item label="药品" required>
+          <el-select v-model="editingLog.medicationId" placeholder="选择药品" filterable>
             <el-option v-for="drug in activeDrugs" :key="drug.id" :label="drug.drugName" :value="drug.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Dose">
-          <el-input v-model="editingLog.dosage" placeholder="for example : 1tablet" />
+        <el-form-item label="剂量">
+          <el-input v-model="editingLog.dosage" placeholder="例如：1 片" />
         </el-form-item>
-        <el-form-item label="administrationroute">
-          <el-select v-model="editingLog.adminRoute" placeholder="Select">
-            <el-option label="oral" value="ORAL" />
-            <el-option label="intravenous" value="IV" />
-            <el-option label="subcutaneous " value="SC" />
-            <el-option label="intramuscular" value="IM" />
+        <el-form-item label="给药途径">
+          <el-select v-model="editingLog.adminRoute" placeholder="请选择">
+            <el-option label="口服" value="ORAL" />
+            <el-option label="静脉注射" value="IV" />
+            <el-option label="皮下注射" value="SC" />
+            <el-option label="肌肉注射" value="IM" />
           </el-select>
         </el-form-item>
-        <el-form-item label="administrationTime">
+        <el-form-item label="用药时间">
           <el-date-picker
             v-model="editingLog.administrationTime"
             type="datetime"
@@ -370,26 +370,26 @@
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="prescribeClinician">
-          <el-input v-model="editingLog.prescribedBy" placeholder="Enter clinician name" />
+        <el-form-item label="开方医生">
+          <el-input v-model="editingLog.prescribedBy" placeholder="请输入医生姓名" />
         </el-form-item>
-        <el-form-item label="effect assessment">
-          <el-select v-model="editingLog.effectEvaluation" placeholder="Select">
-            <el-option label="Good" value="GOOD" />
-            <el-option label="Fair" value="MODERATE" />
-            <el-option label="poor" value="POOR" />
+        <el-form-item label="效果评估">
+          <el-select v-model="editingLog.effectEvaluation" placeholder="请选择">
+            <el-option label="良好" value="GOOD" />
+            <el-option label="一般" value="MODERATE" />
+            <el-option label="较差" value="POOR" />
           </el-select>
         </el-form-item>
-        <el-form-item label="adverse reaction">
-          <el-input v-model="editingLog.sideEffect" placeholder="for example has adverse reactionPlease Description" />
+        <el-form-item label="不良反应">
+          <el-input v-model="editingLog.sideEffect" placeholder="如有不良反应，请描述。" />
         </el-form-item>
-        <el-form-item label="Notes">
+        <el-form-item label="备注">
           <el-input v-model="editingLog.remark" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="logDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="saveLog">Save</el-button>
+        <el-button @click="logDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveLog">保存</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -423,27 +423,27 @@ const patientList = ref([]);
 const { currentPatientId } = useCurrentPatient();
 
 const DRUG_COLUMN_DEFS = [
-  { key: 'drugName', label: 'Medication' },
-  { key: 'genericName', label: 'Generic Name', default: false },
-  { key: 'specification', label: 'Specification' },
-  { key: 'dosageForm', label: 'dosage form' },
-  { key: 'category', label: 'category' },
-  { key: 'manufacturer', label: 'manufacturer', default: false },
-  { key: 'defaultDosage', label: 'DefaultDose' },
-  { key: 'isActive', label: 'Status' }
+  { key: 'drugName', label: '药品' },
+  { key: 'genericName', label: '通用名称', default: false },
+  { key: 'specification', label: '规格' },
+  { key: 'dosageForm', label: '剂型' },
+  { key: 'category', label: '分类' },
+  { key: 'manufacturer', label: '生产厂家', default: false },
+  { key: 'defaultDosage', label: '默认剂量' },
+  { key: 'isActive', label: '状态' }
 ];
 const { visibleKeys: drugVisibleCols, isVisible: drugColVisible, resetColumns: resetDrugColumns } =
   useTableColumns('medication-drug-list', DRUG_COLUMN_DEFS);
 
 const LOG_COLUMN_DEFS = [
-  { key: 'administrationTime', label: 'administrationTime' },
-  { key: 'patientName', label: 'Patient' },
-  { key: 'drugName', label: 'Medication' },
-  { key: 'dosage', label: 'Dose' },
-  { key: 'adminRoute', label: 'route' },
-  { key: 'prescribedBy', label: 'Clinician', default: false },
-  { key: 'effectEvaluation', label: 'validresult', default: false },
-  { key: 'sideEffect', label: 'adverse reaction', default: false }
+  { key: 'administrationTime', label: '用药时间' },
+  { key: 'patientName', label: '患者' },
+  { key: 'drugName', label: '药品' },
+  { key: 'dosage', label: '剂量' },
+  { key: 'adminRoute', label: '途径' },
+  { key: 'prescribedBy', label: '开方医生', default: false },
+  { key: 'effectEvaluation', label: '效果', default: false },
+  { key: 'sideEffect', label: '不良反应', default: false }
 ];
 const { visibleKeys: logVisibleCols, isVisible: logColVisible, resetColumns: resetLogColumns } =
   useTableColumns('medication-log-list', LOG_COLUMN_DEFS);
@@ -522,55 +522,55 @@ const editingLog = reactive({
 });
 
 const dosageFormMap = {
-  TABLET: 'tablet',
-  CAPSULE: 'capsule',
-  INJECTION: 'injection',
-  SOLUTION: 'oral solution',
-  POWDER: 'powder'
+  TABLET: '片剂',
+  CAPSULE: '胶囊',
+  INJECTION: '注射剂',
+  SOLUTION: '口服液',
+  POWDER: '粉剂'
 };
 
 const categoryMap = {
-  ANTIHYPERTENSIVE: 'antihypertensive',
-  PHOSPHATE_BINDER: 'phosphate binder',
-  IRON_SUPPLEMENT: 'iron supplement',
-  VITAMIN: 'vitamin',
-  ESA: 'erythropoietin',
-  CALCIUM: 'calcium supplement',
-  VD: 'active vitamin DD',
-  DIURETIC: 'diuretic',
-  ANTIBIOTIC: 'antibiotic',
-  OTHER: 'Other'
+  ANTIHYPERTENSIVE: '降压药',
+  PHOSPHATE_BINDER: '磷结合剂',
+  IRON_SUPPLEMENT: '铁剂',
+  VITAMIN: '维生素',
+  ESA: '促红细胞生成素',
+  CALCIUM: '钙剂',
+  VD: '活性维生素 D',
+  DIURETIC: '利尿剂',
+  ANTIBIOTIC: '抗生素',
+  OTHER: '其他'
 };
 
 const adminRouteMap = {
-  ORAL: 'oral',
-  IV: 'intravenous',
-  SC: 'subcutaneous ',
-  IM: 'intramuscular'
+  ORAL: '口服',
+  IV: '静脉注射',
+  SC: '皮下注射',
+  IM: '肌肉注射'
 };
 
 const effectMap = {
-  GOOD: { name: 'Good', type: 'success' },
-  MODERATE: { name: 'Fair', type: 'warning' },
-  POOR: { name: 'poor', type: 'danger' }
+  GOOD: { name: '良好', type: 'success' },
+  MODERATE: { name: '一般', type: 'warning' },
+  POOR: { name: '较差', type: 'danger' }
 };
 
 const pageTitle = computed(() => {
   const map = {
-    drugs: 'Medicationdatabasemanagement',
-    logs: 'medicationrecord',
-    category: 'Browse Categories',
-    remind: 'Medication Reminders'
+    drugs: '药品库管理',
+    logs: '用药记录',
+    category: '分类浏览',
+    remind: '用药提醒'
   };
-  return map[activeMenu.value] || 'Medicationmanagement';
+  return map[activeMenu.value] || '用药管理';
 });
 
 const pageSubtitle = computed(() => {
   const map = {
-    drugs: 'maintainDialysisrelatedMedicationBasicinformation, providemedicationrecordselectuse',
-    logs: 'recordPatienteach timesadministrationcondition and effect assessment',
-    category: 'by MedicationcategorygroupViewdatabasewithinMedication',
-    remind: 'Configure dose times, repeat days, and quantities'
+    drugs: '维护透析相关药品基础信息，供用药记录选择。',
+    logs: '记录患者每次用药情况和效果评估。',
+    category: '按药品分类查看药品库。',
+    remind: '配置服药时间、重复日期和用量。'
   };
   return map[activeMenu.value] || '';
 });
@@ -645,7 +645,7 @@ async function loadDrugs() {
       drugs.value = res.data || [];
     }
   } catch (e) {
-    ElMessage.error('Failed to load medications: ' + e.message);
+    ElMessage.error('药品加载失败：' + e.message);
   }
 }
 
@@ -656,7 +656,7 @@ async function loadActiveDrugs() {
       activeDrugs.value = res.data || [];
     }
   } catch (e) {
-    ElMessage.error('Failed to load medications: ' + e.message);
+    ElMessage.error('药品加载失败：' + e.message);
   }
 }
 
@@ -682,31 +682,31 @@ async function saveDrug() {
       res = await api.saveMedication(editingDrug);
     }
     if (res.code === 200) {
-      ElMessage.success('Saved successfully');
+      ElMessage.success('保存成功');
       drugDialogVisible.value = false;
       loadDrugs();
       loadActiveDrugs();
     } else {
-      ElMessage.error(res.message || 'Failed to save');
+      ElMessage.error(res.message || '保存失败');
     }
   } catch (e) {
-    ElMessage.error('Failed to save: ' + e.message);
+    ElMessage.error('保存失败：' + e.message);
   }
 }
 
 async function deleteDrug(row) {
   try {
-    await ElMessageBox.confirm('ConfirmneedDeletethis Medication?', 'Notice', { type: 'warning' });
+    await ElMessageBox.confirm('确认删除该药品吗？', '提示', { type: 'warning' });
     const res = await api.deleteMedication(row.id);
     if (res.code === 200) {
-      ElMessage.success('Deleted successfully');
+      ElMessage.success('删除成功');
       loadDrugs();
       loadActiveDrugs();
     } else {
-      ElMessage.error(res.message || 'Failed to delete');
+      ElMessage.error(res.message || '删除失败');
     }
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error('Failed to delete: ' + e.message);
+    if (e !== 'cancel') ElMessage.error('删除失败：' + e.message);
   }
 }
 
@@ -716,7 +716,7 @@ function handleFileChange(file) {
 
 async function startRecognize() {
   if (!selectedFiles.value || selectedFiles.value.length === 0) {
-    ElMessage.warning('Please first Uploadfile');
+    ElMessage.warning('请先上传文件');
     return;
   }
   recognizeLoading.value = true;
@@ -766,13 +766,13 @@ async function startRecognize() {
         ElMessage.warning(data.warning);
       }
     } else {
-      ElMessage.error(res.msg || res.message || 'Recognition failed');
+      ElMessage.error(res.msg || res.message || '识别失败');
     }
   } catch (e) {
     if (e.message?.includes('timeout')) {
-      ElMessage.error('recognitionovertime: filetoo large or networkrelativelyslowly, Please laterretry');
+      ElMessage.error('识别超时：文件过大或网络较慢，请稍后重试');
     } else {
-      ElMessage.error('Recognition failed: ' + e.message);
+      ElMessage.error('识别失败：' + e.message);
     }
   } finally {
     recognizeLoading.value = false;
@@ -797,7 +797,7 @@ async function saveRecognizedDrug() {
     }));
 
     if (drugs.length === 0) {
-      ElMessage.warning('nohas can Save Medication');
+      ElMessage.warning('没有可保存的药品');
       return;
     }
 
@@ -809,7 +809,7 @@ async function saveRecognizedDrug() {
     }
 
     if (res.code === 200) {
-      ElMessage.success('Saved successfully');
+      ElMessage.success('保存成功');
       recognizeResult.value = false;
       recognizedDrugs.value = [];
       activeRecognizeTab.value = '0';
@@ -818,10 +818,10 @@ async function saveRecognizedDrug() {
       loadDrugs();
       loadActiveDrugs();
     } else {
-      ElMessage.error(res.message || 'Failed to save');
+      ElMessage.error(res.message || '保存失败');
     }
   } catch (e) {
-    ElMessage.error('Failed to save: ' + e.message);
+    ElMessage.error('保存失败：' + e.message);
   }
 }
 
@@ -838,7 +838,7 @@ async function loadLogs() {
       logs.value = res.data || [];
     }
   } catch (e) {
-    ElMessage.error('Failed to load medication records: ' + e.message);
+    ElMessage.error('用药记录加载失败：' + e.message);
   }
 }
 
@@ -866,29 +866,29 @@ async function saveLog() {
       res = await api.saveLog(editingLog);
     }
     if (res.code === 200) {
-      ElMessage.success('Saved successfully');
+      ElMessage.success('保存成功');
       logDialogVisible.value = false;
       loadLogs();
     } else {
-      ElMessage.error(res.message || 'Failed to save');
+      ElMessage.error(res.message || '保存失败');
     }
   } catch (e) {
-    ElMessage.error('Failed to save: ' + e.message);
+    ElMessage.error('保存失败：' + e.message);
   }
 }
 
 async function deleteLog(row) {
   try {
-    await ElMessageBox.confirm('ConfirmneedDeletethis medicationrecord?', 'Notice', { type: 'warning' });
+    await ElMessageBox.confirm('确认删除这条用药记录吗？', '提示', { type: 'warning' });
     const res = await api.deleteLog(row.id);
     if (res.code === 200) {
-      ElMessage.success('Deleted successfully');
+      ElMessage.success('删除成功');
       loadLogs();
     } else {
-      ElMessage.error(res.message || 'Failed to delete');
+      ElMessage.error(res.message || '删除失败');
     }
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error('Failed to delete: ' + e.message);
+    if (e !== 'cancel') ElMessage.error('删除失败：' + e.message);
   }
 }
 
@@ -903,14 +903,14 @@ function handlePaste(e) {
     const file = item.getAsFile();
     if (!file) continue;
     if (selectedFiles.value.length + added >= 10) {
-      ElMessage.warning('most multiplesupport10imagesimage');
+      ElMessage.warning('最多支持 10 张图片');
       break;
     }
     uploadRef.value?.handleStart(file);
     added++;
   }
   if (added > 0) {
-    ElMessage.success(`Pasted ${added} images`);
+    ElMessage.success(`已粘贴 ${added} 张图片`);
   }
 }
 

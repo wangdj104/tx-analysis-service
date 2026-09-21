@@ -1,16 +1,16 @@
 <template>
   <div class="care-workspace" :class="{ 'care-workspace--guest': route.meta.hideNav }">
     <template v-if="!route.meta.hideNav">
-      <a class="skip-content" href="#workspace-content">Skip to main content</a>
+      <a class="skip-content" href="#workspace-content">跳到主要内容</a>
       <aside v-if="!isMobile" class="workspace-sidebar">
-        <router-link to="/care" class="workspace-brand" aria-label="Clarity Health home">
+        <router-link to="/care" class="workspace-brand" aria-label="澄明健康首页">
           <span class="workspace-brand__mark"><img src="/logo.svg" alt="" width="30" height="30" /></span>
-          <span><strong>Clarity Health</strong><small>Track thoughtfully. Live confidently.</small></span>
+          <span><strong>澄明健康</strong><small>用心记录，从容生活</small></span>
         </router-link>
-        <button class="workspace-search" type="button" @click="openSearch"><el-icon><Search /></el-icon><span>Find a feature</span><kbd>Ctrl K</kbd></button>
+        <button class="workspace-search" type="button" @click="openSearch"><el-icon><Search /></el-icon><span>查找功能</span><kbd>Ctrl K</kbd></button>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" />
         <div class="workspace-sidebar__footer">
-          <span class="workspace-sidebar__note"><el-icon><FirstAidKit /></el-icon>Better care, every day.</span>
+          <span class="workspace-sidebar__note"><el-icon><FirstAidKit /></el-icon>每天都获得更好的照护</span>
           <button type="button" class="workspace-account" @click="accountVisible = true">
             <span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span>
             <span><strong>{{ accountName }}</strong><small>{{ userRoles }}</small></span>
@@ -21,59 +21,59 @@
 
       <header class="workspace-topbar">
         <div class="workspace-topbar__location">
-          <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="Open navigation menu" @click="mobileNavVisible = true"><el-icon :size="21"><Menu /></el-icon></button>
-          <span class="workspace-breadcrumb">My Health Workspace<span>/</span><strong>{{ activeModule?.label || 'Health Management' }}</strong></span>
-          <strong v-if="isMobile" class="workspace-mobile-brand">Clarity Health</strong>
+          <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="打开导航菜单" @click="mobileNavVisible = true"><el-icon :size="21"><Menu /></el-icon></button>
+          <span class="workspace-breadcrumb">我的健康工作区<span>/</span><strong>{{ activeModule?.label || '健康管理' }}</strong></span>
+          <strong v-if="isMobile" class="workspace-mobile-brand">澄明健康</strong>
         </div>
         <div class="workspace-topbar__actions">
           <span class="workspace-date">{{ todayLabel }}</span>
           <PatientSwitcher :model-value="currentPatientId || 0" :patients="appPatientList" @update:model-value="switchPatient" />
-          <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="Find a feature" @click="openSearch"><el-icon :size="20"><Search /></el-icon></button>
+          <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="查找功能" @click="openSearch"><el-icon :size="20"><Search /></el-icon></button>
         </div>
       </header>
 
       <el-drawer v-model="mobileNavVisible" direction="ltr" size="min(300px, 88vw)" :with-header="false" class="workspace-drawer" append-to-body>
-        <div class="workspace-drawer__heading"><strong>Clarity Health</strong><button type="button" class="workspace-icon-button" aria-label="Close navigation menu" @click="mobileNavVisible = false"><el-icon><Close /></el-icon></button></div>
+        <div class="workspace-drawer__heading"><strong>澄明健康</strong><button type="button" class="workspace-icon-button" aria-label="关闭导航菜单" @click="mobileNavVisible = false"><el-icon><Close /></el-icon></button></div>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" @navigate="mobileNavVisible = false" />
-        <button type="button" class="workspace-account" @click="mobileNavVisible = false; accountVisible = true"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><span><strong>{{ accountName }}</strong><small>Account and sign out</small></span><el-icon><Setting /></el-icon></button>
+        <button type="button" class="workspace-account" @click="mobileNavVisible = false; accountVisible = true"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><span><strong>{{ accountName }}</strong><small>账号与退出登录</small></span><el-icon><Setting /></el-icon></button>
       </el-drawer>
 
-      <nav v-if="isMobile" class="workspace-bottom-nav" aria-label="Primary navigation">
+      <nav v-if="isMobile" class="workspace-bottom-nav" aria-label="主导航">
         <router-link v-for="item in mobilePrimaryNav" :key="item.path" :to="item.entryPath || item.path" :class="{ 'is-active': isItemActive(item) }"><el-icon :size="21"><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></router-link>
-        <button type="button" @click="mobileNavVisible = true"><el-icon :size="21"><Menu /></el-icon><span>All Features</span></button>
+        <button type="button" @click="mobileNavVisible = true"><el-icon :size="21"><Menu /></el-icon><span>全部功能</span></button>
       </nav>
     </template>
 
     <main id="workspace-content" class="workspace-content" tabindex="-1">
       <el-alert v-if="!route.meta.hideNav && menuLoadError" type="warning" :closable="false" show-icon class="workspace-menu-error">
         <template #title>{{ menuLoadError }}</template>
-        <el-button size="small" :loading="menusLoading" @click="loadUserMenus">Reload feature menu</el-button>
+        <el-button size="small" :loading="menusLoading" @click="loadUserMenus">重新加载功能菜单</el-button>
       </el-alert>
-      <nav v-if="!route.meta.hideNav && contextTabs.length > 1" class="workspace-tabs" aria-label="Module features">
+      <nav v-if="!route.meta.hideNav && contextTabs.length > 1" class="workspace-tabs" aria-label="模块功能">
         <router-link v-for="item in contextTabs" :key="item.path" :to="item.entryPath || item.path" :class="{ 'is-active': isTabActive(item) }" :aria-current="isTabActive(item) ? 'page' : undefined"><el-icon :size="16"><component :is="item.icon" /></el-icon>{{ item.label }}</router-link>
       </nav>
       <router-view v-slot="{ Component }"><component :is="Component" :key="routerViewKey" /></router-view>
     </main>
 
-    <el-dialog v-model="searchVisible" title="Find a feature" width="520px" class="workspace-search-dialog" @opened="searchInput?.focus()">
-      <el-input ref="searchInput" v-model="searchQuery" placeholder="Search blood pressure, medications, reports, and more" :prefix-icon="Search" clearable size="large" aria-label="Search features" @keydown.enter="openFirstResult" />
+    <el-dialog v-model="searchVisible" title="查找功能" width="520px" class="workspace-search-dialog" @opened="searchInput?.focus()">
+      <el-input ref="searchInput" v-model="searchQuery" placeholder="搜索血压、用药、报告等功能" :prefix-icon="Search" clearable size="large" aria-label="搜索功能" @keydown.enter="openFirstResult" />
       <div class="workspace-search-results">
         <router-link v-for="item in searchResults" :key="item.path" :to="item.entryPath || item.path" @click="searchVisible = false"><el-icon :size="19"><component :is="item.icon" /></el-icon><span><strong>{{ item.label }}</strong><small>{{ item.group }}</small></span><el-icon><ArrowRight /></el-icon></router-link>
-        <el-empty v-if="!searchResults.length" description="No matching feature. Try another keyword." :image-size="64" />
+        <el-empty v-if="!searchResults.length" description="没有匹配功能，请尝试其他关键词。" :image-size="64" />
       </div>
-      <template #footer><span class="workspace-search-hint">Enter to open the first result · Esc to close</span></template>
+      <template #footer><span class="workspace-search-hint">按 Enter 打开第一项 · 按 Esc 关闭</span></template>
     </el-dialog>
-    <el-dialog v-model="accountVisible" title="Current Account" width="min(380px, 94vw)">
+    <el-dialog v-model="accountVisible" title="当前账号" width="min(380px, 94vw)">
       <div class="workspace-account-summary"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><div><strong>{{ accountName }}</strong><p>{{ userRoles }}</p></div></div>
-      <template #footer><el-button @click="accountVisible = false">Close</el-button><el-button @click="openPasswordDialog">Change Password</el-button><el-button type="danger" plain @click="accountVisible = false; handleLogout()">Sign Out</el-button></template>
+      <template #footer><el-button @click="accountVisible = false">关闭</el-button><el-button @click="openPasswordDialog">修改密码</el-button><el-button type="danger" plain @click="accountVisible = false; handleLogout()">退出登录</el-button></template>
     </el-dialog>
-    <el-dialog v-model="passwordVisible" title="Change Password" width="min(420px, 94vw)" destroy-on-close>
+    <el-dialog v-model="passwordVisible" title="修改密码" width="min(420px, 94vw)" destroy-on-close>
       <el-form label-position="top" @submit.prevent="submitPasswordChange">
-        <el-form-item label="Current Password"><el-input v-model="passwordForm.currentPassword" type="password" show-password autocomplete="current-password" /></el-form-item>
-        <el-form-item label="New Password"><el-input v-model="passwordForm.newPassword" type="password" show-password autocomplete="new-password" /><small>Use at least 10 characters with letters, numbers, and special characters.</small></el-form-item>
-        <el-form-item label="Confirm New Password"><el-input v-model="passwordForm.confirmPassword" type="password" show-password autocomplete="new-password" /></el-form-item>
+        <el-form-item label="当前密码"><el-input v-model="passwordForm.currentPassword" type="password" show-password autocomplete="current-password" /></el-form-item>
+        <el-form-item label="新密码"><el-input v-model="passwordForm.newPassword" type="password" show-password autocomplete="new-password" /><small>至少 10 个字符，并包含字母、数字和特殊字符。</small></el-form-item>
+        <el-form-item label="确认新密码"><el-input v-model="passwordForm.confirmPassword" type="password" show-password autocomplete="new-password" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="passwordVisible = false">Cancel</el-button><el-button type="primary" :loading="passwordChanging" @click="submitPasswordChange">Save and Sign In Again</el-button></template>
+      <template #footer><el-button @click="passwordVisible = false">取消</el-button><el-button type="primary" :loading="passwordChanging" @click="submitPasswordChange">保存并重新登录</el-button></template>
     </el-dialog>
   </div>
 </template>
@@ -113,7 +113,7 @@ const navItems = computed(() => {
   const filtered = rawNavItems.value
     .filter(item => !hidden(item))
     .map(item => ({ ...item, children: item.children?.filter(child => !hidden(child)) }));
-  return [{ path: '/care', entryPath: '/care', label: 'Family Care', icon: 'House', children: [] }, ...filtered.filter(item => item.path !== '/care')];
+  return [{ path: '/care', entryPath: '/care', label: '家庭照护', icon: 'House', children: [] }, ...filtered.filter(item => item.path !== '/care')];
 });
 const menuLoadError = ref('');
 const menusLoading = ref(false);
@@ -153,7 +153,7 @@ function resetNavState() {
 }
 
 const userRoles = computed(() => {
-  return userInfo.value.roles?.map(r => r.roleName).join(', ') || 'Standard User';
+  return userInfo.value.roles?.map(r => r.roleName).join('、') || '普通用户';
 });
 
 const mobilePrimaryNav = computed(() => {
@@ -170,18 +170,18 @@ const searchVisible = ref(false);
 const searchInput = ref(null);
 const searchQuery = ref('');
 const accountVisible = ref(false);
-const accountName = computed(() => userInfo.value.realName || userInfo.value.username || 'My Account');
-const todayLabel = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+const accountName = computed(() => userInfo.value.realName || userInfo.value.username || '我的账号');
+const todayLabel = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
 const navigationGroups = computed(() => {
   const daily = [], records = [], management = [];
   for (const item of navItems.value) {
     if (item.path === '/dashboard') continue;
-    if (item.label === 'System Administration') { management.push(item); continue; }
+    if (item.label === '系统管理' || item.label === 'System Administration') { management.push(item); continue; }
     if (['/dialysis', '/medical-record', '/medication', '/dry-weight'].includes(item.path) || /analysis|Report/.test(item.label)) records.push(item);
     else daily.push(item);
   }
   if (systemMenu.value?.children?.length && !management.length) management.push(systemMenu.value);
-  return [{ label: 'Everyday Health', items: daily }, { label: 'Records & Analytics', items: records }, { label: 'Administration', items: management }].filter(group => group.items.length);
+  return [{ label: '日常健康', items: daily }, { label: '记录与分析', items: records }, { label: '系统管理', items: management }].filter(group => group.items.length);
 });
 const allNavigation = computed(() => navigationGroups.value.flatMap(group => group.items));
 const activeModule = computed(() => {
@@ -193,7 +193,7 @@ const activeModule = computed(() => {
     || allNavigation.value.find(item => item.path && router.resolve(item.path).path === route.path)
     || allNavigation.value.find(item => item.children?.some(child => router.resolve(child.path).path === route.path));
 });
-watch(activeModule, item => { document.title = (item?.label ? item.label + ' · ' : '') + 'Clarity Health'; }, { immediate: true });
+watch(activeModule, item => { document.title = (item?.label ? item.label + ' · ' : '') + '澄明健康'; }, { immediate: true });
 const contextTabs = computed(() => {
   const item = activeModule.value;
   const children = item?.children || [];
@@ -201,7 +201,7 @@ const contextTabs = computed(() => {
   const permissions = readPermissionCache() || {};
   if (defaultTab && !canAccessWorkspace(`${item.path}?tab=${defaultTab}`, permissions.menuPaths, permissions.roleCodes)) return children;
   if (!children.length || !defaultTab || children.some(child => router.resolve(child.path).query.tab === defaultTab && router.resolve(child.path).path === item.path)) return children;
-  const labels = { '/dialysis': 'Dialysis Records', '/medical-record': 'Record List', '/medication': 'Medication List', '/health-analysis': 'Complication Tracking' };
+  const labels = { '/dialysis': '透析记录', '/medical-record': '记录列表', '/medication': '药品列表', '/health-analysis': '并发症跟踪' };
   return labels[item.path] ? [{ ...item, label: labels[item.path], children: [] }, ...children] : children;
 });
 const defaultTabs = DEFAULT_WORKSPACE_TABS;
@@ -213,7 +213,7 @@ function isTabActive(item) {
 const searchResults = computed(() => {
   const entries = new Map();
   for (const item of allNavigation.value) {
-    if (item.path) entries.set(item.path, { ...item, group: 'Feature' });
+    if (item.path) entries.set(item.path, { ...item, group: '功能' });
     for (const child of item.children || []) entries.set(child.path, { ...child, group: item.label });
   }
   const query = searchQuery.value.trim().toLowerCase();
@@ -295,7 +295,7 @@ const loadUserMenus = async () => {
         topMenus.push(monitoringMenu || {
           id: -28,
           parentId: 0,
-          menuName: 'Health Overview',
+          menuName: '健康概览',
           menuCode: 'monitoring',
           menuPath: '/monitoring',
           sortOrder: 1
@@ -336,7 +336,7 @@ const loadUserMenus = async () => {
           const nav = resolveNavIcon(menu);
           return {
             path: menu.menuPath,
-            label: menu.menuPath === '/monitoring' ? 'Health Overview' : menu.menuName === 'Dialysis Records' ? 'Dialysis Management' : menu.menuName,
+            label: menu.menuPath === '/monitoring' ? '健康概览' : menu.menuName === 'Dialysis Records' ? '透析管理' : menu.menuName,
             icon: nav.icon,
             iconTheme: nav.theme,
             children: [
@@ -380,11 +380,11 @@ const loadUserMenus = async () => {
       resetNavState();
       router.replace('/login');
     } else {
-      throw new Error('The feature menu is temporarily unavailable.');
+      throw new Error('功能菜单暂时不可用。');
     }
   } catch (error) {
     if (!isCurrent()) return;
-    console.error('Failed to load the user menu:', error);
+    console.error('加载用户菜单失败：', error);
     if (!localStorage.getItem('token')) {
       resetNavState();
       return;
@@ -392,8 +392,8 @@ const loadUserMenus = async () => {
     systemMenu.value = null;
     rawNavItems.value = getDefaultMenus();
     menuLoadError.value = readPermissionCache()
-      ? 'The feature menu could not be refreshed. Showing the permissions verified for this session.'
-      : 'The feature menu could not be loaded. Please try again.';
+      ? '功能菜单刷新失败，当前显示本次会话已验证的权限。'
+      : '功能菜单加载失败，请重试。';
   } finally {
     if (isCurrent()) menusLoading.value = false;
   }
@@ -565,7 +565,7 @@ async function loadPatientList() {
 
     }
   } catch (e) {
-    console.error('Failed to load the patient list.', e);
+    console.error('加载患者列表失败。', e);
   }
 }
 
@@ -576,9 +576,9 @@ function switchPatient(id) {
   currentPatientId.value = id;
   if (id) {
     const patient = appPatientList.value.find(p => p.id === id);
-    ElMessage.success(`Switched to ${patient?.patientName || patient?.name || 'patient'}.`);
+    ElMessage.success(`已切换到${patient?.patientName || patient?.name || '患者'}。`);
   } else {
-    ElMessage.info('Showing all patients.');
+    ElMessage.info('正在显示全部患者。');
   }
   // Refreshcurrentpagedata: throughchangerouterViewKeytriggerchildcomponentagainmount
   routerViewKey.value = getAuthSessionKey() + '-' + (id || 'all') + '-' + Date.now();
@@ -588,7 +588,7 @@ function switchPatient(id) {
 const handleLogout = () => {
   logout();
   resetNavState();
-  ElMessage.success('Signed out successfully.');
+  ElMessage.success('已退出登录。');
   router.replace('/login');
 };
 
@@ -599,18 +599,18 @@ function openPasswordDialog() {
 }
 
 async function submitPasswordChange() {
-  if (!passwordForm.currentPassword || !passwordForm.newPassword) return ElMessage.warning('Enter both your current and new passwords.');
-  if (passwordForm.newPassword !== passwordForm.confirmPassword) return ElMessage.warning('The new passwords do not match.');
+  if (!passwordForm.currentPassword || !passwordForm.newPassword) return ElMessage.warning('请输入当前密码和新密码。');
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) return ElMessage.warning('两次输入的新密码不一致。');
   if (passwordForm.newPassword.length < 10 || !/[A-Za-z]/.test(passwordForm.newPassword)
       || !/\d/.test(passwordForm.newPassword) || !/[^A-Za-z0-9\s]/.test(passwordForm.newPassword)) {
-    return ElMessage.warning('The new password does not meet the security requirements.');
+    return ElMessage.warning('新密码不符合安全要求。');
   }
   passwordChanging.value = true;
   try {
     const res = await changePassword({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword });
     if (res.code !== 200) return;
     passwordVisible.value = false;
-    ElMessage.success('Password changed. Please sign in again.');
+    ElMessage.success('密码已修改，请重新登录。');
     handleLogout();
   } finally {
     passwordChanging.value = false;

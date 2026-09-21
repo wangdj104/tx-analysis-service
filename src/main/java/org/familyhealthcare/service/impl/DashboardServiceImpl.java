@@ -294,10 +294,10 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private String dehydrationText(String status) {
-        if ("TOO_MUCH".equals(status)) return "Excessive ultrafiltration";
-        if ("INSUFFICIENT".equals(status)) return "Insufficient ultrafiltration";
-        if ("MATCH".equals(status)) return "Ultrafiltration on target";
-        return "Statuspendingdetermine";
+        if ("TOO_MUCH".equals(status)) return "超滤过量";
+        if ("INSUFFICIENT".equals(status)) return "超滤不足";
+        if ("MATCH".equals(status)) return "超滤达标";
+        return "状态待判定";
     }
 
     private List<Map<String, Object>> buildMonthlyTrend(Long userId, Long patientId) {

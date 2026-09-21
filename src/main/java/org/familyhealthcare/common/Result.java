@@ -28,8 +28,14 @@ public class Result<T> implements Serializable {
     public static <T> Result<T> ok(T data) {
         Result<T> r = new Result<>();
         r.setCode(200);
-        r.setMsg("success");
-        r.setData(data);
+        r.setMsg("成功");
+        if (data instanceof String) {
+            @SuppressWarnings("unchecked")
+            T localized = (T) ChineseMessageLocalizer.localize((String) data);
+            r.setData(localized);
+        } else {
+            r.setData(data);
+        }
         return r;
     }
 
@@ -40,7 +46,7 @@ public class Result<T> implements Serializable {
     public static <T> Result<T> error(int code, String msg) {
         Result<T> r = new Result<>();
         r.setCode(code);
-        r.setMsg(msg);
+        r.setMsg(ChineseMessageLocalizer.localize(msg));
         return r;
     }
 }

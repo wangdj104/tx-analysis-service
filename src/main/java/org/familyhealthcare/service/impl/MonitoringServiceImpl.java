@@ -68,7 +68,7 @@ public class MonitoringServiceImpl implements MonitoringService {
     @Override
     public MonitoringSnapshotVO getSnapshot(Long patientId, Integer days) {
         if (patientId == null) {
-            throw new IllegalArgumentException("Select a patient");
+            throw new IllegalArgumentException("请选择患者。");
         }
         Patient patient = dataScopeHelper.requirePatient(patientId);
         int rangeDays = days == null ? 7 : Math.max(1, Math.min(days, 90));
@@ -211,7 +211,7 @@ public class MonitoringServiceImpl implements MonitoringService {
             MonitoringSnapshotVO.TaskItem task = new MonitoringSnapshotVO.TaskItem();
             task.setId(intake.getId());
             task.setTaskType("MEDICATION");
-            task.setTitle(medication != null ? medication.getDrugName() : "by timemedication intake");
+            task.setTitle(medication != null ? medication.getDrugName() : "按时服药");
             task.setScheduledAt(intake.getSnoozeUntil() != null ? intake.getSnoozeUntil() : intake.getScheduledAt());
             task.setStatus(intake.getStatus());
             task.setDosage(intake.getDosage());
@@ -222,7 +222,7 @@ public class MonitoringServiceImpl implements MonitoringService {
             MonitoringSnapshotVO.TaskItem task = new MonitoringSnapshotVO.TaskItem();
             task.setId(schedule.getId());
             task.setTaskType("DIALYSIS");
-            task.setTitle("Dialysisschedule");
+            task.setTitle("透析排班");
             task.setScheduledAt(schedule.getScheduleDate().atTime(parseTime(schedule.getScheduleTime())));
             task.setStatus(schedule.getStatus());
             task.setDescription(schedule.getRemark());
@@ -287,45 +287,45 @@ public class MonitoringServiceImpl implements MonitoringService {
             BpSelfMonitorRecord latest, PatientHealthTarget target, LocalDateTime now) {
         LocalDateTime at = recordDateTime(latest);
         if (latest == null || latest.getSystolicBp() == null) {
-            return signal("bloodPressure", "Blood Pressuremonitoring", "NO_DATA", "No data", "—", "mmHg", null, "etc.pendingfirsttimesmeasurement");
+            return signal("bloodPressure", "血压监测", "NO_DATA", "暂无数据", "—", "mmHg", null, "等待首次测量");
         }
         String status = bpSeverity(latest, target);
         long hours = hoursSince(at, now);
         if ("NORMAL".equals(status) && hours > 24) status = "DELAYED";
         String label = statusLabel(status);
         String value = latest.getSystolicBp() + "/" + (latest.getDiastolicBp() == null ? "—" : latest.getDiastolicBp());
-        return signal("bloodPressure", "Blood Pressuremonitoring", status, label, value, "mmHg", at, freshness(at, now));
+        return signal("bloodPressure", "血压监测", status, label, value, "mmHg", at, freshness(at, now));
     }
 
     private MonitoringSnapshotVO.Signal buildGlucoseSignal(
             BpSelfMonitorRecord latest, PatientHealthTarget target, LocalDateTime now) {
         LocalDateTime at = recordDateTime(latest);
         if (latest == null || latest.getBloodGlucose() == null) {
-            return signal("glucose", "Blood Glucosemonitoring", "NO_DATA", "No data", "—", "mmol/L", null, "etc.pendingfirsttimesmeasurement");
+            return signal("glucose", "血糖监测", "NO_DATA", "暂无数据", "—", "mmol/L", null, "等待首次测量");
         }
         String status = glucoseSeverity(latest, target);
         long hours = hoursSince(at, now);
         if ("NORMAL".equals(status) && hours > 24) status = "DELAYED";
-        return signal("glucose", "Blood Glucosemonitoring", status, statusLabel(status),
+        return signal("glucose", "血糖监测", status, statusLabel(status),
                 latest.getBloodGlucose().stripTrailingZeros().toPlainString(),
                 defaultText(latest.getBgUnit(), "mmol/L"), at, freshness(at, now));
     }
 
     private MonitoringSnapshotVO.Signal buildDialysisSignal(DialysisRecord latest, LocalDateTime now) {
         if (latest == null || latest.getRecordDate() == null) {
-            return signal("dialysis", "Dialysismonitoring", "NO_DATA", "No data", "—", "", null, "etc.pendingfirsttimesrecord");
+            return signal("dialysis", "透析监测", "NO_DATA", "暂无数据", "—", "", null, "等待首次记录");
         }
         LocalDateTime at = latest.getRecordDate().atTime(23, 59);
         String status = "MATCH".equals(latest.getDehydrationStatus()) ? "NORMAL" : "WARNING";
         if (hoursSince(at, now) > 96 && "NORMAL".equals(status)) status = "DELAYED";
         String value = latest.getWeightGain() == null ? "—" : latest.getWeightGain().stripTrailingZeros().toPlainString();
-        return signal("dialysis", "Dialysismonitoring", status, statusLabel(status), value, "kg weight gain", at, freshness(at, now));
+        return signal("dialysis", "透析监测", status, statusLabel(status), value, "kg 增重", at, freshness(at, now));
     }
 
     private MonitoringSnapshotVO.Signal buildMedicationSignal(List<MedicationIntake> intakes, LocalDateTime now) {
         intakes = intakes.stream().filter(i -> !"CANCELLED".equals(i.getStatus())).collect(java.util.stream.Collectors.toList());
         if (intakes.isEmpty()) {
-            return signal("medication", "Today's medications", "NO_DATA", "No plan", "0/0", "", null, "No medication tasks are scheduled for today");
+            return signal("medication", "今日用药", "NO_DATA", "暂无计划", "0/0", "", null, "今日未安排用药任务");
         }
         int completed = 0;
         int overdue = 0;
@@ -339,9 +339,9 @@ public class MonitoringServiceImpl implements MonitoringService {
             latest = max(latest, candidate);
         }
         String status = overdue > 0 ? "WARNING" : (completed == intakes.size() ? "NORMAL" : "PENDING");
-        String label = overdue > 0 ? "storein overdueperiod" : (completed == intakes.size() ? "Allcomplete" : "In Progress");
-        return signal("medication", "Today's medications", status, label,
-                completed + "/" + intakes.size(), "times", latest, overdue > 0 ? overdue + " itemPending" : "by today Dayplanstatistics");
+        String label = overdue > 0 ? "存在逾期" : (completed == intakes.size() ? "全部完成" : "进行中");
+        return signal("medication", "今日用药", status, label,
+                completed + "/" + intakes.size(), "次", latest, overdue > 0 ? overdue + " 项待处理" : "按今日计划统计");
     }
 
     private MonitoringSnapshotVO.Signal signal(String key, String label, String status,
@@ -399,16 +399,16 @@ public class MonitoringServiceImpl implements MonitoringService {
         if ("CRITICAL".equals(bpSeverity(bp, target)) || "CRITICAL".equals(glucoseSeverity(glucose, target))) critical = true;
         if (critical) {
             result.setOverallStatus("CRITICAL");
-            result.setStatusLabel("needneedimmediatelyattention");
+            result.setStatusLabel("需要立即关注");
         } else if (warning || result.getMetrics().getActiveAlertCount() > 0) {
             result.setOverallStatus("WARNING");
-            result.setStatusLabel("storein Pendingitem");
+            result.setStatusLabel("存在待处理事项");
         } else if (!hasData) {
             result.setOverallStatus("NO_DATA");
-            result.setStatusLabel("etc.pendinghealthdata");
+            result.setStatusLabel("等待健康数据");
         } else {
             result.setOverallStatus("STABLE");
-            result.setStatusLabel("currentStatusstable");
+            result.setStatusLabel("当前状态稳定");
         }
     }
 
@@ -417,18 +417,18 @@ public class MonitoringServiceImpl implements MonitoringService {
                                           List<MedicationIntake> intakes) {
         List<String> suggestions = new ArrayList<>();
         if ("CRITICAL".equals(result.getOverallStatus())) {
-            suggestions.add("storein SevereAbnormal, Please immediatelyremeasure; for example companionfollowclearshowdiscomfort, Please as prescribedcontactClinician or andtimethenmedical. ");
+            suggestions.add("存在严重异常，请立即复测；如伴随明显不适，请按医嘱联系医生或及时就医。");
         }
-        if (bp == null) suggestions.add("No recent blood pressure record is available. Consider taking one resting measurement.");
-        else if ("WARNING".equals(bpSeverity(bp, null))) suggestions.add("most recent Blood Pressureexceedcommonrange, recommendationrestafter remeasureanddurationrecord. ");
-        if (glucose == null) suggestions.add("No recent blood glucose record is available. Add one if it is part of the care plan.");
+        if (bp == null) suggestions.add("暂无近期血压记录，建议在静息状态下测量一次。");
+        else if ("WARNING".equals(bpSeverity(bp, null))) suggestions.add("最近血压超出常用范围，建议休息后复测并持续记录。");
+        if (glucose == null) suggestions.add("暂无近期血糖记录；如照护计划包含血糖监测，请补充一次。");
         int pending = 0;
         for (MedicationIntake item : intakes) {
             if ("PENDING".equals(item.getStatus()) || "MISSED".equals(item.getStatus()) || "SNOOZED".equals(item.getStatus())) pending++;
         }
-        if (pending > 0) suggestions.add("Todaystillhas  " + pending + " itemmedicationtaskPending, Please verifyactualTakecondition. ");
-        if (result.getMetrics().getDataCompleteness() < 50) suggestions.add("currentmonitoringdatacovernot enough, continuousrecordafter trenddeterminewillmorecan rely on. ");
-        if (suggestions.isEmpty()) suggestions.add("currentnohas Urgentitem, continueby planrecord, medication and follow-up examination. ");
+        if (pending > 0) suggestions.add("今日仍有 " + pending + " 项用药任务待处理，请核实实际服用情况。");
+        if (result.getMetrics().getDataCompleteness() < 50) suggestions.add("当前监测数据覆盖不足，持续记录后趋势判断会更可靠。");
+        if (suggestions.isEmpty()) suggestions.add("当前没有紧急事项，请继续按计划记录、用药和复查。");
         return suggestions;
     }
 
@@ -466,12 +466,12 @@ public class MonitoringServiceImpl implements MonitoringService {
     }
 
     private String statusLabel(String status) {
-        if ("CRITICAL".equals(status)) return "SevereAbnormal";
-        if ("WARNING".equals(status)) return "needneedattention";
-        if ("DELAYED".equals(status)) return "datadelay";
-        if ("PENDING".equals(status)) return "In Progress";
-        if ("NO_DATA".equals(status)) return "No data";
-        return "Normal";
+        if ("CRITICAL".equals(status)) return "严重异常";
+        if ("WARNING".equals(status)) return "需要关注";
+        if ("DELAYED".equals(status)) return "数据延迟";
+        if ("PENDING".equals(status)) return "进行中";
+        if ("NO_DATA".equals(status)) return "暂无数据";
+        return "正常";
     }
 
     private LocalDateTime resolveLastDataAt(BpSelfMonitorRecord bp, BpSelfMonitorRecord glucose,
@@ -509,13 +509,13 @@ public class MonitoringServiceImpl implements MonitoringService {
     }
 
     private String freshness(LocalDateTime at, LocalDateTime now) {
-        if (at == null) return "No updates";
+        if (at == null) return "暂无更新";
         long minutes = Math.max(0, Duration.between(at, now).toMinutes());
-        if (minutes < 1) return "just nowupdate";
-        if (minutes < 60) return minutes + " minutesbefore ";
+        if (minutes < 1) return "刚刚更新";
+        if (minutes < 60) return minutes + " 分钟前";
         long hours = minutes / 60;
-        if (hours < 24) return hours + " hoursbefore ";
-        return (hours / 24) + " daysbefore ";
+        if (hours < 24) return hours + " 小时前";
+        return (hours / 24) + " 天前";
     }
 
     private LocalDateTime max(LocalDateTime a, LocalDateTime b) {

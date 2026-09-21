@@ -200,7 +200,7 @@ test('combined vital chart explains shared abnormal flags and uses non-HTML tool
   view.snapshot.value = { vitalTrend: [{ systolic: 120, diastolic: 80, glucose: 12, abnormal: true }] };
   const chart = view.chartOption.value;
   assert.equal(chart.tooltip.renderMode, 'richText');
-  assert.match(chart.tooltip.formatter([{ dataIndex: 0, axisValueLabel: 'measurementTime', seriesName: 'indicator', value: 120 }]), /can cancomeselfOtherindicator/);
+  assert.match(chart.tooltip.formatter([{ dataIndex: 0, axisValueLabel: '测量时间', seriesName: '指标', value: 120 }]), /可能来自其他指标/);
   assert.equal(chart.series[0].data[0].symbol, 'diamond');
 });
 

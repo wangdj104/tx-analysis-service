@@ -6,13 +6,13 @@
           <div class="top-bar">
             <div class="left">
               <div>
-                <h1>Complication Tracking</h1>
-                <p class="subtitle">recordDialysiscomplicationevent, trackoccurtrend and Severelevel</p>
+                <h1>并发症跟踪</h1>
+                <p class="subtitle">记录透析并发症事件，跟踪发生趋势和严重程度。</p>
               </div>
             </div>
             <div class="right">
               <el-button type="primary" @click="showAddDialog">
-                <el-icon><Plus /></el-icon>Add record
+                <el-icon><Plus /></el-icon>新增记录
               </el-button>
             </div>
           </div>
@@ -22,28 +22,28 @@
         <div v-if="stats" class="content-panel stats-overview">
           <el-row :gutter="16">
             <el-col :xs="12" :sm="6" :md="6">
-              <el-statistic title="totalrecordcount" :value="stats.totalCount || 0" suffix="items" />
+              <el-statistic title="记录总数" :value="stats.totalCount || 0" suffix="条" />
             </el-col>
             <el-col :xs="12" :sm="6" :md="6">
-              <el-statistic title="Mild" :value="mildCount" suffix="times">
-                <template #suffix><span class="stat-suffix mild">times</span></template>
+              <el-statistic title="轻度" :value="mildCount" suffix="次">
+                <template #suffix><span class="stat-suffix mild">次</span></template>
               </el-statistic>
             </el-col>
             <el-col :xs="12" :sm="6" :md="6">
-              <el-statistic title="Moderate" :value="moderateCount">
-                <template #suffix><span class="stat-suffix moderate">times</span></template>
+              <el-statistic title="中度" :value="moderateCount">
+                <template #suffix><span class="stat-suffix moderate">次</span></template>
               </el-statistic>
             </el-col>
             <el-col :xs="12" :sm="6" :md="6">
-              <el-statistic title="severe" :value="severeCount">
-                <template #suffix><span class="stat-suffix severe">times</span></template>
+              <el-statistic title="重度" :value="severeCount">
+                <template #suffix><span class="stat-suffix severe">次</span></template>
               </el-statistic>
             </el-col>
           </el-row>
 
           <!-- typedistribution -->
           <div v-if="stats.typeCounts && stats.typeCounts.length" class="stats-distribution">
-            <span class="distribution-label">typedistribution</span>
+            <span class="distribution-label">类型分布</span>
             <div class="stats-tag-wrap">
               <el-tag v-for="tc in stats.typeCounts" :key="tc.type" :type="typeTagType(tc.type)" size="small">
                 {{ typeLabel(tc.type) }} · {{ tc.count }}
@@ -57,47 +57,47 @@
           <div class="toolbar">
             <div class="list-panel-title">
               <el-icon><Warning /></el-icon>
-              <span>complicationrecord</span>
-              <span v-if="records.length" class="list-count">{{ records.length }} items</span>
+              <span>并发症记录</span>
+              <span v-if="records.length" class="list-count">共 {{ records.length }} 条</span>
             </div>
             <el-button @click="loadData" :loading="loading">
-              <el-icon><Refresh /></el-icon>Refresh
+              <el-icon><Refresh /></el-icon>刷新
             </el-button>
           </div>
 
           <div class="table-wrap">
-            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="Nonecomplicationrecord">
-              <el-table-column prop="occurrenceDate" label="occurDate" width="108" />
-              <el-table-column prop="complicationType" label="type" width="120">
+            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="暂无并发症记录">
+              <el-table-column prop="occurrenceDate" label="发生日期" width="108" />
+              <el-table-column prop="complicationType" label="类型" width="120">
                 <template #default="{ row }">
                   <el-tag :type="typeTagType(row.complicationType)" size="small">{{ typeLabel(row.complicationType) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="severity" label="Severelevel" width="100" align="center">
+              <el-table-column prop="severity" label="严重程度" width="100" align="center">
                 <template #default="{ row }">
                   <el-tag :type="severityTagType(row.severity)" size="small">{{ severityLabel(row.severity) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="relatedDialysissummary" min-width="160" show-overflow-tooltip>
+              <el-table-column label="关联透析摘要" min-width="160" show-overflow-tooltip>
                 <template #default="{ row }">
                   <template v-if="row.relatedDialysisId && row.dialysisWeightGain != null">
                     <el-tag type="info" size="small">
-                      weight gain{{ row.dialysisWeightGain }}kg | Blood Pressure{{ row.dialysisSystolicBp ?? '-' }}/{{ row.dialysisDiastolicBp ?? '-' }}
+                      增重 {{ row.dialysisWeightGain }} kg｜血压 {{ row.dialysisSystolicBp ?? '-' }}/{{ row.dialysisDiastolicBp ?? '-' }}
                     </el-tag>
                   </template>
                   <span v-else class="text-muted">-</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="description" label="Description" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="treatmentMeasures" label="treatment measures" min-width="140" show-overflow-tooltip />
-              <el-table-column prop="outcome" label="outcome" min-width="100" show-overflow-tooltip />
-              <el-table-column label="Actions" width="120" align="center" fixed="right">
+              <el-table-column prop="description" label="说明" min-width="180" show-overflow-tooltip />
+              <el-table-column prop="treatmentMeasures" label="处理措施" min-width="140" show-overflow-tooltip />
+              <el-table-column prop="outcome" label="转归" min-width="100" show-overflow-tooltip />
+              <el-table-column label="操作" width="120" align="center" fixed="right">
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" @click="showEditDialog(row)">Edit</el-button>
-                    <el-popconfirm title="Confirm deletion?" @confirm="handleDelete(row.id)">
+                    <el-button link type="primary" size="small" @click="showEditDialog(row)">编辑</el-button>
+                    <el-popconfirm title="确认删除吗？" @confirm="handleDelete(row.id)">
                       <template #reference>
-                        <el-button link type="danger" size="small">Delete</el-button>
+                        <el-button link type="danger" size="small">删除</el-button>
                       </template>
                     </el-popconfirm>
                   </div>
@@ -110,68 +110,68 @@
     </el-main>
 
     <!-- Add/Editcomplicationrecord -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Editcomplicationrecord' : 'Addcomplicationrecord'" :width="isMobile ? '94%' : '600px'" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑并发症记录' : '新增并发症记录'" :width="isMobile ? '94%' : '600px'" destroy-on-close>
       <el-form :model="form" label-width="110px" ref="formRef" :rules="rules">
-        <el-form-item label="relatedDialysis Records">
-          <el-select v-model="form.relatedDialysisId" filterable clearable placeholder="selectDialysis Records (Optional) " style="width: 100%" @change="onDialysisSelect">
-            <el-option v-for="d in dialysisOptions" :key="d.id" :label="`${d.recordDate} | weight gain${d.weightGain ?? '-'}kg | Blood Pressure${d.systolicBp ?? '-'}/${d.diastolicBp ?? '-'}`" :value="d.id" />
+        <el-form-item label="关联透析记录">
+          <el-select v-model="form.relatedDialysisId" filterable clearable placeholder="选择透析记录（选填）" style="width: 100%" @change="onDialysisSelect">
+            <el-option v-for="d in dialysisOptions" :key="d.id" :label="`${d.recordDate}｜增重 ${d.weightGain ?? '-'} kg｜血压 ${d.systolicBp ?? '-'}/${d.diastolicBp ?? '-'}`" :value="d.id" />
           </el-select>
         </el-form-item>
         <!-- relatedDialysisdataPreview -->
         <div v-if="linkedDialysisData" class="linked-dialysis-preview">
-          <div class="linked-preview-title">relatedDialysisdata: </div>
+          <div class="linked-preview-title">关联透析数据：</div>
           <div class="linked-preview-grid">
-            <div><span class="muted">pre-dialysis</span> <strong>{{ linkedDialysisData.onWeight ?? '-' }}</strong> kg</div>
-            <div><span class="muted">post-dialysis</span> <strong>{{ linkedDialysisData.offWeight ?? '-' }}</strong> kg</div>
-            <div><span class="muted">weight gain</span> <strong class="accent">{{ linkedDialysisData.weightGain ?? '-' }}</strong> kg</div>
-            <div><span class="muted">ultrafiltration</span> <strong>{{ linkedDialysisData.ufAmount ?? '-' }}</strong> kg</div>
-            <div><span class="muted">Blood Pressure</span> <strong>{{ linkedDialysisData.systolicBp ?? '-' }}/{{ linkedDialysisData.diastolicBp ?? '-' }}</strong></div>
-            <div><span class="muted">fluid removal</span> <el-tag :type="dehydrationTagType(linkedDialysisData.dehydrationStatus)" size="small">{{ dehydrationLabel(linkedDialysisData.dehydrationStatus) }}</el-tag></div>
+            <div><span class="muted">透析前</span> <strong>{{ linkedDialysisData.onWeight ?? '-' }}</strong> kg</div>
+            <div><span class="muted">透析后</span> <strong>{{ linkedDialysisData.offWeight ?? '-' }}</strong> kg</div>
+            <div><span class="muted">增重</span> <strong class="accent">{{ linkedDialysisData.weightGain ?? '-' }}</strong> kg</div>
+            <div><span class="muted">超滤量</span> <strong>{{ linkedDialysisData.ufAmount ?? '-' }}</strong> kg</div>
+            <div><span class="muted">血压</span> <strong>{{ linkedDialysisData.systolicBp ?? '-' }}/{{ linkedDialysisData.diastolicBp ?? '-' }}</strong></div>
+            <div><span class="muted">脱水状态</span> <el-tag :type="dehydrationTagType(linkedDialysisData.dehydrationStatus)" size="small">{{ dehydrationLabel(linkedDialysisData.dehydrationStatus) }}</el-tag></div>
           </div>
         </div>
-        <el-form-item label="occurDate" prop="occurrenceDate">
-          <el-date-picker v-model="form.occurrenceDate" type="date" placeholder="selectDate" value-format="YYYY-MM-DD" style="width: 100%" />
+        <el-form-item label="发生日期" prop="occurrenceDate">
+          <el-date-picker v-model="form.occurrenceDate" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" style="width: 100%" />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :xs="24" :sm="12">
-            <el-form-item label="complicationtype" prop="complicationType">
-              <el-select v-model="form.complicationType" placeholder="Select" style="width: 100%">
-                <el-option label="infection" value="INFECTION" />
-                <el-option label="DialysisinlowBlood Pressure" value="HYPOTENSION" />
-                <el-option label="anemia" value="ANEMIA" />
-                <el-option label="bone disease" value="BONE_DISEASE" />
-                <el-option label="cardiovascular event" value="CARDIOVASCULAR" />
-                <el-option label="vascular accessquestion" value="VASCULAR_ACCESS_ISSUE" />
-                <el-option label="Other" value="OTHER" />
+            <el-form-item label="并发症类型" prop="complicationType">
+              <el-select v-model="form.complicationType" placeholder="请选择" style="width: 100%">
+                <el-option label="感染" value="INFECTION" />
+                <el-option label="透析中低血压" value="HYPOTENSION" />
+                <el-option label="贫血" value="ANEMIA" />
+                <el-option label="骨病" value="BONE_DISEASE" />
+                <el-option label="心血管事件" value="CARDIOVASCULAR" />
+                <el-option label="血管通路问题" value="VASCULAR_ACCESS_ISSUE" />
+                <el-option label="其他" value="OTHER" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12">
-            <el-form-item label="Severelevel" prop="severity">
-              <el-select v-model="form.severity" placeholder="Select" style="width: 100%">
-                <el-option label="Mild" value="MILD" />
-                <el-option label="Moderate" value="MODERATE" />
-                <el-option label="severe" value="SEVERE" />
+            <el-form-item label="严重程度" prop="severity">
+              <el-select v-model="form.severity" placeholder="请选择" style="width: 100%">
+                <el-option label="轻度" value="MILD" />
+                <el-option label="中度" value="MODERATE" />
+                <el-option label="重度" value="SEVERE" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="Description">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="complicationDetailedDescription" />
+        <el-form-item label="说明">
+          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="请描述并发症详情" />
         </el-form-item>
-        <el-form-item label="treatment measures">
-          <el-input v-model="form.treatmentMeasures" type="textarea" :rows="2" placeholder="collectget treatment measures" />
+        <el-form-item label="处理措施">
+          <el-input v-model="form.treatmentMeasures" type="textarea" :rows="2" placeholder="记录已采取的处理措施" />
         </el-form-item>
-        <el-form-item label="outcome/result">
-          <el-input v-model="form.outcome" placeholder="resultDescription, for example : improved, stable, needhospitalization" />
+        <el-form-item label="转归／结果">
+          <el-input v-model="form.outcome" placeholder="例如：好转、稳定、需要住院" />
         </el-form-item>
-        <el-form-item label="Notes">
-          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="Notesinformation" />
+        <el-form-item label="备注">
+          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="备注信息" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="handleSave">Save</el-button>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -203,17 +203,17 @@ const form = reactive({
 });
 
 const rules = {
-  occurrenceDate: [{ required: true, message: 'SelectoccurDate', trigger: 'change' }],
-  complicationType: [{ required: true, message: 'Selectcomplicationtype', trigger: 'change' }],
-  severity: [{ required: true, message: 'SelectSeverelevel', trigger: 'change' }]
+  occurrenceDate: [{ required: true, message: '请选择发生日期', trigger: 'change' }],
+  complicationType: [{ required: true, message: '请选择并发症类型', trigger: 'change' }],
+  severity: [{ required: true, message: '请选择严重程度', trigger: 'change' }]
 };
 
 const TYPE_MAP = {
-  INFECTION: 'infection', HYPOTENSION: 'DialysisinlowBlood Pressure', ANEMIA: 'anemia',
-  BONE_DISEASE: 'bone disease', CARDIOVASCULAR: 'cardiovascular event',
-  VASCULAR_ACCESS_ISSUE: 'vascular accessquestion', OTHER: 'Other'
+  INFECTION: '感染', HYPOTENSION: '透析中低血压', ANEMIA: '贫血',
+  BONE_DISEASE: '骨病', CARDIOVASCULAR: '心血管事件',
+  VASCULAR_ACCESS_ISSUE: '血管通路问题', OTHER: '其他'
 };
-const SEVERITY_MAP = { MILD: 'Mild', MODERATE: 'Moderate', SEVERE: 'severe' };
+const SEVERITY_MAP = { MILD: '轻度', MODERATE: '中度', SEVERE: '重度' };
 
 function typeLabel(v) { return TYPE_MAP[v] || v; }
 function severityLabel(v) { return SEVERITY_MAP[v] || v; }
@@ -226,7 +226,7 @@ function severityTagType(v) {
   return m[v] || 'info';
 }
 function dehydrationLabel(v) {
-  const m = { TOO_MUCH: 'excessive', INSUFFICIENT: 'not enough', MATCH: 'match' };
+  const m = { TOO_MUCH: '过多', INSUFFICIENT: '不足', MATCH: '匹配' };
   return m[v] || v || '-';
 }
 function dehydrationTagType(v) {
@@ -314,17 +314,17 @@ async function handleSave() {
     form.patientId = currentPatientId.value;
     const res = isEdit.value ? await updateRecord(form) : await saveRecord(form);
     if (res.code === 200) {
-      ElMessage.success(res.data || 'Saved successfully');
+      ElMessage.success(res.data || '保存成功');
       dialogVisible.value = false;
       loadData();
-    } else { ElMessage.error(res.msg || 'Failed to save'); }
+    } else { ElMessage.error(res.msg || '保存失败'); }
   } catch (e) { console.error(e); }
 }
 
 async function handleDelete(id) {
   const res = await deleteRecord(id);
-  if (res.code === 200) { ElMessage.success('Deleted successfully'); loadData(); }
-  else { ElMessage.error(res.msg || 'Failed to delete'); }
+  if (res.code === 200) { ElMessage.success('删除成功'); loadData(); }
+  else { ElMessage.error(res.msg || '删除失败'); }
 }
 
 watch(currentPatientId, () => { loadData(); });

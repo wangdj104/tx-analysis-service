@@ -31,7 +31,7 @@ public class HealthReportController {
             String format = request.getFormat() != null ? request.getFormat() : "html";
             byte[] content = healthReportService.generateReport(request, format);
 
-            String filename = "Health Report_" + request.getPatientId();
+            String filename = "健康报告_" + request.getPatientId();
             HttpHeaders headers = new HttpHeaders();
             if ("pdf".equalsIgnoreCase(format)) {
                 filename += ".pdf";

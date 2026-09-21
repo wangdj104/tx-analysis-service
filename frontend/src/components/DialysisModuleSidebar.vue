@@ -13,19 +13,19 @@
     >
       <el-menu-item index="data">
         <el-icon><Document /></el-icon>
-        <span>dataentry</span>
+        <span>数据录入</span>
       </el-menu-item>
       <el-menu-item index="analysis">
         <el-icon><TrendCharts /></el-icon>
-        <span>Trend Analysis</span>
+        <span>趋势分析</span>
       </el-menu-item>
       <el-menu-item index="ai">
         <el-icon><Cpu /></el-icon>
-        <span>AI analysis</span>
+        <span>AI 分析</span>
       </el-menu-item>
       <el-menu-item index="dry-weight">
         <el-icon><ScaleToOriginal /></el-icon>
-        <span>Dry Weight</span>
+        <span>干体重管理</span>
       </el-menu-item>
     </el-menu>
   </el-aside>

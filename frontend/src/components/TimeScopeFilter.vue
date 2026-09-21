@@ -1,6 +1,6 @@
 <template>
   <div class="time-scope-filter" :class="{ 'time-scope-filter--stack': stack }">
-    <div class="time-scope-filter__dims" role="tablist" aria-label="statisticsdimension">
+    <div class="time-scope-filter__dims" role="tablist" aria-label="统计维度">
       <button
         v-for="opt in dimensions"
         :key="opt.value"
@@ -44,9 +44,9 @@ const props = defineProps({
 const emit = defineEmits(['update:timeType', 'update:timeValue', 'dimension-change', 'date-change']);
 
 const dimensions = [
-  { value: 'month', label: 'by Month', icon: MonthIcon },
-  { value: 'week', label: 'by week', icon: Timer },
-  { value: 'year', label: 'by Year', icon: Histogram }
+  { value: 'month', label: '按月', icon: MonthIcon },
+  { value: 'week', label: '按周', icon: Timer },
+  { value: 'year', label: '按年', icon: Histogram }
 ];
 
 const pickerType = computed(() => (props.timeType === 'week' ? 'date' : props.timeType));
@@ -58,15 +58,15 @@ const valueFormat = computed(() => {
 });
 
 const pickerLabel = computed(() => {
-  if (props.timeType === 'year') return 'Yearcopy';
-  if (props.timeType === 'week') return 'weekstartstart';
-  return 'Month';
+  if (props.timeType === 'year') return '年份';
+  if (props.timeType === 'week') return '周起始日';
+  return '月份';
 });
 
 const pickerPlaceholder = computed(() => {
-  if (props.timeType === 'year') return 'selectYearcopy';
-  if (props.timeType === 'week') return 'selectDate';
-  return 'selectMonth';
+  if (props.timeType === 'year') return '选择年份';
+  if (props.timeType === 'week') return '选择日期';
+  return '选择月份';
 });
 
 function selectDimension(value) {

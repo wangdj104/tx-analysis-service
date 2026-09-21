@@ -1,34 +1,34 @@
 <template>
   <main class="settings-page">
     <header>
-      <div><h1>Notification Settings</h1><p>Configure medication, appointment, stock, and care reminders. Webhooks are delivered by the background service.</p></div>
-      <el-button type="primary" @click="openCreate">Add channel</el-button>
+      <div><h1>通知设置</h1><p>配置用药、预约、库存和照护提醒，Webhook 消息由后台服务发送。</p></div>
+      <el-button type="primary" @click="openCreate">新增渠道</el-button>
     </header>
     <section class="browser-card">
-      <div><b>Browser notifications</b><p>While the app is open and a patient is selected, due medication tasks are checked every 30 seconds.</p></div>
+      <div><b>浏览器通知</b><p>应用保持打开且已选择患者时，系统每 30 秒检查一次到期用药任务。</p></div>
       <el-button @click="enableBrowser">{{ browserStatus }}</el-button>
     </section>
     <section class="channel-list" v-loading="loading">
-      <el-empty v-if="!rows.length" description="No notification channels configured" />
+      <el-empty v-if="!rows.length" description="尚未配置通知渠道" />
       <article v-for="row in rows" :key="row.id" class="channel-card">
-        <div><b>{{ row.channelName || channelTypeName(row.channelType) }}</b><p>{{ channelTypeName(row.channelType) }} · {{ row.webhookConfigured ? 'Webhook securely stored' : 'Webhook URL missing' }}</p><small>Last test: {{ row.lastTestResult || 'Not tested' }}</small></div>
+        <div><b>{{ row.channelName || channelTypeName(row.channelType) }}</b><p>{{ channelTypeName(row.channelType) }} · {{ row.webhookConfigured ? 'Webhook 已安全保存' : '未填写 Webhook 地址' }}</p><small>最近测试：{{ row.lastTestResult || '尚未测试' }}</small></div>
         <el-switch :model-value="row.enabled === 1" @change="toggle(row)" />
-        <div><el-button link @click="test(row)">Test</el-button><el-button link type="primary" @click="edit(row)">Edit</el-button><el-popconfirm title="Delete this notification channel?" @confirm="remove(row)"><template #reference><el-button link type="danger">Delete</el-button></template></el-popconfirm></div>
+        <div><el-button link @click="test(row)">测试</el-button><el-button link type="primary" @click="edit(row)">编辑</el-button><el-popconfirm title="确认删除该通知渠道吗？" @confirm="remove(row)"><template #reference><el-button link type="danger">删除</el-button></template></el-popconfirm></div>
       </article>
     </section>
-    <el-dialog v-model="visible" :title="form.id ? 'Edit notification channel' : 'Add notification channel'" width="min(540px, 94vw)">
+    <el-dialog v-model="visible" :title="form.id ? '编辑通知渠道' : '新增通知渠道'" width="min(540px, 94vw)">
       <el-form :model="form" label-width="110px">
-        <el-form-item label="Channel type"><el-select v-model="form.channelType" style="width:100%"><el-option label="DingTalk bot" value="DINGTALK_WEBHOOK"/><el-option label="WeCom webhook" value="WECHAT_WEBHOOK"/><el-option label="Generic webhook" value="WEBHOOK"/></el-select></el-form-item>
-        <el-form-item label="Channel name"><el-input v-model="form.channelName"/></el-form-item>
-        <el-form-item label="Webhook URL"><el-input v-model="form.webhookUrl" type="textarea" :rows="3" :placeholder="form.id && form.webhookConfigured ? 'Already configured; leave blank to keep it unchanged' : 'Enter the complete webhook URL'"/></el-form-item>
+        <el-form-item label="渠道类型"><el-select v-model="form.channelType" style="width:100%"><el-option label="钉钉机器人" value="DINGTALK_WEBHOOK"/><el-option label="企业微信 Webhook" value="WECHAT_WEBHOOK"/><el-option label="通用 Webhook" value="WEBHOOK"/></el-select></el-form-item>
+        <el-form-item label="渠道名称"><el-input v-model="form.channelName"/></el-form-item>
+        <el-form-item label="Webhook 地址"><el-input v-model="form.webhookUrl" type="textarea" :rows="3" :placeholder="form.id && form.webhookConfigured ? '已配置，留空则保持不变' : '请输入完整的 Webhook 地址'"/></el-form-item>
         <template v-if="form.channelType === 'DINGTALK_WEBHOOK'">
-          <el-form-item label="Signing secret"><el-input v-model="form.robotSecret" show-password :placeholder="form.id && form.robotSecretConfigured ? 'Already configured; leave blank to keep it unchanged' : 'Enter the SEC-prefixed secret when signing is enabled'"/></el-form-item>
-          <el-form-item label="Keyword"><el-input v-model="form.robotKeyword" placeholder="Optional keyword prepended to each message"/></el-form-item>
-          <p class="form-note">Save the channel, then send a test. Care handovers and reminders can be created in Family Care.</p>
+          <el-form-item label="签名密钥"><el-input v-model="form.robotSecret" show-password :placeholder="form.id && form.robotSecretConfigured ? '已配置，留空则保持不变' : '启用签名时请输入以 SEC 开头的密钥'"/></el-form-item>
+          <el-form-item label="关键词"><el-input v-model="form.robotKeyword" placeholder="可选，将添加到每条消息开头"/></el-form-item>
+          <p class="form-note">保存渠道后请发送测试消息。照护交接和提醒可在家庭照护中创建。</p>
         </template>
-        <el-form-item label="Enabled"><el-switch v-model="form.enabled" :active-value="1" :inactive-value="0"/></el-form-item>
+        <el-form-item label="启用"><el-switch v-model="form.enabled" :active-value="1" :inactive-value="0"/></el-form-item>
       </el-form>
-      <template #footer><el-button @click="visible=false">Cancel</el-button><el-button type="primary" @click="submit">Save</el-button></template>
+      <template #footer><el-button @click="visible=false">取消</el-button><el-button type="primary" @click="submit">保存</el-button></template>
     </el-dialog>
   </main>
 </template>
@@ -42,18 +42,18 @@ const rows = ref([])
 const loading = ref(false)
 const visible = ref(false)
 const form = reactive({ id: null, channelType: 'WECHAT_WEBHOOK', channelName: '', webhookUrl: '', robotSecret: '', robotKeyword: '', enabled: 1 })
-const browserStatus = computed(() => !('Notification' in window) ? 'Not supported' : Notification.permission === 'granted' ? 'Enabled' : 'Enable notifications')
+const browserStatus = computed(() => !('Notification' in window) ? '不支持' : Notification.permission === 'granted' ? '已启用' : '启用通知')
 const emptyForm = () => ({ id: null, channelType: 'WECHAT_WEBHOOK', channelName: '', webhookUrl: '', robotSecret: '', robotKeyword: '', webhookConfigured: false, robotSecretConfigured: false, enabled: 1 })
-const channelTypeName = type => ({ DINGTALK_WEBHOOK: 'DingTalk bot', WECHAT_WEBHOOK: 'WeCom webhook', WEBHOOK: 'Generic webhook' }[type] || type)
+const channelTypeName = type => ({ DINGTALK_WEBHOOK: '钉钉机器人', WECHAT_WEBHOOK: '企业微信 Webhook', WEBHOOK: '通用 Webhook' }[type] || type)
 
 async function load(){ loading.value=true; try { rows.value=(await listNotificationChannels()).data||[] } finally { loading.value=false } }
 function openCreate(){ Object.assign(form,emptyForm()); visible.value=true }
 function edit(row){ Object.assign(form,emptyForm(),row); visible.value=true }
-async function submit(){ await saveNotificationChannel({...form}); ElMessage.success('Notification channel saved.'); visible.value=false; await load() }
+async function submit(){ await saveNotificationChannel({...form}); ElMessage.success('通知渠道已保存。'); visible.value=false; await load() }
 async function toggle(row){ await saveNotificationChannel({...row,enabled:row.enabled===1?0:1}); await load() }
-async function test(row){ try { const result=await testNotificationChannel(row.id); ElMessage.success(result.data||'Test request completed.') } finally { await load() } }
-async function remove(row){ await deleteNotificationChannel(row.id); ElMessage.success('Notification channel deleted.'); await load() }
-async function enableBrowser(){ if(!('Notification' in window)){ ElMessage.warning('This browser does not support notifications.'); return } const permission=await Notification.requestPermission(); ElMessage[permission==='granted'?'success':'warning'](permission==='granted'?'Browser notifications enabled.':'Browser notification permission was not granted.') }
+async function test(row){ try { const result=await testNotificationChannel(row.id); ElMessage.success(result.data||'测试请求已完成。') } finally { await load() } }
+async function remove(row){ await deleteNotificationChannel(row.id); ElMessage.success('通知渠道已删除。'); await load() }
+async function enableBrowser(){ if(!('Notification' in window)){ ElMessage.warning('当前浏览器不支持通知。'); return } const permission=await Notification.requestPermission(); ElMessage[permission==='granted'?'success':'warning'](permission==='granted'?'浏览器通知已启用。':'未获得浏览器通知权限。') }
 onMounted(load)
 </script>
 

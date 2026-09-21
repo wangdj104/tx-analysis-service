@@ -6,8 +6,8 @@
           <div class="top-bar">
             <div class="left">
               <div>
-                <h1>User Management</h1>
-                <p class="subtitle">managementsystemuserAccountandRoleassign</p>
+                <h1>用户管理</h1>
+                <p class="subtitle">管理系统用户账号与角色分配。</p>
               </div>
             </div>
           </div>
@@ -15,32 +15,32 @@
         <div class="content-panel">
           <div class="toolbar">
             <el-button v-if="isAdmin" type="primary" @click="showAddDialog">
-              <el-icon><Plus /></el-icon>Adduser
+              <el-icon><Plus /></el-icon>新增用户
             </el-button>
           </div>
           <el-table :data="users" stripe class="app-data-table">
-            <el-table-column v-if="userColVisible('username')" prop="username" label="Username" min-width="108" />
-            <el-table-column v-if="userColVisible('realName')" prop="realName" label="Name" min-width="100" />
-            <el-table-column v-if="userColVisible('phone')" prop="phone" label="Phone" min-width="120" />
-            <el-table-column v-if="userColVisible('email')" prop="email" label="email" min-width="148" show-overflow-tooltip />
-            <el-table-column v-if="userColVisible('status')" prop="status" label="Status" width="80" align="center">
+            <el-table-column v-if="userColVisible('username')" prop="username" label="用户名" min-width="108" />
+            <el-table-column v-if="userColVisible('realName')" prop="realName" label="姓名" min-width="100" />
+            <el-table-column v-if="userColVisible('phone')" prop="phone" label="电话" min-width="120" />
+            <el-table-column v-if="userColVisible('email')" prop="email" label="邮箱" min-width="148" show-overflow-tooltip />
+            <el-table-column v-if="userColVisible('status')" prop="status" label="状态" width="80" align="center">
               <template #default="{ row }">
-                <el-tag v-if="row.status === 1" type="success" size="small">Normal</el-tag>
-                <el-tag v-else type="danger" size="small">Disabled</el-tag>
+                <el-tag v-if="row.status === 1" type="success" size="small">正常</el-tag>
+                <el-tag v-else type="danger" size="small">停用</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="Actions" width="260" align="center" fixed="right">
+            <el-table-column label="操作" width="260" align="center" fixed="right">
               <template #header>
                 <TableActionHeader v-model="userVisibleCols" :columns="USER_COLUMN_DEFS" @reset="resetUserColumns" />
               </template>
               <template #default="{ row }">
-                <el-button link type="primary" size="small" @click="showEditDialog(row)">Edit</el-button>
+                <el-button link type="primary" size="small" @click="showEditDialog(row)">编辑</el-button>
                 <template v-if="isAdmin">
-                  <el-button link type="primary" size="small" @click="showRoleDialog(row)">assignRole</el-button>
-                  <el-button link type="warning" size="small" @click="showResetDialog(row)">ResetPassword</el-button>
-                  <el-popconfirm title="Confirm deletion?" @confirm="handleDelete(row.id)">
+                  <el-button link type="primary" size="small" @click="showRoleDialog(row)">分配角色</el-button>
+                  <el-button link type="warning" size="small" @click="showResetDialog(row)">重置密码</el-button>
+                  <el-popconfirm title="确认删除吗？" @confirm="handleDelete(row.id)">
                     <template #reference>
-                      <el-button link type="danger" size="small" :disabled="row.username === 'admin'">Delete</el-button>
+                      <el-button link type="danger" size="small" :disabled="row.username === 'admin'">删除</el-button>
                     </template>
                   </el-popconfirm>
                 </template>
@@ -52,57 +52,57 @@
     </el-main>
 
     <!-- Add/Edituser -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Edituser' : 'Adduser'" width="520px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="520px" destroy-on-close>
       <el-form :model="form" label-width="90px" :rules="rules" ref="formRef">
-        <el-form-item label="Username" prop="username">
-          <el-input v-model="form.username" :disabled="isEdit" placeholder="Enter your username" />
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="form.username" :disabled="isEdit" placeholder="请输入用户名" />
         </el-form-item>
-        <el-form-item label="realName">
-          <el-input v-model="form.realName" placeholder="Enter realName" />
+        <el-form-item label="真实姓名">
+          <el-input v-model="form.realName" placeholder="请输入真实姓名" />
         </el-form-item>
-        <el-form-item label="Password" prop="password" v-if="!isEdit">
-          <el-input v-model="form.password" type="password" placeholder="to few10, containletters, numbers and special characters" show-password />
+        <el-form-item label="密码" prop="password" v-if="!isEdit">
+          <el-input v-model="form.password" type="password" placeholder="至少 10 位，包含字母、数字和特殊字符" show-password />
         </el-form-item>
-        <el-form-item label="Phone Number">
-          <el-input v-model="form.phone" placeholder="Enter Phone Number" />
+        <el-form-item label="手机号码">
+          <el-input v-model="form.phone" placeholder="请输入手机号码" />
         </el-form-item>
-        <el-form-item label="email">
-          <el-input v-model="form.email" placeholder="Enter email" />
+        <el-form-item label="邮箱">
+          <el-input v-model="form.email" placeholder="请输入邮箱" />
         </el-form-item>
-        <el-form-item label="Status">
+        <el-form-item label="状态">
           <el-radio-group v-model="form.status">
-            <el-radio :value="1">Normal</el-radio>
-            <el-radio :value="0">Disabled</el-radio>
+            <el-radio :value="1">正常</el-radio>
+            <el-radio :value="0">停用</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="handleSave">Save</el-button>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
 
     <!-- assignRole -->
-    <el-dialog v-model="roleDialogVisible" title="assignRole" width="400px" destroy-on-close>
+    <el-dialog v-model="roleDialogVisible" title="分配角色" width="400px" destroy-on-close>
       <el-checkbox-group v-model="selectedRoleIds">
         <el-checkbox v-for="role in roles" :key="role.id" :value="role.id">{{ role.roleName }}</el-checkbox>
       </el-checkbox-group>
       <template #footer>
-        <el-button @click="roleDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="handleAssignRoles">Save</el-button>
+        <el-button @click="roleDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleAssignRoles">保存</el-button>
       </template>
     </el-dialog>
 
     <!-- ResetPassword -->
-    <el-dialog v-model="resetDialogVisible" title="ResetPassword" width="400px" destroy-on-close>
+    <el-dialog v-model="resetDialogVisible" title="重置密码" width="400px" destroy-on-close>
       <el-form :model="resetForm" label-width="100px">
-        <el-form-item label="New Password" required>
-          <el-input v-model="resetForm.newPassword" type="password" placeholder="to few10, containletters, numbers and special characters" show-password />
+        <el-form-item label="新密码" required>
+          <el-input v-model="resetForm.newPassword" type="password" placeholder="至少 10 位，包含字母、数字和特殊字符" show-password />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="resetDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="handleResetPassword">ConfirmReset</el-button>
+        <el-button @click="resetDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleResetPassword">确认重置</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -117,11 +117,11 @@ import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
 
 const USER_COLUMN_DEFS = [
-  { key: 'username', label: 'Username' },
-  { key: 'realName', label: 'Name' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'email', label: 'email', default: false },
-  { key: 'status', label: 'Status' }
+  { key: 'username', label: '用户名' },
+  { key: 'realName', label: '姓名' },
+  { key: 'phone', label: '电话' },
+  { key: 'email', label: '邮箱', default: false },
+  { key: 'status', label: '状态' }
 ];
 const { visibleKeys: userVisibleCols, isVisible: userColVisible, resetColumns: resetUserColumns } =
   useTableColumns('user-list', USER_COLUMN_DEFS);
@@ -156,11 +156,11 @@ const form = reactive({
 const resetForm = reactive({ id: null, newPassword: '' });
 
 const rules = {
-  username: [{ required: true, message: 'Enter your username', trigger: 'blur' }],
+  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [
-    { required: true, message: 'Enter your password', trigger: 'blur' },
-    { min: 10, message: 'Passwordto few10', trigger: 'blur' },
-    { pattern: /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).+$/, message: 'Passwordneedincludeletters, numbers and special characters', trigger: 'blur' }
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 10, message: '密码至少 10 位', trigger: 'blur' },
+    { pattern: /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).+$/, message: '密码需包含字母、数字和特殊字符', trigger: 'blur' }
   ]
 };
 
@@ -199,11 +199,11 @@ async function handleSave() {
     await formRef.value.validate();
     const res = isEdit.value ? await updateUser(form) : await saveUser(form);
     if (res.code === 200) {
-      ElMessage.success(res.data || 'Saved successfully');
+      ElMessage.success(res.data || '保存成功');
       dialogVisible.value = false;
       loadUsers();
     } else {
-      ElMessage.error(res.msg || 'Failed to save');
+      ElMessage.error(res.msg || '保存失败');
     }
   } catch (e) {
     console.error(e);
@@ -213,10 +213,10 @@ async function handleSave() {
 async function handleDelete(id) {
   const res = await deleteUser(id);
   if (res.code === 200) {
-    ElMessage.success('Deleted successfully');
+    ElMessage.success('删除成功');
     loadUsers();
   } else {
-    ElMessage.error(res.msg || 'Failed to delete');
+    ElMessage.error(res.msg || '删除失败');
   }
 }
 
@@ -230,10 +230,10 @@ async function showRoleDialog(row) {
 async function handleAssignRoles() {
   const res = await assignRoles({ userId: currentUserId.value, roleIds: selectedRoleIds.value });
   if (res.code === 200) {
-    ElMessage.success('Role assigned successfully');
+    ElMessage.success('角色分配成功');
     roleDialogVisible.value = false;
   } else {
-    ElMessage.error(res.msg || 'Assignment failed');
+    ElMessage.error(res.msg || '分配失败');
   }
 }
 
@@ -247,15 +247,15 @@ async function handleResetPassword() {
   if (!resetForm.newPassword || resetForm.newPassword.length < 10
       || !/[A-Za-z]/.test(resetForm.newPassword) || !/\d/.test(resetForm.newPassword)
       || !/[^A-Za-z0-9\s]/.test(resetForm.newPassword)) {
-    ElMessage.warning('New Passwordto few10, andneedincludeletters, numbers and special characters');
+    ElMessage.warning('新密码至少 10 位，且需包含字母、数字和特殊字符');
     return;
   }
   const res = await resetPassword(resetForm);
   if (res.code === 200) {
-    ElMessage.success('Password reset successfully');
+    ElMessage.success('密码重置成功');
     resetDialogVisible.value = false;
   } else {
-    ElMessage.error(res.msg || 'Resetfailed');
+    ElMessage.error(res.msg || '重置失败');
   }
 }
 

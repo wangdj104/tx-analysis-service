@@ -1,6 +1,6 @@
 <template>
   <div class="table-action-header">
-    <span class="table-action-header__label">Actions</span>
+    <span class="table-action-header__label">操作</span>
     <ColumnSetting
       v-if="columns?.length"
       v-model="model"

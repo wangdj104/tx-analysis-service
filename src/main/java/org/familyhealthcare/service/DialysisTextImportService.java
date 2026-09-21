@@ -29,35 +29,52 @@ public class DialysisTextImportService {
     }
 
     public Preview parse(String text){
-        Preview out=new Preview();if(text==null||text.trim().isEmpty()){out.errors.add("Paste at least one dialysis record.");return out;}
-        if(text.length()>100000){out.errors.add("A single import may contain up to 100,000 characters. Split larger imports into batches.");return out;}
+        Preview out=new Preview();if(text==null||text.trim().isEmpty()){out.errors.add("请至少粘贴一条透析记录。");return out;}
+        if(text.length()>100000){out.errors.add("单次导入最多支持 100,000 个字符，请将较大的文件拆分后分批导入。");return out;}
         DialysisRecord current=null;Set<LocalDate>dates=new HashSet<>();Set<String>fields=new HashSet<>();int line=0;
         for(String raw:text.replace("\r","").split("\n")){line++;String value=raw.trim();if(value.isEmpty()||value.startsWith("#"))continue;
             for(String cell:value.split("[;；|]",-1)){cell=cell.trim();if(cell.isEmpty())continue;String[]pair=cell.split("\\s*[:：]\\s*",2);
-                if(pair.length!=2){out.errors.add("Line "+line+" could not be parsed. Use 'Field: value': "+cell);continue;}
-                String key=pair[0].trim(),v=pair[1].trim();
+                if(pair.length!=2){out.errors.add("第 "+line+" 行无法解析，请使用“字段: 值”格式："+cell);continue;}
+                String key=normalizeKey(pair[0].trim()),v=pair[1].trim();
                 try{
-                    if("Date".equals(key)){LocalDate day=LocalDate.parse(v);if(!dates.add(day))throw new IllegalArgumentException("The same date appears more than once.");current=new DialysisRecord();current.setRecordDate(day);out.rows.add(current);fields.clear();continue;}
-                    if(current==null)throw new IllegalArgumentException("Enter a date before the record fields.");
-                    if(!fields.add(key))throw new IllegalArgumentException("Duplicate field for the same date: "+key);
+                    if("Date".equals(key)){LocalDate day=LocalDate.parse(v);if(!dates.add(day))throw new IllegalArgumentException("同一日期重复出现。");current=new DialysisRecord();current.setRecordDate(day);out.rows.add(current);fields.clear();continue;}
+                    if(current==null)throw new IllegalArgumentException("请先填写日期，再填写记录字段。");
+                    if(!fields.add(key))throw new IllegalArgumentException("同一日期存在重复字段："+displayKey(key));
                     if("Notes".equals(key)||"Missing reason".equals(key)){current.setRemark((current.getRemark()==null?"":current.getRemark()+"; ")+v);continue;}
-                    if("Status".equals(key)){if(!Arrays.asList("Normal","Missing","Partially missing","Data missing").contains(v))throw new IllegalArgumentException("Status must be Normal, Missing, Partially missing, or Data missing.");if(!"Normal".equals(v)){current.setRecordType("INCOMPLETE");out.explicitIncompleteDates.add(current.getRecordDate().toString());}continue;}
-                    if(!Arrays.asList("Previous post-dialysis weight","Pre-dialysis weight","Post-dialysis weight","Fluid removed","Interval days","Blood pressure").contains(key))throw new IllegalArgumentException("Unrecognized field: "+key);
-                    if(v.isEmpty()||Arrays.asList("missing","unknown","not measured","none","-","?").contains(v.toLowerCase(java.util.Locale.ROOT)))continue;
-                    if("Blood pressure".equals(key)){String[]bp=v.replace("mmHg","").trim().split("[/／]");if(bp.length!=2)throw new IllegalArgumentException("Enter blood pressure as 120/80, or leave it blank.");current.setSystolicBp(positive(bp[0]).intValueExact());current.setDiastolicBp(positive(bp[1]).intValueExact());}
-                    else if("Interval days".equals(key))current.setIntervalDays(positive(v.replace("days","").trim()).intValueExact());
-                    else {BigDecimal n=new BigDecimal(v.replace("kg","").trim());if(n.signum()<0||(!"Fluid removed".equals(key)&&n.signum()==0))throw new IllegalArgumentException("Enter a valid non-negative value; weights must be greater than zero.");switch(key){case "Previous post-dialysis weight":current.setLastOffWeight(n);break;case "Pre-dialysis weight":current.setOnWeight(n);break;case "Post-dialysis weight":current.setOffWeight(n);break;case "Fluid removed":current.setUfAmount(n);break;}}
-                }catch(Exception e){out.errors.add("Line "+line+" ("+key+"): "+(e instanceof IllegalArgumentException?e.getMessage():"Invalid numeric value."));}
+                    if("Status".equals(key)){String status=normalizeStatus(v);if(!Arrays.asList("Normal","Missing","Partially missing","Data missing").contains(status))throw new IllegalArgumentException("状态必须为正常、缺失、部分缺失或数据缺失。");if(!"Normal".equals(status)){current.setRecordType("INCOMPLETE");out.explicitIncompleteDates.add(current.getRecordDate().toString());}continue;}
+                    if(!Arrays.asList("Previous post-dialysis weight","Pre-dialysis weight","Post-dialysis weight","Fluid removed","Interval days","Blood pressure").contains(key))throw new IllegalArgumentException("无法识别的字段："+displayKey(key));
+                    if(v.isEmpty()||Arrays.asList("missing","unknown","not measured","none","缺失","未知","未测量","无","-","?").contains(v.toLowerCase(java.util.Locale.ROOT)))continue;
+                    if("Blood pressure".equals(key)){String[]bp=v.replace("mmHg","").replace("毫米汞柱","").trim().split("[/／]");if(bp.length!=2)throw new IllegalArgumentException("血压请填写为 120/80，或留空。");current.setSystolicBp(positive(bp[0]).intValueExact());current.setDiastolicBp(positive(bp[1]).intValueExact());}
+                    else if("Interval days".equals(key))current.setIntervalDays(positive(v.replace("days","").replace("天","").trim()).intValueExact());
+                    else {BigDecimal n=new BigDecimal(v.replace("kg","").replace("公斤","").replace("千克","").trim());if(n.signum()<0||(!"Fluid removed".equals(key)&&n.signum()==0))throw new IllegalArgumentException("请输入有效的非负数，体重必须大于零。");switch(key){case "Previous post-dialysis weight":current.setLastOffWeight(n);break;case "Pre-dialysis weight":current.setOnWeight(n);break;case "Post-dialysis weight":current.setOffWeight(n);break;case "Fluid removed":current.setUfAmount(n);break;}}
+                }catch(Exception e){out.errors.add("第 "+line+" 行（"+displayKey(key)+"）："+(e instanceof IllegalArgumentException?e.getMessage():"数值格式无效。"));}
             }
         }
         out.rows.sort(Comparator.comparing(DialysisRecord::getRecordDate));
         classifyRows(out);
-        if(out.rows.isEmpty())out.errors.add("No dated records were recognized.");if(out.rows.size()>366)out.errors.add("A single import may contain up to 366 records.");
+        if(out.rows.isEmpty())out.errors.add("未识别到包含日期的记录。");if(out.rows.size()>366)out.errors.add("单次最多可导入 366 条记录。");
         return out;
     }
-    private BigDecimal positive(String s){BigDecimal n=new BigDecimal(s.trim());if(n.signum()<=0)throw new IllegalArgumentException("The value must be greater than zero.");return n;}
+    private String normalizeKey(String key){
+        Map<String,String> aliases=new HashMap<>();
+        aliases.put("日期","Date");aliases.put("上次透后体重","Previous post-dialysis weight");aliases.put("透前体重","Pre-dialysis weight");aliases.put("本次透前体重","Pre-dialysis weight");aliases.put("透后体重","Post-dialysis weight");aliases.put("本次透后体重","Post-dialysis weight");aliases.put("超滤量","Fluid removed");aliases.put("脱水量","Fluid removed");aliases.put("间隔天数","Interval days");aliases.put("血压","Blood pressure");aliases.put("备注","Notes");aliases.put("状态","Status");aliases.put("缺失原因","Missing reason");
+        return aliases.getOrDefault(key,key);
+    }
+    private String displayKey(String key){
+        Map<String,String> labels=new HashMap<>();
+        labels.put("Date","日期");labels.put("Previous post-dialysis weight","上次透后体重");labels.put("Pre-dialysis weight","透前体重");labels.put("Post-dialysis weight","透后体重");labels.put("Fluid removed","超滤量");labels.put("Interval days","间隔天数");labels.put("Blood pressure","血压");labels.put("Notes","备注");labels.put("Status","状态");labels.put("Missing reason","缺失原因");
+        return labels.getOrDefault(key,key);
+    }
+    private String normalizeStatus(String value){
+        if("正常".equals(value))return "Normal";
+        if("缺失".equals(value))return "Missing";
+        if("部分缺失".equals(value))return "Partially missing";
+        if("数据缺失".equals(value))return "Data missing";
+        return value;
+    }
+    private BigDecimal positive(String s){BigDecimal n=new BigDecimal(s.trim());if(n.signum()<=0)throw new IllegalArgumentException("数值必须大于零。");return n;}
     public Preview preview(Long pid,String text){
-        if(scope.requirePatient(pid)==null)throw new IllegalArgumentException("Select a family member.");
+        if(scope.requirePatient(pid)==null)throw new IllegalArgumentException("请选择家庭成员。");
         Preview out=parse(text);
         List<DialysisRecord> history=records.selectList(new QueryWrapper<DialysisRecord>().eq("patient_id",pid).orderByAsc("record_date").orderByAsc("id"));
         if(history==null)history=new ArrayList<>();
@@ -90,20 +107,20 @@ public class DialysisTextImportService {
         out.warnings.clear();
         for(DialysisRecord r:out.rows){
             List<String> missing=new ArrayList<>();
-            if(r.getLastOffWeight()==null)missing.add("previous post-dialysis weight");
-            if(r.getOnWeight()==null)missing.add("pre-dialysis weight");
-            if(r.getOffWeight()==null)missing.add("post-dialysis weight");
-            if(r.getSystolicBp()==null||r.getDiastolicBp()==null)missing.add("blood pressure");
+            if(r.getLastOffWeight()==null)missing.add("上次透后体重");
+            if(r.getOnWeight()==null)missing.add("透前体重");
+            if(r.getOffWeight()==null)missing.add("透后体重");
+            if(r.getSystolicBp()==null||r.getDiastolicBp()==null)missing.add("血压");
             boolean explicit=out.explicitIncompleteDates.contains(r.getRecordDate().toString());
             r.setRecordType(explicit||!missing.isEmpty()?"INCOMPLETE":"NORMAL");
-            if(explicit)out.warnings.add(r.getRecordDate()+": marked as incomplete; provided values were preserved.");
-            else if(!missing.isEmpty())out.warnings.add(r.getRecordDate()+": missing "+String.join(", ",missing));
+            if(explicit)out.warnings.add(r.getRecordDate()+"：已标记为不完整，已填写的值会被保留。");
+            else if(!missing.isEmpty())out.warnings.add(r.getRecordDate()+"：缺少"+String.join("、",missing));
         }
     }
     @Transactional public Map<String,Object> commit(Long pid,String text){
         scope.requirePatient(pid);patients.selectOne(new QueryWrapper<Patient>().eq("id",pid).last("FOR UPDATE"));
         Preview p=preview(pid,text);if(!p.errors.isEmpty())throw new IllegalArgumentException(String.join("; ",p.errors));int added=0;
-        for(DialysisRecord r:p.rows){if(p.existingDates.contains(r.getRecordDate().toString()))continue;r.setTextImport(true);if(!service.saveRecord(r))throw new IllegalStateException("The batch could not be saved and was rolled back.");added++;}
+        for(DialysisRecord r:p.rows){if(p.existingDates.contains(r.getRecordDate().toString()))continue;r.setTextImport(true);if(!service.saveRecord(r))throw new IllegalStateException("批量保存失败，本次导入已回滚。");added++;}
         Map<String,Object>result=new LinkedHashMap<>();result.put("added",added);result.put("skipped",p.existingDates.size());return result;
     }
 }

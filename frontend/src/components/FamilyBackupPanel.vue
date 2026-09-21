@@ -1,20 +1,20 @@
 <template>
   <section class="backup-panel">
-    <h2>Complete backup and restore</h2>
-    <p>Download a portable backup of family members, health records, prescriptions, inventory history, reports, care items, and their attachments.</p>
+    <h2>完整备份与恢复</h2>
+    <p>下载包含家庭成员、健康记录、处方、库存历史、报告、照护事项及附件的可迁移备份。</p>
     <div class="backup-actions">
-      <el-button type="primary" :loading="busy" @click="download">Download complete backup</el-button>
-      <label class="file-label">Choose backup file <input type="file" accept=".zip" :disabled="busy" @change="preview" /></label>
+      <el-button type="primary" :loading="busy" @click="download">下载完整备份</el-button>
+      <label class="file-label">选择备份文件 <input type="file" accept=".zip" :disabled="busy" @change="preview" /></label>
     </div>
-    <el-alert title="Restore creates independent copies and does not overwrite current data. Medication reminders are initially disabled to avoid duplicates, and caregivers must be invited again." type="info" :closable="false" />
+    <el-alert title="恢复会创建独立副本，不会覆盖当前数据。为避免重复提醒，恢复后的用药提醒默认关闭，照护成员需要重新邀请。" type="info" :closable="false" />
     <section v-if="inspection" class="backup-preview">
-      <h3>Backup preview</h3>
-      <p>Created: {{ inspection.createdAt }}</p>
-      <p>Family members: {{ inspection.patients?.map(p => p.name).join(', ') }}</p>
-      <el-table :data="Object.entries(inspection.counts || {}).map(([table, count]) => ({ table, count }))"><el-table-column prop="table" label="Record type" /><el-table-column prop="count" label="Count" /></el-table>
+      <h3>备份预览</h3>
+      <p>创建时间：{{ inspection.createdAt }}</p>
+      <p>家庭成员：{{ inspection.patients?.map(p => p.name).join('、') }}</p>
+      <el-table :data="Object.entries(inspection.counts || {}).map(([table, count]) => ({ table, count }))"><el-table-column prop="table" label="记录类型" /><el-table-column prop="count" label="数量" /></el-table>
       <el-alert v-for="(w, i) in inspection.warnings || []" :key="i" :title="w" type="warning" :closable="false" />
-      <el-checkbox v-model="confirmed" class="restore-confirmation">I understand that this will restore the backup as independent copies.</el-checkbox>
-      <el-button type="primary" :disabled="!confirmed" :loading="busy" @click="restore">Restore as copies</el-button>
+      <el-checkbox v-model="confirmed" class="restore-confirmation">我已了解备份将恢复为独立副本。</el-checkbox>
+      <el-button type="primary" :disabled="!confirmed" :loading="busy" @click="restore">恢复为副本</el-button>
     </section>
     <el-alert v-if="result" :title="result" type="success" :closable="false" />
   </section>
@@ -42,7 +42,7 @@ async function download() {
     a.download = `family-health-backup-${new Date().toISOString().slice(0, 10)}.zip`
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    ElMessage.success('Backup downloaded')
+    ElMessage.success('备份已下载')
   } finally {
     busy.value = false
   }

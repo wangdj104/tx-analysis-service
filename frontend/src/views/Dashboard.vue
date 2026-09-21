@@ -4,20 +4,20 @@
     <section class="dash-top">
       <div class="dash-top__left">
         <p class="dash-top__greet">{{ greetText }}</p>
-        <h1 class="dash-top__title">firstpageoverview</h1>
-        <p class="dash-top__sub">summarizeThis Monthhealthdata, QuickenterPrimary navigation</p>
+        <h1 class="dash-top__title">首页概览</h1>
+        <p class="dash-top__sub">汇总本月健康数据，快速进入主要功能。</p>
       </div>
       <el-button type="primary" round :loading="loading" @click="loadSummary">
-        <el-icon><Refresh /></el-icon>Refresh data
+        <el-icon><Refresh /></el-icon>刷新数据
       </el-button>
     </section>
 
     <!-- indicatorcard -->
     <section class="health-hero" :class="`health-hero--${healthRiskTone}`" v-loading="loading">
       <div class="health-hero__main">
-        <span class="health-hero__eyebrow">This MonthhealthStatus</span>
+        <span class="health-hero__eyebrow">本月健康状态</span>
         <div class="health-hero__title-row">
-          <h2>{{ summary.healthRiskLabel || 'etc.pendingdata' }}</h2>
+          <h2>{{ summary.healthRiskLabel || '等待数据' }}</h2>
           <span class="health-hero__badge">{{ healthRiskText }}</span>
         </div>
         <p class="health-hero__sub">{{ primaryHealthHint }}</p>
@@ -65,8 +65,8 @@
       <article v-if="showTrendChart" class="dash-card dash-card--chart">
         <header class="dash-card__head">
           <div>
-            <h2>recent  6 Monthdatatrend</h2>
-            <p>by modulestatisticseach Monthentryamount</p>
+            <h2>近 6 个月数据趋势</h2>
+            <p>按模块统计每月记录数量</p>
           </div>
         </header>
         <div class="chart-shell">
@@ -78,8 +78,8 @@
           />
           <div v-else class="chart-placeholder">
             <el-icon :size="48" class="chart-placeholder__icon"><TrendCharts /></el-icon>
-            <p>Nonetrenddata</p>
-            <span>entryMedical Records or medicationrecordafter , will in thisdisplaytrend</span>
+            <p>暂无趋势数据</p>
+            <span>录入医疗或用药记录后，这里将显示趋势。</span>
           </div>
         </div>
       </article>
@@ -88,21 +88,21 @@
         <article v-if="hasMenu('/medical-record')" class="dash-card dash-card--table">
           <header class="dash-card__head">
             <div>
-              <h2><el-icon><WarningFilled /></el-icon> most recent Abnormal Results</h2>
+              <h2><el-icon><WarningFilled /></el-icon> 最近异常结果</h2>
             </div>
-            <router-link to="/medical-record" class="dash-card__link">Medical Records →</router-link>
+            <router-link to="/medical-record" class="dash-card__link">医疗记录 →</router-link>
           </header>
           <el-table
             :data="summary.recentAbnormalItems || []"
             size="small"
             class="app-data-table dash-table"
             :max-height="tableMaxHeight"
-            empty-text="NoneAbnormal Results, keep it up"
+            empty-text="暂无异常结果，请继续保持"
           >
-            <el-table-column prop="recordDate" label="Date" width="100" />
-            <el-table-column prop="patientName" label="Patient" width="80" show-overflow-tooltip />
-            <el-table-column prop="itemName" label="Test item" min-width="100" show-overflow-tooltip />
-            <el-table-column label="result" min-width="90">
+            <el-table-column prop="recordDate" label="日期" width="100" />
+            <el-table-column prop="patientName" label="患者" width="80" show-overflow-tooltip />
+            <el-table-column prop="itemName" label="检验项目" min-width="100" show-overflow-tooltip />
+            <el-table-column label="结果" min-width="90">
               <template #default="{ row }">
                 <span class="result-abnormal">{{ row.resultValue }}{{ row.unit ? ' ' + row.unit : '' }}</span>
               </template>
@@ -113,21 +113,21 @@
         <article v-if="hasMenu('/dialysis')" class="dash-card dash-card--table">
           <header class="dash-card__head">
             <div>
-              <h2><el-icon><Document /></el-icon> most recent Dialysis</h2>
+              <h2><el-icon><Document /></el-icon> 最近透析</h2>
             </div>
-            <router-link to="/dialysis" class="dash-card__link">ViewAll →</router-link>
+            <router-link to="/dialysis" class="dash-card__link">查看全部 →</router-link>
           </header>
           <el-table
             :data="summary.recentDialysis || []"
             size="small"
             class="app-data-table dash-table"
             :max-height="280"
-            empty-text="NoneDialysis Records"
+            empty-text="暂无透析记录"
           >
-            <el-table-column prop="recordDate" label="Date" width="100" />
-            <el-table-column prop="onWeight" label="pre-dialysis" width="72" />
-            <el-table-column prop="offWeight" label="post-dialysis" width="72" />
-            <el-table-column prop="dehydrationStatus" label="Status" min-width="88">
+            <el-table-column prop="recordDate" label="日期" width="100" />
+            <el-table-column prop="onWeight" label="透前" width="72" />
+            <el-table-column prop="offWeight" label="透后" width="72" />
+            <el-table-column prop="dehydrationStatus" label="状态" min-width="88">
               <template #default="{ row }">
                 <el-tag size="small" :type="dehydrationTagType(row.dehydrationStatus)">
                   {{ dehydrationText(row.dehydrationStatus) }}
@@ -143,11 +143,11 @@
     <!-- bottomsectionDialysisdoublechart (has DialysisPermissionandmainrangenot placetime)  -->
     <section v-if="hasMenu('/dialysis') && showDialysisRow" class="dash-sub-charts" v-loading="loading">
       <article class="dash-card dash-card--mini-chart">
-        <header class="dash-card__head"><h2>This Monthfluid removalStatus</h2></header>
+        <header class="dash-card__head"><h2>本月脱水状态</h2></header>
         <v-chart class="chart-canvas chart-canvas--sm" :option="dehydrationChartOption" autoresize />
       </article>
       <article class="dash-card dash-card--mini-chart">
-        <header class="dash-card__head"><h2>Dry Weightchange</h2></header>
+        <header class="dash-card__head"><h2>干体重变化</h2></header>
         <v-chart
           v-if="dryWeightHasData"
           class="chart-canvas chart-canvas--sm"
@@ -155,14 +155,14 @@
           autoresize
         />
         <div v-else class="chart-placeholder chart-placeholder--sm">
-          <span>NoneDry Weightrecord</span>
+          <span>暂无干体重记录</span>
         </div>
       </article>
     </section>
 
     <!-- shortcutentry: horizontaltowardcompact -->
     <section v-if="quickLinks.length" class="quick-bar">
-      <span class="quick-bar__label">shortcutentry</span>
+      <span class="quick-bar__label">快捷入口</span>
       <div class="quick-bar__links">
         <router-link
           v-for="item in quickLinks"
@@ -231,10 +231,10 @@ const greetText = computed(() => {
     if (raw) {
       const u = JSON.parse(raw);
       const name = u.realName || u.username;
-      if (name) return `yougood, ${name}`;
+      if (name) return `您好，${name}`;
     }
   } catch { /* ignore */ }
-  return 'yougood';
+  return '您好';
 });
 
 const showTrendChart = computed(() =>
@@ -251,26 +251,26 @@ const visibleMetrics = computed(() => {
   if (hasMenu('/dialysis')) {
     list.push({
       key: 'matchRate',
-      label: 'This MonthUltrafiltration on targetrate',
+      label: '本月超滤达标率',
       display: s.dialysisMatchRateMonth != null ? Number(s.dialysisMatchRateMonth).toFixed(1) : '-',
       unit: s.dialysisMatchRateMonth != null ? '%' : '',
       icon: TrendCharts,
       tone: 'emerald',
-      hint: s.latestDialysisStatus ? `most recent onetimes: ${s.latestDialysisStatus}` : null
+      hint: s.latestDialysisStatus ? `最近一次：${s.latestDialysisStatus}` : null
     });
     list.push({
       key: 'over5',
-      label: 'weight gain exceeds 5%',
+      label: '增重超过 5%',
       display: s.over5pctCountMonth ?? 0,
       icon: WarningFilled,
       tone: (s.over5pctCountMonth || 0) > 0 ? 'amber' : 'sky',
-      hint: 'by This MonthDialysis Recordsstatistics'
+      hint: '按本月透析记录统计'
     });
   }
   if (hasMenu('/system/patient')) {
     list.push({
       key: 'patient',
-      label: 'in managePatient',
+      label: '在管患者',
       display: s.patientCount ?? 0,
       icon: User,
       tone: 'indigo'
@@ -279,7 +279,7 @@ const visibleMetrics = computed(() => {
   if (hasMenu('/dialysis')) {
     list.push({
       key: 'dialysis',
-      label: 'This MonthDialysis',
+      label: '本月透析',
       display: s.dialysisCountMonth ?? 0,
       icon: Document,
       tone: 'violet'
@@ -288,14 +288,14 @@ const visibleMetrics = computed(() => {
   if (hasMenu('/medical-record')) {
     list.push({
       key: 'medical',
-      label: 'This MonthMedical Records',
+      label: '本月医疗记录',
       display: s.medicalRecordCountMonth ?? 0,
       icon: FirstAidKit,
       tone: 'emerald'
     });
     list.push({
       key: 'abnormal',
-      label: 'Abnormal Resultsitem',
+      label: '异常结果项',
       display: s.abnormalItemCount ?? 0,
       icon: WarningFilled,
       tone: 'amber'
@@ -304,7 +304,7 @@ const visibleMetrics = computed(() => {
   if (hasMenu('/medication')) {
     list.push({
       key: 'medication',
-      label: 'This Monthmedicationrecord',
+      label: '本月用药记录',
       display: s.medicationLogCountMonth ?? 0,
       icon: Box,
       tone: 'sky'
@@ -314,12 +314,12 @@ const visibleMetrics = computed(() => {
     const dw = s.currentDryWeight;
     list.push({
       key: 'dry',
-      label: 'currentDry Weight',
+      label: '当前干体重',
       display: dw != null ? dw : '—',
       unit: dw != null ? 'kg' : '',
       icon: ScaleToOriginal,
       tone: 'rose',
-      hint: s.dryWeightDelta != null ? `relativelyup Month ${formatDelta(s.dryWeightDelta)}` : null,
+      hint: s.dryWeightDelta != null ? `较上月 ${formatDelta(s.dryWeightDelta)}` : null,
       hintClass: deltaClass.value
     });
   }
@@ -328,11 +328,11 @@ const visibleMetrics = computed(() => {
 
 const quickLinks = computed(() => {
   const all = [
-    { path: '/dialysis', label: 'Dialysis Management', icon: Document },
-    { path: '/medical-record', label: 'Medical Records', icon: FirstAidKit },
-    { path: '/medication', label: 'Medicationmanagement', icon: Box },
-    { path: '/dry-weight', label: 'Dry Weight', icon: ScaleToOriginal },
-    { path: '/system/patient', label: 'Patient', icon: User }
+    { path: '/dialysis', label: '透析管理', icon: Document },
+    { path: '/medical-record', label: '医疗记录', icon: FirstAidKit },
+    { path: '/medication', label: '用药管理', icon: Box },
+    { path: '/dry-weight', label: '干体重', icon: ScaleToOriginal },
+    { path: '/system/patient', label: '患者管理', icon: User }
   ];
   return all.filter(item => hasMenu(item.path));
 });
@@ -372,36 +372,36 @@ const healthRiskTone = computed(() => {
 });
 
 const healthRiskText = computed(() => {
-  const map = { HIGH: 'highattention', MEDIUM: 'needobserve', LOW: 'stable' };
-  return map[summary.value.healthRiskLevel] || 'stable';
+  const map = { HIGH: '高度关注', MEDIUM: '需要观察', LOW: '状态稳定' };
+  return map[summary.value.healthRiskLevel] || '状态稳定';
 });
 
 const healthHighlights = computed(() => {
   const list = summary.value.healthHighlights || [];
-  return list.length ? list.slice(0, 4) : ['Noneenoughenoughdata, firstkeepcontinuousrecord'];
+  return list.length ? list.slice(0, 4) : ['数据尚不充分，请先持续记录'];
 });
 
 const healthStatCards = computed(() => {
   const s = summary.value;
   if (hasMenu('/dialysis')) {
     return [
-      { label: 'Ultrafiltration on targetrate', value: formatPercent(s.dialysisMatchRateMonth) },
-      { label: 'averageweight gain', value: formatKg(s.avgWeightGainMonth) },
-      { label: 'Blood PressureAbnormal', value: s.bpAbnormalCountMonth ?? 0 }
+      { label: '超滤达标率', value: formatPercent(s.dialysisMatchRateMonth) },
+      { label: '平均增重', value: formatKg(s.avgWeightGainMonth) },
+      { label: '血压异常', value: s.bpAbnormalCountMonth ?? 0 }
     ];
   }
   const cards = [];
   if (hasMenu('/medical-record')) {
     cards.push(
-      { label: 'ExaminationAbnormal', value: s.abnormalItemCount ?? 0 },
-      { label: 'This MonthExamination', value: s.medicalRecordCountMonth ?? 0 }
+      { label: '检验异常', value: s.abnormalItemCount ?? 0 },
+      { label: '本月检查', value: s.medicalRecordCountMonth ?? 0 }
     );
   }
   if (hasMenu('/medication')) {
-    cards.push({ label: 'This Monthmedication', value: s.medicationLogCountMonth ?? 0 });
+    cards.push({ label: '本月用药', value: s.medicationLogCountMonth ?? 0 });
   }
   if (!cards.length) {
-    cards.push({ label: 'in managePatient', value: s.patientCount ?? 0 });
+    cards.push({ label: '在管患者', value: s.patientCount ?? 0 });
   }
   return cards.slice(0, 3);
 });
@@ -409,27 +409,27 @@ const healthStatCards = computed(() => {
 const primaryHealthHint = computed(() => {
   if (!hasMenu('/dialysis')) {
     if (hasMenu('/medical-record') && (summary.value.abnormalItemCount || 0) > 0) {
-      return 'Current Accountnot openthroughDialysis Management, firstpagewill excellentfirstsummarizeExaminationAbnormal and medicationrecord. ';
+      return '当前账号未开通透析管理，首页将优先汇总检验异常和用药记录。';
     }
-    return 'Current Accountnot openthroughDialysis Management, entryMedical Records and medicationrecordafter , herewillsummarizehealthchange. ';
+    return '当前账号未开通透析管理，录入医疗和用药记录后，这里将汇总健康变化。';
   }
   const latest = summary.value.latestDialysisStatus;
-  if (latest && latest !== 'NoneDialysis Records') {
-    return `most recent onetimesDialysis: ${latest}. excellentfirstattentionThis Monthweight gain, Blood Pressure and ExaminationAbnormalchange. `;
+  if (latest && latest !== '暂无透析记录') {
+    return `最近一次透析：${latest}。请优先关注本月增重、血压和检验异常变化。`;
   }
-  return 'entryDialysis and Examinationdataafter , herewillAutomaticsummarizeThis MonthkeyRisk. ';
+  return '录入透析和检验数据后，这里将自动汇总本月关键风险。';
 });
 
 const trendChartOption = computed(() => {
   const trend = summary.value.monthlyTrend || [];
   const months = trend.map(t => {
     const m = (t.month || '').replace(/^\d{4}-/, '');
-    return m ? `${m}Month` : '';
+    return m ? `${m}月` : '';
   });
   const series = [];
   if (hasMenu('/dialysis')) {
     series.push({
-      name: 'Dialysis',
+      name: '透析',
       type: 'bar',
       barMaxWidth: 22,
       barGap: '30%',
@@ -439,7 +439,7 @@ const trendChartOption = computed(() => {
   }
   if (hasMenu('/medical-record')) {
     series.push({
-      name: 'Medical Records',
+      name: '医疗记录',
       type: 'bar',
       barMaxWidth: 22,
       itemStyle: { borderRadius: [6, 6, 0, 0], color: chartPalette[1] },
@@ -448,7 +448,7 @@ const trendChartOption = computed(() => {
   }
   if (hasMenu('/medication')) {
     series.push({
-      name: 'medicationrecord',
+      name: '用药记录',
       type: 'line',
       smooth: true,
       symbol: 'circle',
@@ -500,15 +500,15 @@ const trendChartOption = computed(() => {
 const dehydrationChartOption = computed(() => {
   const s = summary.value.dehydrationStats || {};
   const raw = [
-    { value: s.tooMuch ?? 0, name: 'Excessive ultrafiltration' },
-    { value: s.insufficient ?? 0, name: 'Insufficient ultrafiltration' },
-    { value: s.match ?? 0, name: 'Ultrafiltration on target' }
+    { value: s.tooMuch ?? 0, name: '超滤过多' },
+    { value: s.insufficient ?? 0, name: '超滤不足' },
+    { value: s.match ?? 0, name: '超滤达标' }
   ];
   const total = raw.reduce((a, b) => a + b.value, 0);
-  const data = total > 0 ? raw.filter(d => d.value > 0) : [{ value: 1, name: 'No records', itemStyle: { color: '#e2e8f0' } }];
+  const data = total > 0 ? raw.filter(d => d.value > 0) : [{ value: 1, name: '暂无记录', itemStyle: { color: '#e2e8f0' } }];
   return {
     color: ['#f59e0b', '#ef4444', '#22c55e'],
-    tooltip: { trigger: 'item', formatter: total > 0 ? '{b}: {c} times ({d}%)' : 'This MonthNoneDialysis Records' },
+    tooltip: { trigger: 'item', formatter: total > 0 ? '{b}：{c} 次（{d}%）' : '本月暂无透析记录' },
     legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 } },
     series: [{
       type: 'pie',
@@ -578,7 +578,7 @@ function formatDelta(val) {
 }
 
 function dehydrationText(status) {
-  const map = { TOO_MUCH: 'excessive', INSUFFICIENT: 'not enough', MATCH: 'match' };
+  const map = { TOO_MUCH: '过多', INSUFFICIENT: '不足', MATCH: '匹配' };
   return map[status] || status || '—';
 }
 
@@ -594,10 +594,10 @@ async function loadSummary() {
     if (res.code === 200) {
       summary.value = res.data || {};
     } else {
-      ElMessage.error(res.msg || 'Failed to load');
+      ElMessage.error(res.msg || '加载失败');
     }
   } catch (e) {
-    ElMessage.error('Failed to load: ' + e.message);
+    ElMessage.error('加载失败：' + e.message);
   } finally {
     loading.value = false;
   }

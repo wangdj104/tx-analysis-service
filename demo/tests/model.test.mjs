@@ -35,9 +35,9 @@ test('reset creates fresh data; export contains selected records and explicit de
   const state = createState();
   addVital(state, 126, 78);
   const output = csv(state);
-  assert.ok(output.startsWith('\uFEFFDate'));
+  assert.ok(output.startsWith('\uFEFF日期'));
   assert.equal(output.split('\r\n').length, 32);
-  assert.ok(output.includes('126,78,Fictional demo data'));
+  assert.ok(output.includes('126,78,虚构演示数据'));
   assert.equal(current(createState()).records.length, 30);
   assert.equal(current(createState()).stocks[1], 8);
 });

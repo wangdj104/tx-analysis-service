@@ -6,8 +6,8 @@
           <div class="top-bar">
             <div class="left">
               <div>
-                <h1>Blood Pressure Pattern Analysis</h1>
-                <p class="subtitle">analysisBlood Pressurevariability, orthostatic hypotensionBlood PressureandWeightgrowth andBlood Pressure relatedproperty</p>
+                <h1>血压规律分析</h1>
+                <p class="subtitle">分析血压变异性、体位性低血压，以及体重增长与血压的相关性。</p>
               </div>
             </div>
           </div>
@@ -36,70 +36,70 @@
           <div v-if="currentAnalysis" class="analysis-overview">
             <el-row :gutter="16">
               <el-col :xs="12" :sm="8" :md="4">
-                <el-statistic title="Average systolic pressure" :value="currentAnalysis.avgSystolic || 0" suffix="mmHg" />
+                <el-statistic title="平均收缩压" :value="currentAnalysis.avgSystolic || 0" suffix="mmHg" />
               </el-col>
               <el-col :xs="12" :sm="8" :md="4">
-                <el-statistic title="Average diastolic pressure" :value="currentAnalysis.avgDiastolic || 0" suffix="mmHg" />
+                <el-statistic title="平均舒张压" :value="currentAnalysis.avgDiastolic || 0" suffix="mmHg" />
               </el-col>
               <el-col :xs="12" :sm="8" :md="4">
-                <el-statistic title="Systolic standard deviation" :value="currentAnalysis.stdDeviation || 0">
+                <el-statistic title="收缩压标准差" :value="currentAnalysis.stdDeviation || 0">
                   <template #suffix>
                     <span v-if="currentAnalysis.stdDeviation > 15" style="color: #f56c6c; font-size: 12px;"> (slightlylarge)</span>
                   </template>
                 </el-statistic>
               </el-col>
               <el-col :xs="12" :sm="8" :md="4">
-                <el-statistic title="orthostatic hypotensionBlood Pressure" :value="currentAnalysis.orthostaticCount || 0" suffix="times" />
+                <el-statistic title="体位性低血压" :value="currentAnalysis.orthostaticCount || 0" suffix="次" />
               </el-col>
               <el-col :xs="12" :sm="8" :md="4">
-                <el-statistic title="lowBlood Pressure(<90)" :value="currentAnalysis.lowBpCount || 0" suffix="times" />
+                <el-statistic title="低血压（<90）" :value="currentAnalysis.lowBpCount || 0" suffix="次" />
               </el-col>
               <el-col :xs="12" :sm="8" :md="4">
-                <el-statistic title="Weight-Blood Pressurerelated" :value="currentAnalysis.correlationWeightGainBp || 0" />
+                <el-statistic title="体重—血压相关性" :value="currentAnalysis.correlationWeightGainBp || 0" />
               </el-col>
             </el-row>
             <el-alert v-if="currentAnalysis.analysisSummary" :title="currentAnalysis.analysisSummary" type="info" :closable="false" style="margin-top: 12px;" />
           </div>
 
           <!-- NonedataNotice -->
-          <el-empty v-if="!currentAnalysis && !historyList.length" description="No analysis data. Select a time range and run the analysis." />
+          <el-empty v-if="!currentAnalysis && !historyList.length" description="暂无分析数据，请选择时间范围后运行分析。" />
 
           <!-- Analysis history -->
           <div v-if="historyList.length" class="list-panel-head" style="margin: -20px -24px 12px; padding: 12px 16px;">
             <div class="list-panel-title">
               <el-icon><TrendCharts /></el-icon>
-              <span>Analysis history</span>
+              <span>分析历史</span>
               <span class="list-count">{{ historyList.length }} items</span>
             </div>
           </div>
           <el-table v-if="historyList.length" :data="historyList" stripe class="app-data-table">
-            <el-table-column prop="Analysis date" label="Analysis date" width="108" />
-            <el-table-column label="Time dimension" width="80">
+            <el-table-column prop="analysisDate" label="分析日期" width="108" />
+            <el-table-column label="时间维度" width="80">
               <template #default="{ row }">{{ timeTypeLabel(row.timeType) }}</template>
             </el-table-column>
-            <el-table-column prop="timeValue" label="Week" width="100" />
-            <el-table-column label="Average blood pressure" width="130">
+            <el-table-column prop="timeValue" label="周期" width="100" />
+            <el-table-column label="平均血压" width="130">
               <template #default="{ row }">{{ row.avgSystolic || '-' }}/{{ row.avgDiastolic || '-' }} mmHg</template>
             </el-table-column>
-            <el-table-column label="variability(σ)" width="100">
+            <el-table-column label="变异性（σ）" width="100">
               <template #default="{ row }">
                 <span :style="row.stdDeviation > 15 ? 'color: #f56c6c; font-weight: 600;' : ''">{{ row.stdDeviation || '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="Abnormal readings" width="130">
+            <el-table-column label="异常读数" width="130">
               <template #default="{ row }">
-                <el-tag v-if="row.lowBpCount > 0" type="warning" size="small">diastolic{{ row.lowBpCount }}times</el-tag>
-                <el-tag v-if="row.highBpCount > 0" type="danger" size="small" style="margin-left: 4px;">systolic{{ row.highBpCount }}times</el-tag>
-                <el-tag v-if="row.orthostaticCount > 0" type="info" size="small" style="margin-left: 4px;">property{{ row.orthostaticCount }}times</el-tag>
-                <span v-if="!row.lowBpCount && !row.highBpCount && !row.orthostaticCount" style="color: #67c23a;">Normal</span>
+                <el-tag v-if="row.lowBpCount > 0" type="warning" size="small">低血压 {{ row.lowBpCount }} 次</el-tag>
+                <el-tag v-if="row.highBpCount > 0" type="danger" size="small" style="margin-left: 4px;">高血压 {{ row.highBpCount }} 次</el-tag>
+                <el-tag v-if="row.orthostaticCount > 0" type="info" size="small" style="margin-left: 4px;">体位性 {{ row.orthostaticCount }} 次</el-tag>
+                <span v-if="!row.lowBpCount && !row.highBpCount && !row.orthostaticCount" style="color: #67c23a;">正常</span>
               </template>
             </el-table-column>
-            <el-table-column prop="analysisSummary" label="analysissummary" min-width="200" show-overflow-tooltip />
-            <el-table-column label="Actions" width="120" align="center" fixed="right">
+            <el-table-column prop="analysisSummary" label="分析摘要" min-width="200" show-overflow-tooltip />
+            <el-table-column label="操作" width="120" align="center" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" size="small" @click="showDetail(row)">Details</el-button>
-                <el-popconfirm title="Confirm deletion?" @confirm="handleDelete(row.id)">
-                  <template #reference><el-button link type="danger" size="small">Delete</el-button></template>
+                <el-button link type="primary" size="small" @click="showDetail(row)">详情</el-button>
+                <el-popconfirm title="确认删除吗？" @confirm="handleDelete(row.id)">
+                  <template #reference><el-button link type="danger" size="small">删除</el-button></template>
                 </el-popconfirm>
               </template>
             </el-table-column>
@@ -109,39 +109,39 @@
     </el-main>
 
     <!-- Detailsdialog -->
-    <el-dialog v-model="detailVisible" title="Blood Pressure Pattern AnalysisDetails" :width="isMobile ? '94%' : '640px'" destroy-on-close>
+    <el-dialog v-model="detailVisible" title="血压规律分析详情" :width="isMobile ? '94%' : '640px'" destroy-on-close>
       <template v-if="detailRecord">
         <el-descriptions :column="isMobile ? 1 : 2" border size="default">
-          <el-descriptions-item label="Analysis date">{{ detailRecord.analysisDate }}</el-descriptions-item>
-          <el-descriptions-item label="Time dimension">{{ timeTypeLabel(detailRecord.timeType) }}</el-descriptions-item>
-          <el-descriptions-item label="Time range">{{ detailRecord.timeValue }}</el-descriptions-item>
-          <el-descriptions-item label="Average systolic pressure">{{ detailRecord.avgSystolic }} mmHg</el-descriptions-item>
-          <el-descriptions-item label="Average diastolic pressure">{{ detailRecord.avgDiastolic }} mmHg</el-descriptions-item>
-          <el-descriptions-item label="Systolic range">{{ detailRecord.minSystolic }}-{{ detailRecord.maxSystolic }} mmHg</el-descriptions-item>
-          <el-descriptions-item label="Systolic standard deviation">
+          <el-descriptions-item label="分析日期">{{ detailRecord.analysisDate }}</el-descriptions-item>
+          <el-descriptions-item label="时间维度">{{ timeTypeLabel(detailRecord.timeType) }}</el-descriptions-item>
+          <el-descriptions-item label="时间范围">{{ detailRecord.timeValue }}</el-descriptions-item>
+          <el-descriptions-item label="平均收缩压">{{ detailRecord.avgSystolic }} mmHg</el-descriptions-item>
+          <el-descriptions-item label="平均舒张压">{{ detailRecord.avgDiastolic }} mmHg</el-descriptions-item>
+          <el-descriptions-item label="收缩压范围">{{ detailRecord.minSystolic }}-{{ detailRecord.maxSystolic }} mmHg</el-descriptions-item>
+          <el-descriptions-item label="收缩压标准差">
             <span :style="detailRecord.stdDeviation > 15 ? 'color: #f56c6c; font-weight: 600;' : ''">
               {{ detailRecord.stdDeviation }}
             </span>
-            <span v-if="detailRecord.stdDeviation > 15" style="color: #f56c6c; font-size: 12px;"> variabilityrelativelylarge</span>
+            <span v-if="detailRecord.stdDeviation > 15" style="color: #f56c6c; font-size: 12px;"> 波动较大</span>
           </el-descriptions-item>
-          <el-descriptions-item label="Average ultrafiltration volume">{{ detailRecord.avgUfAmount }} kg</el-descriptions-item>
-          <el-descriptions-item label="Orthostatic hypotension count">
+          <el-descriptions-item label="平均超滤量">{{ detailRecord.avgUfAmount }} kg</el-descriptions-item>
+          <el-descriptions-item label="体位性低血压次数">
             <el-tag :type="detailRecord.orthostaticCount > 0 ? 'warning' : 'success'" size="small">{{ detailRecord.orthostaticCount }} times</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="Low blood pressure count(<90)">
+          <el-descriptions-item label="低血压次数（<90）">
             <el-tag :type="detailRecord.lowBpCount > 0 ? 'warning' : 'success'" size="small">{{ detailRecord.lowBpCount }} times</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="High blood pressure count(>140)">
+          <el-descriptions-item label="高血压次数（>140）">
             <el-tag :type="detailRecord.highBpCount > 0 ? 'danger' : 'success'" size="small">{{ detailRecord.highBpCount }} times</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="Weight-gain and blood-pressure correlation">
+          <el-descriptions-item label="体重增长与血压相关性">
             <span :style="correlationStyle(detailRecord.correlationWeightGainBp)">
               {{ detailRecord.correlationWeightGainBp }}
             </span>
           </el-descriptions-item>
         </el-descriptions>
         <div v-if="detailRecord.analysisSummary" style="margin-top: 16px; padding: 12px 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-          <p style="font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">analysissummary</p>
+          <p style="font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">分析摘要</p>
           <p style="font-size: 13px; color: #64748b; line-height: 1.6;">{{ detailRecord.analysisSummary }}</p>
         </div>
       </template>
@@ -168,7 +168,7 @@ const historyList = ref([]);
 const detailVisible = ref(false);
 const detailRecord = ref(null);
 
-const TIME_TYPE_MAP = { month: 'by Month', week: 'by week', year: 'by Year' };
+const TIME_TYPE_MAP = { month: '按月', week: '按周', year: '按年' };
 function timeTypeLabel(v) { return TIME_TYPE_MAP[v] || v; }
 
 function correlationStyle(val) {
@@ -194,14 +194,14 @@ async function loadData() {
 }
 
 async function handleAnalyze() {
-  if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
-  if (!timeValue.value) { ElMessage.warning('Select a time range'); return; }
+  if (!currentPatientId.value) { ElMessage.warning('请先选择患者。'); return; }
+  if (!timeValue.value) { ElMessage.warning('请选择时间范围'); return; }
   analyzing.value = true;
   try {
     const res = await analyzeBpPattern(currentPatientId.value, timeType.value, timeValue.value);
-    if (res.code === 200) { ElMessage.success('analysiscomplete'); loadData(); }
-    else ElMessage.error(res.msg || 'analysisfailed');
-  } catch (e) { ElMessage.error('analysisfailed'); }
+    if (res.code === 200) { ElMessage.success('分析完成'); loadData(); }
+    else ElMessage.error(res.msg || '分析失败');
+  } catch (e) { ElMessage.error('分析失败'); }
   finally { analyzing.value = false; }
 }
 
@@ -213,9 +213,9 @@ function showDetail(row) {
 async function handleDelete(id) {
   try {
     const res = await deleteBpPattern(id);
-    if (res.code === 200) { ElMessage.success('Deleted successfully'); loadData(); }
-    else ElMessage.error(res.msg || 'Failed to delete');
-  } catch (e) { ElMessage.error('Failed to delete'); }
+    if (res.code === 200) { ElMessage.success('删除成功'); loadData(); }
+    else ElMessage.error(res.msg || '删除失败');
+  } catch (e) { ElMessage.error('删除失败'); }
 }
 
 watch(currentPatientId, () => loadData());

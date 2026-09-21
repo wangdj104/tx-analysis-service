@@ -12,10 +12,10 @@
             </div>
           </div>
           <el-tabs v-model="activeMenu" class="dw-sub-tabs">
-            <el-tab-pane label="Monthly list" name="list" />
-            <el-tab-pane label="trendoverview" name="trend" />
-            <el-tab-pane label="changerecord" name="history" />
-            <el-tab-pane label="useinstructions" name="guide" />
+            <el-tab-pane label="月度列表" name="list" />
+            <el-tab-pane label="趋势概览" name="trend" />
+            <el-tab-pane label="变更记录" name="history" />
+            <el-tab-pane label="使用说明" name="guide" />
           </el-tabs>
         </div>
 
@@ -23,31 +23,31 @@
           <!-- trendoverview -->
           <div v-show="activeMenu === 'trend'" class="dw-trend-panel">
             <div v-if="dryWeightList.length === 0" class="dw-empty-wrap">
-              <el-empty description="No data, Please first AddMonthly Dry Weight" />
+              <el-empty description="暂无数据，请先新增月度干体重" />
             </div>
             <template v-else>
               <div class="dw-stat-grid">
                 <div class="dw-stat-card">
-                  <span class="dw-stat-label">currentreference</span>
+                  <span class="dw-stat-label">当前参考值</span>
                   <span class="dw-stat-value">{{ trendStats.latest }}<small>kg</small></span>
                   <span class="dw-stat-meta">{{ trendStats.latestMonth }}</span>
                 </div>
                 <div class="dw-stat-card" :class="trendStats.deltaClass">
-                  <span class="dw-stat-label">relativelyup Monthchange</span>
+                  <span class="dw-stat-label">较上月变化</span>
                   <span class="dw-stat-value">{{ trendStats.deltaText }}</span>
-                  <span class="dw-stat-meta">ringcompared with</span>
+                  <span class="dw-stat-meta">环比</span>
                 </div>
                 <div class="dw-stat-card">
-                  <span class="dw-stat-label">historyhighest</span>
+                  <span class="dw-stat-label">历史最高</span>
                   <span class="dw-stat-value">{{ trendStats.max }}<small>kg</small></span>
                 </div>
                 <div class="dw-stat-card">
-                  <span class="dw-stat-label">historylowest</span>
+                  <span class="dw-stat-label">历史最低</span>
                   <span class="dw-stat-value">{{ trendStats.min }}<small>kg</small></span>
                 </div>
               </div>
               <div class="dw-trend-table-wrap">
-                <p class="dw-section-title">by MonthOrder</p>
+                <p class="dw-section-title">按月份排序</p>
                 <div class="table-wrap table-wrap--compact">
                   <el-table
                     :data="sortedByMonth"
@@ -57,13 +57,13 @@
                     table-layout="fixed"
                     style="width: 420px"
                   >
-                    <el-table-column prop="yearMonth" label="Month" width="140" />
-                    <el-table-column label="Dry Weight (kg)" width="140" align="right">
+                    <el-table-column prop="yearMonth" label="月份" width="140" />
+                    <el-table-column label="干体重（kg）" width="140" align="right">
                       <template #default="{ row }">
                         <span class="num-cell emphasis">{{ formatNum(row.dryWeight) }}</span>
                       </template>
                     </el-table-column>
-                    <el-table-column label="relativelyup Month" width="140" align="right">
+                    <el-table-column label="较上月" width="140" align="right">
                       <template #default="{ row }">
                         <span :class="monthDeltaClass(row)">{{ monthDeltaText(row) }}</span>
                       </template>
@@ -77,10 +77,10 @@
           <!-- useinstructions -->
           <div v-show="activeMenu === 'guide'" class="dw-guide-panel">
             <ul class="dw-guide-list">
-              <li><strong>Monthly list: </strong>maintaineach MonthDry Weightreference value, Dialysis RecordscalculatetimewillAutomaticguideusecorrespondingMonthdata. </li>
-              <li><strong>trendoverview: </strong>ViewDry Weightchangeimagelevel and historyhighlowpoint, assistassessmentfluid removaltargetYesNoreasonable. </li>
-              <li><strong>changerecord: </strong>by most recent Updated AtViewmaintainrecord, convenientinverifywhowhattimeadjustpastreference value. </li>
-              <li><strong>recommendation: </strong>each MonthDialysisfillpointpropertyassessmentafter updateonetimes; adjustimagelevelrecommendationsingletimesnot exceed 0.5 kg, andobserve 2～4 weekWeight and Blood Pressurechange. </li>
+              <li><strong>月度列表：</strong>维护每月干体重参考值，填写透析记录时将自动采用对应月份的数据。</li>
+              <li><strong>趋势概览：</strong>查看干体重变化和历史高低点，辅助评估脱水目标是否合理。</li>
+              <li><strong>变更记录：</strong>按最近更新时间查看维护记录，便于核对调整人员和时间。</li>
+              <li><strong>建议：</strong>每月完成透析评估后更新一次；单次调整建议不超过 0.5 kg，并观察 2～4 周体重及血压变化。</li>
             </ul>
           </div>
 
@@ -88,10 +88,10 @@
           <template v-if="activeMenu === 'list' || activeMenu === 'history'">
             <div class="toolbar">
               <el-button type="primary" @click="handleAddDryWeight">
-                <el-icon><Plus /></el-icon>AddMonthly Dry Weight
+                <el-icon><Plus /></el-icon>新增月度干体重
               </el-button>
               <el-button @click="loadDryWeights">
-                <el-icon><Refresh /></el-icon>Refresh
+                <el-icon><Refresh /></el-icon>刷新
               </el-button>
             </div>
 
@@ -99,8 +99,8 @@
               <div class="list-panel-head">
                 <div class="list-panel-title">
                   <el-icon><ScaleToOriginal /></el-icon>
-                  <span>{{ activeMenu === 'history' ? 'changerecord' : 'Dry WeightMonthly reference' }}</span>
-                  <span v-if="tableRows.length" class="list-count">{{ tableRows.length }} items</span>
+                  <span>{{ activeMenu === 'history' ? '变更记录' : '月度干体重参考' }}</span>
+                  <span v-if="tableRows.length" class="list-count">{{ tableRows.length }} 条</span>
                 </div>
               </div>
 
@@ -109,21 +109,21 @@
                   <div class="record-card-head">
                     <div class="date-block">
                       <span class="date">{{ row.yearMonth }}</span>
-                      <span class="date-week">{{ activeMenu === 'history' ? 'most recent update' : 'Monthly reference' }}</span>
+                      <span class="date-week">{{ activeMenu === 'history' ? '最近更新' : '月度参考' }}</span>
                     </div>
                     <span class="dw-weight-badge">{{ formatNum(row.dryWeight) }} <small>kg</small></span>
                   </div>
-                  <p class="dw-updated">updatein {{ formatDateTime(row.updatedAt) }}</p>
+                  <p class="dw-updated">更新于 {{ formatDateTime(row.updatedAt) }}</p>
                   <div class="record-actions">
-                    <el-button type="primary" plain size="small" @click="handleEditDryWeight(row)">Edit</el-button>
-                    <el-popconfirm title="Confirm deletion?" @confirm="handleDeleteDryWeight(row.id)">
+                    <el-button type="primary" plain size="small" @click="handleEditDryWeight(row)">编辑</el-button>
+                    <el-popconfirm title="确认删除吗？" @confirm="handleDeleteDryWeight(row.id)">
                       <template #reference>
-                        <el-button type="danger" plain size="small">Delete</el-button>
+                        <el-button type="danger" plain size="small">删除</el-button>
                       </template>
                     </el-popconfirm>
                   </div>
                 </article>
-                <el-empty v-if="!dryWeightLoading && tableRows.length === 0" description="NoneDry Weightrecord" />
+                <el-empty v-if="!dryWeightLoading && tableRows.length === 0" description="暂无干体重记录" />
               </div>
 
               <div v-else class="table-wrap">
@@ -133,10 +133,10 @@
                   stripe
                   table-layout="fixed"
                   style="width: 720px"
-                  :empty-text="'NoneDry Weightrecord'"
+                  :empty-text="'暂无干体重记录'"
                   :row-key="rowKey"
                 >
-                  <el-table-column v-if="dwColVisible('yearMonth')" prop="yearMonth" label="Month" width="148">
+                  <el-table-column v-if="dwColVisible('yearMonth')" prop="yearMonth" label="月份" width="148">
                     <template #default="{ row }">
                       <div class="cell-month">
                         <el-icon><Calendar /></el-icon>
@@ -144,26 +144,26 @@
                       </div>
                     </template>
                   </el-table-column>
-                  <el-table-column v-if="dwColVisible('dryWeight')" label="Dry Weight" width="120" align="right">
+                  <el-table-column v-if="dwColVisible('dryWeight')" label="干体重" width="120" align="right">
                     <template #default="{ row }">
                       <span class="num-cell emphasis">{{ formatNum(row.dryWeight) }} <small class="unit">kg</small></span>
                     </template>
                   </el-table-column>
-                  <el-table-column v-if="dwColVisible('updatedAt')" label="Updated At" width="168">
+                  <el-table-column v-if="dwColVisible('updatedAt')" label="更新时间" width="168">
                     <template #default="{ row }">
                       <span class="cell-time">{{ formatDateTime(row.updatedAt) }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="Actions" width="148" align="center" class-name="col-actions" fixed="right">
+                  <el-table-column label="操作" width="148" align="center" class-name="col-actions" fixed="right">
                     <template #header>
                       <TableActionHeader v-model="dwVisibleCols" :columns="DW_COLUMN_DEFS" @reset="resetDwColumns" />
                     </template>
                     <template #default="{ row }">
                       <div class="table-actions">
-                        <el-button link type="primary" size="small" @click="handleEditDryWeight(row)">Edit</el-button>
-                        <el-popconfirm title="Confirm deletion?" @confirm="handleDeleteDryWeight(row.id)">
+                        <el-button link type="primary" size="small" @click="handleEditDryWeight(row)">编辑</el-button>
+                        <el-popconfirm title="确认删除吗？" @confirm="handleDeleteDryWeight(row.id)">
                           <template #reference>
-                            <el-button link type="danger" size="small">Delete</el-button>
+                            <el-button link type="danger" size="small">删除</el-button>
                           </template>
                         </el-popconfirm>
                       </div>
@@ -179,22 +179,22 @@
 
     <el-dialog v-model="dryWeightDialogVisible" :title="dryWeightDialogTitle" :width="isMobile ? '92%' : '480px'" destroy-on-close>
       <el-form :model="dryWeightForm" :label-width="isMobile ? 'auto' : '120px'" :label-position="isMobile ? 'top' : 'right'" :rules="dryWeightRules" ref="dryWeightFormRef">
-        <el-form-item label="Month" prop="yearMonth">
+        <el-form-item label="月份" prop="yearMonth">
           <el-date-picker
             v-model="dryWeightForm.yearMonth"
             type="month"
             value-format="YYYY-MM"
-            placeholder="selectMonth"
+            placeholder="选择月份"
             style="width:100%"
           />
         </el-form-item>
-        <el-form-item label="Dry Weight(kg)" prop="dryWeight">
+        <el-form-item label="干体重（kg）" prop="dryWeight">
           <el-input-number v-model="dryWeightForm.dryWeight" :precision="2" :step="0.1" style="width:100%" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dryWeightDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="submitDryWeightForm">Save</el-button>
+        <el-button @click="dryWeightDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitDryWeightForm">保存</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -209,9 +209,9 @@ import { useTableColumns } from '@/composables/useTableColumns';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
 
 const DW_COLUMN_DEFS = [
-  { key: 'yearMonth', label: 'Month' },
-  { key: 'dryWeight', label: 'Dry Weight' },
-  { key: 'updatedAt', label: 'Updated At', default: false }
+  { key: 'yearMonth', label: '月份' },
+  { key: 'dryWeight', label: '干体重' },
+  { key: 'updatedAt', label: '更新时间', default: false }
 ];
 const { visibleKeys: dwVisibleCols, isVisible: dwColVisible, resetColumns: resetDwColumns } =
   useTableColumns('dry-weight-list', DW_COLUMN_DEFS);
@@ -220,7 +220,7 @@ const activeMenu = ref('list');
 const dryWeightLoading = ref(false);
 const dryWeightList = ref([]);
 const dryWeightDialogVisible = ref(false);
-const dryWeightDialogTitle = ref('AddDry Weight');
+const dryWeightDialogTitle = ref('新增干体重');
 const dryWeightFormRef = ref(null);
 const dryWeightForm = reactive({
   id: null,
@@ -228,8 +228,8 @@ const dryWeightForm = reactive({
   dryWeight: null
 });
 const dryWeightRules = {
-  yearMonth: [{ required: true, message: 'SelectMonth', trigger: 'change' }],
-  dryWeight: [{ required: true, message: 'Enter Dry Weight', trigger: 'blur' }]
+  yearMonth: [{ required: true, message: '请选择月份', trigger: 'change' }],
+  dryWeight: [{ required: true, message: '请输入干体重', trigger: 'blur' }]
 };
 
 const isMobile = ref(false);
@@ -241,20 +241,20 @@ watch(currentPatientId, () => {
 
 const pageTitle = computed(() => {
   const map = {
-    list: 'Dry Weight Management',
-    trend: 'trendoverview',
-    history: 'changerecord',
-    guide: 'useinstructions'
+    list: '干体重管理',
+    trend: '趋势概览',
+    history: '变更记录',
+    guide: '使用说明'
   };
-  return map[activeMenu.value] || 'Dry Weight Management';
+  return map[activeMenu.value] || '干体重管理';
 });
 
 const pageSubtitle = computed(() => {
   const map = {
-    list: 'managementeach MonthDry Weightreference value, Automaticshoulduseto Dialysis Records',
-    trend: 'ViewDry Weightchangetrend and historyhighlowpoint',
-    history: 'by most recent Updated AtViewmaintainrecord',
-    guide: 'Dry WeightModule featuresinstructions and maintainrecommendation'
+    list: '维护每月干体重参考值，并自动应用于透析记录。',
+    trend: '查看干体重变化趋势和历史高低点。',
+    history: '按最近更新时间查看维护记录。',
+    guide: '查看干体重模块功能说明和维护建议。'
   };
   return map[activeMenu.value] || '';
 });
@@ -367,7 +367,7 @@ async function loadDryWeights() {
 }
 
 function handleAddDryWeight() {
-  dryWeightDialogTitle.value = 'AddDry Weight';
+  dryWeightDialogTitle.value = '新增干体重';
   Object.assign(dryWeightForm, {
     id: null,
     yearMonth: '',
@@ -377,7 +377,7 @@ function handleAddDryWeight() {
 }
 
 function handleEditDryWeight(row) {
-  dryWeightDialogTitle.value = 'EditDry Weight';
+  dryWeightDialogTitle.value = '编辑干体重';
   Object.assign(dryWeightForm, {
     id: row.id,
     yearMonth: row.yearMonth,
@@ -389,10 +389,10 @@ function handleEditDryWeight(row) {
 async function handleDeleteDryWeight(id) {
   const res = await deleteDryWeight(id);
   if (res.code === 200) {
-    ElMessage.success('Deleted successfully');
+    ElMessage.success('删除成功');
     loadDryWeights();
   } else {
-    ElMessage.error(res.msg || 'Failed to delete');
+    ElMessage.error(res.msg || '删除失败');
   }
 }
 
@@ -401,16 +401,16 @@ async function submitDryWeightForm() {
   if (!valid) return;
 
   if (!currentPatientId.value) {
-    ElMessage.warning('Select a patient first.');
+    ElMessage.warning('请先选择患者。');
     return;
   }
   const res = await saveDryWeight({ ...dryWeightForm, patientId: currentPatientId.value });
   if (res.code === 200) {
-    ElMessage.success('Saved successfully');
+    ElMessage.success('保存成功');
     dryWeightDialogVisible.value = false;
     loadDryWeights();
   } else {
-    ElMessage.error(res.msg || 'Operation failed');
+    ElMessage.error(res.msg || '操作失败');
   }
 }
 

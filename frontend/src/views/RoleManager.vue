@@ -6,8 +6,8 @@
           <div class="top-bar">
             <div class="left">
               <div>
-                <h1>Role Management</h1>
-                <p class="subtitle">managementsystemRoleandMenuPermissionconfiguration</p>
+                <h1>角色管理</h1>
+                <p class="subtitle">管理系统角色及菜单权限配置。</p>
               </div>
             </div>
           </div>
@@ -15,30 +15,30 @@
         <div class="content-panel">
           <div class="toolbar">
             <el-button v-if="isAdmin" type="primary" @click="showAddDialog">
-              <el-icon><Plus /></el-icon>AddRole
+              <el-icon><Plus /></el-icon>新增角色
             </el-button>
           </div>
           <el-table :data="roles" stripe class="app-data-table">
-            <el-table-column v-if="roleColVisible('roleCode')" prop="roleCode" label="Code" min-width="108" />
-            <el-table-column v-if="roleColVisible('roleName')" prop="roleName" label="Name" min-width="108" />
-            <el-table-column v-if="roleColVisible('description')" prop="description" label="Description" min-width="160" show-overflow-tooltip />
-            <el-table-column v-if="roleColVisible('status')" prop="status" label="Status" width="80" align="center">
+            <el-table-column v-if="roleColVisible('roleCode')" prop="roleCode" label="编码" min-width="108" />
+            <el-table-column v-if="roleColVisible('roleName')" prop="roleName" label="名称" min-width="108" />
+            <el-table-column v-if="roleColVisible('description')" prop="description" label="说明" min-width="160" show-overflow-tooltip />
+            <el-table-column v-if="roleColVisible('status')" prop="status" label="状态" width="80" align="center">
               <template #default="{ row }">
-                <el-tag v-if="row.status === 1" type="success" size="small">Normal</el-tag>
-                <el-tag v-else type="danger" size="small">Disabled</el-tag>
+                <el-tag v-if="row.status === 1" type="success" size="small">正常</el-tag>
+                <el-tag v-else type="danger" size="small">停用</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="Actions" width="220" align="center" fixed="right">
+            <el-table-column label="操作" width="220" align="center" fixed="right">
               <template #header>
                 <TableActionHeader v-model="roleVisibleCols" :columns="ROLE_COLUMN_DEFS" @reset="resetRoleColumns" />
               </template>
               <template #default="{ row }">
                 <template v-if="isAdmin">
-                  <el-button link type="primary" size="small" @click="showEditDialog(row)">Edit</el-button>
-                  <el-button link type="primary" size="small" @click="showMenuDialog(row)">configurationMenu</el-button>
-                  <el-popconfirm title="Confirm deletion?" @confirm="handleDelete(row.id)">
+                  <el-button link type="primary" size="small" @click="showEditDialog(row)">编辑</el-button>
+                  <el-button link type="primary" size="small" @click="showMenuDialog(row)">配置菜单</el-button>
+                  <el-popconfirm title="确认删除吗？" @confirm="handleDelete(row.id)">
                     <template #reference>
-                      <el-button link type="danger" size="small" :disabled="row.roleCode === 'admin'">Delete</el-button>
+                      <el-button link type="danger" size="small" :disabled="row.roleCode === 'admin'">删除</el-button>
                     </template>
                   </el-popconfirm>
                 </template>
@@ -51,33 +51,33 @@
     </el-main>
 
     <!-- Add/EditRole -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'EditRole' : 'AddRole'" width="520px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑角色' : '新增角色'" width="520px" destroy-on-close>
       <el-form :model="form" label-width="90px" :rules="rules" ref="formRef">
-        <el-form-item label="RoleCode" prop="roleCode">
-          <el-input v-model="form.roleCode" :disabled="isEdit || form.roleCode === 'admin'" placeholder="for example : editor" />
+        <el-form-item label="角色编码" prop="roleCode">
+          <el-input v-model="form.roleCode" :disabled="isEdit || form.roleCode === 'admin'" placeholder="例如：editor" />
         </el-form-item>
-        <el-form-item label="RoleName" prop="roleName">
-          <el-input v-model="form.roleName" placeholder="for example : Editmember" />
+        <el-form-item label="角色名称" prop="roleName">
+          <el-input v-model="form.roleName" placeholder="例如：编辑人员" />
         </el-form-item>
-        <el-form-item label="Description">
-          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="RoleDescription" />
+        <el-form-item label="说明">
+          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="角色说明" />
         </el-form-item>
-        <el-form-item label="Status">
+        <el-form-item label="状态">
           <el-radio-group v-model="form.status">
-            <el-radio :value="1">Normal</el-radio>
-            <el-radio :value="0">Disabled</el-radio>
+            <el-radio :value="1">正常</el-radio>
+            <el-radio :value="0">停用</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="handleSave">Save</el-button>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
 
     <!-- configurationMenuPermission -->
-    <el-dialog v-model="menuDialogVisible" title="configurationMenuPermission" width="520px" destroy-on-close>
-      <el-alert v-if="currentRole?.roleCode === 'admin'" title="adminRole MenuPermissioncannot in pageEdit, for example needadjustPlease Manualrefreshdatabase" type="warning" :closable="false" style="margin-bottom: 16px" />
+    <el-dialog v-model="menuDialogVisible" title="配置菜单权限" width="520px" destroy-on-close>
+      <el-alert v-if="currentRole?.roleCode === 'admin'" title="管理员角色的菜单权限不能在此页面编辑，如需调整请由管理员更新数据库。" type="warning" :closable="false" style="margin-bottom: 16px" />
       <el-tree
         ref="menuTreeRef"
         :data="menuTreeData"
@@ -89,8 +89,8 @@
         :disabled="currentRole?.roleCode === 'admin'"
       />
       <template #footer>
-        <el-button @click="menuDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="handleAssignMenus" :disabled="currentRole?.roleCode === 'admin'">Save</el-button>
+        <el-button @click="menuDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleAssignMenus" :disabled="currentRole?.roleCode === 'admin'">保存</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -105,10 +105,10 @@ import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
 
 const ROLE_COLUMN_DEFS = [
-  { key: 'roleCode', label: 'Code' },
-  { key: 'roleName', label: 'Name' },
-  { key: 'description', label: 'Description', default: false },
-  { key: 'status', label: 'Status' }
+  { key: 'roleCode', label: '编码' },
+  { key: 'roleName', label: '名称' },
+  { key: 'description', label: '说明', default: false },
+  { key: 'status', label: '状态' }
 ];
 const { visibleKeys: roleVisibleCols, isVisible: roleColVisible, resetColumns: resetRoleColumns } =
   useTableColumns('role-list', ROLE_COLUMN_DEFS);
@@ -142,8 +142,8 @@ const form = reactive({
 });
 
 const rules = {
-  roleCode: [{ required: true, message: 'Enter RoleCode', trigger: 'blur' }],
-  roleName: [{ required: true, message: 'Enter RoleName', trigger: 'blur' }]
+  roleCode: [{ required: true, message: '请输入角色编码', trigger: 'blur' }],
+  roleName: [{ required: true, message: '请输入角色名称', trigger: 'blur' }]
 };
 
 async function loadRoles() {
@@ -211,11 +211,11 @@ async function handleSave() {
     await formRef.value.validate();
     const res = await saveRole(form);
     if (res.code === 200) {
-      ElMessage.success(res.data || 'Saved successfully');
+      ElMessage.success(res.data || '保存成功');
       dialogVisible.value = false;
       loadRoles();
     } else {
-      ElMessage.error(res.msg || 'Failed to save');
+      ElMessage.error(res.msg || '保存失败');
     }
   } catch (e) {
     console.error(e);
@@ -225,10 +225,10 @@ async function handleSave() {
 async function handleDelete(id) {
   const res = await deleteRole(id);
   if (res.code === 200) {
-    ElMessage.success('Deleted successfully');
+    ElMessage.success('删除成功');
     loadRoles();
   } else {
-    ElMessage.error(res.msg || 'Failed to delete');
+    ElMessage.error(res.msg || '删除失败');
   }
 }
 
@@ -250,10 +250,10 @@ async function handleAssignMenus() {
   const allKeys = [...keys, ...halfKeys];
   const res = await assignMenus({ roleId: currentRole.value.id, menuIds: allKeys });
   if (res.code === 200) {
-    ElMessage.success('Menu permissions updated successfully');
+    ElMessage.success('菜单权限更新成功');
     menuDialogVisible.value = false;
   } else {
-    ElMessage.error(res.msg || 'Configuration failed');
+    ElMessage.error(res.msg || '配置失败');
   }
 }
 

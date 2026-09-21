@@ -151,7 +151,7 @@ public class HealthReportServiceImpl implements HealthReportService {
                                     java.util.List<NutritionDiary> nutritionList,
                                     java.util.List<BpSelfMonitorRecord> bpSelfMonitorList,
                                     HealthReportRequestVO request) {
-        String patientName = patient != null ? patient.getName() : "Unknown";
+        String patientName = patient != null ? patient.getName() : "未知";
         String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
         String reportType = request.getReportType() != null ? request.getReportType() : "summary";
         boolean isSummaryReport = "summary".equals(reportType) || "summary_no_dialysis".equals(reportType);
@@ -159,7 +159,7 @@ public class HealthReportServiceImpl implements HealthReportService {
 
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html><html lang='zh-CN'><head><meta charset='UTF-8'>");
-        sb.append("<title>Health Report - ").append(patientName).append("</title>");
+        sb.append("<title>健康报告 - ").append(patientName).append("</title>");
         sb.append("<style>");
         sb.append("body{font-family:'Microsoft YaHei',Arial,sans-serif;max-width:800px;margin:40px auto;color:#333;background:#f8fafc;}");
         sb.append("h1{text-align:center;color:#1e293b;border-bottom:2px solid #4f6af6;padding-bottom:10px;}");
@@ -199,43 +199,43 @@ public class HealthReportServiceImpl implements HealthReportService {
         // Reporttitle
         String titleLabel;
         switch (reportType) {
-            case "bp": titleLabel = "Blood Pressure Pattern AnalysisReport"; break;
-            case "nutrition": titleLabel = "Nutrition DiaryReport"; break;
-            case "bp_monitor": titleLabel = "Blood GlucoseBlood PressuremonitoringReport"; break;
-            default: titleLabel = "healthdataoverallReport"; break;
+            case "bp": titleLabel = "血压模式分析报告"; break;
+            case "nutrition": titleLabel = "营养日记报告"; break;
+            case "bp_monitor": titleLabel = "血压血糖监测报告"; break;
+            default: titleLabel = "健康数据综合报告"; break;
         }
         sb.append("<h1>").append(titleLabel).append("</h1>");
-        sb.append("<p style='text-align:center;color:#64748b;'>Patient: ").append(patientName);
-        sb.append(" | ReportDate: ").append(date).append("</p>");
+        sb.append("<p style='text-align:center;color:#64748b;'>患者：").append(patientName);
+        sb.append("｜报告日期：").append(date).append("</p>");
 
         // Patientclinicalinformation (onlyoverallReportdisplay)
         if (isSummaryReport && clinical != null) {
             sb.append("<div class='report-card'>");
-            sb.append("<h2>").append(svgIcon("clinical")).append(" Patientclinicalinformation</h2>");
-            sb.append("<table><tr><th>Dialysistype</th><td>").append(nvl(clinical.getDialysisType())).append("</td>");
-            sb.append("<th>startDialysis Date</th><td>").append(nvl(clinical.getDialysisStartDate())).append("</td></tr>");
-            sb.append("<tr><th>vascular access</th><td>").append(nvl(clinical.getVascularAccess())).append("</td>");
-            sb.append("<th>primary diagnosis</th><td>").append(nvl(clinical.getPrimaryDiagnosis())).append("</td></tr>");
+            sb.append("<h2>").append(svgIcon("clinical")).append(" 患者临床信息</h2>");
+            sb.append("<table><tr><th>透析类型</th><td>").append(nvl(clinical.getDialysisType())).append("</td>");
+            sb.append("<th>开始透析日期</th><td>").append(nvl(clinical.getDialysisStartDate())).append("</td></tr>");
+            sb.append("<tr><th>血管通路</th><td>").append(nvl(clinical.getVascularAccess())).append("</td>");
+            sb.append("<th>主要诊断</th><td>").append(nvl(clinical.getPrimaryDiagnosis())).append("</td></tr>");
             sb.append("</table></div>");
         }
 
         // Dialysisstatisticsdata (onlyoverallReportdisplay)
         if (includeDialysis && stats != null) {
             sb.append("<div class='report-card'>");
-            sb.append("<h2>").append(svgIcon("dialysis")).append(" Dialysisstatisticsoverview</h2>");
+            sb.append("<h2>").append(svgIcon("dialysis")).append(" 透析统计概览</h2>");
             sb.append("<table>");
-            sb.append("<tr><th>recordtotal</th><td>").append(nvl(stats.getTotalCount())).append(" times</td>");
-            sb.append("<th>Average interdialytic weight gain</th><td>").append(fmt(stats.getAvgWeightGain())).append(" kg</td></tr>");
-            sb.append("<tr><th>Ultrafiltration target rate</th><td>").append(fmt(stats.getDehydrationMatchRate()));
+            sb.append("<tr><th>记录总数</th><td>").append(nvl(stats.getTotalCount())).append(" 次</td>");
+            sb.append("<th>平均透析间期增重</th><td>").append(fmt(stats.getAvgWeightGain())).append(" kg</td></tr>");
+            sb.append("<tr><th>超滤达标率</th><td>").append(fmt(stats.getDehydrationMatchRate()));
             sb.append(progressBar(stats.getDehydrationMatchRate(), "good"));
             sb.append("</td>");
-            sb.append("<th>Average ultrafiltration volume</th><td>").append(fmt(stats.getAvgUfAmount())).append(" kg</td></tr>");
-            sb.append("<tr><th>Average systolic pressure</th><td>").append(fmt(stats.getAvgSystolicBp())).append(" mmHg</td>");
-            sb.append("<th>Average diastolic pressure</th><td>").append(fmt(stats.getAvgDiastolicBp())).append(" mmHg</td></tr>");
-            sb.append("<tr><th>Blood PressureAbnormal readings</th><td>").append(nvl(stats.getBpAbnormalCount()));
+            sb.append("<th>平均超滤量</th><td>").append(fmt(stats.getAvgUfAmount())).append(" kg</td></tr>");
+            sb.append("<tr><th>平均收缩压</th><td>").append(fmt(stats.getAvgSystolicBp())).append(" mmHg</td>");
+            sb.append("<th>平均舒张压</th><td>").append(fmt(stats.getAvgDiastolicBp())).append(" mmHg</td></tr>");
+            sb.append("<tr><th>血压异常读数</th><td>").append(nvl(stats.getBpAbnormalCount()));
             sb.append(badgeForBpAbnormal(stats.getBpAbnormalCount()));
             sb.append("</td>");
-            sb.append("<th>weight gain exceeds5% count</th><td>").append(nvl(stats.getOver5pctCount())).append(" times");
+            sb.append("<th>增重超过 5% 次数</th><td>").append(nvl(stats.getOver5pctCount())).append(" 次");
             sb.append(badgeForOver5(stats.getOver5pctCount()));
             sb.append("</td></tr>");
             sb.append("</table></div>");
@@ -246,8 +246,8 @@ public class HealthReportServiceImpl implements HealthReportService {
         // Blood Pressure Pattern Analysis (overallReport or Blood PressureReportdisplay)
         if ((isSummaryReport || "bp".equals(reportType)) && !bpList.isEmpty()) {
             sb.append("<div class='report-card'>");
-            sb.append("<h2>").append(svgIcon("bp")).append(" Blood Pressure Pattern Analysis</h2>");
-            sb.append("<table><tr><th>Date</th><th>Week</th><th>Average blood pressure</th><th>standard deviation</th><th>Abnormal readings</th><th>Status</th></tr>");
+            sb.append("<h2>").append(svgIcon("bp")).append(" 血压模式分析</h2>");
+            sb.append("<table><tr><th>日期</th><th>周次</th><th>平均血压</th><th>标准差</th><th>异常读数</th><th>状态</th></tr>");
             for (BpPatternAnalysis item : bpList) {
                 sb.append("<tr><td>").append(nvl(item.getAnalysisDate())).append("</td>");
                 sb.append("<td>").append(nvl(item.getTimeValue())).append("</td>");
@@ -256,7 +256,7 @@ public class HealthReportServiceImpl implements HealthReportService {
                 int abnormal = (item.getLowBpCount() != null ? item.getLowBpCount() : 0) +
                         (item.getHighBpCount() != null ? item.getHighBpCount() : 0) +
                         (item.getOrthostaticCount() != null ? item.getOrthostaticCount() : 0);
-                sb.append("<td>").append(abnormal).append(" times").append(badgeForAbnormal(abnormal)).append("</td>");
+                sb.append("<td>").append(abnormal).append(" 次").append(badgeForAbnormal(abnormal)).append("</td>");
                 sb.append("<td>").append(nvl(item.getAnalysisSummary())).append("</td></tr>");
             }
             sb.append("</table></div>");
@@ -265,8 +265,8 @@ public class HealthReportServiceImpl implements HealthReportService {
         // Nutrition Diary (overallReport or NutritionReportdisplay)
         if ((isSummaryReport || "nutrition".equals(reportType)) && !nutritionList.isEmpty()) {
             sb.append("<div class='report-card'>");
-            sb.append("<h2>").append(svgIcon("nutrition")).append(" Nutrition Diary</h2>");
-            sb.append("<table><tr><th>Date</th><th>Weight(kg)</th><th>appetite</th><th>threemeal</th><th>Fluid Intake(ml)</th><th>symptom</th><th>Notes</th></tr>");
+            sb.append("<h2>").append(svgIcon("nutrition")).append(" 营养日记</h2>");
+            sb.append("<table><tr><th>日期</th><th>体重（kg）</th><th>食欲</th><th>三餐</th><th>液体摄入（ml）</th><th>症状</th><th>备注</th></tr>");
             for (NutritionDiary nd : nutritionList) {
                 sb.append("<tr><td>").append(nvl(nd.getRecordDate())).append("</td>");
                 sb.append("<td>").append(nvl(nd.getBodyWeight())).append("</td>");
@@ -282,12 +282,12 @@ public class HealthReportServiceImpl implements HealthReportService {
         // Blood GlucoseBlood Pressuremonitoring (overallReport or Blood GlucoseBlood PressureReportdisplay)
         if ((isSummaryReport || "bp_monitor".equals(reportType)) && !bpSelfMonitorList.isEmpty()) {
             sb.append("<div class='report-card'>");
-            sb.append("<h2>").append(svgIcon("monitor")).append(" Blood GlucoseBlood Pressuremonitoring</h2>");
-            sb.append("<table><tr><th>Date</th><th>Time</th><th>type</th><th>Blood Pressure</th><th>Blood Glucose</th><th>period</th></tr>");
+            sb.append("<h2>").append(svgIcon("monitor")).append(" 血压血糖监测</h2>");
+            sb.append("<table><tr><th>日期</th><th>时间</th><th>类型</th><th>血压</th><th>血糖</th><th>时段</th></tr>");
             for (BpSelfMonitorRecord r : bpSelfMonitorList) {
                 sb.append("<tr><td>").append(nvl(r.getRecordDate())).append("</td>");
                 sb.append("<td>").append(nvl(r.getRecordTime())).append("</td>");
-                sb.append("<td>").append("BP".equals(r.getMeasureType()) ? "Blood Pressure" : "BG".equals(r.getMeasureType()) ? "Blood Glucose" : "Blood Pressure+Blood Glucose").append("</td>");
+                sb.append("<td>").append("BP".equals(r.getMeasureType()) ? "血压" : "BG".equals(r.getMeasureType()) ? "血糖" : "血压和血糖").append("</td>");
                 if (r.getSystolicBp() != null && r.getDiastolicBp() != null) {
                     sb.append("<td>").append(r.getSystolicBp()).append("/").append(r.getDiastolicBp());
                     sb.append(badgeForBpValue(r.getSystolicBp())).append("</td>");
@@ -305,7 +305,7 @@ public class HealthReportServiceImpl implements HealthReportService {
             sb.append("</table></div>");
         }
 
-        sb.append("<div class='footer'>this ReportbysystemAutomaticgenerate, onlyprovidereference, most enddiagnosisPlease follow the prescription. </div>");
+        sb.append("<div class='footer'>本报告由系统自动生成，仅供参考，最终诊断请遵医嘱。</div>");
         sb.append("</body></html>");
         return sb.toString();
     }
@@ -317,40 +317,40 @@ public class HealthReportServiceImpl implements HealthReportService {
         }
         StringBuilder sb = new StringBuilder();
         sb.append("<div class='report-card'>");
-        sb.append("<h2>").append(svgIcon("trend")).append(" DialysisTrend Analysis</h2>");
+        sb.append("<h2>").append(svgIcon("trend")).append(" 透析趋势分析</h2>");
         sb.append("<div class='summary-pills'>");
-        sb.append("<span class='summary-pill'>Weekrecord ").append(chartData.getDateList().size()).append(" times</span>");
+        sb.append("<span class='summary-pill'>周期记录 ").append(chartData.getDateList().size()).append(" 次</span>");
         if (stats != null) {
-            sb.append("<span class='summary-pill'>averageAverage daily weight gain ").append(fmt(stats.getAvgDailyWeightGain())).append(" kg/days</span>");
-            sb.append("<span class='summary-pill'>weight gainpeakvalue ").append(fmt(stats.getMaxWeightGain())).append(" kg</span>");
-            sb.append("<span class='summary-pill'>Average interval ").append(fmt(stats.getAvgIntervalDays())).append(" days</span>");
+            sb.append("<span class='summary-pill'>平均日增重 ").append(fmt(stats.getAvgDailyWeightGain())).append(" kg/天</span>");
+            sb.append("<span class='summary-pill'>增重峰值 ").append(fmt(stats.getMaxWeightGain())).append(" kg</span>");
+            sb.append("<span class='summary-pill'>平均间隔 ").append(fmt(stats.getAvgIntervalDays())).append(" 天</span>");
         }
         sb.append("</div>");
         if (hasTrendChartImages(request)) {
             sb.append(renderTrendChartImages(request.getTrendChartImages(), stats));
-            sb.append("<p class='trend-note'>instructions: trendchartcomeselfDialysis Management-Trend Analysissameoneset ECharts charttabletruncatechart; emptypointtableshowthis timesrecordWeight or Blood Pressuredataincomplete. </p>");
+            sb.append("<p class='trend-note'>说明：趋势图来自透析管理的同组数据；空点表示该次记录的体重或血压数据不完整。</p>");
             sb.append("</div>");
             return sb.toString();
         }
         sb.append("<div class='trend-grid'>");
         sb.append(renderWeightOverviewChart(chartData));
-        sb.append(renderLineChart("Pre-dialysis Weighttrend", chartData.getDateList(),
-                chartData.getOnWeightList(), "Pre-dialysis Weight", "#6366f1",
-                chartData.getDryWeightList(), "Dry Weightreference", "#E6A23C",
+        sb.append(renderLineChart("透析前体重趋势", chartData.getDateList(),
+                chartData.getOnWeightList(), "透析前体重", "#6366f1",
+                chartData.getDryWeightList(), "干体重参考", "#E6A23C",
                 null, null, null,
                 null, null, null));
-        sb.append(renderLineChart("Post-dialysis Weighttrend", chartData.getDateList(),
-                chartData.getOffWeightList(), "Post-dialysis Weight", "#10b981",
-                chartData.getDryWeightList(), "Dry Weightreference", "#E6A23C",
+        sb.append(renderLineChart("透析后体重趋势", chartData.getDateList(),
+                chartData.getOffWeightList(), "透析后体重", "#10b981",
+                chartData.getDryWeightList(), "干体重参考", "#E6A23C",
                 null, null, null,
                 null, null, null));
-        sb.append(renderLineChart("interdialytic weight gain / ultrafiltration volume", chartData.getDateList(),
-                chartData.getWeightGainList(), "interdialytic weight gain", "#3b82f6",
-                chartData.getUfAmountList(), "ultrafiltration volume", "#10b981",
-                chartData.getWeight3pctList(), "3%threshold", "#E6A23C",
-                chartData.getWeight5pctList(), "5%threshold", "#F56C6C"));
-        sb.append(renderLineChart("Average daily weight gain", chartData.getDateList(),
-                chartData.getDailyWeightGainList(), "Average daily weight gain", "#8b5cf6",
+        sb.append(renderLineChart("透析间期增重／超滤量", chartData.getDateList(),
+                chartData.getWeightGainList(), "透析间期增重", "#3b82f6",
+                chartData.getUfAmountList(), "超滤量", "#10b981",
+                chartData.getWeight3pctList(), "3% 阈值", "#E6A23C",
+                chartData.getWeight5pctList(), "5% 阈值", "#F56C6C"));
+        sb.append(renderLineChart("日均增重", chartData.getDateList(),
+                chartData.getDailyWeightGainList(), "日均增重", "#8b5cf6",
                 null, null, null,
                 null, null, null,
                 null, null, null));
@@ -358,7 +358,7 @@ public class HealthReportServiceImpl implements HealthReportService {
         sb.append(renderDehydrationDistribution(stats));
         sb.append("</div>");
         sb.append(renderMonthlyStatsChart(stats));
-        sb.append("<p class='trend-note'>instructions: trendchartcomeselfDialysis Management-Trend Analysissameonecharttabledata; emptypointtableshowthis timesrecordWeight or Blood Pressuredataincomplete. </p>");
+        sb.append("<p class='trend-note'>说明：趋势图采用透析管理的同组数据；空点表示该次记录的体重或血压数据不完整。</p>");
         sb.append("</div>");
         return sb.toString();
     }
@@ -369,40 +369,40 @@ public class HealthReportServiceImpl implements HealthReportService {
 
         // Weight and fluid removal
         sb.append("<div class='report-card'>");
-        sb.append("<h2>").append(svgIcon("dialysis")).append(" Weight and fluid removal</h2>");
+        sb.append("<h2>").append(svgIcon("dialysis")).append(" 体重与脱水</h2>");
         sb.append("<table>");
-        sb.append("<tr><th>Average interdialytic weight gain</th><td>").append(fmt(stats.getAvgWeightGain())).append(" kg</td>");
-        sb.append("<th>Average ultrafiltration volume</th><td>").append(fmt(stats.getAvgUfAmount())).append(" kg</td></tr>");
-        sb.append("<tr><th>Average daily weight gain</th><td>").append(fmt(stats.getAvgDailyWeightGain())).append(" kg/days</td>");
-        sb.append("<th>weight gainpeakvalue</th><td>").append(fmt(stats.getMaxWeightGain())).append(" kg</td></tr>");
-        sb.append("<tr><th>Average interval</th><td>").append(fmt(stats.getAvgIntervalDays())).append(" days</td>");
+        sb.append("<tr><th>平均透析间期增重</th><td>").append(fmt(stats.getAvgWeightGain())).append(" kg</td>");
+        sb.append("<th>平均超滤量</th><td>").append(fmt(stats.getAvgUfAmount())).append(" kg</td></tr>");
+        sb.append("<tr><th>平均日增重</th><td>").append(fmt(stats.getAvgDailyWeightGain())).append(" kg/天</td>");
+        sb.append("<th>增重峰值</th><td>").append(fmt(stats.getMaxWeightGain())).append(" kg</td></tr>");
+        sb.append("<tr><th>平均间隔</th><td>").append(fmt(stats.getAvgIntervalDays())).append(" 天</td>");
         sb.append("<th></th><td></td></tr>");
         sb.append("</table></div>");
 
         // Blood Pressuremonitoring
         sb.append("<div class='report-card'>");
-        sb.append("<h2>").append(svgIcon("bp")).append(" Blood Pressuremonitoring</h2>");
+        sb.append("<h2>").append(svgIcon("bp")).append(" 血压监测</h2>");
         sb.append("<table>");
-        sb.append("<tr><th>Average systolic pressure</th><td>").append(fmt(stats.getAvgSystolicBp())).append(" mmHg <span style='color:#94a3b8;font-size:12px;'>target120-140</span></td>");
-        sb.append("<th>Average diastolic pressure</th><td>").append(fmt(stats.getAvgDiastolicBp())).append(" mmHg <span style='color:#94a3b8;font-size:12px;'>target70-90</span></td></tr>");
-        sb.append("<tr><th>systolicAbnormal</th><td>").append(nvl(stats.getBpSysAbnormalCount())).append(" times").append(badgeForBpAbnormal(stats.getBpSysAbnormalCount())).append("</td>");
-        sb.append("<th>diastolicAbnormal</th><td>").append(nvl(stats.getBpDiaAbnormalCount())).append(" times").append(badgeForBpAbnormal(stats.getBpDiaAbnormalCount())).append("</td></tr>");
-        sb.append("<tr><th>Blood PressureAbnormaltotal</th><td colspan='3'>").append(nvl(stats.getBpAbnormalCount())).append(" times").append(badgeForBpAbnormal(stats.getBpAbnormalCount())).append("</td></tr>");
+        sb.append("<tr><th>平均收缩压</th><td>").append(fmt(stats.getAvgSystolicBp())).append(" mmHg <span style='color:#94a3b8;font-size:12px;'>目标 120-140</span></td>");
+        sb.append("<th>平均舒张压</th><td>").append(fmt(stats.getAvgDiastolicBp())).append(" mmHg <span style='color:#94a3b8;font-size:12px;'>目标 70-90</span></td></tr>");
+        sb.append("<tr><th>收缩压异常</th><td>").append(nvl(stats.getBpSysAbnormalCount())).append(" 次").append(badgeForBpAbnormal(stats.getBpSysAbnormalCount())).append("</td>");
+        sb.append("<th>舒张压异常</th><td>").append(nvl(stats.getBpDiaAbnormalCount())).append(" 次").append(badgeForBpAbnormal(stats.getBpDiaAbnormalCount())).append("</td></tr>");
+        sb.append("<tr><th>血压异常总数</th><td colspan='3'>").append(nvl(stats.getBpAbnormalCount())).append(" 次").append(badgeForBpAbnormal(stats.getBpAbnormalCount())).append("</td></tr>");
         sb.append("</table></div>");
 
         // Risk alerts
         sb.append("<div class='report-card'>");
-        sb.append("<h2>").append(svgIcon("trend")).append(" Risk alerts</h2>");
+        sb.append("<h2>").append(svgIcon("trend")).append(" 风险提示</h2>");
         sb.append("<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;'>");
         sb.append("<div><table>");
-        sb.append("<tr><th>Weight gain above target(&gt;5%)</th><td>").append(nvl(stats.getOver5pctCount())).append(" times</td></tr>");
-        sb.append("<tr><th>Weight gain within target(3%-5%)</th><td>").append(nvl(stats.getIdealGainCount())).append(" times</td></tr>");
-        sb.append("<tr><th>Weight gain below target(&lt;3%)</th><td>").append(nvl(stats.getUnder3pctCount())).append(" times</td></tr>");
+        sb.append("<tr><th>增重高于目标（&gt;5%）</th><td>").append(nvl(stats.getOver5pctCount())).append(" 次</td></tr>");
+        sb.append("<tr><th>增重处于目标（3%-5%）</th><td>").append(nvl(stats.getIdealGainCount())).append(" 次</td></tr>");
+        sb.append("<tr><th>增重低于目标（&lt;3%）</th><td>").append(nvl(stats.getUnder3pctCount())).append(" 次</td></tr>");
         sb.append("</table></div>");
         sb.append("<div><table>");
-        sb.append("<tr><th>Ultrafiltration on target</th><td>").append(nvl(stats.getMatchCount())).append(" times</td></tr>");
-        sb.append("<tr><th>Excessive ultrafiltration</th><td>").append(nvl(stats.getTooMuchCount())).append(" times</td></tr>");
-        sb.append("<tr><th>Insufficient ultrafiltration</th><td>").append(nvl(stats.getInsufficientCount())).append(" times</td></tr>");
+        sb.append("<tr><th>超滤达标</th><td>").append(nvl(stats.getMatchCount())).append(" 次</td></tr>");
+        sb.append("<tr><th>超滤过多</th><td>").append(nvl(stats.getTooMuchCount())).append(" 次</td></tr>");
+        sb.append("<tr><th>超滤不足</th><td>").append(nvl(stats.getInsufficientCount())).append(" 次</td></tr>");
         sb.append("</table></div>");
         sb.append("</div></div>");
 
@@ -416,20 +416,20 @@ public class HealthReportServiceImpl implements HealthReportService {
     private String renderTrendChartImages(Map<String, String> images, DialysisStatsVO stats) {
         StringBuilder sb = new StringBuilder();
         sb.append("<div class='trend-grid'>");
-        appendTrendImage(sb, images, "weightOverview", "Weight and weight gainthresholdoveralltrend", true);
-        appendTrendImage(sb, images, "onWeight", "Pre-dialysis Weighttrend", false);
-        appendTrendImage(sb, images, "offWeight", "Post-dialysis Weighttrend", false);
-        appendTrendImage(sb, images, "uf", "interdialytic weight gain / ultrafiltration volume", false);
-        appendTrendImage(sb, images, "dailyGain", "Average daily weight gain", false);
-        appendTrendImage(sb, images, "bp", "Blood Pressuretrend", false);
-        appendTrendImage(sb, images, "dehydration", "Ultrafiltration status distribution", false);
+        appendTrendImage(sb, images, "weightOverview", "体重与增重阈值综合趋势", true);
+        appendTrendImage(sb, images, "onWeight", "透析前体重趋势", false);
+        appendTrendImage(sb, images, "offWeight", "透析后体重趋势", false);
+        appendTrendImage(sb, images, "uf", "透析间期增重／超滤量", false);
+        appendTrendImage(sb, images, "dailyGain", "日均增重", false);
+        appendTrendImage(sb, images, "bp", "血压趋势", false);
+        appendTrendImage(sb, images, "dehydration", "超滤状态分布", false);
         sb.append("</div>");
         String monthly = images.get("monthly");
         if (monthly != null && monthly.startsWith("data:image/")) {
             sb.append("<div class='report-card' style='margin-top:14px;'>");
-            sb.append("<h2>").append(svgIcon("trend")).append(" Monthly Average interdialytic weight gain / ultrafiltration volume</h2>");
+            sb.append("<h2>").append(svgIcon("trend")).append(" 月均透析间期增重／超滤量</h2>");
             sb.append("<div class='trend-grid'>");
-            appendTrendImage(sb, images, "monthly", "Monthly Average interdialytic weight gain / ultrafiltration volume", true);
+            appendTrendImage(sb, images, "monthly", "月均透析间期增重／超滤量", true);
             sb.append("</div>");
             sb.append(renderMonthlyStatsTable(stats));
             sb.append("</div>");
@@ -465,24 +465,24 @@ public class HealthReportServiceImpl implements HealthReportService {
 
     private String renderWeightOverviewChart(DialysisStatsVO chartData) {
         java.util.List<ReportSeries> series = new java.util.ArrayList<>();
-        series.add(new ReportSeries(chartData.getOnWeightList(), "Pre-dialysis Weight", "#6366f1", "line", 0, false));
-        series.add(new ReportSeries(chartData.getOffWeightList(), "Post-dialysis Weight", "#10b981", "line", 0, false));
-        series.add(new ReportSeries(chartData.getDryWeightList(), "Dry Weight", "#64748b", "line", 0, true));
-        series.add(new ReportSeries(chartData.getWeightGainList(), "weight gain", "#38bdf8", "bar", 1, false));
-        series.add(new ReportSeries(chartData.getWeight3pctList(), "3%threshold", "#f59e0b", "line", 1, true));
-        series.add(new ReportSeries(chartData.getWeight5pctList(), "5%threshold", "#ef4444", "line", 1, true));
-        return renderComboChart("Weight and weight gainthresholdoveralltrend", chartData.getDateList(), "Weight kg", "weight gain kg", series);
+        series.add(new ReportSeries(chartData.getOnWeightList(), "透析前体重", "#6366f1", "line", 0, false));
+        series.add(new ReportSeries(chartData.getOffWeightList(), "透析后体重", "#10b981", "line", 0, false));
+        series.add(new ReportSeries(chartData.getDryWeightList(), "干体重", "#64748b", "line", 0, true));
+        series.add(new ReportSeries(chartData.getWeightGainList(), "增重", "#38bdf8", "bar", 1, false));
+        series.add(new ReportSeries(chartData.getWeight3pctList(), "3% 阈值", "#f59e0b", "line", 1, true));
+        series.add(new ReportSeries(chartData.getWeight5pctList(), "5% 阈值", "#ef4444", "line", 1, true));
+        return renderComboChart("体重与增重阈值综合趋势", chartData.getDateList(), "体重 kg", "增重 kg", series);
     }
 
     private String renderBpTrendChart(DialysisStatsVO chartData) {
         java.util.List<Number> idealSys = constantSeries(chartData.getDateList(), 130);
         java.util.List<Number> idealDia = constantSeries(chartData.getDateList(), 80);
         java.util.List<ReportSeries> series = new java.util.ArrayList<>();
-        series.add(new ReportSeries(chartData.getSystolicBpList(), "systolic", "#ef4444", "line", 0, false));
-        series.add(new ReportSeries(chartData.getDiastolicBpList(), "diastolic", "#3b82f6", "line", 0, false));
-        series.add(new ReportSeries(idealSys, "idealsystolic", "#67C23A", "line", 0, true));
-        series.add(new ReportSeries(idealDia, "idealdiastolic", "#67C23A", "line", 0, true));
-        return renderComboChart("Blood Pressuretrend", chartData.getDateList(), "mmHg", null, series, 40.0, null);
+        series.add(new ReportSeries(chartData.getSystolicBpList(), "收缩压", "#ef4444", "line", 0, false));
+        series.add(new ReportSeries(chartData.getDiastolicBpList(), "舒张压", "#3b82f6", "line", 0, false));
+        series.add(new ReportSeries(idealSys, "理想收缩压", "#67C23A", "line", 0, true));
+        series.add(new ReportSeries(idealDia, "理想舒张压", "#67C23A", "line", 0, true));
+        return renderComboChart("血压趋势", chartData.getDateList(), "mmHg", null, series, 40.0, null);
     }
 
     private String renderMonthlyStatsChart(DialysisStatsVO stats) {
@@ -498,13 +498,13 @@ public class HealthReportServiceImpl implements HealthReportService {
             avgUf.add(numberOf(row.get("avg_uf_amount")));
         }
         java.util.List<ReportSeries> series = new java.util.ArrayList<>();
-        series.add(new ReportSeries(avgGain, "Average interdialytic weight gain", "#409EFF", "bar", 0, false));
-        series.add(new ReportSeries(avgUf, "Average ultrafiltration volume", "#67C23A", "bar", 0, false));
+        series.add(new ReportSeries(avgGain, "平均透析间期增重", "#409EFF", "bar", 0, false));
+        series.add(new ReportSeries(avgUf, "平均超滤量", "#67C23A", "bar", 0, false));
 
         StringBuilder sb = new StringBuilder();
         sb.append("<div class='report-card' style='margin-top:14px;'>");
-        sb.append("<h2>").append(svgIcon("trend")).append(" Monthly Average interdialytic weight gain / ultrafiltration volume</h2>");
-        sb.append(renderComboChart("Monthly Average interdialytic weight gain / ultrafiltration volume", months, "kg", null, series));
+        sb.append("<h2>").append(svgIcon("trend")).append(" 月均透析间期增重／超滤量</h2>");
+        sb.append(renderComboChart("月均透析间期增重／超滤量", months, "kg", null, series));
         sb.append(renderMonthlyStatsTable(stats));
         sb.append("</div>");
         return sb.toString();
@@ -532,14 +532,14 @@ public class HealthReportServiceImpl implements HealthReportService {
                                     java.util.List<ReportSeries> series, Double fixedMin1, Double fixedMin2) {
         int count = labels != null ? labels.size() : 0;
         if (count == 0 || series == null || series.isEmpty()) {
-            return "<div class='trend-card'><h3>" + title + "</h3><p class='trend-note'>No data available</p></div>";
+            return "<div class='trend-card'><h3>" + title + "</h3><p class='trend-note'>暂无数据</p></div>";
         }
 
         double[] r1 = rangeForAxis(series, 0, fixedMin1);
         double[] r2 = rangeForAxis(series, 1, fixedMin2);
         boolean hasAxis2 = hasAxis(series, 1) && r2 != null;
         if (r1 == null && !hasAxis2) {
-            return "<div class='trend-card'><h3>" + title + "</h3><p class='trend-note'>No data available</p></div>";
+            return "<div class='trend-card'><h3>" + title + "</h3><p class='trend-note'>暂无数据</p></div>";
         }
         if (r1 == null) r1 = r2;
         if (r2 == null) r2 = r1;
@@ -708,7 +708,7 @@ public class HealthReportServiceImpl implements HealthReportService {
             }
         }
         if (min == Double.POSITIVE_INFINITY || max == Double.NEGATIVE_INFINITY) {
-            return "<div class='trend-card'><h3>" + title + "</h3><p class='trend-note'>No data available</p></div>";
+            return "<div class='trend-card'><h3>" + title + "</h3><p class='trend-note'>暂无数据</p></div>";
         }
         if (Math.abs(max - min) < 0.0001) {
             max += 1;
@@ -792,9 +792,9 @@ public class HealthReportServiceImpl implements HealthReportService {
         }
         StringBuilder sb = new StringBuilder();
         sb.append("<div class='report-card' style='margin-top:14px;'>");
-        sb.append("<h2>").append(svgIcon("trend")).append(" Monthly Average interdialytic weight gain / ultrafiltration volume</h2>");
+        sb.append("<h2>").append(svgIcon("trend")).append(" 月均透析间期增重／超滤量</h2>");
         sb.append("<table>");
-        sb.append("<tr><th>Month</th><th>Average interdialytic weight gain(kg)</th><th>Average ultrafiltration volume(kg)</th></tr>");
+        sb.append("<tr><th>月份</th><th>平均透析间期增重（kg）</th><th>平均超滤量（kg）</th></tr>");
         for (Map<String, Object> row : stats.getMonthlyStats()) {
             String month = row.get("month") != null ? row.get("month").toString() : "-";
             String avgGain = row.get("avg_weight_gain") != null ? row.get("avg_weight_gain").toString() : "-";
@@ -813,7 +813,7 @@ public class HealthReportServiceImpl implements HealthReportService {
         long match = stats != null && stats.getMatchCount() != null ? stats.getMatchCount() : 0;
         long total = Math.max(tooMuch + insufficient + match, 1);
 
-        String[] labels = {"Excessive ultrafiltration", "Insufficient ultrafiltration", "Ultrafiltration on target"};
+        String[] labels = {"超滤过多", "超滤不足", "超滤达标"};
         long[] values = {tooMuch, insufficient, match};
         String[] colors = {"#ef4444", "#f59e0b", "#10b981"};
 
@@ -826,7 +826,7 @@ public class HealthReportServiceImpl implements HealthReportService {
         double start = -90;
 
         StringBuilder svg = new StringBuilder();
-        svg.append("<div class='trend-card'><h3>Ultrafiltration status distribution</h3>");
+        svg.append("<div class='trend-card'><h3>超滤状态分布</h3>");
         svg.append("<svg viewBox='0 0 ").append(width).append(" ").append(height).append("' width='100%' height='300' role='img'>");
         svg.append("<rect x='0' y='0' width='").append(width).append("' height='").append(height).append("' rx='10' fill='#ffffff'/>");
 
@@ -839,11 +839,11 @@ public class HealthReportServiceImpl implements HealthReportService {
             double labelY = cy + Math.sin(Math.toRadians(mid)) * (radius + 28);
             long pct = Math.round(values[i] * 100.0 / total);
             svg.append("<text text-anchor='middle' x='").append(round(labelX)).append("' y='").append(round(labelY)).append("' fill='").append(colors[i]).append("' font-size='12' font-weight='600'>")
-                    .append(values[i]).append("times ").append(pct).append("%</text>");
+                    .append(values[i]).append(" 次 ").append(pct).append("%</text>");
             start += sweep;
         }
         svg.append("<text text-anchor='middle' x='").append(cx).append("' y='").append(cy - 4).append("' fill='#334155' font-size='20' font-weight='700'>").append(total).append("</text>");
-        svg.append("<text text-anchor='middle' x='").append(cx).append("' y='").append(cy + 18).append("' fill='#94a3b8' font-size='12'>Total</text>");
+        svg.append("<text text-anchor='middle' x='").append(cx).append("' y='").append(cy + 18).append("' fill='#94a3b8' font-size='12'>总计</text>");
 
         int legendX = 190;
         int legendY = 260;
@@ -853,7 +853,7 @@ public class HealthReportServiceImpl implements HealthReportService {
             svg.append("<text x='").append(x + 10).append("' y='").append(legendY).append("' fill='#64748b' font-size='12'>").append(labels[i]).append("</text>");
         }
         svg.append("</svg>");
-        svg.append("<p class='trend-note'>Ultrafiltration on targettoultrafiltration volume and interdialytic weight gaindifferencevaluenot exceed 0.3kg count. </p></div>");
+        svg.append("<p class='trend-note'>超滤达标表示超滤量与透析间期增重差值不超过 0.3 kg。</p></div>");
         return svg.toString();
     }
 
@@ -923,9 +923,9 @@ public class HealthReportServiceImpl implements HealthReportService {
         if (count == null) return "";
         int c;
         try { c = Integer.parseInt(count.toString()); } catch (NumberFormatException e) { return ""; }
-        if (c <= 2) return " <span class='badge badge-good'>Normal</span>";
-        if (c <= 5) return " <span class='badge badge-risk'>attention</span>";
-        return " <span class='badge badge-bad'>alert</span>";
+        if (c <= 2) return " <span class='badge badge-good'>正常</span>";
+        if (c <= 5) return " <span class='badge badge-risk'>关注</span>";
+        return " <span class='badge badge-bad'>预警</span>";
     }
 
     /** Statusbadge: weight gain exceeds5% count */
@@ -933,25 +933,25 @@ public class HealthReportServiceImpl implements HealthReportService {
         if (count == null) return "";
         int c;
         try { c = Integer.parseInt(count.toString()); } catch (NumberFormatException e) { return ""; }
-        if (c <= 1) return " <span class='badge badge-good'>Good</span>";
-        if (c <= 3) return " <span class='badge badge-risk'>attention</span>";
-        return " <span class='badge badge-bad'>out of range</span>";
+        if (c <= 1) return " <span class='badge badge-good'>良好</span>";
+        if (c <= 3) return " <span class='badge badge-risk'>关注</span>";
+        return " <span class='badge badge-bad'>超标</span>";
     }
 
     /** Statusbadge: Abnormal readingsthroughuse */
     private String badgeForAbnormal(int count) {
         if (count <= 2) return "";
-        if (count <= 5) return " <span class='badge badge-risk'>attention</span>";
-        return " <span class='badge badge-bad'>alert</span>";
+        if (count <= 5) return " <span class='badge badge-risk'>关注</span>";
+        return " <span class='badge badge-bad'>预警</span>";
     }
 
     /** appetiteintextlabel */
     private String appetiteLabel(String appetite) {
         if (appetite == null) return "-";
         switch (appetite) {
-            case "GOOD": return "Good";
-            case "NORMAL": return "Fair";
-            case "POOR": return "difference";
+            case "GOOD": return "良好";
+            case "NORMAL": return "一般";
+            case "POOR": return "较差";
             default: return appetite;
         }
     }
@@ -960,9 +960,9 @@ public class HealthReportServiceImpl implements HealthReportService {
     private String badgeForAppetite(String appetite) {
         if (appetite == null) return "";
         switch (appetite) {
-            case "GOOD": return " <span class='badge badge-good'>Good</span>";
-            case "NORMAL": return " <span class='badge badge-normal'>Fair</span>";
-            case "POOR": return " <span class='badge badge-bad'>difference</span>";
+            case "GOOD": return " <span class='badge badge-good'>良好</span>";
+            case "NORMAL": return " <span class='badge badge-normal'>一般</span>";
+            case "POOR": return " <span class='badge badge-bad'>较差</span>";
             default: return "";
         }
     }
@@ -970,20 +970,20 @@ public class HealthReportServiceImpl implements HealthReportService {
     /** threemealtext */
     private String mealsText(NutritionDiary nd) {
         StringBuilder sb = new StringBuilder();
-        if (Boolean.TRUE.equals(nd.getMealBreakfast())) sb.append("morning ");
-        if (Boolean.TRUE.equals(nd.getMealLunch())) sb.append("noon ");
-        if (Boolean.TRUE.equals(nd.getMealDinner())) sb.append("evening ");
-        if (Boolean.TRUE.equals(nd.getMealSnack())) sb.append("add");
+        if (Boolean.TRUE.equals(nd.getMealBreakfast())) sb.append("早餐 ");
+        if (Boolean.TRUE.equals(nd.getMealLunch())) sb.append("午餐 ");
+        if (Boolean.TRUE.equals(nd.getMealDinner())) sb.append("晚餐 ");
+        if (Boolean.TRUE.equals(nd.getMealSnack())) sb.append("加餐");
         return sb.length() > 0 ? sb.toString().trim() : "-";
     }
 
     /** Statusbadge: Blood Pressurevalue (based onSystolic Pressuredetermine)  */
     private String badgeForBpValue(Integer systolicBp) {
         if (systolicBp == null) return "";
-        if (systolicBp < 90) return " <span class='badge badge-bad'>lowBlood Pressure</span>";
-        if (systolicBp <= 120) return " <span class='badge badge-good'>Normal</span>";
-        if (systolicBp <= 139) return " <span class='badge badge-risk'>high</span>";
-        return " <span class='badge badge-bad'>highBlood Pressure</span>";
+        if (systolicBp < 90) return " <span class='badge badge-bad'>低血压</span>";
+        if (systolicBp <= 120) return " <span class='badge badge-good'>正常</span>";
+        if (systolicBp <= 139) return " <span class='badge badge-risk'>偏高</span>";
+        return " <span class='badge badge-bad'>高血压</span>";
     }
 
     /** Statusbadge: Blood Glucosevalue (based onmeasurementperioddetermine)  */
@@ -992,20 +992,20 @@ public class HealthReportServiceImpl implements HealthReportService {
         double val = bloodGlucose.doubleValue();
         // based onmeasurementperioddetermineNormalrange
         if (measurePeriod != null && measurePeriod.contains("Fasting")) {
-            if (val < 3.9) return " <span class='badge badge-bad'>low</span>";
-            if (val <= 6.1) return " <span class='badge badge-good'>Normal</span>";
-            if (val <= 7.0) return " <span class='badge badge-risk'>high</span>";
-            return " <span class='badge badge-bad'>pasthigh</span>";
+            if (val < 3.9) return " <span class='badge badge-bad'>偏低</span>";
+            if (val <= 6.1) return " <span class='badge badge-good'>正常</span>";
+            if (val <= 7.0) return " <span class='badge badge-risk'>偏高</span>";
+            return " <span class='badge badge-bad'>过高</span>";
         } else if (measurePeriod != null && measurePeriod.contains("After Meal")) {
-            if (val < 3.9) return " <span class='badge badge-bad'>low</span>";
-            if (val <= 7.8) return " <span class='badge badge-good'>Normal</span>";
-            if (val <= 11.1) return " <span class='badge badge-risk'>high</span>";
-            return " <span class='badge badge-bad'>pasthigh</span>";
+            if (val < 3.9) return " <span class='badge badge-bad'>偏低</span>";
+            if (val <= 7.8) return " <span class='badge badge-good'>正常</span>";
+            if (val <= 11.1) return " <span class='badge badge-risk'>偏高</span>";
+            return " <span class='badge badge-bad'>过高</span>";
         } else {
             // Randommeasurement: throughusedetermine
-            if (val < 3.9) return " <span class='badge badge-bad'>low</span>";
-            if (val <= 11.1) return " <span class='badge badge-good'>Normal</span>";
-            return " <span class='badge badge-bad'>pasthigh</span>";
+            if (val < 3.9) return " <span class='badge badge-bad'>偏低</span>";
+            if (val <= 11.1) return " <span class='badge badge-good'>正常</span>";
+            return " <span class='badge badge-bad'>过高</span>";
         }
     }
 

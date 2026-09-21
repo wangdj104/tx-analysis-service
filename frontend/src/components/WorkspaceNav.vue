@@ -1,5 +1,5 @@
 <template>
-  <nav class="workspace-nav" aria-label="mainnavigation">
+  <nav class="workspace-nav" aria-label="主导航">
     <section v-for="group in groups" :key="group.label" class="workspace-nav__group">
       <p class="workspace-nav__label">{{ group.label }}</p>
       <router-link v-for="item in group.items" :key="item.label" :to="item.entryPath || item.path || item.children?.[0]?.path"

@@ -6,8 +6,8 @@
           <div class="top-bar">
             <div class="left">
               <div>
-                <h1>Data Export</h1>
-                <p class="subtitle">will Dialysis, Blood Pressure, Nutritionetc.Data Exportfor CSVfile, convenientinexternalanalysis and archive</p>
+                <h1>数据导出</h1>
+                <p class="subtitle">将透析、血压、营养等数据导出为 CSV 文件，便于外部分析与归档。</p>
               </div>
             </div>
           </div>
@@ -15,28 +15,28 @@
 
         <div class="content-panel">
           <el-form :model="form" label-width="110px" ref="formRef" :rules="rules">
-            <el-form-item label="datatype" prop="dataType">
+            <el-form-item label="数据类型" prop="dataType">
               <el-select v-model="form.dataType" style="width: 100%">
                 <el-option v-for="opt in dataTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
             </el-form-item>
             <el-row :gutter="16">
               <el-col :xs="24" :sm="8">
-                <el-form-item label="Time dimension" prop="timeType">
+                <el-form-item label="时间维度" prop="timeType">
                   <el-select v-model="form.timeType" style="width: 100%">
-                    <el-option label="by Month" value="month" />
-                    <el-option label="by week" value="week" />
-                    <el-option label="by Year" value="year" />
+                    <el-option label="按月" value="month" />
+                    <el-option label="按周" value="week" />
+                    <el-option label="按年" value="year" />
                   </el-select>
                 </el-form-item>
               </el-col>
               <el-col :xs="24" :sm="8">
-                <el-form-item label="Time range" prop="timeValue">
+                <el-form-item label="时间范围" prop="timeValue">
                   <el-date-picker
                     v-model="form.timeValue"
                     :type="form.timeType === 'week' ? 'date' : form.timeType"
                     :value-format="form.timeType === 'year' ? 'YYYY' : form.timeType === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'"
-                    placeholder="selectTime"
+                    placeholder="选择时间"
                     style="width: 100%"
                     :clearable="false"
                   />
@@ -45,7 +45,7 @@
             </el-row>
             <el-form-item>
               <el-button type="primary" @click="handleExport" :loading="exporting">
-                <el-icon><Download /></el-icon>ExportCSV
+                <el-icon><Download /></el-icon>导出 CSV
               </el-button>
             </el-form-item>
           </el-form>
@@ -74,38 +74,38 @@ const dataTypeOptions = computed(() => {
 
   // Dialysis Records: needneedDialysisMenuPermission
   if (hasMenu('/dialysis')) {
-    options.push({ label: 'Dialysis Records', value: 'dialysis' });
+    options.push({ label: '透析记录', value: 'dialysis' });
   }
   // Blood Pressure Pattern Analysis
-  if (hasMenuName('Blood Pressure Pattern Analysis')) {
-    options.push({ label: 'Blood Pressure Pattern Analysis', value: 'bp_analysis' });
+  if (hasMenuName('血压模式分析')) {
+    options.push({ label: '血压规律分析', value: 'bp_analysis' });
   }
   // Nutrition Diary
-  if (hasMenuName('Nutrition Diary')) {
-    options.push({ label: 'Nutrition Diary', value: 'nutrition' });
+  if (hasMenuName('营养日记')) {
+    options.push({ label: '营养日记', value: 'nutrition' });
   }
   // Complication Tracking
-  if (hasMenuName('Complication Tracking')) {
-    options.push({ label: 'complicationrecord', value: 'complication' });
+  if (hasMenuName('并发症跟踪')) {
+    options.push({ label: '并发症记录', value: 'complication' });
   }
   // medicationrecord: needneedMedicationmanagementPermission
   if (hasMenu('/medication')) {
-    options.push({ label: 'medicationrecord', value: 'medication' });
+    options.push({ label: '用药记录', value: 'medication' });
   }
   // Blood GlucoseBlood Pressurerecord
-  if (hasMenuName('Blood GlucoseBlood Pressurerecord')) {
-    options.push({ label: 'Blood GlucoseBlood Pressurerecord', value: 'bp_self_monitor' });
+  if (hasMenuName('血压血糖记录')) {
+    options.push({ label: '血压血糖记录', value: 'bp_self_monitor' });
   }
   return options;
 });
 
 const DATA_TYPE_LABELS = {
-  dialysis: 'Dialysis Records',
-  bp_analysis: 'Blood Pressure Pattern Analysis',
-  nutrition: 'Nutrition Diary',
-  complication: 'complicationrecord',
-  medication: 'medicationrecord',
-  bp_self_monitor: 'Blood GlucoseBlood Pressurerecord'
+  dialysis: '透析记录',
+  bp_analysis: '血压规律分析',
+  nutrition: '营养日记',
+  complication: '并发症记录',
+  medication: '用药记录',
+  bp_self_monitor: '血压血糖记录'
 };
 
 const form = reactive({
@@ -122,13 +122,13 @@ onMounted(() => {
 });
 
 const rules = {
-  dataType: [{ required: true, message: 'Selectdatatype', trigger: 'change' }],
-  timeType: [{ required: true, message: 'Select a time dimension', trigger: 'change' }],
-  timeValue: [{ required: true, message: 'Select a time range', trigger: 'change' }]
+  dataType: [{ required: true, message: '请选择数据类型', trigger: 'change' }],
+  timeType: [{ required: true, message: '请选择时间维度', trigger: 'change' }],
+  timeValue: [{ required: true, message: '请选择时间范围', trigger: 'change' }]
 };
 
 async function handleExport() {
-  if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
+  if (!currentPatientId.value) { ElMessage.warning('请先选择患者。'); return; }
   try { await formRef.value.validate(); } catch { return; }
   exporting.value = true;
   try {
@@ -140,12 +140,12 @@ async function handleExport() {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${DATA_TYPE_LABELS[form.dataType] || form.dataType}_Data Export.csv`;
+    link.download = `${DATA_TYPE_LABELS[form.dataType] || form.dataType}_数据导出.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
-    ElMessage.success('dataalready Export');
+    ElMessage.success('数据已导出');
   } catch (e) {
-    ElMessage.error('Exportfailed');
+    ElMessage.error('导出失败');
   } finally { exporting.value = false; }
 }
 </script>

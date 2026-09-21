@@ -42,7 +42,7 @@ request.interceptors.response.use(
 
     // ifBack Statuscodenot Yes200, instructionsAPIhas question
     if (res.code && res.code !== 200) {
-      ElMessage.error(res.msg || 'Request failed');
+      ElMessage.error(res.msg || '请求失败');
 
       // 401: not authorize, skipconvertto Sign Inpage
       if (res.code === 401 && isAuthSessionCurrent(response.config.authSession) && !window.location.pathname.startsWith('/login')) {
@@ -50,7 +50,7 @@ request.interceptors.response.use(
         window.location.href = '/login';
       }
 
-      return Promise.reject(new Error(res.msg || 'Request failed'));
+      return Promise.reject(new Error(res.msg || '请求失败'));
     }
 
     return res;
@@ -62,28 +62,28 @@ request.interceptors.response.use(
       switch (error.response.status) {
         case 401:
           if (isAuthSessionCurrent(error.config?.authSession) && !window.location.pathname.startsWith('/login')) {
-          ElMessage.error('Your session has expired. Please sign in again.');
+          ElMessage.error('登录状态已过期，请重新登录。');
             clearAuthSession();
             window.location.href = '/login';
           }
           break;
         case 403:
-          ElMessage.error('You do not have permission to perform this action.');
+          ElMessage.error('你没有执行此操作的权限。');
           break;
         case 404:
-          ElMessage.error('The requested resource does not exist.');
+          ElMessage.error('请求的资源不存在。');
           break;
         case 413:
-          ElMessage.error('The upload is too large. Choose a smaller file or contact an administrator.');
+          ElMessage.error('上传文件过大，请选择较小的文件或联系管理员。');
           break;
         case 500:
-          ElMessage.error('The service encountered an error. Please try again.');
+          ElMessage.error('服务发生错误，请稍后重试。');
           break;
         default:
-          ElMessage.error(error.response.data?.msg || 'Request failed');
+          ElMessage.error(error.response.data?.msg || '请求失败');
       }
     } else {
-      ElMessage.error('The network connection is unavailable.');
+      ElMessage.error('网络连接不可用。');
     }
 
     return Promise.reject(error);

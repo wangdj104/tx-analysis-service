@@ -6,21 +6,21 @@
           <div class="top-bar">
             <div class="left">
               <div>
-                <h1>Nutrition Diary</h1>
-                <p class="subtitle">recordeach Daydietcondition and bodyphysical feeling, trackNutritionhealthchange</p>
+                <h1>营养日记</h1>
+                <p class="subtitle">记录每日饮食和身体感受，跟踪营养健康变化。</p>
               </div>
             </div>
-            <div class="nutrition-summary" aria-label="recordoverview">
+            <div class="nutrition-summary" aria-label="记录概览">
               <div class="summary-item">
-                <span class="summary-label">recordcount</span>
+                <span class="summary-label">记录数量</span>
                 <strong>{{ records.length }}</strong>
               </div>
               <div class="summary-item">
-                <span class="summary-label">most recent Weight</span>
+                <span class="summary-label">最近体重</span>
                 <strong>{{ latestWeightText }}</strong>
               </div>
               <div class="summary-item">
-                <span class="summary-label">most recent appetite</span>
+                <span class="summary-label">最近食欲</span>
                 <strong>{{ latestAppetiteText }}</strong>
               </div>
             </div>
@@ -32,16 +32,16 @@
           <div class="panel-head">
             <div class="list-panel-title">
               <el-icon><EditPen /></el-icon>
-              <span>{{ editingId ? 'Edit record' : 'Add record' }}</span>
+              <span>{{ editingId ? '编辑记录' : '新增记录' }}</span>
             </div>
           </div>
 
           <el-form :model="form" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
             <div class="form-grid form-grid--meta">
-              <el-form-item label="recordDate" prop="recordDate">
+              <el-form-item label="记录日期" prop="recordDate">
                 <el-date-picker v-model="form.recordDate" value-format="YYYY-MM-DD" :clearable="false" />
               </el-form-item>
-              <el-form-item label="Weight(kg)">
+              <el-form-item label="体重（kg）">
                 <el-input-number v-model="form.bodyWeight" :precision="1" :min="20" :max="300" controls-position="right" />
               </el-form-item>
             </div>
@@ -50,13 +50,13 @@
               <section class="metric-section metric-section--appetite">
                 <div class="metric-title">
                   <span class="metric-dot"></span>
-                  <span>appetite</span>
+                  <span>食欲</span>
                 </div>
                 <div class="field-grid field-grid--three">
                   <el-radio-group v-model="form.appetite" class="appetite-radio">
-                    <el-radio-button value="GOOD">Good</el-radio-button>
-                    <el-radio-button value="NORMAL">Fair</el-radio-button>
-                    <el-radio-button value="POOR">difference</el-radio-button>
+                    <el-radio-button value="GOOD">良好</el-radio-button>
+                    <el-radio-button value="NORMAL">一般</el-radio-button>
+                    <el-radio-button value="POOR">较差</el-radio-button>
                   </el-radio-group>
                 </div>
               </section>
@@ -64,19 +64,19 @@
               <section class="metric-section metric-section--meals">
                 <div class="metric-title">
                   <span class="metric-dot"></span>
-                  <span>threemealcondition</span>
+                  <span>三餐情况</span>
                 </div>
                 <div class="field-grid field-grid--four">
-                  <el-checkbox v-model="form.mealBreakfast" label="Breakfast" />
-                  <el-checkbox v-model="form.mealLunch" label="Lunch" />
-                  <el-checkbox v-model="form.mealDinner" label="Dinner" />
-                  <el-checkbox v-model="form.mealSnack" label="Snack" />
+                  <el-checkbox v-model="form.mealBreakfast" label="早餐" />
+                  <el-checkbox v-model="form.mealLunch" label="午餐" />
+                  <el-checkbox v-model="form.mealDinner" label="晚餐" />
+                  <el-checkbox v-model="form.mealSnack" label="加餐" />
                 </div>
               </section>
             </div>
 
             <div class="form-grid form-grid--meta" style="max-width: 640px;">
-              <el-form-item label="Fluid Intake(ml)">
+              <el-form-item label="液体摄入（ml）">
                 <el-input-number v-model="form.fluidIntake" :min="0" :max="5000" :step="100" controls-position="right" />
               </el-form-item>
             </div>
@@ -84,8 +84,8 @@
             <section class="symptoms-section">
               <div class="metric-title">
                 <span class="metric-dot metric-dot--symptom"></span>
-                <span>symptomlabel</span>
-                <span class="text-muted" style="font-size: 12px; font-weight: 400;"> (can multipleselect) </span>
+                <span>症状标签</span>
+                <span class="text-muted" style="font-size: 12px; font-weight: 400;">（可多选）</span>
               </div>
               <div class="symptom-tags">
                 <el-check-tag
@@ -97,15 +97,15 @@
               </div>
             </section>
 
-            <el-form-item label="Notes" class="remark-field">
-              <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" placeholder="can recorddietDetails, bodyphysical feelingetc." />
+            <el-form-item label="备注" class="remark-field">
+              <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" placeholder="可记录饮食详情和身体感受等。" />
             </el-form-item>
 
             <div class="form-actions">
               <el-button type="primary" @click="handleSave" :loading="saving">
-                <el-icon><Check /></el-icon>{{ editingId ? 'Update record' : 'Save record' }}
+                <el-icon><Check /></el-icon>{{ editingId ? '更新记录' : '保存记录' }}
               </el-button>
-              <el-button @click="resetForm">Reset</el-button>
+              <el-button @click="resetForm">重置</el-button>
             </div>
           </el-form>
         </div>
@@ -115,38 +115,38 @@
           <div class="toolbar records-toolbar">
             <div class="list-panel-title">
               <el-icon><TrendCharts /></el-icon>
-              <span>Dayrecordrecord</span>
-              <span v-if="records.length" class="list-count">{{ records.length }} items</span>
+              <span>每日记录</span>
+              <span v-if="records.length" class="list-count">共 {{ records.length }} 条</span>
             </div>
             <div class="records-tools">
               <el-button @click="loadRecords" :loading="loading">
-                <el-icon><Refresh /></el-icon>Refresh
+                <el-icon><Refresh /></el-icon>刷新
               </el-button>
             </div>
           </div>
 
           <div class="table-wrap">
-            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="NoneDayrecordrecord">
-              <el-table-column prop="recordDate" label="Date" width="112" />
-              <el-table-column label="Weight" width="90">
+            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="暂无每日记录">
+              <el-table-column prop="recordDate" label="日期" width="112" />
+              <el-table-column label="体重" width="90">
                 <template #default="{ row }">
                   <span class="value-text">{{ row.bodyWeight ? row.bodyWeight + ' kg' : '-' }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="appetite" width="90" align="center">
+              <el-table-column label="食欲" width="90" align="center">
                 <template #default="{ row }">
                   <el-tag :type="appetiteTagType(row.appetite)" size="small">{{ appetiteLabel(row.appetite) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="threemeal" width="140">
+              <el-table-column label="三餐" width="140">
                 <template #default="{ row }">
                   <span class="meal-text">{{ mealsText(row) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="Fluid Intake" width="100">
+              <el-table-column label="液体摄入" width="100">
                 <template #default="{ row }">{{ row.fluidIntake ? row.fluidIntake + ' ml' : '-' }}</template>
               </el-table-column>
-              <el-table-column label="symptom" min-width="120" show-overflow-tooltip>
+              <el-table-column label="症状" min-width="120" show-overflow-tooltip>
                 <template #default="{ row }">
                   <template v-if="row.symptoms">
                     <el-tag v-for="s in row.symptoms.split(',')" :key="s" size="small" type="warning" style="margin: 2px;">{{ s }}</el-tag>
@@ -154,14 +154,14 @@
                   <span v-else class="text-muted">-</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="remark" label="Notes" min-width="160" show-overflow-tooltip />
-              <el-table-column label="Actions" width="120" align="center" fixed="right">
+              <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
+              <el-table-column label="操作" width="120" align="center" fixed="right">
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" @click="handleEdit(row)">Edit</el-button>
-                    <el-popconfirm title="Confirm deletionthisitemsrecord?" @confirm="handleDelete(row)">
+                    <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
+                    <el-popconfirm title="确认删除这条记录吗？" @confirm="handleDelete(row)">
                       <template #reference>
-                        <el-button link type="danger" size="small">Delete</el-button>
+                        <el-button link type="danger" size="small">删除</el-button>
                       </template>
                     </el-popconfirm>
                   </div>
@@ -190,7 +190,7 @@ const editingId = ref(null);
 const formRef = ref(null);
 const selectedSymptoms = ref([]);
 
-const SYMPTOM_OPTIONS = ['fatigue', 'edema', 'nausea', 'itching', 'insomnia', 'appetitedifference', 'bloating', 'muscle cramps'];
+const SYMPTOM_OPTIONS = ['乏力', '水肿', '恶心', '瘙痒', '失眠', '食欲差', '腹胀', '肌肉痉挛'];
 
 const form = reactive({
   recordDate: new Date().toISOString().slice(0, 10),
@@ -206,7 +206,7 @@ const form = reactive({
 });
 
 const formRules = {
-  recordDate: [{ required: true, message: 'Select a date', trigger: 'change' }]
+  recordDate: [{ required: true, message: '请选择日期', trigger: 'change' }]
 };
 
 const latestWeightText = computed(() => {
@@ -219,7 +219,7 @@ const latestAppetiteText = computed(() => {
   return row ? appetiteLabel(row.appetite) : '-';
 });
 
-const APPETITE_MAP = { GOOD: 'Good', NORMAL: 'Fair', POOR: 'difference' };
+const APPETITE_MAP = { GOOD: '良好', NORMAL: '一般', POOR: '较差' };
 function appetiteLabel(v) { return APPETITE_MAP[v] || v || '-'; }
 function appetiteTagType(v) {
   return { GOOD: 'success', NORMAL: 'info', POOR: 'danger' }[v] || 'info';
@@ -227,10 +227,10 @@ function appetiteTagType(v) {
 
 function mealsText(row) {
   const parts = [];
-  if (row.mealBreakfast) parts.push('morning');
-  if (row.mealLunch) parts.push('noon');
-  if (row.mealDinner) parts.push('evening');
-  if (row.mealSnack) parts.push('add');
+  if (row.mealBreakfast) parts.push('早');
+  if (row.mealLunch) parts.push('中');
+  if (row.mealDinner) parts.push('晚');
+  if (row.mealSnack) parts.push('加餐');
   return parts.length ? parts.join(' ') : '-';
 }
 
@@ -267,26 +267,26 @@ async function loadRecords() {
     const res = await listDiaries(currentPatientId.value);
     if (res.code === 200) records.value = res.data || [];
   } catch (e) {
-    ElMessage.error('Failed to load records');
+    ElMessage.error('加载记录失败');
   } finally { loading.value = false; }
 }
 
 async function handleSave() {
-  if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
+  if (!currentPatientId.value) { ElMessage.warning('请先选择患者。'); return; }
   try { await formRef.value.validate(); } catch { return; }
   saving.value = true;
   try {
     const data = { patientId: currentPatientId.value, ...form, id: editingId.value || undefined };
     const res = editingId.value ? await updateDiary(data) : await saveDiary(data);
     if (res.code === 200) {
-      ElMessage.success(editingId.value ? 'Updated successfully' : 'Saved successfully');
+      ElMessage.success(editingId.value ? '更新成功' : '保存成功');
       resetForm();
       await loadRecords();
     } else {
-      ElMessage.error(res.msg || 'Operation failed');
+      ElMessage.error(res.msg || '操作失败');
     }
   } catch (e) {
-    ElMessage.error('Operation failed');
+    ElMessage.error('操作失败');
   } finally { saving.value = false; }
 }
 
@@ -311,11 +311,11 @@ async function handleDelete(row) {
   try {
     const res = await deleteDiary(row.id);
     if (res.code === 200) {
-      ElMessage.success('Deleted successfully');
+      ElMessage.success('删除成功');
       await loadRecords();
     }
   } catch (e) {
-    ElMessage.error('Failed to delete');
+    ElMessage.error('删除失败');
   }
 }
 

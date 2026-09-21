@@ -2,12 +2,12 @@
   <div class="patient-switcher">
     <span class="patient-switcher__avatar"><el-icon :size="19"><User /></el-icon></span>
     <div class="patient-switcher__field">
-      <label :for="inputId">currentPatient</label>
-      <el-select :id="inputId" :model-value="modelValue" filterable placeholder="selectPatient"
-        aria-label="switchcurrentPatient" @change="$emit('update:modelValue', $event)">
+      <label :for="inputId">当前患者</label>
+      <el-select :id="inputId" :model-value="modelValue" filterable placeholder="选择患者"
+        aria-label="切换当前患者" @change="$emit('update:modelValue', $event)">
         <el-option v-for="patient in patients" :key="patient.id" :value="patient.id" :label="patient.patientName || patient.name" />
-        <el-option label="AllPatient" :value="0" />
-        <template #empty><span class="patient-switcher__empty">No patients</span></template>
+        <el-option label="全部患者" :value="0" />
+        <template #empty><span class="patient-switcher__empty">暂无患者</span></template>
       </el-select>
     </div>
   </div>

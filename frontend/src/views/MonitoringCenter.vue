@@ -2,57 +2,57 @@
   <main class="monitoring-page">
     <header class="monitoring-head">
       <div class="monitoring-title">
-        <p class="monitoring-head__eyebrow"><span class="live-dot"></span>healthmonitoring</p>
-        <h1>{{ snapshot.patient?.name ? `${snapshot.patient.name} healthStatus` : 'healthStatusoverview' }}</h1>
-        <p>firstviewneedneedprocess item, againViewtrend and Detailedrecord. </p>
+        <p class="monitoring-head__eyebrow"><span class="live-dot"></span>健康监测</p>
+        <h1>{{ snapshot.patient?.name ? `${snapshot.patient.name}的健康状态` : '健康状态概览' }}</h1>
+        <p>先查看待处理事项，再查看趋势和详细记录。</p>
       </div>
       <picture class="monitoring-head-art">
         <source media="(max-width: 900px)" :srcset="careMomentsSmall" />
         <img :src="careMoments" alt="" width="180" height="120" decoding="async" />
       </picture>
-      <div class="monitoring-controls" aria-label="monitoringworktoolcolumn">
+      <div class="monitoring-controls" aria-label="监测工具栏">
         <label class="control-field">
-          <span>trendrange</span>
-          <el-select v-model="days" class="range-select" aria-label="trendTime range" @change="loadSnapshot()">
-            <el-option label="recent  7 days" :value="7" />
-            <el-option label="recent  30 days" :value="30" />
-            <el-option label="recent  90 days" :value="90" />
+          <span>趋势范围</span>
+          <el-select v-model="days" class="range-select" aria-label="趋势时间范围" @change="loadSnapshot()">
+            <el-option label="近 7 天" :value="7" />
+            <el-option label="近 30 天" :value="30" />
+            <el-option label="近 90 天" :value="90" />
           </el-select>
         </label>
         <label class="control-field control-field--switch">
-          <span>Run checks</span>
-          <el-tooltip :content="autoRefresh ? 'Check for new records every 30 seconds' : 'Automatic refresh is off'">
-            <el-switch v-model="autoRefresh" inline-prompt active-text="open" inactive-text="close" @change="resetTimer" />
+          <span>自动检查</span>
+          <el-tooltip :content="autoRefresh ? '每 30 秒检查一次新记录' : '自动刷新已关闭'">
+            <el-switch v-model="autoRefresh" inline-prompt active-text="开" inactive-text="关" @change="resetTimer" />
           </el-tooltip>
         </label>
-        <el-button class="refresh-button" :loading="loading" @click="loadSnapshot()"><el-icon><Refresh /></el-icon>Refresh data</el-button>
+        <el-button class="refresh-button" :loading="loading" @click="loadSnapshot()"><el-icon><Refresh /></el-icon>刷新数据</el-button>
       </div>
     </header>
 
-    <el-alert v-if="!patientId" title="Please first in sidebardown sideselectonePatient, againViewmonitoringdata. " type="warning" :closable="false" show-icon />
+    <el-alert v-if="!patientId" title="请先在顶部选择一名患者，再查看监测数据。" type="warning" :closable="false" show-icon />
 
     <template v-else>
       <section class="status-hero" :class="`status-hero--${statusTone}`" v-loading="loading && !snapshot.generatedAt">
         <div class="status-orb"><el-icon :size="34"><component :is="statusIcon" /></el-icon></div>
         <div class="status-copy">
-          <span class="status-label">currentdataStatus</span>
-          <h2>{{ snapshot.statusLabel || 'positivein summarizehealthrecord' }}</h2>
+          <span class="status-label">当前数据状态</span>
+          <h2>{{ snapshot.statusLabel || '正在汇总健康记录' }}</h2>
           <p>{{ primarySuggestion }}</p>
         </div>
         <div class="status-side">
           <div class="status-meta">
-            <span><i></i>{{ autoRefresh ? 'Watching for new records' : 'Manual checks' }}</span>
-            <small>Statusupdate {{ formatDateTime(snapshot.generatedAt) }}</small>
-            <small>most recent record {{ formatRelative(snapshot.lastDataAt) }}</small>
+            <span><i></i>{{ autoRefresh ? '正在监测新记录' : '手动检查' }}</span>
+            <small>状态更新于 {{ formatDateTime(snapshot.generatedAt) }}</small>
+            <small>最近记录 {{ formatRelative(snapshot.lastDataAt) }}</small>
           </div>
           <div class="status-actions">
-            <el-button type="primary" @click="$router.push('/bp-self-monitor')">entryhealthdata</el-button>
-            <el-button type="primary" plain @click="$router.push('/family-health')">Viewtoday Dayplan</el-button>
+            <el-button type="primary" @click="$router.push('/bp-self-monitor')">录入健康数据</el-button>
+            <el-button type="primary" plain @click="$router.push('/family-health')">查看今日计划</el-button>
           </div>
         </div>
       </section>
 
-      <nav class="illustrated-shortcuts" aria-label="commonhealthfeature">
+      <nav class="illustrated-shortcuts" aria-label="常用健康功能">
         <router-link v-for="item in illustratedShortcuts" :key="item.path" :to="item.path" class="illustrated-shortcut">
           <img :src="item.image" width="116" height="77" alt="" decoding="async" />
           <span><strong>{{ item.label }}</strong><small>{{ item.description }}</small></span>
@@ -62,19 +62,19 @@
       <section class="monitor-metrics">
         <article class="monitor-metric">
           <span class="monitor-metric__icon monitor-metric__icon--alert"><el-icon><Bell /></el-icon></span>
-          <div><strong>{{ metrics.activeAlertCount ?? 0 }}</strong><span>activityalert</span><small>{{ metrics.criticalAlertCount || 0 }} itemsSevere</small></div>
+          <div><strong>{{ metrics.activeAlertCount ?? 0 }}</strong><span>活动告警</span><small>{{ metrics.criticalAlertCount || 0 }} 项紧急</small></div>
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><CircleCheck /></el-icon></span>
-          <div><strong>{{ metrics.completedTaskCount ?? 0 }}/{{ metrics.todayTaskCount ?? 0 }}</strong><span>today Daytask</span><small>completerate {{ metrics.adherenceRate ?? 0 }}%</small></div>
+          <div><strong>{{ metrics.completedTaskCount ?? 0 }}/{{ metrics.todayTaskCount ?? 0 }}</strong><span>今日任务</span><small>完成率 {{ metrics.adherenceRate ?? 0 }}%</small></div>
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><DataLine /></el-icon></span>
-          <div><strong>{{ metrics.dataCompleteness ?? 0 }}%</strong><span>datacover</span><small>by monitoringsourcestatistics</small></div>
+          <div><strong>{{ metrics.dataCompleteness ?? 0 }}%</strong><span>数据覆盖率</span><small>按监测来源统计</small></div>
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><Clock /></el-icon></span>
-          <div><strong class="monitor-metric__time">{{ latestUpdateText }}</strong><span>most recent update</span><small>{{ formatDateTime(snapshot.lastDataAt) }}</small></div>
+          <div><strong class="monitor-metric__time">{{ latestUpdateText }}</strong><span>最近更新</span><small>{{ formatDateTime(snapshot.lastDataAt) }}</small></div>
         </article>
       </section>
 
@@ -89,64 +89,64 @@
       <section class="monitoring-main-grid">
         <article class="monitor-panel trend-panel">
           <header class="panel-head">
-            <div><span class="panel-kicker">trendmonitoring</span><h2>vital signschange</h2><p>Abnormaldatapointwillusediamondmark. </p></div>
-            <div class="chart-legend"><span><i class="legend-systolic"></i>Systolic Pressure</span><span><i class="legend-diastolic"></i>Diastolic Pressure</span><span><i class="legend-glucose"></i>Blood Glucose</span></div>
+            <div><span class="panel-kicker">趋势监测</span><h2>生命体征变化</h2><p>异常数据点会使用菱形标记。</p></div>
+            <div class="chart-legend"><span><i class="legend-systolic"></i>收缩压</span><span><i class="legend-diastolic"></i>舒张压</span><span><i class="legend-glucose"></i>血糖</span></div>
           </header>
           <v-chart v-if="hasTrendData" class="monitor-chart" :option="chartOption" autoresize />
-          <el-empty v-else description="currentTime rangenohas vital signsrecord">
-            <el-button type="primary" @click="$router.push('/bp-self-monitor')">gorecordBlood Pressure & Glucose</el-button>
+          <el-empty v-else description="当前时间范围内暂无生命体征记录">
+            <el-button type="primary" @click="$router.push('/bp-self-monitor')">前往记录血压与血糖</el-button>
           </el-empty>
         </article>
 
         <article class="monitor-panel alert-panel">
           <header class="panel-head panel-head--compact">
-            <div><span class="panel-kicker">Riskteamcolumn</span><h2>activityalert</h2></div>
-            <el-button text type="primary" :loading="checking" @click="runCheck">againExamination</el-button>
+            <div><span class="panel-kicker">风险队列</span><h2>活动告警</h2></div>
+            <el-button text type="primary" :loading="checking" @click="runCheck">重新检查</el-button>
           </header>
           <div v-if="activeAlerts.length" class="alert-list">
             <article v-for="alert in activeAlerts.slice(0, 8)" :key="alert.id" class="alert-row" :class="`alert-row--${(alert.level || 'INFO').toLowerCase()}`">
               <span class="alert-level">{{ alertLevel(alert.level) }}</span>
-              <div class="alert-row__body"><strong>{{ alert.title || 'healthindicatorAbnormal' }}</strong><p>{{ alert.value || 'Please ViewDetailedrecord' }}</p><small>{{ formatDateTime(alert.triggeredAt) }}</small></div>
+              <div class="alert-row__body"><strong>{{ alert.title || '健康指标异常' }}</strong><p>{{ alert.value || '请查看详细记录' }}</p><small>{{ formatDateTime(alert.triggeredAt) }}</small></div>
               <div class="alert-actions">
-                <el-button v-if="alert.status === 'PENDING'" size="small" @click="acknowledgeAlert(alert)">Confirm</el-button>
-                <el-button size="small" type="primary" plain @click="resolveAlert(alert)">process</el-button>
+                <el-button v-if="alert.status === 'PENDING'" size="small" @click="acknowledgeAlert(alert)">确认</el-button>
+                <el-button size="small" type="primary" plain @click="resolveAlert(alert)">处理</el-button>
               </div>
             </article>
           </div>
-          <div v-else class="safe-empty"><el-icon :size="30"><CircleCheckFilled /></el-icon><strong>currentnohas activityalert</strong><span>keep it uprecord, Abnormalchangewillappearin here. </span></div>
+          <div v-else class="safe-empty"><el-icon :size="30"><CircleCheckFilled /></el-icon><strong>当前没有活动告警</strong><span>请持续记录，异常变化会显示在这里。</span></div>
         </article>
       </section>
 
       <section class="monitoring-lower-grid">
         <article class="monitor-panel task-panel">
-          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">Care Plan</span><h2>today Daytask</h2></div><span class="panel-count">{{ todayTasks.length }} item</span></header>
+          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">照护计划</span><h2>今日任务</h2></div><span class="panel-count">{{ todayTasks.length }} 项</span></header>
           <div v-if="todayTasks.length" class="task-list">
             <article v-for="task in todayTasks" :key="`${task.taskType}-${task.id}`" class="task-item" :class="{ 'task-item--done': isTaskDone(task) }">
               <span class="task-time">{{ timeOnly(task.scheduledAt) }}</span>
               <span class="task-icon"><el-icon><component :is="task.taskType === 'MEDICATION' ? 'FirstAidKit' : 'Calendar'" /></el-icon></span>
               <div><strong>{{ task.title }}</strong><p>{{ task.dosage || task.description || taskTypeText(task.taskType) }}</p></div>
               <el-tag :type="taskTagType(task.status)" effect="light">{{ taskStatusText(task.status) }}</el-tag>
-              <el-button v-if="task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">marktaken</el-button>
-              <el-button v-if="task.taskType === 'DIALYSIS'" size="small" @click="$router.push('/family-health')">managementschedule</el-button>
+              <el-button v-if="task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">标记已服</el-button>
+              <el-button v-if="task.taskType === 'DIALYSIS'" size="small" @click="$router.push('/family-health')">管理排班</el-button>
             </article>
           </div>
-          <div v-else class="simple-empty">Nothing needs attention todaytask</div>
+          <div v-else class="simple-empty">今天没有需要关注的任务</div>
         </article>
 
         <article class="monitor-panel event-panel">
-          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">healthtrajectory</span><h2>most recent event</h2></div><el-button text type="primary" @click="$router.push('/family-health')">recordevent</el-button></header>
+          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">健康轨迹</span><h2>最近事件</h2></div><el-button text type="primary" @click="$router.push('/family-health')">记录事件</el-button></header>
           <div v-if="recentEvents.length" class="event-list">
             <article v-for="event in recentEvents.slice(0, 7)" :key="`${event.sourceType}-${event.id}`" class="event-item">
               <span class="event-dot"></span>
-              <div><strong>{{ event.title || eventTypeText(event.type) }}</strong><p>{{ event.summary || 'No additional details' }}</p><small>{{ event.date }} {{ event.time || '' }} · {{ eventTypeText(event.type) }}</small></div>
+              <div><strong>{{ event.title || eventTypeText(event.type) }}</strong><p>{{ event.summary || '无补充说明' }}</p><small>{{ event.date }} {{ event.time || '' }} · {{ eventTypeText(event.type) }}</small></div>
             </article>
           </div>
-          <div v-else class="simple-empty">No health events</div>
+          <div v-else class="simple-empty">暂无健康事件</div>
         </article>
       </section>
 
       <section class="care-guidance">
-        <header><el-icon><Opportunity /></el-icon><div><strong>currentcarerecommendation</strong><span>based onmonitoringdataAutomaticwholemanage, onlyasfor Health Managementreference. </span></div></header>
+        <header><el-icon><Opportunity /></el-icon><div><strong>当前照护建议</strong><span>根据监测数据自动汇总，仅供健康管理参考。</span></div></header>
         <ol><li v-for="item in snapshot.careSuggestions || []" :key="item">{{ item }}</li></ol>
       </section>
     </template>
@@ -196,7 +196,7 @@ const metrics = computed(() => snapshot.value.metrics || {})
 const activeAlerts = computed(() => snapshot.value.activeAlerts || [])
 const todayTasks = computed(() => snapshot.value.todayTasks || [])
 const recentEvents = computed(() => snapshot.value.recentEvents || [])
-const primarySuggestion = computed(() => snapshot.value.careSuggestions?.[0] || 'durationrecordafter , systemwillprovidemorecan rely on trenddetermine. ')
+const primarySuggestion = computed(() => snapshot.value.careSuggestions?.[0] || '持续记录后，系统将提供更可靠的趋势判断。')
 const statusTone = computed(() => ({ CRITICAL: 'critical', WARNING: 'warning', STABLE: 'stable', NO_DATA: 'empty' }[snapshot.value.overallStatus] || 'empty'))
 const statusIcon = computed(() => snapshot.value.overallStatus === 'STABLE' ? SuccessFilled : WarningFilled)
 const hasTrendData = computed(() => (snapshot.value.vitalTrend || []).some(p => p.systolic != null || p.diastolic != null || p.glucose != null))
@@ -204,10 +204,10 @@ const latestUpdateText = computed(() => formatRelative(snapshot.value.lastDataAt
 const illustratedShortcuts = computed(() => {
   const { menuPaths = [], roleCodes = [] } = readPermissionCache() || {}
   return [
-    { path: '/bp-self-monitor', label: 'Blood Pressure & Glucose', description: 'Daily measurements and records', image: healthJournalSmall },
-    { path: '/medication', label: 'Medication Management', description: 'Medication, Reminder and Medication Log', image: medicationCareSmall },
-    { path: '/dialysis', label: 'Dialysis Records', description: 'templateentry and Trend Analysis', image: dialysisCareSmall },
-    { path: '/medical-record', label: 'Medical Records', description: 'Report and indicatorchange', image: recordsCareSmall }
+    { path: '/bp-self-monitor', label: '血压与血糖', description: '日常测量与记录', image: healthJournalSmall },
+    { path: '/medication', label: '用药管理', description: '药品、提醒与用药记录', image: medicationCareSmall },
+    { path: '/dialysis', label: '透析记录', description: '模板录入与趋势分析', image: dialysisCareSmall },
+    { path: '/medical-record', label: '医疗记录', description: '报告与指标变化', image: recordsCareSmall }
   ].filter(item => canAccessWorkspace(item.path, menuPaths, roleCodes))
     .map(item => ({ ...item, path: resolveWorkspaceEntry(item.path, menuPaths, roleCodes) }))
 })
@@ -224,8 +224,8 @@ const chartOption = computed(() => {
       formatter(params = []) {
         const items = Array.isArray(params) ? params : [params]
         const row = rows[items[0]?.dataIndex]
-        const lines = [items[0]?.axisValueLabel || 'measurementrecord', ...items.map(item => `${item.seriesName}: ${item.value ?? '—'}`)]
-        if (row?.abnormal) lines.push('this timepointstorein Abnormalmark, can cancomeselfOtherindicator, Please combineoriginalrecordView. ')
+        const lines = [items[0]?.axisValueLabel || '测量记录', ...items.map(item => `${item.seriesName}: ${item.value ?? '—'}`)]
+        if (row?.abnormal) lines.push('该时间点存在异常标记，可能来自其他指标，请结合原记录查看。')
         return lines.join('\n')
       }
     },
@@ -236,9 +236,9 @@ const chartOption = computed(() => {
       { type: 'value', name: 'mmol/L', min: 0, axisLabel: { color: '#708783' }, splitLine: { show: false } }
     ],
     series: [
-      { name: 'Systolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.systolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.5, color: '#236b63' }, itemStyle: { color: '#236b63' }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d6a642', type: 'dashed' }, label: { color: '#8a6110', formatter: 'reference 140' }, data: [{ yAxis: 140 }] } },
-      { name: 'Diastolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.diastolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#589b91' }, itemStyle: { color: '#589b91' } },
-      { name: 'Blood Glucose', type: 'line', yAxisIndex: 1, smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.glucose, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#d59c2f' }, itemStyle: { color: '#d59c2f' } }
+      { name: '收缩压', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.systolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.5, color: '#236b63' }, itemStyle: { color: '#236b63' }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d6a642', type: 'dashed' }, label: { color: '#8a6110', formatter: '参考值 140' }, data: [{ yAxis: 140 }] } },
+      { name: '舒张压', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.diastolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#589b91' }, itemStyle: { color: '#589b91' } },
+      { name: '血糖', type: 'line', yAxisIndex: 1, smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.glucose, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#d59c2f' }, itemStyle: { color: '#d59c2f' } }
     ]
   }
 })
@@ -261,7 +261,7 @@ async function loadSnapshot(silent = false) {
     if (requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
     if (!silent) {
       days.value = loadedDays.value
-      loadError.value = error.message || 'monitoringdataFailed to load'
+      loadError.value = error.message || '监测数据加载失败'
       ElMessage.error(loadError.value)
     }
   } finally {
@@ -282,7 +282,7 @@ async function runCheck() {
   try {
     await checkThresholds(patientId.value)
     await loadSnapshot(true)
-    ElMessage.success('alert ruleExaminationcomplete')
+    ElMessage.success('告警规则检查完成')
   } finally {
     checking.value = false
   }
@@ -290,47 +290,47 @@ async function runCheck() {
 
 async function acknowledgeAlert(alert) {
   await acknowledge(alert.id)
-  ElMessage.success('Alert confirmed')
+  ElMessage.success('告警已确认')
   await loadSnapshot(true)
 }
 
 async function resolveAlert(alert) {
-  const result = await ElMessageBox.prompt('Describe the action taken, repeat measurement, or follow-up plan.', 'Resolve alert', {
-    confirmButtonText: 'Mark as resolved', cancelButtonText: 'Cancel', inputType: 'textarea',
-    inputPlaceholder: 'for example: rest 10 minutesafter remeasure 138/86, continueobserve',
-    inputValidator: value => value?.trim() ? true : 'Enter a resolution note'
+  const result = await ElMessageBox.prompt('请描述已采取的措施、复测结果或后续计划。', '解决告警', {
+    confirmButtonText: '标记已解决', cancelButtonText: '取消', inputType: 'textarea',
+    inputPlaceholder: '例如：休息 10 分钟后复测 138/86，继续观察',
+    inputValidator: value => value?.trim() ? true : '请输入处置说明'
   }).catch(() => null)
   if (!result) return
   await resolve(alert.id, result.value.trim())
-  ElMessage.success('Alert resolved')
+  ElMessage.success('告警已解决')
   await loadSnapshot(true)
 }
 
 async function completeMedication(task) {
   await actionIntake(task.id, 'TAKEN', '')
-  ElMessage.success('Medication intake recorded')
+  ElMessage.success('服药记录已保存')
   await loadSnapshot(true)
 }
 
 function signalTone(status) { return ({ CRITICAL: 'critical', WARNING: 'warning', DELAYED: 'delayed', NORMAL: 'normal', PENDING: 'pending' }[status] || 'empty') }
-function alertLevel(level) { return ({ CRITICAL: 'Severe', WARNING: 'warning', INFO: 'Notice' }[level] || 'Notice') }
+function alertLevel(level) { return ({ CRITICAL: '紧急', WARNING: '警告', INFO: '提示' }[level] || '提示') }
 function isTaskDone(task) { return task.status === 'TAKEN' || task.status === 'COMPLETED' }
-function taskStatusText(status) { return ({ PENDING: 'Pending', TAKEN: 'Taken', SNOOZED: 'Snoozed', SKIPPED: 'Skipped', MISSED: 'Missed', PLANNED: 'Planned', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }[status] || status || 'Pending') }
+function taskStatusText(status) { return ({ PENDING: '待处理', TAKEN: '已服用', SNOOZED: '已延后', SKIPPED: '已跳过', MISSED: '已漏服', PLANNED: '已计划', COMPLETED: '已完成', CANCELLED: '已取消' }[status] || status || '待处理') }
 function taskTagType(status) { return ({ TAKEN: 'success', COMPLETED: 'success', MISSED: 'danger', SKIPPED: 'info', SNOOZED: 'warning', CANCELLED: 'info' }[status] || 'warning') }
-function taskTypeText(type) { return type === 'DIALYSIS' ? 'Dialysis Schedule' : 'medicationplan' }
-function eventTypeText(type) { return ({ SYMPTOM: 'symptomrecord', VISIT: 'thenvisitrecord', NOTE: 'healthNotes', MEDICATION: 'medication', DIALYSIS: 'Dialysis', MEASUREMENT: 'measurement', INTAKE: 'medication intakecheck-in', MEDICATION_LOG: 'medicationrecord' }[type] || 'healthevent') }
+function taskTypeText(type) { return type === 'DIALYSIS' ? '透析排班' : '用药计划' }
+function eventTypeText(type) { return ({ SYMPTOM: '症状记录', VISIT: '就诊记录', NOTE: '健康备注', MEDICATION: '用药', DIALYSIS: '透析', MEASUREMENT: '测量', INTAKE: '服药打卡', MEDICATION_LOG: '用药记录' }[type] || '健康事件') }
 function timeOnly(value) { return value ? String(value).slice(11, 16) : '—' }
 function shortDateTime(value) { return value ? String(value).slice(5, 16).replace('T', ' ') : '—' }
-function formatDateTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : 'None' }
+function formatDateTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '无' }
 function formatRelative(value) {
-  if (!value) return 'No data'
+  if (!value) return '暂无数据'
   const time = new Date(String(value).replace(' ', 'T')).getTime()
   if (Number.isNaN(time)) return formatDateTime(value)
   const minutes = Math.max(0, Math.floor((Date.now() - time) / 60000))
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes} minutesbefore `
-  if (minutes < 1440) return `${Math.floor(minutes / 60)} hoursbefore `
-  return `${Math.floor(minutes / 1440)} daysbefore `
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  if (minutes < 1440) return `${Math.floor(minutes / 60)} 小时前`
+  return `${Math.floor(minutes / 1440)} 天前`
 }
 
 watch(patientId, () => {
