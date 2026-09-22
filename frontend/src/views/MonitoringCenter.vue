@@ -2,57 +2,57 @@
   <main class="monitoring-page">
     <header class="monitoring-head">
       <div class="monitoring-title">
-        <p class="monitoring-head__eyebrow"><span class="live-dot"></span>healthmonitoring</p>
-        <h1>{{ snapshot.patient?.name ? `${snapshot.patient.name} healthStatus` : 'healthStatusoverview' }}</h1>
-        <p>firstviewneedneedprocess item, againViewtrend and Detailedrecord. </p>
+        <p class="monitoring-head__eyebrow"><span class="live-dot"></span>Health monitoring</p>
+        <h1>{{ snapshot.patient?.name ? `${snapshot.patient.name}'s health overview` : 'Health overview' }}</h1>
+        <p>Review items that need attention, then explore trends and detailed records.</p>
       </div>
       <picture class="monitoring-head-art">
         <source media="(max-width: 900px)" :srcset="careMomentsSmall" />
         <img :src="careMoments" alt="" width="180" height="120" decoding="async" />
       </picture>
-      <div class="monitoring-controls" aria-label="monitoringworktoolcolumn">
+      <div class="monitoring-controls" aria-label="Monitoring controls">
         <label class="control-field">
-          <span>trendrange</span>
-          <el-select v-model="days" class="range-select" aria-label="trendTime range" @change="loadSnapshot()">
-            <el-option label="recent  7 days" :value="7" />
-            <el-option label="recent  30 days" :value="30" />
-            <el-option label="recent  90 days" :value="90" />
+          <span>Trend range</span>
+          <el-select v-model="days" class="range-select" aria-label="Trend time range" @change="loadSnapshot()">
+            <el-option label="Last 7 days" :value="7" />
+            <el-option label="Last 30 days" :value="30" />
+            <el-option label="Last 90 days" :value="90" />
           </el-select>
         </label>
         <label class="control-field control-field--switch">
           <span>Run checks</span>
           <el-tooltip :content="autoRefresh ? 'Check for new records every 30 seconds' : 'Automatic refresh is off'">
-            <el-switch v-model="autoRefresh" inline-prompt active-text="open" inactive-text="close" @change="resetTimer" />
+            <el-switch v-model="autoRefresh" inline-prompt active-text="On" inactive-text="Off" @change="resetTimer" />
           </el-tooltip>
         </label>
         <el-button class="refresh-button" :loading="loading" @click="loadSnapshot()"><el-icon><Refresh /></el-icon>Refresh data</el-button>
       </div>
     </header>
 
-    <el-alert v-if="!patientId" title="Please first in sidebardown sideselectonePatient, againViewmonitoringdata. " type="warning" :closable="false" show-icon />
+    <el-alert v-if="!patientId" title="Select a patient from the header to view monitoring data." type="warning" :closable="false" show-icon />
 
     <template v-else>
       <section class="status-hero" :class="`status-hero--${statusTone}`" v-loading="loading && !snapshot.generatedAt">
         <div class="status-orb"><el-icon :size="34"><component :is="statusIcon" /></el-icon></div>
         <div class="status-copy">
-          <span class="status-label">currentdataStatus</span>
-          <h2>{{ snapshot.statusLabel || 'positivein summarizehealthrecord' }}</h2>
+          <span class="status-label">Current status</span>
+          <h2>{{ snapshot.statusLabel || 'Preparing the health summary' }}</h2>
           <p>{{ primarySuggestion }}</p>
         </div>
         <div class="status-side">
           <div class="status-meta">
             <span><i></i>{{ autoRefresh ? 'Watching for new records' : 'Manual checks' }}</span>
-            <small>Statusupdate {{ formatDateTime(snapshot.generatedAt) }}</small>
-            <small>most recent record {{ formatRelative(snapshot.lastDataAt) }}</small>
+            <small>Updated {{ formatDateTime(snapshot.generatedAt) }}</small>
+            <small>Latest record {{ formatRelative(snapshot.lastDataAt) }}</small>
           </div>
           <div class="status-actions">
-            <el-button type="primary" @click="$router.push('/bp-self-monitor')">entryhealthdata</el-button>
-            <el-button type="primary" plain @click="$router.push('/family-health')">Viewtoday Dayplan</el-button>
+            <el-button type="primary" @click="$router.push('/bp-self-monitor')">Record health data</el-button>
+            <el-button type="primary" plain @click="$router.push('/family-health')">View today's plan</el-button>
           </div>
         </div>
       </section>
 
-      <nav class="illustrated-shortcuts" aria-label="commonhealthfeature">
+      <nav class="illustrated-shortcuts" aria-label="Common health features">
         <router-link v-for="item in illustratedShortcuts" :key="item.path" :to="item.path" class="illustrated-shortcut">
           <img :src="item.image" width="116" height="77" alt="" decoding="async" />
           <span><strong>{{ item.label }}</strong><small>{{ item.description }}</small></span>
@@ -62,19 +62,19 @@
       <section class="monitor-metrics">
         <article class="monitor-metric">
           <span class="monitor-metric__icon monitor-metric__icon--alert"><el-icon><Bell /></el-icon></span>
-          <div><strong>{{ metrics.activeAlertCount ?? 0 }}</strong><span>activityalert</span><small>{{ metrics.criticalAlertCount || 0 }} itemsSevere</small></div>
+          <div><strong>{{ metrics.activeAlertCount ?? 0 }}</strong><span>active alerts</span><small>{{ metrics.criticalAlertCount || 0 }} critical</small></div>
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><CircleCheck /></el-icon></span>
-          <div><strong>{{ metrics.completedTaskCount ?? 0 }}/{{ metrics.todayTaskCount ?? 0 }}</strong><span>today Daytask</span><small>completerate {{ metrics.adherenceRate ?? 0 }}%</small></div>
+          <div><strong>{{ metrics.completedTaskCount ?? 0 }}/{{ metrics.todayTaskCount ?? 0 }}</strong><span>today's tasks</span><small>{{ metrics.adherenceRate ?? 0 }}% completed</small></div>
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><DataLine /></el-icon></span>
-          <div><strong>{{ metrics.dataCompleteness ?? 0 }}%</strong><span>datacover</span><small>by monitoringsourcestatistics</small></div>
+          <div><strong>{{ metrics.dataCompleteness ?? 0 }}%</strong><span>data coverage</span><small>across monitoring sources</small></div>
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><Clock /></el-icon></span>
-          <div><strong class="monitor-metric__time">{{ latestUpdateText }}</strong><span>most recent update</span><small>{{ formatDateTime(snapshot.lastDataAt) }}</small></div>
+          <div><strong class="monitor-metric__time">{{ latestUpdateText }}</strong><span>latest update</span><small>{{ formatDateTime(snapshot.lastDataAt) }}</small></div>
         </article>
       </section>
 
@@ -89,52 +89,52 @@
       <section class="monitoring-main-grid">
         <article class="monitor-panel trend-panel">
           <header class="panel-head">
-            <div><span class="panel-kicker">trendmonitoring</span><h2>vital signschange</h2><p>Abnormaldatapointwillusediamondmark. </p></div>
+            <div><span class="panel-kicker">Trend monitoring</span><h2>Vital-sign trends</h2><p>Abnormal data points are marked with diamonds.</p></div>
             <div class="chart-legend"><span><i class="legend-systolic"></i>Systolic Pressure</span><span><i class="legend-diastolic"></i>Diastolic Pressure</span><span><i class="legend-glucose"></i>Blood Glucose</span></div>
           </header>
           <v-chart v-if="hasTrendData" class="monitor-chart" :option="chartOption" autoresize />
-          <el-empty v-else description="currentTime rangenohas vital signsrecord">
-            <el-button type="primary" @click="$router.push('/bp-self-monitor')">gorecordBlood Pressure & Glucose</el-button>
+          <el-empty v-else description="No vital-sign records in this time range">
+            <el-button type="primary" @click="$router.push('/bp-self-monitor')">Record blood pressure or glucose</el-button>
           </el-empty>
         </article>
 
         <article class="monitor-panel alert-panel">
           <header class="panel-head panel-head--compact">
-            <div><span class="panel-kicker">Riskteamcolumn</span><h2>activityalert</h2></div>
-            <el-button text type="primary" :loading="checking" @click="runCheck">againExamination</el-button>
+            <div><span class="panel-kicker">Risk review</span><h2>Active alerts</h2></div>
+            <el-button text type="primary" :loading="checking" @click="runCheck">Run checks</el-button>
           </header>
           <div v-if="activeAlerts.length" class="alert-list">
             <article v-for="alert in activeAlerts.slice(0, 8)" :key="alert.id" class="alert-row" :class="`alert-row--${(alert.level || 'INFO').toLowerCase()}`">
               <span class="alert-level">{{ alertLevel(alert.level) }}</span>
-              <div class="alert-row__body"><strong>{{ alert.title || 'healthindicatorAbnormal' }}</strong><p>{{ alert.value || 'Please ViewDetailedrecord' }}</p><small>{{ formatDateTime(alert.triggeredAt) }}</small></div>
+              <div class="alert-row__body"><strong>{{ alert.title || 'Abnormal health indicator' }}</strong><p>{{ alert.value || 'Review the detailed record' }}</p><small>{{ formatDateTime(alert.triggeredAt) }}</small></div>
               <div class="alert-actions">
                 <el-button v-if="alert.status === 'PENDING'" size="small" @click="acknowledgeAlert(alert)">Confirm</el-button>
-                <el-button size="small" type="primary" plain @click="resolveAlert(alert)">process</el-button>
+                <el-button size="small" type="primary" plain @click="resolveAlert(alert)">Resolve</el-button>
               </div>
             </article>
           </div>
-          <div v-else class="safe-empty"><el-icon :size="30"><CircleCheckFilled /></el-icon><strong>currentnohas activityalert</strong><span>keep it uprecord, Abnormalchangewillappearin here. </span></div>
+          <div v-else class="safe-empty"><el-icon :size="30"><CircleCheckFilled /></el-icon><strong>No active alerts</strong><span>Keep recording your data; abnormal changes will appear here.</span></div>
         </article>
       </section>
 
       <section class="monitoring-lower-grid">
         <article class="monitor-panel task-panel">
-          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">Care Plan</span><h2>today Daytask</h2></div><span class="panel-count">{{ todayTasks.length }} item</span></header>
+          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">Care plan</span><h2>Today's tasks</h2></div><span class="panel-count">{{ todayTasks.length }} items</span></header>
           <div v-if="todayTasks.length" class="task-list">
             <article v-for="task in todayTasks" :key="`${task.taskType}-${task.id}`" class="task-item" :class="{ 'task-item--done': isTaskDone(task) }">
               <span class="task-time">{{ timeOnly(task.scheduledAt) }}</span>
               <span class="task-icon"><el-icon><component :is="task.taskType === 'MEDICATION' ? 'FirstAidKit' : 'Calendar'" /></el-icon></span>
               <div><strong>{{ task.title }}</strong><p>{{ task.dosage || task.description || taskTypeText(task.taskType) }}</p></div>
               <el-tag :type="taskTagType(task.status)" effect="light">{{ taskStatusText(task.status) }}</el-tag>
-              <el-button v-if="task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">marktaken</el-button>
-              <el-button v-if="task.taskType === 'DIALYSIS'" size="small" @click="$router.push('/family-health')">managementschedule</el-button>
+              <el-button v-if="task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">Mark as taken</el-button>
+              <el-button v-if="task.taskType === 'DIALYSIS'" size="small" @click="$router.push('/family-health')">Manage schedule</el-button>
             </article>
           </div>
-          <div v-else class="simple-empty">Nothing needs attention todaytask</div>
+          <div v-else class="simple-empty">No tasks need attention today</div>
         </article>
 
         <article class="monitor-panel event-panel">
-          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">healthtrajectory</span><h2>most recent event</h2></div><el-button text type="primary" @click="$router.push('/family-health')">recordevent</el-button></header>
+          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">Health timeline</span><h2>Recent events</h2></div><el-button text type="primary" @click="$router.push('/family-health')">Record an event</el-button></header>
           <div v-if="recentEvents.length" class="event-list">
             <article v-for="event in recentEvents.slice(0, 7)" :key="`${event.sourceType}-${event.id}`" class="event-item">
               <span class="event-dot"></span>
@@ -146,7 +146,7 @@
       </section>
 
       <section class="care-guidance">
-        <header><el-icon><Opportunity /></el-icon><div><strong>currentcarerecommendation</strong><span>based onmonitoringdataAutomaticwholemanage, onlyasfor Health Managementreference. </span></div></header>
+        <header><el-icon><Opportunity /></el-icon><div><strong>Current care recommendations</strong><span>Automatically generated from monitoring data for health-management reference only.</span></div></header>
         <ol><li v-for="item in snapshot.careSuggestions || []" :key="item">{{ item }}</li></ol>
       </section>
     </template>
@@ -196,7 +196,7 @@ const metrics = computed(() => snapshot.value.metrics || {})
 const activeAlerts = computed(() => snapshot.value.activeAlerts || [])
 const todayTasks = computed(() => snapshot.value.todayTasks || [])
 const recentEvents = computed(() => snapshot.value.recentEvents || [])
-const primarySuggestion = computed(() => snapshot.value.careSuggestions?.[0] || 'durationrecordafter , systemwillprovidemorecan rely on trenddetermine. ')
+const primarySuggestion = computed(() => snapshot.value.careSuggestions?.[0] || 'Continue recording data to build a more reliable trend assessment.')
 const statusTone = computed(() => ({ CRITICAL: 'critical', WARNING: 'warning', STABLE: 'stable', NO_DATA: 'empty' }[snapshot.value.overallStatus] || 'empty'))
 const statusIcon = computed(() => snapshot.value.overallStatus === 'STABLE' ? SuccessFilled : WarningFilled)
 const hasTrendData = computed(() => (snapshot.value.vitalTrend || []).some(p => p.systolic != null || p.diastolic != null || p.glucose != null))
@@ -206,8 +206,8 @@ const illustratedShortcuts = computed(() => {
   return [
     { path: '/bp-self-monitor', label: 'Blood Pressure & Glucose', description: 'Daily measurements and records', image: healthJournalSmall },
     { path: '/medication', label: 'Medication Management', description: 'Medication, Reminder and Medication Log', image: medicationCareSmall },
-    { path: '/dialysis', label: 'Dialysis Records', description: 'templateentry and Trend Analysis', image: dialysisCareSmall },
-    { path: '/medical-record', label: 'Medical Records', description: 'Report and indicatorchange', image: recordsCareSmall }
+    { path: '/dialysis', label: 'Dialysis Records', description: 'Structured entries and trend analysis', image: dialysisCareSmall },
+    { path: '/medical-record', label: 'Medical Records', description: 'Reports and indicator trends', image: recordsCareSmall }
   ].filter(item => canAccessWorkspace(item.path, menuPaths, roleCodes))
     .map(item => ({ ...item, path: resolveWorkspaceEntry(item.path, menuPaths, roleCodes) }))
 })
@@ -224,8 +224,8 @@ const chartOption = computed(() => {
       formatter(params = []) {
         const items = Array.isArray(params) ? params : [params]
         const row = rows[items[0]?.dataIndex]
-        const lines = [items[0]?.axisValueLabel || 'measurementrecord', ...items.map(item => `${item.seriesName}: ${item.value ?? '—'}`)]
-        if (row?.abnormal) lines.push('this timepointstorein Abnormalmark, can cancomeselfOtherindicator, Please combineoriginalrecordView. ')
+        const lines = [items[0]?.axisValueLabel || 'Measurement record', ...items.map(item => `${item.seriesName}: ${item.value ?? '—'}`)]
+        if (row?.abnormal) lines.push('This time point has an abnormal marker. Review the original record for details.')
         return lines.join('\n')
       }
     },
@@ -236,7 +236,7 @@ const chartOption = computed(() => {
       { type: 'value', name: 'mmol/L', min: 0, axisLabel: { color: '#708783' }, splitLine: { show: false } }
     ],
     series: [
-      { name: 'Systolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.systolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.5, color: '#236b63' }, itemStyle: { color: '#236b63' }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d6a642', type: 'dashed' }, label: { color: '#8a6110', formatter: 'reference 140' }, data: [{ yAxis: 140 }] } },
+      { name: 'Systolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.systolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.5, color: '#236b63' }, itemStyle: { color: '#236b63' }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d6a642', type: 'dashed' }, label: { color: '#8a6110', formatter: 'Reference 140' }, data: [{ yAxis: 140 }] } },
       { name: 'Diastolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.diastolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#589b91' }, itemStyle: { color: '#589b91' } },
       { name: 'Blood Glucose', type: 'line', yAxisIndex: 1, smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.glucose, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#d59c2f' }, itemStyle: { color: '#d59c2f' } }
     ]
@@ -253,7 +253,7 @@ async function loadSnapshot(silent = false) {
     const res = await getMonitoringSnapshot(requestedPatientId, requestedDays)
     if (requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
     if (res.code === 200) {
-      snapshot.value = res.data || {}
+      snapshot.value = localizeSnapshot(res.data || {})
       loadedDays.value = requestedDays
       loadError.value = ''
     }
@@ -261,8 +261,7 @@ async function loadSnapshot(silent = false) {
     if (requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
     if (!silent) {
       days.value = loadedDays.value
-      loadError.value = error.message || 'monitoringdataFailed to load'
-      ElMessage.error(loadError.value)
+      loadError.value = error.message || 'Monitoring data could not be loaded.'
     }
   } finally {
     if (requestEpoch === snapshotRequestEpoch) loading.value = false
@@ -282,7 +281,7 @@ async function runCheck() {
   try {
     await checkThresholds(patientId.value)
     await loadSnapshot(true)
-    ElMessage.success('alert ruleExaminationcomplete')
+    ElMessage.success('Alert checks completed')
   } finally {
     checking.value = false
   }
@@ -297,7 +296,7 @@ async function acknowledgeAlert(alert) {
 async function resolveAlert(alert) {
   const result = await ElMessageBox.prompt('Describe the action taken, repeat measurement, or follow-up plan.', 'Resolve alert', {
     confirmButtonText: 'Mark as resolved', cancelButtonText: 'Cancel', inputType: 'textarea',
-    inputPlaceholder: 'for example: rest 10 minutesafter remeasure 138/86, continueobserve',
+    inputPlaceholder: 'For example: rested for 10 minutes, then measured 138/86; continue monitoring.',
     inputValidator: value => value?.trim() ? true : 'Enter a resolution note'
   }).catch(() => null)
   if (!result) return
@@ -313,12 +312,12 @@ async function completeMedication(task) {
 }
 
 function signalTone(status) { return ({ CRITICAL: 'critical', WARNING: 'warning', DELAYED: 'delayed', NORMAL: 'normal', PENDING: 'pending' }[status] || 'empty') }
-function alertLevel(level) { return ({ CRITICAL: 'Severe', WARNING: 'warning', INFO: 'Notice' }[level] || 'Notice') }
+function alertLevel(level) { return ({ CRITICAL: 'Critical', WARNING: 'Warning', INFO: 'Notice' }[level] || 'Notice') }
 function isTaskDone(task) { return task.status === 'TAKEN' || task.status === 'COMPLETED' }
 function taskStatusText(status) { return ({ PENDING: 'Pending', TAKEN: 'Taken', SNOOZED: 'Snoozed', SKIPPED: 'Skipped', MISSED: 'Missed', PLANNED: 'Planned', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }[status] || status || 'Pending') }
 function taskTagType(status) { return ({ TAKEN: 'success', COMPLETED: 'success', MISSED: 'danger', SKIPPED: 'info', SNOOZED: 'warning', CANCELLED: 'info' }[status] || 'warning') }
-function taskTypeText(type) { return type === 'DIALYSIS' ? 'Dialysis Schedule' : 'medicationplan' }
-function eventTypeText(type) { return ({ SYMPTOM: 'symptomrecord', VISIT: 'thenvisitrecord', NOTE: 'healthNotes', MEDICATION: 'medication', DIALYSIS: 'Dialysis', MEASUREMENT: 'measurement', INTAKE: 'medication intakecheck-in', MEDICATION_LOG: 'medicationrecord' }[type] || 'healthevent') }
+function taskTypeText(type) { return type === 'DIALYSIS' ? 'Dialysis schedule' : 'Medication plan' }
+function eventTypeText(type) { return ({ SYMPTOM: 'Symptom record', VISIT: 'Visit record', NOTE: 'Health note', MEDICATION: 'Medication', DIALYSIS: 'Dialysis', MEASUREMENT: 'Measurement', INTAKE: 'Medication check-in', MEDICATION_LOG: 'Medication record' }[type] || 'Health event') }
 function timeOnly(value) { return value ? String(value).slice(11, 16) : '—' }
 function shortDateTime(value) { return value ? String(value).slice(5, 16).replace('T', ' ') : '—' }
 function formatDateTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : 'None' }
@@ -328,9 +327,31 @@ function formatRelative(value) {
   if (Number.isNaN(time)) return formatDateTime(value)
   const minutes = Math.max(0, Math.floor((Date.now() - time) / 60000))
   if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes} minutesbefore `
-  if (minutes < 1440) return `${Math.floor(minutes / 60)} hoursbefore `
-  return `${Math.floor(minutes / 1440)} daysbefore `
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+  if (minutes < 1440) { const hours = Math.floor(minutes / 60); return `${hours} hour${hours === 1 ? '' : 's'} ago` }
+  const daysAgo = Math.floor(minutes / 1440)
+  return `${daysAgo} day${daysAgo === 1 ? '' : 's'} ago`
+}
+
+function localizeSnapshot(data) {
+  const statusLabels = { CRITICAL: 'Immediate attention required', WARNING: 'Items need attention', NO_DATA: 'Awaiting health data', STABLE: 'Health status is stable' }
+  const signalLabels = { bloodPressure: 'Blood pressure', glucose: 'Blood glucose', dialysis: 'Dialysis monitoring', medication: "Today's medications" }
+  const signalStatus = { CRITICAL: 'Critical', WARNING: 'Needs attention', DELAYED: 'Data overdue', PENDING: 'In progress', NO_DATA: 'No data', NORMAL: 'Normal' }
+  const signals = (data.signals || []).map(signal => ({
+    ...signal,
+    label: signalLabels[signal.key] || signal.label,
+    statusLabel: signalStatus[signal.status] || signal.statusLabel,
+    freshnessText: signal.updatedAt ? formatRelative(signal.updatedAt) : (signal.key === 'medication' ? 'No medication tasks scheduled today' : 'Awaiting the first record')
+  }))
+  const suggestions = []
+  if (data.overallStatus === 'CRITICAL') suggestions.push('A critical reading was detected. Repeat the measurement now and contact a clinician promptly if symptoms are present.')
+  if (!signals.some(item => item.key === 'bloodPressure' && item.status !== 'NO_DATA')) suggestions.push('No recent blood-pressure record is available. Consider taking a resting measurement.')
+  if (!signals.some(item => item.key === 'glucose' && item.status !== 'NO_DATA')) suggestions.push('No recent blood-glucose record is available. Add one if it is part of the care plan.')
+  const pending = (data.todayTasks || []).filter(item => ['PENDING', 'MISSED', 'SNOOZED'].includes(item.status)).length
+  if (pending) suggestions.push(`${pending} medication task${pending === 1 ? '' : 's'} still need attention today.`)
+  if ((data.metrics?.dataCompleteness ?? 0) < 50) suggestions.push('Monitoring coverage is limited. Regular entries will make trend assessments more reliable.')
+  if (!suggestions.length) suggestions.push('No urgent items are present. Continue recording measurements, medications, and follow-up visits as planned.')
+  return { ...data, statusLabel: statusLabels[data.overallStatus] || data.statusLabel, signals, careSuggestions: suggestions }
 }
 
 watch(patientId, () => {

@@ -287,39 +287,39 @@ public class MonitoringServiceImpl implements MonitoringService {
             BpSelfMonitorRecord latest, PatientHealthTarget target, LocalDateTime now) {
         LocalDateTime at = recordDateTime(latest);
         if (latest == null || latest.getSystolicBp() == null) {
-            return signal("bloodPressure", "Blood Pressuremonitoring", "NO_DATA", "No data", "—", "mmHg", null, "etc.pendingfirsttimesmeasurement");
+            return signal("bloodPressure", "Blood pressure", "NO_DATA", "No data", "—", "mmHg", null, "Awaiting the first measurement");
         }
         String status = bpSeverity(latest, target);
         long hours = hoursSince(at, now);
         if ("NORMAL".equals(status) && hours > 24) status = "DELAYED";
         String label = statusLabel(status);
         String value = latest.getSystolicBp() + "/" + (latest.getDiastolicBp() == null ? "—" : latest.getDiastolicBp());
-        return signal("bloodPressure", "Blood Pressuremonitoring", status, label, value, "mmHg", at, freshness(at, now));
+        return signal("bloodPressure", "Blood pressure", status, label, value, "mmHg", at, freshness(at, now));
     }
 
     private MonitoringSnapshotVO.Signal buildGlucoseSignal(
             BpSelfMonitorRecord latest, PatientHealthTarget target, LocalDateTime now) {
         LocalDateTime at = recordDateTime(latest);
         if (latest == null || latest.getBloodGlucose() == null) {
-            return signal("glucose", "Blood Glucosemonitoring", "NO_DATA", "No data", "—", "mmol/L", null, "etc.pendingfirsttimesmeasurement");
+            return signal("glucose", "Blood glucose", "NO_DATA", "No data", "—", "mmol/L", null, "Awaiting the first measurement");
         }
         String status = glucoseSeverity(latest, target);
         long hours = hoursSince(at, now);
         if ("NORMAL".equals(status) && hours > 24) status = "DELAYED";
-        return signal("glucose", "Blood Glucosemonitoring", status, statusLabel(status),
+        return signal("glucose", "Blood glucose", status, statusLabel(status),
                 latest.getBloodGlucose().stripTrailingZeros().toPlainString(),
                 defaultText(latest.getBgUnit(), "mmol/L"), at, freshness(at, now));
     }
 
     private MonitoringSnapshotVO.Signal buildDialysisSignal(DialysisRecord latest, LocalDateTime now) {
         if (latest == null || latest.getRecordDate() == null) {
-            return signal("dialysis", "Dialysismonitoring", "NO_DATA", "No data", "—", "", null, "etc.pendingfirsttimesrecord");
+            return signal("dialysis", "Dialysis monitoring", "NO_DATA", "No data", "—", "", null, "Awaiting the first record");
         }
         LocalDateTime at = latest.getRecordDate().atTime(23, 59);
         String status = "MATCH".equals(latest.getDehydrationStatus()) ? "NORMAL" : "WARNING";
         if (hoursSince(at, now) > 96 && "NORMAL".equals(status)) status = "DELAYED";
         String value = latest.getWeightGain() == null ? "—" : latest.getWeightGain().stripTrailingZeros().toPlainString();
-        return signal("dialysis", "Dialysismonitoring", status, statusLabel(status), value, "kg weight gain", at, freshness(at, now));
+        return signal("dialysis", "Dialysis monitoring", status, statusLabel(status), value, "kg weight gain", at, freshness(at, now));
     }
 
     private MonitoringSnapshotVO.Signal buildMedicationSignal(List<MedicationIntake> intakes, LocalDateTime now) {
@@ -339,9 +339,9 @@ public class MonitoringServiceImpl implements MonitoringService {
             latest = max(latest, candidate);
         }
         String status = overdue > 0 ? "WARNING" : (completed == intakes.size() ? "NORMAL" : "PENDING");
-        String label = overdue > 0 ? "storein overdueperiod" : (completed == intakes.size() ? "Allcomplete" : "In Progress");
+        String label = overdue > 0 ? "Overdue tasks" : (completed == intakes.size() ? "All completed" : "In progress");
         return signal("medication", "Today's medications", status, label,
-                completed + "/" + intakes.size(), "times", latest, overdue > 0 ? overdue + " itemPending" : "by today Dayplanstatistics");
+                completed + "/" + intakes.size(), "doses", latest, overdue > 0 ? overdue + " pending" : "Based on today's plan");
     }
 
     private MonitoringSnapshotVO.Signal signal(String key, String label, String status,
@@ -399,16 +399,16 @@ public class MonitoringServiceImpl implements MonitoringService {
         if ("CRITICAL".equals(bpSeverity(bp, target)) || "CRITICAL".equals(glucoseSeverity(glucose, target))) critical = true;
         if (critical) {
             result.setOverallStatus("CRITICAL");
-            result.setStatusLabel("needneedimmediatelyattention");
+            result.setStatusLabel("Immediate attention required");
         } else if (warning || result.getMetrics().getActiveAlertCount() > 0) {
             result.setOverallStatus("WARNING");
-            result.setStatusLabel("storein Pendingitem");
+            result.setStatusLabel("Items need attention");
         } else if (!hasData) {
             result.setOverallStatus("NO_DATA");
-            result.setStatusLabel("etc.pendinghealthdata");
+            result.setStatusLabel("Awaiting health data");
         } else {
             result.setOverallStatus("STABLE");
-            result.setStatusLabel("currentStatusstable");
+            result.setStatusLabel("Health status is stable");
         }
     }
 
@@ -417,18 +417,18 @@ public class MonitoringServiceImpl implements MonitoringService {
                                           List<MedicationIntake> intakes) {
         List<String> suggestions = new ArrayList<>();
         if ("CRITICAL".equals(result.getOverallStatus())) {
-            suggestions.add("storein SevereAbnormal, Please immediatelyremeasure; for example companionfollowclearshowdiscomfort, Please as prescribedcontactClinician or andtimethenmedical. ");
+            suggestions.add("A critical reading was detected. Repeat the measurement now and contact a clinician promptly if symptoms are present.");
         }
         if (bp == null) suggestions.add("No recent blood pressure record is available. Consider taking one resting measurement.");
-        else if ("WARNING".equals(bpSeverity(bp, null))) suggestions.add("most recent Blood Pressureexceedcommonrange, recommendationrestafter remeasureanddurationrecord. ");
+        else if ("WARNING".equals(bpSeverity(bp, null))) suggestions.add("The latest blood-pressure reading is outside the usual range. Rest, repeat the measurement, and continue recording results.");
         if (glucose == null) suggestions.add("No recent blood glucose record is available. Add one if it is part of the care plan.");
         int pending = 0;
         for (MedicationIntake item : intakes) {
             if ("PENDING".equals(item.getStatus()) || "MISSED".equals(item.getStatus()) || "SNOOZED".equals(item.getStatus())) pending++;
         }
-        if (pending > 0) suggestions.add("Todaystillhas  " + pending + " itemmedicationtaskPending, Please verifyactualTakecondition. ");
-        if (result.getMetrics().getDataCompleteness() < 50) suggestions.add("currentmonitoringdatacovernot enough, continuousrecordafter trenddeterminewillmorecan rely on. ");
-        if (suggestions.isEmpty()) suggestions.add("currentnohas Urgentitem, continueby planrecord, medication and follow-up examination. ");
+        if (pending > 0) suggestions.add(pending + " medication task(s) still need attention today. Please confirm the actual intake status.");
+        if (result.getMetrics().getDataCompleteness() < 50) suggestions.add("Monitoring coverage is limited. Regular entries will make trend assessments more reliable.");
+        if (suggestions.isEmpty()) suggestions.add("No urgent items are present. Continue recording measurements, medications, and follow-up visits as planned.");
         return suggestions;
     }
 
@@ -466,10 +466,10 @@ public class MonitoringServiceImpl implements MonitoringService {
     }
 
     private String statusLabel(String status) {
-        if ("CRITICAL".equals(status)) return "SevereAbnormal";
-        if ("WARNING".equals(status)) return "needneedattention";
-        if ("DELAYED".equals(status)) return "datadelay";
-        if ("PENDING".equals(status)) return "In Progress";
+        if ("CRITICAL".equals(status)) return "Critical";
+        if ("WARNING".equals(status)) return "Needs attention";
+        if ("DELAYED".equals(status)) return "Data overdue";
+        if ("PENDING".equals(status)) return "In progress";
         if ("NO_DATA".equals(status)) return "No data";
         return "Normal";
     }
@@ -512,10 +512,11 @@ public class MonitoringServiceImpl implements MonitoringService {
         if (at == null) return "No updates";
         long minutes = Math.max(0, Duration.between(at, now).toMinutes());
         if (minutes < 1) return "just nowupdate";
-        if (minutes < 60) return minutes + " minutesbefore ";
+        if (minutes < 60) return minutes + (minutes == 1 ? " minute ago" : " minutes ago");
         long hours = minutes / 60;
-        if (hours < 24) return hours + " hoursbefore ";
-        return (hours / 24) + " daysbefore ";
+        if (hours < 24) return hours + (hours == 1 ? " hour ago" : " hours ago");
+        long days = hours / 24;
+        return days + (days == 1 ? " day ago" : " days ago");
     }
 
     private LocalDateTime max(LocalDateTime a, LocalDateTime b) {

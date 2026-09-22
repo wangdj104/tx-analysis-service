@@ -97,7 +97,7 @@ import WorkspaceNav from '@/components/WorkspaceNav.vue';
 import PatientSwitcher from '@/components/PatientSwitcher.vue';
 import OnboardingGuide from '@/components/OnboardingGuide.vue';
 import { logout, getUserInfo } from '@/api/auth';
-import { normalizeWorkspaceMenus, getFallbackWorkspaceMenus } from '@/utils/workspaceNavigation';
+import { normalizeWorkspaceMenus, getFallbackWorkspaceMenus, getEnglishMenuLabel } from '@/utils/workspaceNavigation';
 import { getAuthSessionKey, saveAuthSession, captureAuthSession, isAuthSessionCurrent, clearPermissionCache, savePermissionCache, readPermissionCache } from '@/utils/authSession';
 import { DEFAULT_WORKSPACE_TABS, canAccessWorkspace, resolveWorkspaceEntry } from '@/utils/workspaceAccess';
 import { getPatientNames } from '@/api/patient';
@@ -294,7 +294,7 @@ const loadUserMenus = async () => {
       // filteroutputonelevelMenu (parentId === 0)
       let topMenus = allMenus.filter(m =>
         m.parentId === 0 &&
-        m.menuName !== 'AIanalysis'
+        m.menuCode !== 'ai-analysis' && m.menuName !== 'AI Analysis' && m.menuName !== 'AI分析'
       );
 
 
@@ -316,13 +316,13 @@ const loadUserMenus = async () => {
 
 
       // pointawaySystem AdministrationMenu, placeto avatardown pullin
-      const sysIdx = topMenus.findIndex(m => m.menuName === 'System Administration');
+      const sysIdx = topMenus.findIndex(m => m.menuCode === 'system' || m.menuName === 'System Administration' || m.menuName === '系统管理');
       if (sysIdx !== -1) {
         const sys = topMenus[sysIdx];
         const sysNav = resolveNavIcon({ menuCode: sys.menuCode, menuPath: sys.menuPath });
         systemMenu.value = {
           path: sys.menuPath,
-          label: sys.menuName,
+          label: 'System Administration',
           icon: sysNav.icon,
           iconTheme: sysNav.theme,
           children: allMenus
@@ -331,7 +331,7 @@ const loadUserMenus = async () => {
               const c = resolveNavIcon(child);
               return {
                 path: child.menuPath,
-                label: child.menuName,
+                label: getEnglishMenuLabel(child.menuPath, child.menuName),
                 icon: c.icon,
                 iconTheme: c.theme
               };
@@ -347,7 +347,7 @@ const loadUserMenus = async () => {
           const nav = resolveNavIcon(menu);
           return {
             path: menu.menuPath,
-            label: menu.menuPath === '/monitoring' ? 'Health Overview' : menu.menuName === 'Dialysis Records' ? 'Dialysis Management' : menu.menuName,
+            label: getEnglishMenuLabel(menu.menuPath, menu.menuName),
             icon: nav.icon,
             iconTheme: nav.theme,
             children: [
@@ -357,7 +357,7 @@ const loadUserMenus = async () => {
                   const c = resolveNavIcon(child);
                   return {
                     path: child.menuPath,
-                    label: child.menuName,
+                    label: getEnglishMenuLabel(child.menuPath, child.menuName),
                     icon: c.icon,
                     iconTheme: c.theme
                   };
@@ -366,7 +366,7 @@ const loadUserMenus = async () => {
                 const sub = resolveNavIcon(c);
                 return {
                   path: c.menuPath || c.path,
-                  label: c.menuName || c.label,
+                  label: getEnglishMenuLabel(c.menuPath || c.path, c.menuName || c.label),
                   icon: sub.icon,
                   iconTheme: sub.theme
                 };

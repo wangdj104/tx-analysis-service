@@ -68,6 +68,35 @@ const MODULE_MENUS = {
   }
 };
 
+const ENGLISH_MENU_LABELS = {
+  '/monitoring': 'Health Overview',
+  '/clinical-workbench': 'Clinical Workbench',
+  '/doctor-workspace': 'Doctor Workspace',
+  '/care-journey': 'Care Journey',
+  '/dialysis': 'Dialysis Management',
+  '/dry-weight': 'Dry Weight',
+  '/bp-self-monitor': 'Blood Pressure & Glucose',
+  '/medical-record': 'Medical Records',
+  '/medication': 'Medication Management',
+  '/health-analysis': 'Health Analytics',
+  '/family-health': 'Care Plan',
+  '/system/patient': 'Patient Management',
+  '/settings/notifications': 'Notification Settings',
+  '/system/user': 'User Management',
+  '/system/role': 'Role Management',
+  '/system/menu': 'Menu Management',
+  '/system/audit': 'Audit Log',
+  '/system/branding': 'Platform Branding'
+};
+
+export function getEnglishMenuLabel(path, fallback = '') {
+  const normalizedPath = String(path || '').split('?')[0];
+  const exactDefinition = Object.values(MODULE_MENUS)
+    .flatMap(item => [item, ...(item.children || [])])
+    .find(item => item.path === path);
+  return exactDefinition?.label || ENGLISH_MENU_LABELS[path] || ENGLISH_MENU_LABELS[normalizedPath] || fallback;
+}
+
 /** keepafter endgroup and displayinformation, supplementcompletegetauthorize moduleentry, andRemovecannot access link.  */
 export function normalizeWorkspaceMenus(items, { menuPaths = [], roleCodes = [] } = {}) {
   const canAccess = path => canAccessWorkspace(path, menuPaths, roleCodes);
@@ -84,7 +113,7 @@ export function normalizeWorkspaceMenus(items, { menuPaths = [], roleCodes = [] 
         continue;
       }
 
-      const node = { ...item, path, children: [] };
+      const node = { ...item, path, label: getEnglishMenuLabel(path, item.label), children: [] };
       if (path) nodesByPath.set(path, node);
       node.children.push(...copyItems(item.children));
       result.push(node);

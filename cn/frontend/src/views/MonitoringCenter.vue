@@ -253,7 +253,7 @@ async function loadSnapshot(silent = false) {
     const res = await getMonitoringSnapshot(requestedPatientId, requestedDays)
     if (requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
     if (res.code === 200) {
-      snapshot.value = res.data || {}
+      snapshot.value = localizeSnapshot(res.data || {})
       loadedDays.value = requestedDays
       loadError.value = ''
     }
@@ -262,7 +262,6 @@ async function loadSnapshot(silent = false) {
     if (!silent) {
       days.value = loadedDays.value
       loadError.value = error.message || '监测数据加载失败'
-      ElMessage.error(loadError.value)
     }
   } finally {
     if (requestEpoch === snapshotRequestEpoch) loading.value = false
@@ -331,6 +330,27 @@ function formatRelative(value) {
   if (minutes < 60) return `${minutes} 分钟前`
   if (minutes < 1440) return `${Math.floor(minutes / 60)} 小时前`
   return `${Math.floor(minutes / 1440)} 天前`
+}
+
+function localizeSnapshot(data) {
+  const statusLabels = { CRITICAL: '需要立即关注', WARNING: '存在待处理事项', NO_DATA: '等待健康数据', STABLE: '当前状态稳定' }
+  const signalLabels = { bloodPressure: '血压监测', glucose: '血糖监测', dialysis: '透析监测', medication: '今日用药' }
+  const signalStatus = { CRITICAL: '严重异常', WARNING: '需要关注', DELAYED: '数据延迟', PENDING: '进行中', NO_DATA: '暂无数据', NORMAL: '正常' }
+  const signals = (data.signals || []).map(signal => ({
+    ...signal,
+    label: signalLabels[signal.key] || signal.label,
+    statusLabel: signalStatus[signal.status] || signal.statusLabel,
+    freshnessText: signal.updatedAt ? formatRelative(signal.updatedAt) : (signal.key === 'medication' ? '今日暂无用药任务' : '等待首次记录')
+  }))
+  const suggestions = []
+  if (data.overallStatus === 'CRITICAL') suggestions.push('检测到严重异常，请立即复测；如伴随明显不适，请按医嘱联系医生或及时就医。')
+  if (!signals.some(item => item.key === 'bloodPressure' && item.status !== 'NO_DATA')) suggestions.push('近期没有血压记录，建议在静息状态下完成一次测量。')
+  if (!signals.some(item => item.key === 'glucose' && item.status !== 'NO_DATA')) suggestions.push('近期没有血糖记录；如照护计划有要求，请及时补充。')
+  const pending = (data.todayTasks || []).filter(item => ['PENDING', 'MISSED', 'SNOOZED'].includes(item.status)).length
+  if (pending) suggestions.push(`今日仍有 ${pending} 项用药任务待处理，请核对实际服药情况。`)
+  if ((data.metrics?.dataCompleteness ?? 0) < 50) suggestions.push('当前监测数据覆盖不足，持续记录后趋势判断会更可靠。')
+  if (!suggestions.length) suggestions.push('当前没有紧急事项，请继续按计划记录、用药和复诊。')
+  return { ...data, statusLabel: statusLabels[data.overallStatus] || data.statusLabel, signals, careSuggestions: suggestions }
 }
 
 watch(patientId, () => {

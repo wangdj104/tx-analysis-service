@@ -349,6 +349,27 @@ CREATE TABLE IF NOT EXISTS `notification_delivery_log` (
 SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='care_member' AND column_name='access_level'),'SELECT 1','ALTER TABLE care_member ADD COLUMN access_level VARCHAR(20) NOT NULL DEFAULT ''WRITE'' AFTER relation_name'));
 PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- Compatibility upgrades for installations created before clinical import and monitoring were added.
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='bp_self_monitor_record' AND column_name='source_type'),'SELECT 1','ALTER TABLE bp_self_monitor_record ADD COLUMN source_type VARCHAR(20) DEFAULT ''MANUAL'' AFTER measure_period'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='bp_self_monitor_record' AND column_name='source_external_id'),'SELECT 1','ALTER TABLE bp_self_monitor_record ADD COLUMN source_external_id VARCHAR(120) DEFAULT NULL AFTER source_type'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='bp_self_monitor_record' AND column_name='verification_status'),'SELECT 1','ALTER TABLE bp_self_monitor_record ADD COLUMN verification_status VARCHAR(30) DEFAULT ''VERIFIED'' AFTER source_external_id'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='source_type'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN source_type VARCHAR(20) DEFAULT ''MANUAL'' AFTER ai_raw_result'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='source_external_id'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN source_external_id VARCHAR(120) DEFAULT NULL AFTER source_type'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='verification_status'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN verification_status VARCHAR(30) DEFAULT ''VERIFIED'' AFTER source_external_id'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='confidence_score'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN confidence_score DECIMAL(5,4) DEFAULT NULL AFTER verification_status'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='verified_by'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN verified_by BIGINT DEFAULT NULL AFTER confidence_score'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='verified_at'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN verified_at DATETIME DEFAULT NULL AFTER verified_by'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
 VALUES (40,0,'Care Journey','care-journey','/care-journey','FirstAidKit','care:journey:view',1,2,1)
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
