@@ -22,7 +22,7 @@
         <el-tab-pane v-if="availableTabs.includes('timeline')" label="健康时间线" name="timeline">
           <div class="toolbar"><el-button type="primary" @click="openEvent()">新增健康事件</el-button><el-date-picker v-model="eventRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" @change="reload" /></div>
           <p>系统会自动汇总测量、透析和用药记录，最多展示最近 200 条事件；如需修改，请前往对应功能模块。</p>
-          <el-timeline><el-timeline-item v-for="e in events" :key="`${e.sourceType || 'MANUAL'}-${e.id}`" :timestamp="`${e.eventDate} ${e.eventTime||''}`" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">编辑</el-button><el-popconfirm title="确认删除该事件吗？" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">删除</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="!events.length" description="暂无健康事件" />
+          <el-timeline><el-timeline-item v-for="e in localizedEvents" :key="`${e.sourceType || 'MANUAL'}-${e.id}`" :timestamp="`${e.eventDate} ${e.eventTime||''}`" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">编辑</el-button><el-popconfirm title="确认删除该事件吗？" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">删除</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="!events.length" description="暂无健康事件" />
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('schedule')" label="透析排班" name="schedule">
           <el-alert class="schedule-tip" title="排班仅来自手动添加的日期，或在临床工作台中明确确认的周期计划；你可以在这里编辑或取消。" type="info" :closable="false" show-icon />
@@ -43,7 +43,7 @@
             <h3>未解决告警（最多 30 条）</h3><ul><li v-for="a in summary.unresolvedAlerts" :key="a.id">{{a.triggeredAt}} {{a.alertTitle}}：{{a.triggeredValue}} {{a.handlingNote}}</li></ul><p v-if="!summary.unresolvedAlerts?.length">暂无未解决告警</p>
             <h3>准备咨询医生的问题</h3><ul><li v-for="q in summary.questions||[]" :key="q.id"><b>{{q.title}}</b><p>{{q.details?.description}}</p><p v-if="q.details?.answer">医生答复：{{q.details.answer}}</p><p v-if="q.details?.followUp">后续事项：{{q.details.followUp}}</p></li></ul>
             <h3>近期症状跟踪</h3><ul><li v-for="s in summary.careSymptoms||[]" :key="s.id">{{s.eventAt}} {{s.title}}，自评分 {{s.details?.severity}}/10，持续 {{s.details?.duration || '未填写'}}；{{s.details?.response}}</li></ul>
-            <h3>近期健康事件（最多 30 条）</h3><ul><li v-for="e in summary.recentEvents" :key="`${e.sourceType}-${e.id}`">{{e.eventDate}} {{e.title}}：{{e.summary}}</li></ul><p>{{summary.disclaimer}}</p>
+            <h3>近期健康事件（最多 30 条）</h3><ul><li v-for="e in localizedSummaryEvents" :key="`${e.sourceType}-${e.id}`">{{e.eventDate}} {{e.title}}：{{e.summary}}</li></ul><p>{{summary.disclaimer}}</p>
           </article><el-empty v-else description="生成摘要，为下次就诊准备近期记录"/>
         </el-tab-pane>
       </el-tabs>
@@ -61,6 +61,7 @@ import {readPermissionCache} from '@/utils/authSession'
 import {canAccessWorkspace} from '@/utils/workspaceAccess'
 import * as api from '@/api/familyHealth'
 import {localDateKey, replaceTarget} from '@/utils/familyHealth'
+import {localizeHealthTimelineEntry} from '@/utils/timelineText'
 const {currentPatientId:patientId}=useCurrentPatient()
 const tab=ref('today'),intakes=ref([]),events=ref([]),schedules=ref([]),target=reactive({}),loading=ref(false),saving=ref(false)
 const eventVisible=ref(false),scheduleVisible=ref(false),eventForm=reactive({}),scheduleForm=reactive({}),eventRange=ref(null)
@@ -85,6 +86,8 @@ watch(tab,value=>{
 const activeIntakes=computed(()=>intakes.value.filter(x=>x.status!=='CANCELLED'))
 const takenCount=computed(()=>activeIntakes.value.filter(x=>x.status==='TAKEN').length),missedCount=computed(()=>activeIntakes.value.filter(x=>x.status==='MISSED').length)
 const todaySchedule=computed(()=>schedules.value.find(x=>x.scheduleDate===today.value))
+const localizedEvents=computed(()=>events.value.map(localizeHealthTimelineEntry))
+const localizedSummaryEvents=computed(()=>(summary.value?.recentEvents||[]).map(localizeHealthTimelineEntry))
 let requestVersion=0, taskVersion=0, summaryVersion=0, timer
 async function reload(){
   taskVersion++

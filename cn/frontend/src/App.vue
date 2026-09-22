@@ -11,17 +11,12 @@
         <button class="workspace-search" type="button" @click="openSearch"><el-icon><Search /></el-icon><span>查找功能</span><kbd>Ctrl K</kbd></button>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" />
         <div class="workspace-sidebar__footer">
-          <div class="workspace-utility-panel">
-            <button type="button" class="workspace-guide workspace-utility-action" @click="guideRef?.start()">
-              <span class="workspace-utility-icon"><el-icon><Guide /></el-icon></span>
-              <span class="workspace-utility-copy"><strong>操作指引</strong><small>跟随页面逐步学习</small></span>
-              <span class="workspace-utility-cta">开始</span>
-            </button>
-            <button type="button" class="workspace-account workspace-utility-action" @click="accountVisible = true">
+          <div class="workspace-utility-panel workspace-utility-panel--compact">
+            <button type="button" class="workspace-account workspace-utility-identity" @click="accountVisible = true">
               <span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span>
               <span class="workspace-utility-copy"><strong>{{ accountName }}</strong><small>{{ userRoles }}</small></span>
-              <el-icon class="workspace-utility-arrow"><ArrowRight /></el-icon>
             </button>
+            <button type="button" class="workspace-guide workspace-utility-guide" title="跟随当前页面逐步学习" aria-label="开始操作指引" @click="guideRef?.start()"><el-icon><Guide /></el-icon><span>指引</span></button>
           </div>
         </div>
       </aside>
@@ -44,9 +39,9 @@
       <el-drawer v-model="mobileNavVisible" direction="ltr" size="min(300px, 88vw)" :with-header="false" class="workspace-drawer" append-to-body>
         <div class="workspace-drawer__heading"><strong>{{ platformBranding.platformName }}</strong><button type="button" class="workspace-icon-button" aria-label="关闭导航菜单" @click="mobileNavVisible = false"><el-icon><Close /></el-icon></button></div>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" @navigate="mobileNavVisible = false" />
-        <div class="workspace-sidebar__footer workspace-sidebar__footer--drawer"><div class="workspace-utility-panel">
-          <button type="button" class="workspace-guide workspace-utility-action" @click="mobileNavVisible = false; guideRef?.start()"><span class="workspace-utility-icon"><el-icon><Guide /></el-icon></span><span class="workspace-utility-copy"><strong>操作指引</strong><small>跟随页面逐步学习</small></span><span class="workspace-utility-cta">开始</span></button>
-          <button type="button" class="workspace-account workspace-utility-action" @click="mobileNavVisible = false; accountVisible = true"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><span class="workspace-utility-copy"><strong>{{ accountName }}</strong><small>账号设置与退出</small></span><el-icon class="workspace-utility-arrow"><ArrowRight /></el-icon></button>
+        <div class="workspace-sidebar__footer workspace-sidebar__footer--drawer"><div class="workspace-utility-panel workspace-utility-panel--compact">
+          <button type="button" class="workspace-account workspace-utility-identity" @click="mobileNavVisible = false; accountVisible = true"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><span class="workspace-utility-copy"><strong>{{ accountName }}</strong><small>{{ userRoles }}</small></span></button>
+          <button type="button" class="workspace-guide workspace-utility-guide" title="跟随当前页面逐步学习" aria-label="开始操作指引" @click="mobileNavVisible = false; guideRef?.start()"><el-icon><Guide /></el-icon><span>指引</span></button>
         </div></div>
       </el-drawer>
 
