@@ -69,7 +69,7 @@
 - **中文：**[在线体验](https://wangdj104.github.io/tx-analysis-service/cn/) · [源文件](demo/index.html)
 - **English:** [Live demo](https://wangdj104.github.io/tx-analysis-service/) · [source](../demo/index.html)
 
-演示可切换医生、患者、家属和管理员身份。“照护全流程”页面完整映射本次 40 项需求，覆盖慢病管理、预约复诊、远程问诊、住院康复、居家照护、急救、儿童孕产、心理健康、权限隐私和系统运营。操作会更新当前标签页中的演示状态和审计事件，不会发送网络请求或执行真实临床处理。
+演示可切换医生、患者、家属和管理员身份，以模拟数据展示 40 项工作流示例，包括慢病、预约、问诊、康复、照护、急救、儿童孕产、心理健康、权限和运营。操作仅更新当前标签页的演示状态与审计事件，不发送网络请求，不执行真实临床处理；模拟展示不代表正式系统所有场景均已验收。请查看[功能审查报告与验证边界](../docs/FUNCTIONAL_AUDIT_20260922.md)。
 
 ## 中英文目录约定
 
@@ -81,10 +81,11 @@
 
 ```bash
 cp .env.example .env
+# 以下 Docker 命令从仓库根目录运行（不是 cn/）；先填写全新的数据库密码和 JWT_SECRET。
 docker compose up --build
 ```
 
-打开 `http://localhost:8088`。可选演示数据会创建仅供本地使用的账号：
+打开 `http://localhost:8080/`（英文）或 `http://localhost:8080/cn/`（中文）。Docker 演示数据会创建仅供本地使用的账号：
 
 ```text
 用户名：demo
@@ -92,6 +93,8 @@ docker compose up --build
 ```
 
 将服务暴露到任何网络前，请更换全部密钥。Docker 演示仅用于评估，不应用于生产环境。
+
+空 MySQL 数据卷会按顺序执行 `init.sql`、`doctor_workspace_20260921.sql`、`care_platform_upgrade_20260921.sql`、`demo-data.sql`。已有数据卷不会再次初始化，应先备份再手动应用升级脚本，切勿删除有数据的卷来强制初始化。`cn/docker-compose.yml` 仅供独立中文版使用，双语部署请使用根目录编排。
 
 ## 中英文生产部署
 
@@ -105,6 +108,10 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 
 访问 `http://服务器地址:8080/` 或 `http://服务器地址:8080/cn/`。同一镜像还在 `/demo/` 和 `/cn/demo/` 提供静态演示。生产编排不会创建 MySQL，也不会导入 `demo-data.sql`，只会连接 `DB_URL` 指定的现有数据库。
 
+首次启动前必须完成下方数据库初始化，已有库需单独执行适用升级。生产编排关闭管理员自动初始化，首次使用前应明确创建管理员。部署后检查公开地址的 `/api/health`；它仅检查进程存活，还应验证登录与患者页面再验收。以上双语生产命令均从仓库根目录执行。
+
+中文 PDF 下载要求后端主机安装中文字体。后端 Docker 镜像已安装 Noto CJK；非 Docker/systemd 部署在 Debian/Ubuntu 上需通过系统包管理器安装 `fonts-noto-cjk`，并确认服务账号可读取 `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`。其他发行版需提供 `HealthReportServiceImpl` 已识别路径中的 Noto CJK 或文泉驿微米黑字体。安装后重启应用，并实际下载中文 PDF 检查正文与患者姓名；仅检查 HTML 预览不能确认 PDF 字体正常。
+
 ## 技术栈
 
 - 后端：Java 8、Spring Boot 2.5、MyBatis-Plus、MySQL 8、JWT。
@@ -114,7 +121,7 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 
 ## 本地开发
 
-环境要求：JDK 8、Maven 3.8+、Node.js 20+、MySQL 8.0+。
+环境要求：推荐 JDK 17（源码和字节码目标兼容 Java 8，CI/Docker 使用 17）、Maven 3.8+、Node.js 20+、MySQL 8.0+。
 
 ### 1. 创建数据库
 
@@ -124,13 +131,15 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ```bash
 mysql -u root -p family_health < src/main/resources/sql/init.sql
+mysql -u root -p family_health < src/main/resources/sql/doctor_workspace_20260921.sql
+mysql -u root -p family_health < src/main/resources/sql/care_platform_upgrade_20260921.sql
 ```
 
-原始基线使用 [init.sql](src/main/resources/sql/init.sql)。已有数据库可依次执行幂等的[医生工作台升级脚本](src/main/resources/sql/doctor_workspace_20260921.sql)和[照护平台升级脚本](src/main/resources/sql/care_platform_upgrade_20260921.sql)；后者新增全流程照护、授权、排班、问诊、康复、急救、专项健康、心理健康、审计和通知投递表。[demo-data.sql](src/main/resources/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
+新库必须依次执行[基础表](src/main/resources/sql/init.sql)、[医生工作台](src/main/resources/sql/doctor_workspace_20260921.sql)、[照护平台](src/main/resources/sql/care_platform_upgrade_20260921.sql)三个脚本，不能仅执行 `init.sql`。已有库先备份，再应用适用的幂等升级脚本，不要把基础脚本当作重置工具。[demo-data.sql](src/main/resources/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
 
 ### 2. 配置环境变量
 
-复制 `.env.example`，至少填写以下变量：
+复制 `.env.example`，至少填写以下变量。Compose 会读取 `.env`，但 Maven/Spring Boot 不会自动加载此文件；本地启动前请在终端进程或 IDEA 运行配置中设置环境变量。
 
 ```dotenv
 DB_URL=jdbc:mysql://127.0.0.1:3306/family_health?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
@@ -142,7 +151,7 @@ BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=replace-with-a-strong-password
 ```
 
-仅当显式启用且数据库中没有账号时，系统才会创建初始管理员。首次登录并修改密码后，请关闭该功能。
+仅在显式启用时执行管理员初始化。请使用独立管理员用户名：如果同名账号已存在，初始化会给它授予管理员角色。完成初始化后关闭此功能，并修改初始密码。
 
 ### 3. 启动后端
 
@@ -150,7 +159,7 @@ BOOTSTRAP_ADMIN_PASSWORD=replace-with-a-strong-password
 mvn spring-boot:run
 ```
 
-API 默认监听 `http://localhost:9090`。
+API 默认监听 `http://localhost:8082`，无需登录的存活检查地址为 `http://localhost:8082/api/health`。
 
 ### 4. 启动前端
 
@@ -160,7 +169,7 @@ npm ci
 npm run dev
 ```
 
-Vite 会输出本地访问地址。当 API 不通过同源 `/api` 提供时，请配置 `VITE_API_BASE_URL`。
+Vite 通常监听 `http://localhost:5174`，将 `/api` 代理到 `http://localhost:8082`。开发时可在 `frontend/.env.local` 设置 `DEV_PROXY_TARGET` 修改代理目标；生产界面固定使用 `/api`，需由 Nginx 转发。开发中文版时在 `cn/frontend` 运行相同命令并访问 `/cn/`。
 
 ## 关键配置
 
@@ -169,12 +178,12 @@ Vite 会输出本地访问地址。当 API 不通过同源 `/api` 提供时，�
 | `DB_URL` | MySQL 连接 | 启用 TLS，并使用最小权限数据库账号 |
 | `DB_USERNAME` / `DB_PASSWORD` | 数据库凭据 | 存放在密钥管理服务中 |
 | `JWT_SECRET` | 令牌签名 | 至少 32 个随机字节，并有计划地轮换 |
-| `JWT_EXPIRATION` | 令牌有效期 | 使用符合风险要求的较短时长 |
-| `APP_CORS_ALLOWED_ORIGINS` | 浏览器来源 | 仅填写明确的 HTTPS 来源 |
+| `JWT_EXPIRATION_MS` | 令牌有效期（毫秒） | 使用符合风险要求的较短时长 |
+| `CORS_ALLOWED_ORIGINS` | 浏览器来源 | 仅填写明确的 HTTPS 来源 |
 | `BOOTSTRAP_ADMIN_*` | 初始管理员 | 仅启用一次，随后关闭 |
-| `OCR_VISION_*` | 可选 OCR 服务 | API 密钥仅保存在服务端 |
-| `AI_*` | 可选 AI 分析 | 先审查隐私和数据保留策略 |
-| `VITE_API_BASE_URL` | 前端 API 前缀 | 反向代理后通常为 `/api` |
+| `OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` | 可选 OCR 服务 | API 密钥仅保存在服务端 |
+| `DEEPSEEK_API_KEY` / `DEEPSEEK_API_URL` / `DEEPSEEK_API_MODEL` | 可选 AI 分析 | 先审查隐私和数据保留策略 |
+| `DEV_PROXY_TARGET` | Vite 开发代理目标 | 生产不使用此值，由 Nginx 转发 `/api` |
 
 完整配置请查看 [.env.example](.env.example) 和 [application.yml](src/main/resources/application.yml)。
 
@@ -182,7 +191,7 @@ Vite 会输出本地访问地址。当 API 不通过同源 `/api` 提供时，�
 
 平台可通过企业微信或钉钉机器人 Webhook 及浏览器通知主动发送消息。Webhook 地址和机器人密钥属于敏感信息，API 返回时会脱敏，严禁提交到版本库。
 
-`init.sql` 是新安装的唯一基线；`demo-data.sql` 只用于本地演示。应用启动时不会静默创建或修改生产表。对已有数据库执行人工操作前必须备份数据；后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
+新安装必须按顺序执行基础表、医生工作台和照护平台脚本（目前合计 70 张业务表）；`demo-data.sql` 只用于本地演示。应用启动时不会静默创建或修改生产表。对已有数据库执行人工操作前必须备份数据；后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
 
 ## 测试与构建
 
@@ -203,6 +212,7 @@ node --test demo/tests/*.test.mjs
 - 首次初始化后关闭初始管理员创建功能。
 - 启用 HTTPS、精确 CORS 来源、安全反向代理头和请求大小限制。
 - 制定 MySQL 备份策略并定期验证恢复流程。
+- 应用内家庭记录备份不是全平台灾备：仅覆盖预览列出的记录类型，不包含问诊聊天、照护全流程和医生工作台记录、授权及系统账号；附件仅包含数据库内嵌内容。恢复创建独立副本，并关闭用药提醒与自动分析；通知渠道和照护成员需重新配置。数据库与附件存储仍需单独备份。
 - 大型附件应存放在带访问控制、恶意软件扫描和生命周期策略的对象存储中。
 - 上线前审查 [安全策略](SECURITY.md)、[开源发布检查表](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md) 和 [产品评审](docs/PRODUCT_REVIEW.md)。
 - Java 8 / Spring Boot 2.5 基线以兼容性为主；长期生产部署前应升级到受支持的运行时和框架。
@@ -216,7 +226,7 @@ node --test demo/tests/*.test.mjs
 ├── frontend/                       # Vue 3 Web 应用
 ├── src/main/java/                  # Spring Boot API
 ├── src/main/resources/sql/
-│   ├── init.sql                    # 新数据库完整基线
+│   ├── init.sql                    # 基础表，仍需执行配套升级脚本
 │   └── demo-data.sql               # 可选本地演示数据
 ├── .env.example                    # 不含真实密钥的配置模板
 ├── .env.production.example         # 连接现有数据库的生产配置模板

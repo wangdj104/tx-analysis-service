@@ -7,6 +7,16 @@ frontend/node_modules
 frontend/dist
 frontend/dist.zip
 .env
+.env.*
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+**/target
+database-backups
+.codex
+.worktrees
+.superpowers
 *.log
 uploads
 backups

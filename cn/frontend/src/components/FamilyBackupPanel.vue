@@ -1,12 +1,13 @@
 <template>
   <section class="backup-panel">
-    <h2>完整备份与恢复</h2>
-    <p>下载包含家庭成员、健康记录、处方、库存历史、报告、照护事项及附件的可迁移备份。</p>
+    <h2>家庭记录备份与恢复</h2>
+    <p>仅导出有完整档案访问权限的患者资料，包含支持的家庭档案、透析与指标记录、用药、库存、医疗报告和照护事项；附件仅包含已存入数据库的内容。</p>
+    <el-alert title="这不是全平台备份：不包含问诊与聊天、照护全流程记录、医生工作台、数据授权和系统账号。灾备请另行备份数据库与附件文件。" type="warning" :closable="false" />
     <div class="backup-actions">
-      <el-button type="primary" :loading="busy" @click="download">下载完整备份</el-button>
+      <el-button type="primary" :loading="busy" @click="download">下载家庭记录备份</el-button>
       <label class="file-label">选择备份文件 <input type="file" accept=".zip" :disabled="busy" @change="preview" /></label>
     </div>
-    <el-alert title="恢复会创建独立副本，不会覆盖当前数据。为避免重复提醒，恢复后的用药提醒默认关闭，照护成员需要重新邀请。" type="info" :closable="false" />
+    <el-alert title="恢复会创建独立副本，不覆盖当前数据。用药提醒与自动分析默认关闭；通知渠道需重新配置，照护成员需重新邀请。" type="info" :closable="false" />
     <section v-if="inspection" class="backup-preview">
       <h3>备份预览</h3>
       <p>创建时间：{{ inspection.createdAt }}</p>

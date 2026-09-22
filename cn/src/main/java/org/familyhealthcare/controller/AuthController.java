@@ -7,6 +7,7 @@ import org.familyhealthcare.entity.SysUser;
 import org.familyhealthcare.service.SysMenuService;
 import org.familyhealthcare.service.SysRoleService;
 import org.familyhealthcare.service.SysUserService;
+import org.familyhealthcare.service.UserLanguagePreferenceService;
 import org.familyhealthcare.util.JwtUtil;
 import org.familyhealthcare.vo.LoginVO;
 import io.swagger.annotations.Api;
@@ -37,12 +38,16 @@ public class AuthController {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private UserLanguagePreferenceService languagePreference;
+
     @PostMapping("/login")
     @ApiOperation("userSign In")
-    public Result<Map<String, Object>> login(@Valid @RequestBody LoginVO loginVO) {
+    public Result<Map<String, Object>> login(@Valid @RequestBody LoginVO loginVO, HttpServletRequest request) {
         try {
             String token = sysUserService.login(loginVO.getUsername(), loginVO.getPassword());
             SysUser user = sysUserService.getUserByUsername(loginVO.getUsername());
+            languagePreference.capture(user.getId(), request.getHeader("Accept-Language"));
 
             Map<String, Object> result = new HashMap<>();
             result.put("token", token);
@@ -78,6 +83,7 @@ public class AuthController {
             return Result.error("User not found");
         }
         user.setPassword(null);
+        languagePreference.capture(userId, request.getHeader("Accept-Language"));
 
         List<SysRole> roles = roleService.getRolesByUserId(userId);
         List<SysMenu> menus = menuService.getMenusByUserId(userId);

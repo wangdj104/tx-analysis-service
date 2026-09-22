@@ -58,10 +58,10 @@ public class NotificationChannelController {
         String result;
         boolean success = false;
         try {
-            delivery.send(channel, "familyhealthNotificationtest", "thisYesoneitemstestmessage, Notificationchannelalready connection. ");
-            result = "testmessagealready send, Please in receiveendView";
+            delivery.sendForUser(userId, channel, "CHANNEL_TEST", "Chengxin Health notification test", "This is a test message. The notification channel is connected.");
+            result = "Test message sent. Check the receiving channel.";
             success = true;
-        } catch (Exception e) { result = "testsendfailed, Please Examination Webhook Address, receiveend and network"; }
+        } catch (Exception e) { result = "Test failed. Check the webhook address, receiver, and network."; }
         channel.setLastTestAt(LocalDateTime.now());
         channel.setLastTestResult(result);
         mapper.updateById(channel);

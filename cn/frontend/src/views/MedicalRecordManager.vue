@@ -739,6 +739,8 @@
 </template>
 
 <script setup>
+import { localDateKey } from '@/utils/familyHealth';
+import { dedupeRecognizedItems } from '@/utils/medicalRecordItems';
 import recordsCareSmall from '@/assets/illustrations/records-care-small.webp';
 import recordsCare from '@/assets/illustrations/records-care.webp';
 import { ref, reactive, computed, onMounted, onUnmounted, watch, inject } from 'vue';
@@ -1060,7 +1062,7 @@ function resetUploadState() {
 }
 
 function buildRecognizeRecordFromApi(rec) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateKey();
   return reactive({
     recordType: rec.recordType || uploadForm.recordType || 'BLOOD',
     recordDate: rec.checkDate || rec.recordDate || today,
@@ -1072,7 +1074,7 @@ function buildRecognizeRecordFromApi(rec) {
 }
 
 function applyOcrResultToRecords(data) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateKey();
   if (data.records && data.records.length > 0) {
     recognizedRecords.value = data.records.map(r => buildRecognizeRecordFromApi(r));
   } else {
@@ -1114,32 +1116,6 @@ function getAbnormalText(status) {
   return '正常';
 }
 
-function normalizeItemDedupeKey(item) {
-  const value = String(item.resultValue ?? '').trim().replace(/\s+/g, '');
-  const unit = String(item.unit ?? '').trim();
-  const range = String(item.referenceRange ?? '').trim().replace(/\s+/g, '');
-  if (value) return `v:${value}|${unit}|${range}`;
-  const name = String(item.itemName ?? '')
-    .replace(/serum|bloodplasma|measureset|test/g, '')
-    .trim();
-  return `n:${name}`;
-}
-
-function dedupeRecognizedItems(items) {
-  const map = new Map();
-  for (const item of items) {
-    const key = normalizeItemDedupeKey(item);
-    if (!map.has(key)) {
-      map.set(key, { ...item });
-      continue;
-    }
-    const exist = map.get(key);
-    if ((item.itemName?.length || 0) > (exist.itemName?.length || 0)) {
-      exist.itemName = item.itemName;
-    }
-  }
-  return [...map.values()];
-}
 
 function mapRecognizedItemsFromApi(items) {
   return dedupeRecognizedItems((items || []).map(item => ({
@@ -1415,7 +1391,7 @@ async function saveArchiveRecord() {
       patientId: uploadForm.patientId,
       patientName: patient?.patientName || '',
       recordType: uploadForm.recordType || 'IMAGE',
-      recordDate: archiveForm.recordDate || new Date().toISOString().split('T')[0],
+      recordDate: archiveForm.recordDate || localDateKey(),
       hospitalName: archiveForm.hospitalName,
       doctorName: archiveForm.doctorName,
       remark: archiveForm.remark || '',

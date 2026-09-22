@@ -101,11 +101,12 @@ public class DoctorWorkspaceService {
         if (!java.util.Arrays.asList("APPROVED", "REJECTED").contains(decision)) throw new IllegalArgumentException("Invalid review decision.");
         Long patientId;
         if ("MEDICAL_RECORD".equals(sourceType)) {
-            patientId = jdbc.queryForObject("SELECT patient_id FROM medical_record WHERE id=?", Long.class, sourceId);
+            patientId = reviewPatient("medical_record", sourceId);
             requireAssigned(patientId);
-            jdbc.update("UPDATE medical_record SET verification_status=?,verified_by=?,verified_at=NOW() WHERE id=?", decision, currentUserId(), sourceId);
+            String verified = "APPROVED".equals(decision) ? "VERIFIED" : "REJECTED";
+            jdbc.update("UPDATE medical_record SET verification_status=?,verified_by=?,verified_at=NOW() WHERE id=?", verified, currentUserId(), sourceId);
         } else if ("AI_ANALYSIS".equals(sourceType)) {
-            patientId = jdbc.queryForObject("SELECT patient_id FROM ai_analysis_record WHERE id=?", Long.class, sourceId);
+            patientId = reviewPatient("ai_analysis_record", sourceId);
             requireAssigned(patientId);
             jdbc.update("UPDATE ai_analysis_record SET review_status=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?", decision, currentUserId(), sourceId);
         } else {
@@ -120,6 +121,9 @@ public class DoctorWorkspaceService {
         if (!CurrentUserUtil.isAdmin()) throw new IllegalStateException("Only administrators can assign doctors.");
         Long doctorId = requiredLong(body, "doctorUserId");
         Long patientId = requiredLong(body, "patientId");
+        requireAssigned(patientId);
+        Integer doctors = jdbc.queryForObject("SELECT COUNT(*) FROM sys_user u JOIN sys_user_role ur ON ur.user_id=u.id JOIN sys_role r ON r.id=ur.role_id WHERE u.id=? AND u.status=1 AND COALESCE(u.deleted,0)=0 AND r.role_code='doctor' AND r.status=1 AND COALESCE(r.deleted,0)=0", Integer.class, doctorId);
+        if(doctors==null||doctors==0)throw new IllegalArgumentException("Select an active doctor for the consultation.");
         jdbc.update("INSERT INTO doctor_patient_assignment(doctor_user_id,patient_id,assigned_by,status,care_team_role) VALUES(?,?,?,'ACTIVE',?) " +
                         "ON DUPLICATE KEY UPDATE assigned_by=VALUES(assigned_by),status='ACTIVE',care_team_role=VALUES(care_team_role),assigned_at=NOW()",
                 doctorId, patientId, currentUserId(), text(body, "careTeamRole", "ATTENDING"));
@@ -131,6 +135,7 @@ public class DoctorWorkspaceService {
 
     private void requireAssigned(Long patientId) {
         requireDoctor();
+        if(patientId==null || jdbc.queryForObject("SELECT COUNT(*) FROM patient WHERE id=? AND COALESCE(deleted,0)=0 AND status=1",Integer.class,patientId)==0)throw new IllegalArgumentException("Patient not found.");
         if (CurrentUserUtil.isAdmin()) return;
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM doctor_patient_assignment WHERE doctor_user_id=? AND patient_id=? AND status='ACTIVE'",
                 Integer.class, currentUserId(), patientId);
@@ -143,6 +148,12 @@ public class DoctorWorkspaceService {
         if (!CurrentUserUtil.isAdmin()) { sql += " AND doctor_user_id=?"; args.add(currentUserId()); }
         Integer count = jdbc.queryForObject(sql, args.toArray(), Integer.class);
         return count == null ? 0 : count;
+    }
+
+    private Long reviewPatient(String table,Long id) {
+        List<Long> ids=jdbc.queryForList("SELECT patient_id FROM " + table + " WHERE id=?",Long.class,id);
+        if(ids.isEmpty()||ids.get(0)==null)throw new IllegalArgumentException("The review record does not exist or has no patient.");
+        return ids.get(0);
     }
 
     private Long currentUserId() {

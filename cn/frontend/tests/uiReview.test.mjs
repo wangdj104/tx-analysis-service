@@ -10,6 +10,8 @@ import * as access from '../src/utils/workspaceAccess.js';
 beforeEach(() => {
   const storage = new Map();
   globalThis.localStorage = {
+    get length() { return storage.size; },
+    key: index => [...storage.keys()][index] ?? null,
     getItem: key => storage.get(key) ?? null,
     setItem: (key, value) => storage.set(key, String(value)),
     removeItem: key => storage.delete(key)
@@ -137,6 +139,18 @@ test('logout clears patient selection and cached permissions; malformed caches a
   assert.equal(localStorage.getItem('userRoleCodes'), null);
 });
 
+test('logout deletes medical offline copies without clearing unrelated preferences', () => {
+  localStorage.setItem('offlineEmergencyCard:7:1', '{"patient":{"id":1}}');
+  localStorage.setItem('offlineEmergencyCard:1', 'legacy copy');
+  localStorage.setItem('care-profile:1', '{}');
+  localStorage.setItem('table-cols:patient', '[]');
+  sessions.clearAuthSession();
+  assert.equal(localStorage.getItem('offlineEmergencyCard:7:1'), null);
+  assert.equal(localStorage.getItem('offlineEmergencyCard:1'), null);
+  assert.equal(localStorage.getItem('care-profile:1'), null);
+  assert.equal(localStorage.getItem('table-cols:patient'), '[]');
+});
+
 function setupRequestInterceptors() {
   let beforeRequest, onResponse, onError;
   const request = { interceptors: { request: { use: handler => { beforeRequest = handler; } }, response: { use: (success, failure) => { onResponse = success; onError = failure; } } } };
@@ -159,7 +173,21 @@ test('late HTTP and business 401 from A cannot clear or redirect B, while curren
   const currentConfig = beforeRequest({ headers: {} });
   await assert.rejects(onResponse({ config: currentConfig, data: { code: 401 } }));
   assert.equal(localStorage.getItem('token'), null);
-  assert.equal(window.location.href, '/login');
+  assert.equal(window.location.href, '/cn/login');
+});
+
+test('binary downloads reject JSON error envelopes rather than saving invalid files', async () => {
+  const { beforeRequest, onResponse, onError } = setupRequestInterceptors();
+  sessions.saveAuthSession({ token: 'A', userId: 'A' });
+  const config = beforeRequest({ headers: {}, responseType: 'blob' });
+  const csv = new Blob(['date,value\n2026-09-22,120'], { type: 'text/csv' });
+  assert.equal(await onResponse({ config, data: csv }), csv);
+  await assert.rejects(onResponse({ config, data: new Blob([JSON.stringify({ code: 403, msg: 'denied' })], { type: 'application/json' }) }), /denied/);
+  const error = { config, response: { status: 400, data: new Blob([JSON.stringify({ code: 400, msg: 'invalid' })], { type: 'application/json' }) } };
+  await assert.rejects(onError(error));
+  assert.equal(error.response.data.msg, 'invalid');
+  await assert.rejects(onResponse({ config, data: new Blob([JSON.stringify({ code: 401 })], { type: 'application/json' }) }));
+  assert.equal(localStorage.getItem('token'), null);
 });
 
 function setupMonitoring(getMonitoringSnapshot) {

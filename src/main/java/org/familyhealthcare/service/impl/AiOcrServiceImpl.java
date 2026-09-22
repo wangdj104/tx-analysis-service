@@ -529,13 +529,14 @@ public class AiOcrServiceImpl implements AiOcrService {
 
     private Integer parseAbnormalStatus(String status) {
         if (status == null) return 0;
-        if (status.contains("high") || status.contains("high")) return 1;
-        if (status.contains("low") || status.contains("low")) return -1;
+        String normalized = status.trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("high") || normalized.contains("高") || normalized.contains("↑") || "h".equals(normalized)) return 1;
+        if (normalized.contains("low") || normalized.contains("低") || normalized.contains("↓") || "l".equals(normalized)) return -1;
         return 0;
     }
 
     /**
-     * by 「measured value+Unit+Reference Range」mergeduplicateitem (OCR oftentosameoneindicatoroutputnot sameName) .
+     * Merge complete duplicate results only; equal values do not identify the same test.
      */
     private List<Map<String, Object>> dedupeItems(List<Map<String, Object>> items) {
         if (items == null || items.isEmpty()) {
@@ -544,6 +545,7 @@ public class AiOcrServiceImpl implements AiOcrService {
         LinkedHashMap<String, Map<String, Object>> merged = new LinkedHashMap<>();
         for (Map<String, Object> item : items) {
             String key = buildDedupeKey(item);
+            if (key == null) key = "unidentified:" + merged.size();
             if (!merged.containsKey(key)) {
                 merged.put(key, new HashMap<>(item));
                 continue;
@@ -559,22 +561,16 @@ public class AiOcrServiceImpl implements AiOcrService {
     }
 
     private String buildDedupeKey(Map<String, Object> item) {
+        String name = normalizeItemName(str(item.get("itemName")));
         String value = norm(str(item.get("resultValue")));
         String unit = norm(str(item.get("unit")));
         String range = norm(str(item.get("referenceRange")));
-        if (!value.isEmpty()) {
-            return "v:" + value + "|" + unit + "|" + range;
-        }
-        return "n:" + normalizeItemName(str(item.get("itemName")));
+        if (name.isEmpty() || value.isEmpty()) return null;
+        return com.alibaba.fastjson2.JSON.toJSONString(Arrays.asList(name, value, unit, range, item.getOrDefault("isAbnormal", 0)));
     }
 
     private static String normalizeItemName(String name) {
-        return name.replace("serum", "")
-                .replace("bloodplasma", "")
-                .replace("measureset", "")
-                .replace("test", "")
-                .replace(" ", "")
-                .toLowerCase(Locale.ROOT);
+        return java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFKC).trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     private static String norm(String s) {

@@ -71,7 +71,7 @@ The repository includes a backend-free, bilingual product tour with fictional da
 - Local preview: serve the `demo` directory with any static HTTP server.
 - GitHub Pages deploys both languages from `main` through the included [workflow](.github/workflows/demo-pages.yml).
 
-Switch among doctor, patient, family, and administrator roles to explore the real system's capability map. The **Care journey** page covers all 40 requested workflows across chronic-disease monitoring, appointments, remote consultation, recovery, home care, emergency information, child and maternity care, mental health, privacy, and operations. Actions update tab-local demo state and audit events; no network request or real clinical processing occurs.
+Switch among doctor, patient, family, and administrator roles to explore simulated examples of 40 workflows across chronic-disease monitoring, appointments, remote consultation, recovery, home care, emergency information, child and maternity care, mental health, privacy, and operations. Actions update tab-local demo state and audit events; no network request or real clinical processing occurs. Demo coverage is not evidence that every production workflow has been verified; see the [functional audit and verification boundaries](docs/FUNCTIONAL_AUDIT_20260922.md).
 
 ## Language layout
 
@@ -83,10 +83,11 @@ Requirements: Docker Engine 24+ and Docker Compose v2.
 
 ```bash
 cp .env.example .env
+# Set fresh MYSQL_PASSWORD, MYSQL_ROOT_PASSWORD and JWT_SECRET values in .env.
 docker compose up --build
 ```
 
-Open `http://localhost:8088`. The optional Docker demo data creates this local-only account:
+Open `http://localhost:8080/` (English) or `http://localhost:8080/cn/` (Chinese). The Docker demo data creates this local-only account:
 
 ```text
 Username: demo
@@ -94,6 +95,8 @@ Password: Demo@123456
 ```
 
 Change all secrets before exposing a deployment to any network. The Docker demo is intended for evaluation, not production.
+
+On an empty MySQL volume, Compose runs `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, then `demo-data.sql`. Existing volumes are not reinitialized; apply required upgrades manually after a backup. Do not delete a volume containing records to force initialization.
 
 ## Bilingual production deployment
 
@@ -107,6 +110,10 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 
 Open `http://your-server:8080/` or `http://your-server:8080/cn/`. The same image also exposes the standalone demonstrations at `/demo/` and `/cn/demo/`. This production compose file does not create MySQL and does not import `demo-data.sql`; it connects to the existing database configured by `DB_URL`.
 
+Run the database scripts below before first startup; upgrades for an existing database must be applied separately. Production Compose keeps administrator bootstrap disabled, so provision an administrator deliberately before first use. Check `/api/health` through the public origin after startup; it is a liveness check, so also verify sign-in and a patient page before accepting the release.
+
+Chinese PDF downloads require a CJK font on the backend host. The backend Docker images install Noto CJK. For a non-Docker/systemd installation on Debian or Ubuntu, install `fonts-noto-cjk` with the distribution package manager, then verify `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc` is readable by the service account. Other distributions must provide a font at one of the paths recognized by `HealthReportServiceImpl` (Noto CJK or WenQuanYi Micro Hei). Restart the application after installing the font and verify a Chinese PDF, including patient names; HTML previews alone do not verify PDF font support.
+
 ## Technology stack
 
 - Backend: Java 8, Spring Boot 2.5, MyBatis-Plus, MySQL 8, JWT.
@@ -118,7 +125,7 @@ Open `http://your-server:8080/` or `http://your-server:8080/cn/`. The same image
 
 ### Requirements
 
-- JDK 8
+- JDK 17 recommended (source/bytecode target remains Java 8; CI and Docker use 17)
 - Maven 3.8+
 - Node.js 20+
 - MySQL 8.0+
@@ -131,13 +138,15 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ```bash
 mysql -u root -p family_health < src/main/resources/sql/init.sql
+mysql -u root -p family_health < src/main/resources/sql/doctor_workspace_20260921.sql
+mysql -u root -p family_health < src/main/resources/sql/care_platform_upgrade_20260921.sql
 ```
 
-Run [init.sql](src/main/resources/sql/init.sql) once for the original baseline. Existing installations can apply the idempotent [doctor workspace migration](src/main/resources/sql/doctor_workspace_20260921.sql) and [care-platform migration](src/main/resources/sql/care_platform_upgrade_20260921.sql). The latter adds the complete care-journey schema, access grants, schedules, consultations, recovery, emergency, specialty, mental-health, audit, and delivery-log structures. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
+New databases require all three scripts in this order: [base schema](src/main/resources/sql/init.sql), [doctor workspace](src/main/resources/sql/doctor_workspace_20260921.sql), then [care platform](src/main/resources/sql/care_platform_upgrade_20260921.sql). `init.sql` alone does not contain the care-journey tables. Existing installations apply only the applicable idempotent upgrade scripts after backing up data; do not rerun the baseline as a reset. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
 
 ### 2. Configure environment variables
 
-Copy `.env.example` and set at least:
+Copy `.env.example` and set at least the following. Compose reads `.env`, but Maven/Spring Boot does not automatically load it: set these values in your shell or IDE run configuration before starting the backend.
 
 ```dotenv
 DB_URL=jdbc:mysql://127.0.0.1:3306/family_health?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
@@ -149,7 +158,7 @@ BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=replace-with-a-strong-password
 ```
 
-The bootstrap administrator is created only when explicitly enabled and only if no account exists. Disable it after first sign-in and change the password immediately.
+Bootstrap runs only when explicitly enabled. Use a dedicated administrator username: if that username already exists, bootstrap grants it the administrator role. Disable bootstrap after setup and change the initial password immediately.
 
 ### 3. Start the backend
 
@@ -157,7 +166,7 @@ The bootstrap administrator is created only when explicitly enabled and only if 
 mvn spring-boot:run
 ```
 
-The API listens on `http://localhost:9090` by default.
+The API listens on `http://localhost:8082` by default; its anonymous liveness endpoint is `http://localhost:8082/api/health`.
 
 ### 4. Start the frontend
 
@@ -167,7 +176,7 @@ npm ci
 npm run dev
 ```
 
-Vite prints the local URL. Set `VITE_API_BASE_URL` when the API is not available through `/api` on the same origin.
+Vite normally serves `http://localhost:5174` and proxies `/api` to `http://localhost:8082`. Set `DEV_PROXY_TARGET` in `frontend/.env.local` to change the development proxy. The frontend uses the fixed `/api` prefix; production Nginx must proxy that prefix to the backend. For the Chinese development frontend, run the same commands in `cn/frontend` and open `/cn/`.
 
 ## Key configuration
 
@@ -176,12 +185,12 @@ Vite prints the local URL. Set `VITE_API_BASE_URL` when the API is not available
 | `DB_URL` | MySQL connection | Use TLS and a least-privilege database user |
 | `DB_USERNAME` / `DB_PASSWORD` | Database credentials | Store in a secret manager |
 | `JWT_SECRET` | Token signature | At least 32 random bytes; rotate deliberately |
-| `JWT_EXPIRATION` | Token lifetime | Use a short, risk-appropriate duration |
-| `APP_CORS_ALLOWED_ORIGINS` | Browser origins | List exact HTTPS origins |
+| `JWT_EXPIRATION_MS` | Token lifetime in milliseconds | Use a short, risk-appropriate duration |
+| `CORS_ALLOWED_ORIGINS` | Browser origins | List exact HTTPS origins |
 | `BOOTSTRAP_ADMIN_*` | First administrator | Enable once, then disable |
-| `OCR_VISION_*` | Optional OCR provider | Keep API keys server-side |
-| `AI_*` | Optional AI analysis | Review privacy and retention policies first |
-| `VITE_API_BASE_URL` | Frontend API prefix | Usually `/api` behind a reverse proxy |
+| `OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` | Optional OCR provider | Keep API keys server-side |
+| `DEEPSEEK_API_KEY` / `DEEPSEEK_API_URL` / `DEEPSEEK_API_MODEL` | Optional AI analysis | Review privacy and retention policies first |
+| `DEV_PROXY_TARGET` | Vite development API upstream | Not used by production; production proxies `/api` |
 
 See [.env.example](.env.example) and [application.yml](src/main/resources/application.yml) for the complete list.
 
@@ -195,7 +204,7 @@ Webhook URLs and bot secrets are sensitive. They are masked in API responses and
 
 ## Database policy
 
-- `init.sql` is the single baseline for a new installation and currently defines 42 tables.
+- New installations run the base schema, doctor-workspace migration and care-platform migration in the documented order (currently 70 application tables across the scripts).
 - `demo-data.sql` is strictly optional and must never be used in production.
 - The application does not silently create or alter production tables at startup.
 - `init.sql` is not an upgrade or reset tool for a populated database. Back up data before any manual database operation.
@@ -225,6 +234,7 @@ make build
 - Disable bootstrap administrator creation after initial setup.
 - Use HTTPS, exact CORS origins, secure reverse-proxy headers, and request-size limits.
 - Use a managed MySQL backup policy and test restore procedures.
+- The in-app family archive is a scoped export, not disaster recovery: it covers the record types listed in its preview, excludes consultations/chat, care-journey and doctor-workspace records, access grants and system accounts, and includes only database-embedded attachments. Restore creates independent copies with medication reminders and automated analysis disabled; notification channels and caregivers must be configured again. Back up the database and attachment storage separately.
 - Store large attachments in access-controlled object storage with malware scanning and lifecycle rules.
 - Review the [security policy](SECURITY.md), [release checklist](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md), and [product review](docs/PRODUCT_REVIEW.md).
 - This Java 8 / Spring Boot 2.5 baseline favors compatibility. Upgrade to a supported runtime and framework before a long-lived public production deployment.
@@ -246,7 +256,7 @@ make build
 ├── frontend/                       # Vue 3 web application
 ├── src/main/java/                  # Spring Boot API
 ├── src/main/resources/sql/
-│   ├── init.sql                    # Complete baseline for a new database
+│   ├── init.sql                    # Base schema; also run the required migrations
 │   └── demo-data.sql               # Optional local demo data
 ├── .env.example                    # Configuration template without real secrets
 ├── .env.production.example         # Existing-database production template

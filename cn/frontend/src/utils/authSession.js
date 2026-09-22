@@ -17,6 +17,11 @@ export function saveAuthSession(data = {}) {
 
 export function clearAuthSession() {
   sessionRevision++;
+  // Medical offline copies must not remain available to the next account on this device.
+  for (let index = localStorage.length - 1; index >= 0; index--) {
+    const key = localStorage.key(index);
+    if (key?.startsWith('offlineEmergencyCard:') || key?.startsWith('care-profile:')) localStorage.removeItem(key);
+  }
   [...AUTH_STORAGE_KEYS, ...SESSION_CACHE_KEYS].forEach(key => localStorage.removeItem(key));
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('auth-session-cleared'));
 }

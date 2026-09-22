@@ -60,15 +60,17 @@ public class MedicationController {
 
     @PostMapping("/save")
     @ApiOperation("AddMedication")
-    public Result<String> saveMedication(@RequestBody Medication medication) {
+public Result<String> saveMedication(@RequestBody Medication medication) {
         try {
             Long userId = dataScopeHelper.requireUserId();
+            dataScopeHelper.requirePatient(medication.getPatientId());
+            medication.setId(null);
             medication.setUserId(userId);
             medication.setIsActive(1);
             boolean success = medicationService.save(medication);
             return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
         } catch (IllegalStateException e) {
-            return Result.error(401, e.getMessage());
+            return Result.error(403, e.getMessage());
         }
     }
 
@@ -81,6 +83,8 @@ public class MedicationController {
                 return Result.error("Medication not found");
             }
             dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
+            medication.setPatientId(existing.getPatientId());
+            medication.setUserId(existing.getUserId());
             boolean success = medicationService.updateById(medication);
             return success ? Result.ok("Updated successfully") : Result.error("Update failed");
         } catch (IllegalStateException e) {
@@ -106,7 +110,7 @@ public class MedicationController {
 
     @PostMapping("/save-batch")
     @ApiOperation("batchSaveMedication")
-    public Result<String> saveMedicationsBatch(@RequestBody List<Medication> medications) {
+public Result<String> saveMedicationsBatch(@RequestBody List<Medication> medications) {
         try {
             if (medications == null || medications.isEmpty()) {
                 return Result.error("Medication list cannot be empty");
@@ -114,7 +118,7 @@ public class MedicationController {
             boolean success = medicationService.saveMedicationsBatch(medications);
             return success ? Result.ok("batchSaved successfully") : Result.error("batchFailed to save");
         } catch (IllegalStateException e) {
-            return Result.error(401, e.getMessage());
+            return Result.error(403, e.getMessage());
         }
     }
 

@@ -13,6 +13,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.zip.*;
+import static org.familyhealthcare.util.ExportLocalization.text;
 
 @Service
 public class FamilyBackupService {
@@ -23,9 +24,16 @@ public class FamilyBackupService {
     static final List<String> TABLES=Arrays.asList("patient","patient_clinical","patient_health_target","medication","dialysis_record","medical_record","medical_record_item","medical_record_attachment","dry_weight_monthly","bp_self_monitor_record","bp_pattern_analysis","nutrition_diary","nutrition_assessment","complication_record","ai_analysis_record","health_analysis_automation","alert_rule","alert_record","medication_reminder","medication_log","medication_intake","dialysis_schedule","health_event","care_item","medication_stock","medication_stock_movement","care_intake_action");
 
     @Transactional(readOnly=true) public byte[] exportArchive() throws IOException {
-        List<Long> pids=membership.accessiblePatients(scope.requireUserId());
+        List<Long> pids=new ArrayList<>();
+        for(Long patientId:scope.accessiblePatientIds(scope.requireUserId())) {
+            try { scope.requirePatientAccess(patientId,null,false); pids.add(patientId); }
+            catch(IllegalStateException denied) { /* A module-only/revoked grant cannot export the full family record. */ }
+        }
         JSONObject root=new JSONObject();root.put("format","family-health-backup");root.put("version",1);root.put("createdAt",LocalDateTime.now().toString());
         JSONObject tables=new JSONObject();root.put("tables",tables);List<String>warnings=new ArrayList<>();root.put("warnings",warnings);
+        root.put("includedTables",TABLES);
+        warnings.add(text("This is a limited family-record archive, not a full platform backup. Consultations, care-journey records, doctor workspaces, access grants and system accounts are not included. Only database-stored attachment content is included.",
+                "此文件仅备份列明的家庭记录，并非全平台备份。不包含远程问诊、照护全流程、医生工作台、授权和系统账号；附件仅包含已存入数据库的内容。"));
         Set<String>present=presentTables();List<Object> recordIds=new ArrayList<>();
         for(String table:TABLES){if(!present.contains(table))continue;List<Map<String,Object>>rows;
             if(table.equals("medical_record_item")||table.equals("medical_record_attachment"))rows=selectIn(table,"record_id",recordIds);
@@ -33,13 +41,12 @@ public class FamilyBackupService {
             if(table.equals("medical_record"))for(Map<String,Object>r:rows)recordIds.add(r.get("id"));
             for(Map<String,Object>r:rows){
                 for(Map.Entry<String,Object>cell:r.entrySet()){Object v=cell.getValue();if(v instanceof Timestamp)cell.setValue(((Timestamp)v).toLocalDateTime().toString().replace('T',' '));else if(v instanceof java.sql.Date)cell.setValue(v.toString());else if(v instanceof java.sql.Clob){try{java.sql.Clob text=(java.sql.Clob)v;cell.setValue(text.getSubString(1,(int)text.length()));}catch(java.sql.SQLException e){throw new IOException("NonemethodreadAttachmentcontent",e);}}}
-                if(table.equals("medical_record_attachment")&&(r.get("file_content")==null||r.get("file_content").toString().isEmpty())){
-                    String path=String.valueOf(r.get("file_path"));
-                    if(!path.startsWith("inline://")&&!path.equals("null")&&!path.startsWith("http")){
-                        java.nio.file.Path file=java.nio.file.Paths.get(path);
-                        if(java.nio.file.Files.isRegularFile(file))r.put("file_content",Base64.getEncoder().encodeToString(java.nio.file.Files.readAllBytes(file)));
-                        else warnings.add("Attachmentoriginalfiledoes not exist: "+r.get("file_name"));
-                    }else warnings.add("Attachmentmissingoriginalfilecontent: "+r.get("file_name"));
+                if(table.equals("medical_record_attachment")){
+                    boolean embedded=r.get("file_content")!=null&&!r.get("file_content").toString().trim().isEmpty();
+                    // Database paths are not a trusted file-read capability. Never read the server filesystem here.
+                    r.put("file_path",embedded?"inline://"+r.get("record_id")+"/"+r.get("file_name"):null);
+                    if(!embedded) warnings.add(text("Attachment content is not stored in the database and was not included: ",
+                            "附件内容未存入数据库，本次未包含：")+r.get("file_name"));
                 }
             }tables.put(table,rows);
         }
@@ -73,12 +80,19 @@ public class FamilyBackupService {
                 for(String userColumn:Arrays.asList("user_id","actor_id","assigned_user_id"))if(row.containsKey(userColumn)&&row.get(userColumn)!=null)row.put(userColumn,uid);
                 if(table.equals("patient")){row.put("user_id",uid);row.put("name",String.valueOf(row.get("name"))+" (restoresecondarythis ) ");row.put("deleted",0);}
                 if(table.equals("medication_reminder"))row.put("enabled",0);
+                if(table.equals("health_analysis_automation")) {
+                    row.put("enabled",0);
+                    for(String field:Arrays.asList("next_run_at","last_run_at","last_run_status","last_error","notification_channel_ids","last_analysis_record_id")) row.put(field,null);
+                }
                 if(table.equals("medication_intake")&&Arrays.asList("PENDING","SNOOZED","MISSED").contains(row.get("status")))row.put("status","CANCELLED");
                 if(table.equals("care_item")){
                     if("ORDER".equals(row.get("kind"))&&Arrays.asList("ACTIVE","SCHEDULED").contains(row.get("status")))row.put("status","STOPPED");
                     row.put("notify_at",null);row.put("notified_at",null);row.put("escalated_at",null);
                 }
-                if(table.equals("medical_record_attachment")&&row.get("file_content")!=null)row.put("file_path","inline://"+row.get("record_id")+"/"+row.get("file_name"));
+                if(table.equals("medical_record_attachment")) {
+                    boolean embedded=row.get("file_content")!=null&&!row.get("file_content").toString().trim().isEmpty();
+                    row.put("file_path",embedded?"inline://"+row.get("record_id")+"/"+row.get("file_name"):null);
+                }
                 if(table.equals("medication_stock_movement")&&row.get("source_key")!=null){String key=row.get("source_key").toString();String[]parts=key.split(":",2);if(parts.length==2){String target=parts[0].equals("INTAKE")?"medication_intake":"medication_log";Long mapped=ids.getOrDefault(target,Collections.emptyMap()).get(parts[1]);row.put("source_key",mapped==null?null:parts[0]+":"+mapped);}else row.put("source_key",null);}
                 Number generated=new SimpleJdbcInsert(jdbc).withTableName(table).usingColumns(row.keySet().toArray(new String[0])).usingGeneratedKeyColumns("id").executeAndReturnKey(row);
                 mapping.put(oldId.toString(),generated.longValue());count++;
@@ -91,7 +105,7 @@ public class FamilyBackupService {
             if(d.containsKey("escalationUserId"))d.put("escalationUserId",null);
             jdbc.update("UPDATE care_item SET data_json=? WHERE id=?",d.toJSONString(),ids.get("care_item").get(raw.get("id").toString()));
         }
-        Map<String,Object>out=new LinkedHashMap<>();out.put("counts",counts);out.put("patientIds",ids.getOrDefault("patient",Collections.emptyMap()).values());out.put("message","already restorefor independentsecondarythis . Remindertemporarilynot Enabled, Please verifyprescriptionafter againEnabled, andagaininvitePlease carecompletemember. ");return out;
+        Map<String,Object>out=new LinkedHashMap<>();out.put("counts",counts);out.put("patientIds",ids.getOrDefault("patient",Collections.emptyMap()).values());out.put("message",text("Restored as independent copies. Medication reminders and automated analysis are disabled; verify care plans, configure notification channels and invite caregivers again before enabling them.", "已恢复为独立副本。用药提醒与自动分析均已关闭；请核对照护计划、重新配置通知渠道并邀请照护成员后再启用。"));return out;
     }
     private void remap(Map<String,Object>row,String column,String table,Map<String,Map<String,Long>>ids,boolean required){if(!row.containsKey(column)||row.get(column)==null){if(required)throw new IllegalArgumentException("backupcopymissingFamily Memberrelated");return;}Long mapped=ids.getOrDefault(table,Collections.emptyMap()).get(row.get(column).toString());if(mapped==null&&required)throw new IllegalArgumentException("backupcopyin Family Memberrelateddoes not exist");row.put(column,mapped);}
     private void remapJson(JSONObject d,String key,String table,Map<String,Map<String,Long>>ids){if(d.get(key)!=null)d.put(key,ids.getOrDefault(table,Collections.emptyMap()).get(d.get(key).toString()));}

@@ -70,7 +70,7 @@ class MonitoringServiceImplTest {
         MonitoringSnapshotVO result = service.getSnapshot(1L, 7);
 
         assertEquals("STABLE", result.getOverallStatus());
-        assertEquals("currentStatusstable", result.getStatusLabel());
+        assertEquals("Health status is stable", result.getStatusLabel());
         assertEquals(50, result.getMetrics().getDataCompleteness());
     }
 
@@ -81,7 +81,7 @@ class MonitoringServiceImplTest {
         MonitoringSnapshotVO result = service.getSnapshot(1L, 7);
 
         assertEquals("CRITICAL", result.getOverallStatus());
-        assertEquals("needneedimmediatelyattention", result.getStatusLabel());
+        assertEquals("Immediate attention required", result.getStatusLabel());
     }
 
     private BpSelfMonitorRecord vital(int systolic, int diastolic, String glucose) {

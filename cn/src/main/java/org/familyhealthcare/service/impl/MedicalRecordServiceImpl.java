@@ -145,7 +145,17 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
             qw.eq("record_type", recordType);
         }
         if (timeValue != null && !timeValue.isEmpty()) {
-            qw.apply("DATE_FORMAT(record_date, '%Y-%m') = {0}", timeValue);
+            try {
+                if (timeValue.length() == 10) {
+                    qw.eq("record_date", java.time.LocalDate.parse(timeValue));
+                } else {
+                    java.time.YearMonth month = java.time.YearMonth.parse(timeValue);
+                    qw.ge("record_date", month.atDay(1)).lt("record_date", month.plusMonths(1).atDay(1));
+                }
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new IllegalArgumentException("zh".equals(org.springframework.context.i18n.LocaleContextHolder.getLocale().getLanguage())
+                        ? "请选择有效日期或月份。" : "Select a valid date or month.");
+            }
         }
 
         List<MedicalRecord> records = this.list(qw);

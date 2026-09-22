@@ -173,6 +173,7 @@
 </template>
 
 <script setup>
+import { localDateKey } from '@/utils/familyHealth';
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Check, Plus, Refresh, TrendCharts } from '@element-plus/icons-vue';
@@ -189,7 +190,7 @@ const editingId = ref(null);
 const formRef = ref(null);
 
 const form = reactive({
-  recordDate: new Date().toISOString().slice(0, 10),
+  recordDate: localDateKey(),
   recordTime: '',
   measureType: 'BP',
   systolicBp: null,
@@ -230,7 +231,7 @@ function measureTagType(type) {
 
 function resetForm() {
   editingId.value = null;
-  form.recordDate = new Date().toISOString().slice(0, 10);
+  form.recordDate = localDateKey();
   form.recordTime = '';
   form.measureType = 'BP';
   form.systolicBp = null;

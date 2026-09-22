@@ -12,12 +12,12 @@
       <el-empty v-if="!rows.length" description="No notification channels configured" />
       <article v-for="row in rows" :key="row.id" class="channel-card">
         <div><b>{{ row.channelName || channelTypeName(row.channelType) }}</b><p>{{ channelTypeName(row.channelType) }} · {{ row.webhookConfigured ? 'Webhook securely stored' : 'Webhook URL missing' }}</p><small>Last test: {{ row.lastTestResult || 'Not tested' }}</small></div>
-        <el-switch :model-value="row.enabled === 1" @change="toggle(row)" />
-        <div><el-button link @click="test(row)">Test</el-button><el-button link type="primary" @click="edit(row)">Edit</el-button><el-popconfirm title="Delete this notification channel?" @confirm="remove(row)"><template #reference><el-button link type="danger">Delete</el-button></template></el-popconfirm></div>
+        <el-switch :disabled="saving || pendingIds.has(row.id)" :model-value="row.enabled === 1" @change="toggle(row)" />
+        <div><el-button link :loading="pendingIds.has(row.id)" :disabled="saving" @click="test(row)">Test</el-button><el-button link type="primary" :disabled="saving || pendingIds.has(row.id)" @click="edit(row)">Edit</el-button><el-popconfirm title="Delete this notification channel?" @confirm="remove(row)"><template #reference><el-button link type="danger" :disabled="saving || pendingIds.has(row.id)">Delete</el-button></template></el-popconfirm></div>
       </article>
     </section>
     <el-dialog v-model="visible" :title="form.id ? 'Edit notification channel' : 'Add notification channel'" width="min(540px, 94vw)">
-      <el-form :model="form" label-width="110px">
+      <el-form :disabled="saving" :model="form" label-width="110px">
         <el-form-item label="Channel type"><el-select v-model="form.channelType" style="width:100%"><el-option label="DingTalk bot" value="DINGTALK_WEBHOOK"/><el-option label="WeCom webhook" value="WECHAT_WEBHOOK"/><el-option label="Generic webhook" value="WEBHOOK"/></el-select></el-form-item>
         <el-form-item label="Channel name"><el-input v-model="form.channelName"/></el-form-item>
         <el-form-item label="Webhook URL"><el-input v-model="form.webhookUrl" type="textarea" :rows="3" :placeholder="form.id && form.webhookConfigured ? 'Already configured; leave blank to keep it unchanged' : 'Enter the complete webhook URL'"/></el-form-item>
@@ -28,7 +28,7 @@
         </template>
         <el-form-item label="Enabled"><el-switch v-model="form.enabled" :active-value="1" :inactive-value="0"/></el-form-item>
       </el-form>
-      <template #footer><el-button @click="visible=false">Cancel</el-button><el-button type="primary" @click="submit">Save</el-button></template>
+      <template #footer><el-button @click="visible=false">Cancel</el-button><el-button type="primary" :loading="saving" @click="submit">Save</el-button></template>
     </el-dialog>
   </main>
 </template>
@@ -39,21 +39,23 @@ import { ElMessage } from 'element-plus'
 import { deleteNotificationChannel, listNotificationChannels, saveNotificationChannel, testNotificationChannel } from '@/api/notificationChannel'
 
 const rows = ref([])
-const loading = ref(false)
+const loading = ref(false), saving = ref(false), pendingIds = reactive(new Set())
+const browserPermission = ref('Notification' in window ? Notification.permission : 'unsupported')
 const visible = ref(false)
 const form = reactive({ id: null, channelType: 'WECHAT_WEBHOOK', channelName: '', webhookUrl: '', robotSecret: '', robotKeyword: '', enabled: 1 })
-const browserStatus = computed(() => !('Notification' in window) ? 'Not supported' : Notification.permission === 'granted' ? 'Enabled' : 'Enable notifications')
+const browserStatus = computed(() => !('Notification' in window) ? 'Not supported' : browserPermission.value === 'granted' ? 'Enabled' : 'Enable notifications')
 const emptyForm = () => ({ id: null, channelType: 'WECHAT_WEBHOOK', channelName: '', webhookUrl: '', robotSecret: '', robotKeyword: '', webhookConfigured: false, robotSecretConfigured: false, enabled: 1 })
 const channelTypeName = type => ({ DINGTALK_WEBHOOK: 'DingTalk bot', WECHAT_WEBHOOK: 'WeCom webhook', WEBHOOK: 'Generic webhook' }[type] || type)
 
 async function load(){ loading.value=true; try { rows.value=(await listNotificationChannels()).data||[] } finally { loading.value=false } }
-function openCreate(){ Object.assign(form,emptyForm()); visible.value=true }
-function edit(row){ Object.assign(form,emptyForm(),row); visible.value=true }
-async function submit(){ await saveNotificationChannel({...form}); ElMessage.success('Notification channel saved.'); visible.value=false; await load() }
-async function toggle(row){ await saveNotificationChannel({...row,enabled:row.enabled===1?0:1}); await load() }
-async function test(row){ try { const result=await testNotificationChannel(row.id); ElMessage.success(result.data||'Test request completed.') } finally { await load() } }
-async function remove(row){ await deleteNotificationChannel(row.id); ElMessage.success('Notification channel deleted.'); await load() }
-async function enableBrowser(){ if(!('Notification' in window)){ ElMessage.warning('This browser does not support notifications.'); return } const permission=await Notification.requestPermission(); ElMessage[permission==='granted'?'success':'warning'](permission==='granted'?'Browser notifications enabled.':'Browser notification permission was not granted.') }
+function openCreate(){ if(saving.value)return;Object.assign(form,emptyForm()); visible.value=true }
+function edit(row){ if(saving.value||pendingIds.has(row.id))return;Object.assign(form,emptyForm(),row); visible.value=true }
+async function submit(){if(saving.value)return;const url=form.webhookUrl?.trim();if(!url&&!form.webhookConfigured){ElMessage.warning('Enter the complete webhook URL.');return}if(url){try{const parsed=new URL(url);if(!['http:','https:'].includes(parsed.protocol))throw new Error()}catch{ElMessage.warning('Use an http:// or https:// webhook URL.');return}}saving.value=true;try{await saveNotificationChannel({...form,webhookUrl:url});ElMessage.success('Notification channel saved.');visible.value=false;await load()}catch{}finally{saving.value=false}}
+async function withPending(row,action){if(saving.value||pendingIds.has(row.id))return;pendingIds.add(row.id);try{await action()}catch{}finally{pendingIds.delete(row.id)}}
+async function toggle(row){await withPending(row,async()=>{await saveNotificationChannel({...row,enabled:row.enabled===1?0:1});await load()})}
+async function test(row){await withPending(row,async()=>{try{const result=await testNotificationChannel(row.id);ElMessage.success(result.data||'Test request completed.')}finally{await load()}})}
+async function remove(row){await withPending(row,async()=>{await deleteNotificationChannel(row.id);ElMessage.success('Notification channel deleted.');await load()})}
+async function enableBrowser(){ if(!('Notification' in window)){ ElMessage.warning('This browser does not support notifications.'); return } const permission=await Notification.requestPermission();browserPermission.value=permission; ElMessage[permission==='granted'?'success':'warning'](permission==='granted'?'Browser notifications enabled.':'Browser notification permission was not granted.') }
 onMounted(load)
 </script>
 

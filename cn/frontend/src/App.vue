@@ -11,13 +11,18 @@
         <button class="workspace-search" type="button" @click="openSearch"><el-icon><Search /></el-icon><span>查找功能</span><kbd>Ctrl K</kbd></button>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" />
         <div class="workspace-sidebar__footer">
-          <button type="button" class="workspace-guide" @click="guideRef?.start()"><el-icon><Guide /></el-icon><span><strong>新手指引</strong><small>逐步讲解，每步需要确认</small></span></button>
-          <span class="workspace-sidebar__note"><el-icon><FirstAidKit /></el-icon>每天都获得更好的照护</span>
-          <button type="button" class="workspace-account" @click="accountVisible = true">
-            <span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span>
-            <span><strong>{{ accountName }}</strong><small>{{ userRoles }}</small></span>
-            <el-icon><Setting /></el-icon>
-          </button>
+          <div class="workspace-utility-panel">
+            <button type="button" class="workspace-guide workspace-utility-action" @click="guideRef?.start()">
+              <span class="workspace-utility-icon"><el-icon><Guide /></el-icon></span>
+              <span class="workspace-utility-copy"><strong>操作指引</strong><small>跟随页面逐步学习</small></span>
+              <span class="workspace-utility-cta">开始</span>
+            </button>
+            <button type="button" class="workspace-account workspace-utility-action" @click="accountVisible = true">
+              <span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span>
+              <span class="workspace-utility-copy"><strong>{{ accountName }}</strong><small>{{ userRoles }}</small></span>
+              <el-icon class="workspace-utility-arrow"><ArrowRight /></el-icon>
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -29,6 +34,7 @@
         </div>
         <div class="workspace-topbar__actions">
           <span class="workspace-date">{{ todayLabel }}</span>
+          <router-link v-if="userInfo.roles?.some(role => role.roleCode === 'doctor')" class="workspace-consultations" to="/care-journey?tab=consultation" aria-label="打开问诊收件箱"><el-icon><ChatDotRound /></el-icon><span v-if="!isMobile">问诊收件箱</span></router-link>
           <PatientSwitcher :model-value="currentPatientId || 0" :patients="appPatientList" @update:model-value="switchPatient" />
           <a class="workspace-language" :href="languageHref" hreflang="en">English</a>
           <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="查找功能" @click="openSearch"><el-icon :size="20"><Search /></el-icon></button>
@@ -38,8 +44,10 @@
       <el-drawer v-model="mobileNavVisible" direction="ltr" size="min(300px, 88vw)" :with-header="false" class="workspace-drawer" append-to-body>
         <div class="workspace-drawer__heading"><strong>{{ platformBranding.platformName }}</strong><button type="button" class="workspace-icon-button" aria-label="关闭导航菜单" @click="mobileNavVisible = false"><el-icon><Close /></el-icon></button></div>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" @navigate="mobileNavVisible = false" />
-        <button type="button" class="workspace-guide" @click="mobileNavVisible = false; guideRef?.start()"><el-icon><Guide /></el-icon><span><strong>新手指引</strong><small>一次学习一个步骤</small></span></button>
-        <button type="button" class="workspace-account" @click="mobileNavVisible = false; accountVisible = true"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><span><strong>{{ accountName }}</strong><small>账号与退出登录</small></span><el-icon><Setting /></el-icon></button>
+        <div class="workspace-sidebar__footer workspace-sidebar__footer--drawer"><div class="workspace-utility-panel">
+          <button type="button" class="workspace-guide workspace-utility-action" @click="mobileNavVisible = false; guideRef?.start()"><span class="workspace-utility-icon"><el-icon><Guide /></el-icon></span><span class="workspace-utility-copy"><strong>操作指引</strong><small>跟随页面逐步学习</small></span><span class="workspace-utility-cta">开始</span></button>
+          <button type="button" class="workspace-account workspace-utility-action" @click="mobileNavVisible = false; accountVisible = true"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><span class="workspace-utility-copy"><strong>{{ accountName }}</strong><small>账号设置与退出</small></span><el-icon class="workspace-utility-arrow"><ArrowRight /></el-icon></button>
+        </div></div>
       </el-drawer>
 
       <nav v-if="isMobile" class="workspace-bottom-nav" aria-label="主导航">
@@ -90,9 +98,7 @@ import { useMedicationNotifications } from '@/composables/useMedicationNotificat
 useMedicationNotifications();
 import { ref, reactive, computed, onMounted, onUnmounted, watch, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import {
-  Search, ArrowRight, FirstAidKit, Setting, Menu, Close, Guide
-} from '@element-plus/icons-vue';
+import { Search, ArrowRight, Menu, Close, Guide, ChatDotRound } from '@element-plus/icons-vue';
 import WorkspaceNav from '@/components/WorkspaceNav.vue';
 import PatientSwitcher from '@/components/PatientSwitcher.vue';
 import OnboardingGuide from '@/components/OnboardingGuide.vue';
@@ -278,7 +284,16 @@ const loadUserMenus = async () => {
     if (res.code === 200 && Array.isArray(res.data?.menus)) {
       menuLoadError.value = '';
       systemMenu.value = null;
-      const allMenus = res.data.menus;
+      const roleCodes = (res.data.roles || []).map(role => role.roleCode);
+      const adminOnlyMenu = menu => {
+        const code = menu.menuCode || '';
+        const permission = menu.permission || '';
+        const path = menu.menuPath || '';
+        return ['system', 'system-user', 'system-role', 'system-menu', 'system-audit', 'platform-branding'].includes(code)
+          || ['user:manage', 'role:manage', 'menu:manage', 'audit:view', 'branding:manage'].includes(permission)
+          || (path.startsWith('/system/') && path !== '/system/patient');
+      };
+      const allMenus = roleCodes.includes('admin') ? res.data.menus : res.data.menus.filter(menu => !adminOnlyMenu(menu));
       userInfo.value = res.data.user || {};
       if (res.data.roles) {
         userInfo.value.roles = res.data.roles;
@@ -294,7 +309,6 @@ const loadUserMenus = async () => {
 
 
       const menuPaths = allMenus.filter(menu => menu.menuPath).map(menu => menu.menuPath);
-      const roleCodes = (res.data.roles || []).map(role => role.roleCode);
       savePermissionCache({ menuPaths, menuNames: allMenus.map(menu => menu.menuName).filter(Boolean), roleCodes });
       userMenus.value = menuPaths;
       // filteroutputonelevelMenu (parentId === 0)

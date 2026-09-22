@@ -90,7 +90,7 @@ class ClinicalSafetyWorkflowTest {
 
         assertEquals("APPROVED", draft.getReviewStatus()); assertEquals(7L, draft.getReviewedBy()); assertNotNull(draft.getReviewedAt());
         verify(records).updateById(draft);
-        verify(delivery).notifyUser(7L, "Reviewed health analysis · Test Patient", "Clinical draft text");
+        verify(delivery).notifyUser(7L, "HEALTH_ANALYSIS_REVIEWED", "Reviewed health analysis · Test Patient", "Clinical draft text");
     }
 
     private static Map<String, Object> component(String code, int value) {

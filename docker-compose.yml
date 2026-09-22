@@ -12,7 +12,9 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./src/main/resources/sql/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./src/main/resources/sql/demo-data.sql:/docker-entrypoint-initdb.d/02-demo-data.sql:ro
+      - ./src/main/resources/sql/doctor_workspace_20260921.sql:/docker-entrypoint-initdb.d/02-doctor-workspace.sql:ro
+      - ./src/main/resources/sql/care_platform_upgrade_20260921.sql:/docker-entrypoint-initdb.d/03-care-platform.sql:ro
+      - ./src/main/resources/sql/demo-data.sql:/docker-entrypoint-initdb.d/04-demo-data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
       interval: 5s
@@ -52,8 +54,8 @@ services:
 
   web:
     build:
-      context: frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: deploy/Dockerfile.web
     restart: unless-stopped
     ports:
       - "8080:80"

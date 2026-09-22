@@ -12,6 +12,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -29,15 +30,21 @@ public class MedicationServiceImpl extends ServiceImpl<MedicationMapper, Medicat
     private DataScopeHelper dataScopeHelper;
 
     private void syncPatient(MedicationLog log) {
-        if (log.getPatientId() != null) {
-            Patient patient = dataScopeHelper.requirePatient(log.getPatientId());
-            log.setPatientName(patient.getName());
-        }
+        Patient patient = dataScopeHelper.requirePatient(log.getPatientId());
+        Medication medication = log.getMedicationId() == null ? null : getById(log.getMedicationId());
+        if (medication == null || !java.util.Objects.equals(log.getPatientId(), medication.getPatientId()))
+            throw new IllegalArgumentException(org.familyhealthcare.util.ExportLocalization.text(
+                    "Select a medication belonging to this patient.", "请选择属于当前患者的药品。"));
+        if (log.getAdministrationTime() == null)
+            throw new IllegalArgumentException(org.familyhealthcare.util.ExportLocalization.text(
+                    "Enter the actual intake time.", "请填写实际服药时间。"));
+        log.setPatientName(patient.getName());
     }
 
     @Override
     public boolean saveLog(MedicationLog log) {
         Long userId = dataScopeHelper.requireUserId();
+        log.setId(null);
         log.setUserId(userId);
         syncPatient(log);
         return logMapper.insert(log) > 0;
@@ -50,6 +57,8 @@ public class MedicationServiceImpl extends ServiceImpl<MedicationMapper, Medicat
             return false;
         }
         dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
+        log.setPatientId(existing.getPatientId());
+        log.setUserId(existing.getUserId());
         syncPatient(log);
         return logMapper.updateById(log) > 0;
     }
@@ -128,17 +137,23 @@ public class MedicationServiceImpl extends ServiceImpl<MedicationMapper, Medicat
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean saveMedicationsBatch(List<Medication> medications) {
         if (medications == null || medications.isEmpty()) {
             return false;
         }
         Long userId = dataScopeHelper.requireUserId();
+        for (Medication medication : medications) dataScopeHelper.requirePatient(medication.getPatientId());
         int saved = 0;
         for (Medication medication : medications) {
+            medication.setId(null);
             medication.setUserId(userId);
             medication.setIsActive(1);
             if (super.save(medication)) {
                 saved++;
+            } else {
+                throw new IllegalStateException("zh".equals(org.springframework.context.i18n.LocaleContextHolder.getLocale().getLanguage())
+                        ? "批量保存失败，本次导入已回滚。" : "The batch could not be saved and was rolled back.");
             }
         }
         return saved > 0;

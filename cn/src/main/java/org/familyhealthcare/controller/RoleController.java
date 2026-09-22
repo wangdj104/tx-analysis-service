@@ -67,10 +67,10 @@ public class RoleController {
             return Result.error("You do not have permission to DeleteRole");
         }
         SysRole role = roleService.getById(id);
-        if (role != null && "admin".equals(role.getRoleCode())) {
-            return Result.error("adminRolecannot Delete");
+        if (role != null && java.util.Arrays.asList("admin", "doctor", "patient", "family", "user").contains(role.getRoleCode())) {
+            return Result.error("Built-in platform roles cannot be deleted");
         }
-        boolean success = roleService.removeById(id);
+        boolean success = roleService.deleteRole(id);
         return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
     }
 
@@ -95,6 +95,14 @@ public class RoleController {
         List<Long> menuIds = new java.util.ArrayList<>();
         for (Object o : menuIdList) {
             menuIds.add(Long.valueOf(o.toString()));
+        }
+        List<SysMenu> selectedMenus = menuIds.isEmpty() ? java.util.Collections.emptyList() : menuService.listByIds(menuIds);
+        boolean containsAdministration = selectedMenus.stream().anyMatch(menu ->
+                java.util.Arrays.asList("system", "system-user", "system-role", "system-menu", "system-audit", "platform-branding").contains(menu.getMenuCode())
+                        || java.util.Arrays.asList("user:manage", "role:manage", "menu:manage", "audit:view", "branding:manage").contains(menu.getPermission())
+                        || (menu.getMenuPath() != null && menu.getMenuPath().startsWith("/system/") && !"/system/patient".equals(menu.getMenuPath())));
+        if (containsAdministration) {
+            return Result.error(400, "Platform administration menus can only belong to the administrator role");
         }
         roleService.assignMenus(roleId, menuIds);
         return Result.ok("Menuassignsuccessful");

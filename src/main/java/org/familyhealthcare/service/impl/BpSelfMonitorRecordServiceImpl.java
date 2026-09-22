@@ -29,7 +29,7 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
         QueryWrapper<BpSelfMonitorRecord> qw = new QueryWrapper<>();
         if (!CurrentUserUtil.isAdmin()) dataScopeHelper.applyUserScope(qw);
         qw.eq("patient_id", patientId).orderByDesc("record_date").orderByDesc("record_time");
-        return baseMapper.selectList(qw);
+        return normalizeTypes(baseMapper.selectList(qw));
     }
 
     @Override
@@ -39,9 +39,16 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
         QueryWrapper<BpSelfMonitorRecord> qw = new QueryWrapper<>();
         if (!CurrentUserUtil.isAdmin()) dataScopeHelper.applyUserScope(qw);
         qw.eq("patient_id", patientId);
-        if (measureType != null) qw.eq("measure_type", measureType);
+        if ("BP".equals(measureType) || "BG".equals(measureType)) qw.in("measure_type", measureType, "BP_BG", "BOTH");
+        else if ("BP_BG".equals(measureType) || "BOTH".equals(measureType)) qw.in("measure_type", "BP_BG", "BOTH");
+        else if (measureType != null && !measureType.isEmpty()) qw.eq("measure_type", measureType);
         qw.orderByDesc("record_date").orderByDesc("record_time");
-        return baseMapper.selectList(qw);
+        return normalizeTypes(baseMapper.selectList(qw));
+    }
+
+    private List<BpSelfMonitorRecord> normalizeTypes(List<BpSelfMonitorRecord> records) {
+        for (BpSelfMonitorRecord record : records) if ("BOTH".equals(record.getMeasureType())) record.setMeasureType("BP_BG");
+        return records;
     }
 
     @Override
@@ -49,6 +56,8 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
         if (record.getPatientId() == null) throw new IllegalStateException("Select a patient");
         dataScopeHelper.requirePatient(record.getPatientId());
         Long userId = dataScopeHelper.requireUserId();
+        record.setId(null);
+        if ("BOTH".equals(record.getMeasureType())) record.setMeasureType("BP_BG");
         record.setUserId(userId);
         return baseMapper.insert(record) > 0;
     }
@@ -58,6 +67,8 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
         BpSelfMonitorRecord existing = getById(record.getId());
         if (existing == null) return false;
         dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
+        record.setPatientId(existing.getPatientId());
+        if ("BOTH".equals(record.getMeasureType())) record.setMeasureType("BP_BG");
         record.setUserId(existing.getUserId());
         return updateById(record);
     }

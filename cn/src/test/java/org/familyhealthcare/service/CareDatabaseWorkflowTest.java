@@ -26,6 +26,7 @@ class CareDatabaseWorkflowTest {
         initializeDatabase();
         jdbc.update("INSERT INTO patient(id,name,user_id) VALUES(1,'Test Patient',7)");jdbc.update("INSERT INTO medication(id,patient_id,user_id,drug_name,is_active) VALUES(3,1,7,'Test Medication',1)");
         scope=mock(DataScopeHelper.class);when(scope.requireUserId()).thenReturn(7L);
+        when(scope.accessiblePatientIds(7L)).thenReturn(Collections.singletonList(1L));
         members=mock(CareMembershipService.class);when(members.accessiblePatients(7L)).thenReturn(Collections.singletonList(1L));
         MockHttpServletRequest request=new MockHttpServletRequest();request.setAttribute("userId",7L);request.setAttribute("username","Test Caregiver");RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
     }
@@ -86,6 +87,42 @@ class CareDatabaseWorkflowTest {
         assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM patient",Integer.class));
     }
 
+    @Test void backupExcludesPatientsWithoutFullRecordReadAccess() throws Exception {
+        jdbc.update("INSERT INTO patient(id,name,user_id) VALUES(2,'Restricted Patient',8)");
+        when(members.accessiblePatients(7L)).thenReturn(Arrays.asList(1L,2L));
+        when(scope.accessiblePatientIds(7L)).thenReturn(Arrays.asList(1L,2L));
+        doThrow(new IllegalStateException("Only measurements are shared")).when(scope).requirePatientAccess(2L,null,false);
+        com.alibaba.fastjson2.JSONObject archive=backup().readArchive(backup().exportArchive());
+        com.alibaba.fastjson2.JSONArray patients=archive.getJSONObject("tables").getJSONArray("patient");
+        assertEquals(1,patients.size());assertEquals(1L,patients.getJSONObject(0).getLong("id"));
+    }
+
+    @Test void restoredAutomationCannotTriggerOldSchedulesOrChannels() throws Exception {
+        jdbc.update("INSERT INTO health_analysis_automation(user_id,patient_id,task_name,enabled,analysis_items,notification_channel_ids,next_run_at,last_analysis_record_id,last_run_status) VALUES(7,1,'Automatic report',1,'DIALYSIS','4,5',CURRENT_TIMESTAMP,555,'SUCCESS')");
+        FamilyBackupService service=backup();Map<String,Object> restored=service.restore(service.exportArchive());
+        Long patientId=((Number)((Collection<?>)restored.get("patientIds")).iterator().next()).longValue();
+        Map<String,Object> automation=jdbc.queryForMap("SELECT * FROM health_analysis_automation WHERE patient_id=?",patientId);
+        assertEquals(0,((Number)automation.get("enabled")).intValue());
+        assertNull(automation.get("next_run_at"));assertNull(automation.get("notification_channel_ids"));
+        assertNull(automation.get("last_analysis_record_id"));assertNull(automation.get("last_run_status"));
+    }
+
+    @Test void backupNeverReadsExternalFilesAndRestoresNoImportedPaths(@org.junit.jupiter.api.io.TempDir java.nio.file.Path temporary) throws Exception {
+        java.nio.file.Path secret=temporary.resolve("server-secret.txt");
+        java.nio.file.Files.write(secret,"private-server-config".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        jdbc.update("INSERT INTO medical_record(id,patient_name,patient_id,user_id,record_date) VALUES(9,'Test Patient',1,7,'2026-09-15')");
+        jdbc.update("INSERT INTO medical_record_attachment(id,record_id,file_name,file_path) VALUES(10,9,'report.pdf',?)",secret.toString());
+        FamilyBackupService service=backup();com.alibaba.fastjson2.JSONObject root=service.readArchive(service.exportArchive());
+        com.alibaba.fastjson2.JSONObject file=root.getJSONObject("tables").getJSONArray("medical_record_attachment").getJSONObject(0);
+        assertNull(file.get("file_content"));assertNull(file.get("file_path"));assertFalse(root.getJSONArray("warnings").isEmpty());
+        file.put("file_path",secret.toString());file.remove("file_content");
+        java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
+        try(java.util.zip.ZipOutputStream zip=new java.util.zip.ZipOutputStream(bytes)){zip.putNextEntry(new java.util.zip.ZipEntry("family-health.json"));zip.write(root.toJSONString().getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+        Map<String,Object> restored=service.restore(bytes.toByteArray());Long patientId=((Number)((Collection<?>)restored.get("patientIds")).iterator().next()).longValue();
+        Map<String,Object> attachment=jdbc.queryForMap("SELECT a.file_path,a.file_content FROM medical_record_attachment a JOIN medical_record r ON r.id=a.record_id WHERE r.patient_id=?",patientId);
+        assertNull(attachment.get("file_path"));assertNull(attachment.get("file_content"));
+    }
+
     @Test void restoreFailureRollsBackAllInsertedRows()throws Exception{
         FamilyBackupService service=backup();com.alibaba.fastjson2.JSONObject root=service.readArchive(service.exportArchive());
         root.getJSONObject("tables").getJSONArray("medication").getJSONObject(0).put("unknown_column","bad schema");
@@ -111,7 +148,19 @@ class CareDatabaseWorkflowTest {
         jdbc.update("INSERT INTO consultation(id,patient_id,mode,status,symptom,family_visibility,created_by) VALUES(20,1,'TEXT','OPEN','private symptom','PRIVATE',7)");
         jdbc.update("INSERT INTO care_member(patient_id,user_id,relation_name) VALUES(1,8,'Family')");
         MockHttpServletRequest family=new MockHttpServletRequest();family.setAttribute("userId",8L);family.setAttribute("roleCodes",Collections.singletonList("family"));RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(family));
-        assertThrows(IllegalStateException.class,()->service.consultation(20L));
+        ConsultationService consultations=new ConsultationService();
+        ReflectionTestUtils.setField(consultations,"jdbc",jdbc);ReflectionTestUtils.setField(consultations,"scope",scope);ReflectionTestUtils.setField(consultations,"journey",service);
+        assertThrows(IllegalStateException.class,()->consultations.detail(20L));
+    }
+    @Test void doctorOperationsOnlyAggregateAuthorizedPatients() {
+        CareJourneyService service=new CareJourneyService();
+        ReflectionTestUtils.setField(service,"jdbc",jdbc);ReflectionTestUtils.setField(service,"scope",scope);
+        jdbc.update("INSERT INTO health_measurement(patient_id,recorded_by,metric_type,value_primary,unit,measured_at) VALUES(1,7,'HEART_RATE',70,'bpm',CURRENT_TIMESTAMP),(2,8,'HEART_RATE',80,'bpm',CURRENT_TIMESTAMP)");
+        MockHttpServletRequest doctor=new MockHttpServletRequest();doctor.setAttribute("userId",9L);doctor.setAttribute("roleCodes",Collections.singletonList("doctor"));RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(doctor));
+        when(scope.accessiblePatientIds(9L)).thenReturn(Collections.singletonList(1L));
+        assertEquals(1L,((Number)((Map<?,?>)service.operations(null,null).get("measurements")).get("total")).longValue());
+        when(scope.accessiblePatientIds(9L)).thenReturn(Collections.emptyList());
+        assertEquals(0L,((Number)((Map<?,?>)service.operations(null,null).get("measurements")).get("total")).longValue());
     }
     FamilyBackupService backup(){FamilyBackupService service=new FamilyBackupService();ReflectionTestUtils.setField(service,"jdbc",jdbc);ReflectionTestUtils.setField(service,"scope",scope);ReflectionTestUtils.setField(service,"membership",members);return service;}
 }

@@ -145,6 +145,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         if (record.getPatientId() == null) {
             throw new IllegalStateException("Select a patient");
         }
+        dataScopeHelper.requirePatientAccess(record.getPatientId(), null, true);
         record.setUserId(userId);
         return aiAnalysisRecordMapper.insert(record) > 0;
     }

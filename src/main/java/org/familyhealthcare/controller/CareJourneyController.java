@@ -2,6 +2,7 @@ package org.familyhealthcare.controller;
 
 import org.familyhealthcare.common.Result;
 import org.familyhealthcare.service.CareJourneyService;
+import org.familyhealthcare.service.ConsultationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +17,7 @@ import java.util.Map;
 @RequestMapping("/care-journey")
 public class CareJourneyController {
     @Autowired private CareJourneyService service;
+    @Autowired private ConsultationService consultationService;
 
     @GetMapping("/measurements") public Result<List<Map<String,Object>>> measurements(@RequestParam Long patientId,@RequestParam(required=false)String metricType,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE_TIME)LocalDateTime from,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE_TIME)LocalDateTime to){return Result.ok(service.measurements(patientId,metricType,from,to));}
     @PostMapping("/measurements") public Result<Map<String,Object>> saveMeasurement(@RequestBody Map<String,Object> body){return Result.ok(service.saveMeasurement(body));}
@@ -29,21 +31,28 @@ public class CareJourneyController {
     @GetMapping("/clinicians") public Result<List<Map<String,Object>>> clinicians(){return Result.ok(service.clinicians());}
     @PostMapping("/doctor-schedules") public Result<Map<String,Object>> saveSchedule(@RequestBody Map<String,Object>body){return Result.ok(service.saveDoctorSchedule(body));}
     @GetMapping("/appointments") public Result<List<Map<String,Object>>> appointments(@RequestParam Long patientId){return Result.ok(service.appointments(patientId));}
+    @GetMapping("/appointment-inbox") public Result<List<Map<String,Object>>> appointmentInbox(){return Result.ok(service.appointmentInbox());}
     @PostMapping("/appointments") public Result<Map<String,Object>> saveAppointment(@RequestBody Map<String,Object>body){return Result.ok(service.saveAppointment(body));}
     @PostMapping("/appointments/{id}/cancel") public Result<String> cancelAppointment(@PathVariable Long id,@RequestBody(required=false)Map<String,String>body){service.cancelAppointment(id,body==null?null:body.get("reason"));return Result.ok("Appointment cancelled.");}
+    @PostMapping("/appointments/{id}/complete") public Result<Map<String,Object>> completeAppointment(@PathVariable Long id){return Result.ok(service.completeAppointment(id));}
 
     @GetMapping("/visits") public Result<List<Map<String,Object>>> visits(@RequestParam Long patientId){return Result.ok(service.visits(patientId));}
     @PostMapping("/visits") public Result<Map<String,Object>> saveVisit(@RequestBody Map<String,Object>body){return Result.ok(service.saveVisit(body));}
     @PostMapping("/visits/{id}/publish") public Result<Map<String,Object>> publishVisit(@PathVariable Long id){return Result.ok(service.publishVisit(id));}
     @PostMapping("/prescriptions") public Result<Map<String,Object>> savePrescription(@RequestBody Map<String,Object>body){return Result.ok(service.savePrescription(body));}
+    @GetMapping("/prescriptions") public Result<List<Map<String,Object>>> prescriptions(@RequestParam Long patientId){return Result.ok(service.prescriptions(patientId));}
 
-    @GetMapping("/consultations") public Result<List<Map<String,Object>>> consultations(@RequestParam Long patientId){return Result.ok(service.consultations(patientId));}
-    @PostMapping("/consultations") public Result<Map<String,Object>> startConsultation(@RequestBody Map<String,Object>body){return Result.ok(service.startConsultation(body));}
-    @GetMapping("/consultations/{id}") public Result<Map<String,Object>> consultation(@PathVariable Long id){return Result.ok(service.consultation(id));}
-    @PostMapping("/consultations/{id}/messages") public Result<Map<String,Object>> message(@PathVariable Long id,@RequestBody Map<String,Object>body){return Result.ok(service.addConsultationMessage(id,body));}
-    @GetMapping("/consultations/{id}/signals") public Result<List<Map<String,Object>>> signals(@PathVariable Long id,@RequestParam(defaultValue="0")Long afterId){return Result.ok(service.consultationSignals(id,afterId));}
-    @PostMapping("/consultations/{id}/signals") public Result<Map<String,Object>> signal(@PathVariable Long id,@RequestBody Map<String,Object>body){return Result.ok(service.sendConsultationSignal(id,body));}
-    @PostMapping("/consultations/{id}/close") public Result<Map<String,Object>> closeConsultation(@PathVariable Long id,@RequestBody(required=false)Map<String,Object>body){return Result.ok(service.closeConsultation(id,body==null?java.util.Collections.emptyMap():body));}
+    @GetMapping("/consultations/inbox") public Result<List<Map<String,Object>>> consultationInbox(@RequestParam(required=false) String status){return Result.ok(consultationService.inbox(status));}
+    @GetMapping("/consultation-invitees") public Result<List<Map<String,Object>>> consultationInvitees(@RequestParam Long patientId){return Result.ok(consultationService.invitees(patientId));}
+    @GetMapping("/consultations") public Result<List<Map<String,Object>>> consultations(@RequestParam Long patientId){return Result.ok(consultationService.list(patientId));}
+    @PostMapping("/consultations") public Result<Map<String,Object>> startConsultation(@RequestBody Map<String,Object>body){return Result.ok(consultationService.start(body));}
+    @GetMapping("/consultations/{id}") public Result<Map<String,Object>> consultation(@PathVariable Long id){return Result.ok(consultationService.detail(id));}
+    @PostMapping("/consultations/{id}/messages") public Result<Map<String,Object>> message(@PathVariable Long id,@RequestBody Map<String,Object>body){return Result.ok(consultationService.message(id,body));}
+    @GetMapping("/consultations/{id}/record-options") public Result<List<Map<String,Object>>> consultationRecordOptions(@PathVariable Long id){return Result.ok(consultationService.recordOptions(id));}
+    @GetMapping("/consultations/{id}/attachments/{attachmentId}") public Result<Map<String,Object>> consultationAttachment(@PathVariable Long id,@PathVariable Long attachmentId){return Result.ok(consultationService.attachment(id,attachmentId));}
+    @GetMapping("/consultations/{id}/signals") public Result<List<Map<String,Object>>> signals(@PathVariable Long id,@RequestParam(defaultValue="0")Long afterId){return Result.ok(consultationService.signals(id,afterId));}
+    @PostMapping("/consultations/{id}/signals") public Result<Map<String,Object>> signal(@PathVariable Long id,@RequestBody Map<String,Object>body){return Result.ok(consultationService.signal(id,body));}
+    @PostMapping("/consultations/{id}/close") public Result<Map<String,Object>> closeConsultation(@PathVariable Long id,@RequestBody(required=false)Map<String,Object>body){return Result.ok(consultationService.close(id,body==null?java.util.Collections.emptyMap():body));}
 
     @GetMapping("/treatment-plans") public Result<List<Map<String,Object>>> treatmentPlans(@RequestParam Long patientId){return Result.ok(service.treatmentPlans(patientId));}
     @PostMapping("/treatment-plans") public Result<Map<String,Object>> saveTreatmentPlan(@RequestBody Map<String,Object>body){return Result.ok(service.saveTreatmentPlan(body));}

@@ -33,13 +33,14 @@ request.interceptors.request.use(
 
 // responseshouldinterceptor
 request.interceptors.response.use(
-  (response) => {
-    // blobtyperequestdirectlyBackoriginaldata, not doJSONparse
-    if (response.config.responseType === 'blob') {
+  async (response) => {
+    const binary = response.config.responseType === 'blob';
+    const jsonBlob = binary && response.data instanceof Blob && /json/i.test(response.data.type || response.headers?.['content-type'] || '');
+    if (binary && !jsonBlob) {
       return response.data;
     }
 
-    const res = response.data;
+    const res = jsonBlob ? JSON.parse(await response.data.text()) : response.data;
 
     // ifBack Statuscodenot Yes200, instructionsAPIhas question
     if (res.code && res.code !== 200) {
@@ -51,13 +52,18 @@ request.interceptors.response.use(
         window.location.href = '/login';
       }
 
-      return Promise.reject(new Error(res.msg || 'Request failed'));
+      return Promise.reject(Object.assign(new Error(res.msg || 'Request failed'), { code: res.code }));
     }
 
+    if (binary) throw new Error('The export did not return a file. Please try again.');
     return res;
   },
-  (error) => {
+  async (error) => {
     console.error('responseshoulderror:', error);
+
+    if (error.response?.data instanceof Blob && /json/i.test(error.response.data.type || '')) {
+      try { error.response.data = JSON.parse(await error.response.data.text()); } catch {}
+    }
 
     if (error.response) {
       switch (error.response.status) {

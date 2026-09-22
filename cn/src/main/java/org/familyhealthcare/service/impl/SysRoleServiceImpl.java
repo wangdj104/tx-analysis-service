@@ -4,6 +4,7 @@ import org.familyhealthcare.entity.SysRole;
 import org.familyhealthcare.entity.SysRoleMenu;
 import org.familyhealthcare.mapper.SysRoleMapper;
 import org.familyhealthcare.mapper.SysRoleMenuMapper;
+import org.familyhealthcare.mapper.SysUserRoleMapper;
 import org.familyhealthcare.service.SysRoleService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,9 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
 
     @Autowired
     private SysRoleMenuMapper roleMenuMapper;
+
+    @Autowired
+    private SysUserRoleMapper userRoleMapper;
 
     @Override
     public List<SysRole> getRolesByUserId(Long userId) {
@@ -52,5 +56,13 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysRoleMenu>()
                         .eq(SysRoleMenu::getRoleId, roleId));
         return list.stream().map(SysRoleMenu::getMenuId).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean deleteRole(Long roleId) {
+        roleMenuMapper.deleteByRoleId(roleId);
+        userRoleMapper.deleteByRoleId(roleId);
+        return removeById(roleId);
     }
 }

@@ -17,6 +17,8 @@ import java.util.*;
 public class NotificationDeliveryService {
     @Autowired private NotificationChannelMapper mapper;
     @Autowired private RobotChannelConfigService robots;
+    @Autowired private UserLanguagePreferenceService languagePreference;
+    @Autowired private NotificationMessageLocalizer localizer;
     private final RestTemplate client;
 
     public NotificationDeliveryService() {
@@ -60,23 +62,42 @@ public class NotificationDeliveryService {
     }
 
     public boolean notifyUser(Long userId, String title, String content) {
-        return notifyUser(userId, Collections.emptyList(), title, content);
+        return notifyUser(userId, Collections.emptyList(), "GENERAL", title, content);
+    }
+
+    public boolean notifyUser(Long userId, String eventType, String title, String content) {
+        return notifyUser(userId, Collections.emptyList(), eventType, title, content);
     }
 
     /** When channelIds is empty, send to every enabled channel owned by the user. */
     public boolean notifyUser(Long userId, Collection<Long> channelIds, String title, String content) {
+        return notifyUser(userId, channelIds, "GENERAL", title, content);
+    }
+
+    public boolean notifyUser(Long userId, Collection<Long> channelIds, String eventType, String title, String content) {
         boolean success = true;
         QueryWrapper<NotificationChannel> query = new QueryWrapper<NotificationChannel>().eq("user_id", userId).eq("enabled", 1);
         if (channelIds != null && !channelIds.isEmpty()) query.in("id", channelIds);
         List<NotificationChannel> channels = mapper.selectList(query);
         if (channels.isEmpty()) return false;
+        NotificationMessageLocalizer.Message message = localized(userId, eventType, title, content);
         for (NotificationChannel channel : channels) {
-            try { send(channel, title, content); }
+            try { send(channel, message.getTitle(), message.getContent()); }
             catch (Exception e) {
                 success = false;
                 org.slf4j.LoggerFactory.getLogger(getClass()).warn("Notification delivery failed, channelId={}", channel.getId(), e);
             }
         }
         return success;
+    }
+
+    public void sendForUser(Long userId, NotificationChannel channel, String eventType, String title, String content) {
+        NotificationMessageLocalizer.Message message = localized(userId, eventType, title, content);
+        send(channel, message.getTitle(), message.getContent());
+    }
+
+    private NotificationMessageLocalizer.Message localized(Long userId, String eventType, String title, String content) {
+        if (languagePreference == null || localizer == null) return new NotificationMessageLocalizer.Message(title, content);
+        return localizer.localize(eventType, title, content, languagePreference.get(userId));
     }
 }

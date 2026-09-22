@@ -29,7 +29,9 @@ public class CareController {
 
     @GetMapping("/home") public Result<List<Map<String,Object>>> home(){
         List<Map<String,Object>>out=new ArrayList<>();
-        for(Long pid:membership.accessiblePatients(scope.requireUserId())){Patient p=patients.selectById(pid);Map<String,Object>r=new LinkedHashMap<>();r.put("patient",p);r.put("profile",care.profile(pid));List<CareItem> summary=new ArrayList<>();for(CareItem item:care.list(pid,null)){if(Arrays.asList("APPOINTMENT","HANDOVER").contains(item.getKind())){item.setDetails(Collections.emptyMap());summary.add(item);}}r.put("items",summary);r.put("intakes",todayIntakes(pid));r.put("members",membership.members(pid));out.add(r);}return Result.ok(out);
+        Long userId=scope.requireUserId();
+        List<Long> ids=CurrentUserUtil.isAdmin()?patients.selectList(new QueryWrapper<Patient>().eq("status",1)).stream().map(Patient::getId).collect(java.util.stream.Collectors.toList()):scope.accessiblePatientIds(userId);
+        for(Long pid:ids){Patient p=patients.selectById(pid);if(p==null||Integer.valueOf(0).equals(p.getStatus()))continue;Map<String,Object>r=new LinkedHashMap<>();r.put("patient",p);r.put("profile",care.profile(pid));List<CareItem> summary=new ArrayList<>();for(CareItem item:care.list(pid,null)){if(Arrays.asList("APPOINTMENT","HANDOVER").contains(item.getKind())){item.setDetails(Collections.emptyMap());summary.add(item);}}r.put("items",summary);r.put("intakes",todayIntakes(pid));r.put("members",membership.members(pid));out.add(r);}return Result.ok(out);
     }
     @GetMapping("/context") public Result<Map<String,Object>> context(@RequestParam Long patientId){
         scope.requirePatient(patientId);Map<String,Object>out=new LinkedHashMap<>();out.put("patient",patients.selectById(patientId));out.put("items",care.list(patientId,null));out.put("members",membership.members(patientId));

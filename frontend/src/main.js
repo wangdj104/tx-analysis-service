@@ -97,8 +97,13 @@ router.beforeEach((to, from, next) => {
   const medicationLegacyTabAllowed =
     ['/medication?tab=upload', '/medication?tab=category', '/medication?tab=remind'].includes(exactTarget) &&
     menuPaths.includes('/medication');
-  const basicCarePath = ['/care','/family-health','/medication','/bp-self-monitor','/medical-record','/settings/notifications','/care-journey'].includes(to.path);
-  const allowed = basicCarePath || isAdmin || medicationLegacyTabAllowed || menuPaths.length === 0 || menuPaths.includes(exactTarget) ||
+  const adminOnlyPath = to.path.startsWith('/system/') && to.path !== '/system/patient';
+  if (adminOnlyPath && !isAdmin) {
+    next('/monitoring');
+    return;
+  }
+  const basicCarePath = ['/care','/family-health','/medication','/bp-self-monitor','/medical-record','/settings/notifications','/care-journey','/monitoring'].includes(to.path);
+  const allowed = basicCarePath || isAdmin || medicationLegacyTabAllowed || menuPaths.includes(exactTarget) ||
     (!hasQuery && (menuPaths.includes(to.path) || menuPaths.some(path => path.startsWith(`${to.path}?`))));
 
   if (!allowed) {

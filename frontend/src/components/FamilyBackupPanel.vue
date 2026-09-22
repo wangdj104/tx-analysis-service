@@ -1,12 +1,13 @@
 <template>
   <section class="backup-panel">
-    <h2>Complete backup and restore</h2>
-    <p>Download a portable backup of family members, health records, prescriptions, inventory history, reports, care items, and their attachments.</p>
+    <h2>Family record backup and restore</h2>
+    <p>Export supported family profiles, dialysis and vital records, medications, inventory, medical reports and care items for patients whose full records you can access. Attachments are included only when their content is stored in the database.</p>
+    <el-alert title="This is not a full platform backup. Consultations and messages, care-journey records, doctor workspaces, access grants and system accounts are excluded. Maintain separate database and file backups for disaster recovery." type="warning" :closable="false" />
     <div class="backup-actions">
-      <el-button type="primary" :loading="busy" @click="download">Download complete backup</el-button>
+      <el-button type="primary" :loading="busy" @click="download">Download family records</el-button>
       <label class="file-label">Choose backup file <input type="file" accept=".zip" :disabled="busy" @change="preview" /></label>
     </div>
-    <el-alert title="Restore creates independent copies and does not overwrite current data. Medication reminders are initially disabled to avoid duplicates, and caregivers must be invited again." type="info" :closable="false" />
+    <el-alert title="Restore creates independent copies without overwriting current data. Medication reminders and automated analysis are disabled; notification channels and caregiver invitations must be configured again." type="info" :closable="false" />
     <section v-if="inspection" class="backup-preview">
       <h3>Backup preview</h3>
       <p>Created: {{ inspection.createdAt }}</p>

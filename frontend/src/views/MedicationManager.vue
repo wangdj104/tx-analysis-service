@@ -396,6 +396,7 @@
 </template>
 
 <script setup>
+import { localDateTimeKey } from '@/utils/familyHealth';
 import medicationCareSmall from '@/assets/illustrations/medication-care-small.webp';
 import medicationCare from '@/assets/illustrations/medication-care.webp';
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
@@ -852,7 +853,7 @@ function showLogDialog(log = null) {
     });
     editingLog.id = null;
     editingLog.patientId = currentPatientId.value;
-    editingLog.administrationTime = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-');
+    editingLog.administrationTime = localDateTimeKey();
   }
   logDialogVisible.value = true;
 }

@@ -48,8 +48,16 @@ public class MedicationStockService {
             for(Object obj:(List<?>)d.getOrDefault("doses",Collections.emptyList())){Map<?,?>dose=(Map<?,?>)obj;
                 if(intake.getScheduledAt().toLocalTime().equals(LocalTime.parse(dose.get("time").toString())))return new BigDecimal(dose.get("quantity").toString());
             }
-        }return null;
+        }
+        // A normal medication reminder may not have a versioned care ORDER.
+        // Deduct its numeric dose only when its explicit unit matches inventory.
+        List<String> stockUnits=jdbc.queryForList("SELECT unit FROM medication_stock WHERE patient_id=? AND medication_id=?",String.class,intake.getPatientId(),intake.getMedicationId());
+        if(stockUnits.isEmpty()||intake.getDosage()==null)return null;
+        java.util.regex.Matcher dose=java.util.regex.Pattern.compile("^\\s*(\\d+(?:\\.\\d+)?)\\s*([^\\d\\s]+)\\s*$").matcher(intake.getDosage());
+        if(!dose.matches()||!stockUnit(dose.group(2)).equals(stockUnit(stockUnits.get(0))))return null;
+        BigDecimal quantity=new BigDecimal(dose.group(1));return quantity.signum()>0?quantity:null;
     }
+    private String stockUnit(String unit){String normalized=unit==null?"":unit.trim().toLowerCase(Locale.ROOT);if(Arrays.asList("tablet","tablets","tab","tabs","片").contains(normalized))return "tablet";if(Arrays.asList("capsule","capsules","粒").contains(normalized))return "capsule";return normalized;}
     @Transactional public void configure(Long pid,Long mid,BigDecimal quantity,String unit,int warningDays,BigDecimal warningQuantity) {
         scope.requirePatient(pid);Medication m=medications.selectById(mid);
         if(m==null||!Objects.equals(pid,m.getPatientId()))throw new IllegalArgumentException("SelectcurrentFamily Member Medication");

@@ -23,7 +23,10 @@ public class MenuController {
 
     @GetMapping("/list")
     @ApiOperation("queryhas Menu")
-    public Result<List<SysMenu>> list() {
+    public Result<List<SysMenu>> list(HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(403, "Only administrators can view menu configuration");
+        }
         return Result.ok(menuService.getAllMenus());
     }
 

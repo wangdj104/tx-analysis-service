@@ -84,6 +84,8 @@ public class HealthAnalysisAutomationService {
 
     private AiAnalysisRecord execute(HealthAnalysisAutomation row, boolean scheduled) {
         try {
+            // Recheck explicit write intent on every run, including jobs without an HTTP request.
+            scope.requirePatientAccess(row.getPatientId(), null, true);
             List<String> items = split(row.getAnalysisItems());
             String content = aiAnalysis.analyzeHealthSnapshot(row.getPatientId(), row.getAnalysisRangeDays(), items);
             AiAnalysisRecord record = new AiAnalysisRecord();
@@ -95,7 +97,7 @@ public class HealthAnalysisAutomationService {
             Patient patient = scope.requirePatient(row.getPatientId());
             String title = "Health analysis draft ready · " + (patient == null ? row.getTaskName() : patient.getName());
             String message = "An automated analysis draft is ready for review. No clinical recommendation has been sent; open the Clinical Workbench to approve or reject it.";
-            boolean notified = delivery.notifyUser(row.getUserId(), parseIds(row.getNotificationChannelIds()), title, message);
+            boolean notified = delivery.notifyUser(row.getUserId(), parseIds(row.getNotificationChannelIds()), "HEALTH_ANALYSIS_DRAFT", title, message);
             row.setLastRunAt(LocalDateTime.now()); row.setLastAnalysisRecordId(record.getId());
             row.setLastRunStatus(notified ? "DRAFT_READY" : "DRAFT_READY_NOTIFY_FAILED");
             row.setLastError(notified ? null : "The draft was saved, but no enabled notification channel accepted the message.");
@@ -125,9 +127,9 @@ public class HealthAnalysisAutomationService {
         if (approved && notify) {
             Patient patient = scope.requirePatient(record.getPatientId());
             String title = "Reviewed health analysis · " + (patient == null ? "Family member" : patient.getName());
-            String content = record.getAnalysisContent() == null ? "已审核的分析结果可在澄心健康中查看。"
+            String content = record.getAnalysisContent() == null ? "The reviewed analysis is available in Chengxin Health."
                     : record.getAnalysisContent().substring(0, Math.min(record.getAnalysisContent().length(), 3500));
-            delivery.notifyUser(userId, title, content);
+            delivery.notifyUser(userId, "HEALTH_ANALYSIS_REVIEWED", title, content);
         }
         return record;
     }

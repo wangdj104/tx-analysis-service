@@ -236,6 +236,9 @@ const isMobile = ref(false);
 const { currentPatientId } = useCurrentPatient();
 
 watch(currentPatientId, () => {
+  dryWeightDialogVisible.value = false;
+  Object.assign(dryWeightForm, { id: null, yearMonth: '', dryWeight: null });
+  dryWeightList.value = [];
   loadDryWeights();
 });
 
@@ -350,19 +353,22 @@ function checkMobile() {
   isMobile.value = window.innerWidth <= 768;
 }
 
+let loadVersion = 0;
 async function loadDryWeights() {
+  const version = ++loadVersion;
+  const patientId = currentPatientId.value;
   dryWeightLoading.value = true;
   try {
     if (!currentPatientId.value) {
       dryWeightList.value = [];
       return;
     }
-    const res = await listDryWeights(currentPatientId.value);
-    if (res.code === 200) {
+    const res = await listDryWeights(patientId);
+    if (res.code === 200 && patientId === currentPatientId.value && version === loadVersion) {
       dryWeightList.value = res.data || [];
     }
   } finally {
-    dryWeightLoading.value = false;
+    if (version === loadVersion) dryWeightLoading.value = false;
   }
 }
 

@@ -194,7 +194,7 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
                 boolean notify = snoozed || reminder.getLastTriggerAt() == null || reminder.getLastTriggerAt().isBefore(intake.getScheduledAt());
                 if (notify) {
                     Medication med = medicationMapper.selectById(intake.getMedicationId());
-                    if (!delivery.notifyUser(intake.getUserId(), "Medication Reminders", med.getDrugName() + " · "
+                    if (!delivery.notifyUser(intake.getUserId(), "MEDICATION_REMINDER", "Medication Reminders", med.getDrugName() + " · "
                             + intake.getScheduledAt() + " · " + (intake.getDosage() == null ? "As prescribed" : intake.getDosage()))) {
                         if (!snoozed && due.isBefore(now.minusMinutes(60))) {
                             intake.setStatus("MISSED"); updateTaskStatus(intake, previousStatus);

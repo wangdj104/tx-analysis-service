@@ -9,6 +9,11 @@ server {
     # Phone photos often exceed 5 MB; Nginx's 1 MB default would return 413 for report uploads.
     client_max_body_size 100m;
 
+    location = /cn { return 302 /cn/; }
+    location ^~ /cn/demo/ { try_files $uri $uri/ /cn/demo/index.html; }
+    location ^~ /demo/ { try_files $uri $uri/ /demo/index.html; }
+    location ^~ /cn/ { try_files $uri $uri/ /cn/index.html; }
+
     location / {
         try_files $uri $uri/ /index.html;
     }

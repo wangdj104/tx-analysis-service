@@ -132,8 +132,11 @@ const router = useRouter()
 const { currentPatientId: patientId, currentPatientName } = useCurrentPatient()
 const loading = ref(false), activeTab = ref('attention'), overview = ref({}), dialysisDays = ref(90)
 const schedulePreview = ref([]), importMode = ref('FHIR'), importText = ref(''), importPreview = ref(null), lastImportBody = ref(null)
+const submitting = ref(false)
+let loadEpoch = 0, importEpoch = 0, scheduleEpoch = 0
+let scheduleSnapshot = ''
 const weekdayOptions = [{value:1,label:'周一'},{value:2,label:'周二'},{value:3,label:'周三'},{value:4,label:'周四'},{value:5,label:'周五'},{value:6,label:'周六'},{value:7,label:'周日'}]
-const futureDate = days => { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0,10) }
+const futureDate = days => { const date = new Date(); date.setDate(date.getDate() + days); return [date.getFullYear(), String(date.getMonth()+1).padStart(2,'0'), String(date.getDate()).padStart(2,'0')].join('-') }
 const schedule = reactive({ weekdays: [], time: '', from: futureDate(0), to: futureDate(60) })
 const fhirSample = { resourceType:'Bundle', type:'collection', entry:[{ resource:{ resourceType:'Observation', id:'bp-example-1', status:'final', code:{coding:[{system:'http://loinc.org',code:'85354-9',display:'血压组合'}]}, effectiveDateTime:new Date().toISOString(), component:[{code:{coding:[{code:'8480-6'}]},valueQuantity:{value:128,unit:'mmHg'}},{code:{coding:[{code:'8462-4'}]},valueQuantity:{value:78,unit:'mmHg'}}] } }] }
 const deviceSample = [{ sourceExternalId:'home-device-example-1', observedAt:new Date().toISOString(), systolic:128, diastolic:78, glucose:5.6, unit:'mmol/L' }]
@@ -146,10 +149,12 @@ const emergencyContact = computed(() => {
 })
 
 async function load(){
-  if(!patientId.value){ overview.value={}; return }
+  const epoch=++loadEpoch, selectedPatient=patientId.value
+  if(!selectedPatient){ overview.value={}; loading.value=false; return }
   loading.value=true
-  try { const [res,dialysis]=await Promise.all([getClinicalWorkbenchOverview(patientId.value),getDialysisQuality(patientId.value,dialysisDays.value)]); overview.value=res.data||{}; overview.value.dialysisQuality=dialysis.data||{}; hydrateSchedule() }
-  finally { loading.value=false }
+  try { const [res,dialysis]=await Promise.all([getClinicalWorkbenchOverview(selectedPatient),getDialysisQuality(selectedPatient,dialysisDays.value)]); if(epoch!==loadEpoch || selectedPatient!==patientId.value)return; overview.value=res.data||{}; overview.value.dialysisQuality=dialysis.data||{}; hydrateSchedule() }
+  catch { if(epoch===loadEpoch)overview.value={} }
+  finally { if(epoch===loadEpoch)loading.value=false }
 }
 function hydrateSchedule(){
   const quality=overview.value.dialysisQuality||{}
@@ -176,23 +181,51 @@ async function reviewDraft(item,approved,notify){
   await reviewAnalysisDraft(item.sourceId,approved,notify); ElMessage.success(approved?'草稿已批准。':'草稿已驳回。'); await load()
 }
 function scheduleBody(confirmed=false){ return {patientId:patientId.value,weekdays:schedule.weekdays.join(','),time:schedule.time||null,from:schedule.from,to:schedule.to,confirmed} }
-async function previewSchedule(){ const res=await generateDialysisSchedule(scheduleBody(false)); schedulePreview.value=res.data?.preview||[]; if(!schedulePreview.value.length)ElMessage.warning('没有符合当前计划的日期。') }
+async function previewSchedule(){
+  if(!patientId.value || submitting.value)return
+  const body=scheduleBody(false), snapshot=JSON.stringify(body), epoch=++scheduleEpoch
+  schedulePreview.value=[]; scheduleSnapshot=''
+  const res=await generateDialysisSchedule(body)
+  if(epoch!==scheduleEpoch || snapshot!==JSON.stringify(scheduleBody(false)))return
+  schedulePreview.value=res.data?.preview||[]; scheduleSnapshot=snapshot
+  if(!schedulePreview.value.length)ElMessage.warning('没有符合当前计划的日期。')
+}
 async function confirmSchedule(){
+  if(submitting.value || !schedulePreview.value.length || scheduleSnapshot!==JSON.stringify(scheduleBody(false)))return
+  const snapshot=scheduleSnapshot, body={...scheduleBody(false),confirmed:true}
+  submitting.value=true
+  try {
   await ElMessageBox.confirm(`确认创建 ${schedulePreview.value.length} 个排班日期吗？已有日期将被跳过。`, '确认透析计划', {type:'warning'})
-  const res=await generateDialysisSchedule(scheduleBody(true)); ElMessage.success(`已创建 ${res.data?.created||0} 条，跳过 ${res.data?.skipped||0} 条。`); schedulePreview.value=[]; await load()
+  if(snapshot!==scheduleSnapshot || snapshot!==JSON.stringify(scheduleBody(false)))return
+const res=await generateDialysisSchedule(body); ElMessage.success(`已创建 ${res.data?.created||0} 条，跳过 ${res.data?.skipped||0} 条。`); if(snapshot===scheduleSnapshot){schedulePreview.value=[]; scheduleSnapshot=''; await load()}
+  } catch(error) { if(error!=='cancel' && error!=='close')console.error(error) }
+  finally { submitting.value=false }
 }
 function printCard(){ window.print() }
 function loadImportSample(){ importPreview.value=null; lastImportBody.value=null; importText.value=JSON.stringify(importMode.value==='FHIR'?fhirSample:deviceSample,null,2) }
 function importBody(){ const value=JSON.parse(importText.value); return importMode.value==='FHIR'?{patientId:patientId.value,bundle:value}:{patientId:patientId.value,readings:Array.isArray(value)?value:value.readings} }
-async function previewImport(){ try{ const body=importBody(); const res=await previewClinicalImport(body); importPreview.value=res.data; lastImportBody.value=body; if(!res.data?.itemCount)ElMessage.warning('未找到支持导入的数据项。') }catch(error){ if(error instanceof SyntaxError)ElMessage.error('JSON 数据格式无效。'); else throw error } }
+async function previewImport(){
+  if(!patientId.value || submitting.value)return
+  const epoch=++importEpoch, selectedPatient=patientId.value
+  importPreview.value=null; lastImportBody.value=null
+  try{ const body=importBody(); const res=await previewClinicalImport(body); if(epoch!==importEpoch || selectedPatient!==patientId.value)return; importPreview.value=res.data; lastImportBody.value=body; if(!res.data?.itemCount)ElMessage.warning('未找到支持导入的数据项。') }catch(error){ if(error instanceof SyntaxError)ElMessage.error('JSON 数据格式无效。'); else console.error(error) }
+}
 async function commitImport(){
-  if(!lastImportBody.value)return
+  if(submitting.value || !lastImportBody.value || !importPreview.value?.itemCount)return
+  const body=lastImportBody.value, epoch=importEpoch
+  submitting.value=true
+  try {
   await ElMessageBox.confirm(`确认导入 ${importPreview.value.itemCount} 项数据，并将其标记为待审核吗？`, '确认临床数据导入', {type:'warning'})
-  const res=await commitClinicalImport(lastImportBody.value); ElMessage.success(`已创建 ${res.data?.created||0} 条，跳过 ${res.data?.skipped||0} 条，失败 ${res.data?.errors||0} 条。`); importPreview.value=null; lastImportBody.value=null; await load()
+  if(epoch!==importEpoch || body!==lastImportBody.value || body.patientId!==patientId.value)return
+const res=await commitClinicalImport(body); ElMessage.success(`已创建 ${res.data?.created||0} 条，跳过 ${res.data?.skipped||0} 条，失败 ${res.data?.errors||0} 条。`); if(epoch===importEpoch){importPreview.value=null; lastImportBody.value=null; await load()}
+  } catch(error) { if(error!=='cancel' && error!=='close')console.error(error) }
+  finally { submitting.value=false }
 }
 function importValue(row){ if(row.measureType==='BP'||row.measureType==='BOTH')return `${row.systolic}/${row.diastolic} mmHg${row.glucose!=null?` · ${row.glucose} ${row.unit}`:''}`; if(row.measureType==='BG')return `${row.glucose} ${row.unit}`; return `${row.value??'—'} ${row.unit||''}` }
 
-watch(patientId,()=>{ schedulePreview.value=[]; importPreview.value=null; schedule.weekdays=[]; schedule.time=''; load() })
+watch([patientId, importText, importMode],()=>{ ++importEpoch; importPreview.value=null; lastImportBody.value=null },{flush:'sync'})
+watch(()=>JSON.stringify(scheduleBody()),()=>{ ++scheduleEpoch; schedulePreview.value=[]; scheduleSnapshot='' },{flush:'sync'})
+watch(patientId,()=>{ overview.value={}; schedulePreview.value=[]; importPreview.value=null; lastImportBody.value=null; schedule.weekdays=[]; schedule.time=''; load() },{flush:'sync'})
 onMounted(()=>{ loadImportSample(); load() })
 </script>
 

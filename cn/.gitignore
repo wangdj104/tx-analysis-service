@@ -40,6 +40,8 @@ frontend/.env.*.local
 config/database-profiles.local.yaml
 
 .env
+!.env.example
+!.env.production.example
 
 .env.dev
 

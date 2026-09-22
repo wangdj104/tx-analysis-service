@@ -13,6 +13,9 @@ import java.util.*;
 public class PermissionInterceptor implements HandlerInterceptor {
     @Autowired private SysMenuMapper menuMapper;
     private static final LinkedHashMap<String,String> RULES = new LinkedHashMap<>();
+    private static final Set<String> ADMIN_ONLY = new LinkedHashSet<>(Arrays.asList(
+            "/api/menu", "/api/role", "/api/user", "/api/audit-log", "/api/platform-branding"
+    ));
     static {
         RULES.put("/api/menu", "menu:manage"); RULES.put("/api/role", "role:manage"); RULES.put("/api/user", "user:manage");
         RULES.put("/api/patient", "patient:manage"); RULES.put("/api/patient-clinical", "patient:manage");
@@ -33,10 +36,12 @@ public class PermissionInterceptor implements HandlerInterceptor {
         if("OPTIONS".equalsIgnoreCase(request.getMethod()) || request.getRequestURI().equals("/api/platform-branding/public"))return true;
         Object roles=request.getAttribute("roleCodes");
         if(roles instanceof List && ((List<?>)roles).contains("admin"))return true;
+        String path=request.getRequestURI();
+        if(request.getAttribute("userId")!=null && path.equals("/api/user/changePassword"))return true;
+        for(String prefix:ADMIN_ONLY)if(path.startsWith(prefix))return deny(response);
         // Daily family-care pages are available to every signed-in account; each record still checks the selected patient's membership.
         if(request.getAttribute("userId")!=null){
-            String path=request.getRequestURI();
-            if(path.equals("/api/patient/names") || path.equals("/api/user/changePassword") || path.startsWith("/api/family-health") || path.startsWith("/api/medication")
+            if(path.equals("/api/patient/names") || path.startsWith("/api/family-health") || path.startsWith("/api/medication")
                 || path.startsWith("/api/bp-self-monitor") || path.startsWith("/api/medical-record") || path.startsWith("/api/notification-channel"))return true;
         }
         String required=null;
@@ -51,5 +56,5 @@ public class PermissionInterceptor implements HandlerInterceptor {
         if (required.equals(granted)) return true;
         return "monitoring:view".equals(required) && "health-monitoring:view".equals(granted);
     }
-    private boolean deny(HttpServletResponse response)throws Exception{response.setStatus(403);response.setContentType("application/json;charset=UTF-8");response.getWriter().write("{\"code\":403,\"msg\":\"Access deniedthis feature\",\"data\":null}");return false;}
+    private boolean deny(HttpServletResponse response)throws Exception{response.setStatus(403);response.setContentType("application/json;charset=UTF-8");response.getWriter().write("{\"code\":403,\"msg\":\"Access denied\",\"data\":null}");return false;}
 }

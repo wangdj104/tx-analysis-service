@@ -307,6 +307,7 @@ CREATE TABLE IF NOT EXISTS `patient_clinical` (
   `vascular_access` VARCHAR(64) DEFAULT NULL COMMENT 'vascular access',
   `primary_diagnosis` VARCHAR(255) DEFAULT NULL COMMENT 'originalonset/primary diagnosis',
   `allergy_drugs` TEXT COMMENT 'Medicationallergy history(JSON or text)',
+  `blood_type` VARCHAR(10) DEFAULT NULL COMMENT 'Patient-reported blood group',
   `target_dry_weight` DECIMAL(6,2) DEFAULT NULL COMMENT 'currenttargetDry Weight kg',
   `fluid_limit_ml` INT DEFAULT NULL COMMENT 'Dayfluidintakeup limit ml',
   `dialysis_weekdays` VARCHAR(32) DEFAULT NULL COMMENT 'confirmed weekday plan, ISO 1-7 comma separated',
@@ -675,6 +676,8 @@ CREATE TABLE IF NOT EXISTS `care_member` (
   `patient_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
   `relation_name` VARCHAR(60) DEFAULT NULL,
+  `access_level` VARCHAR(20) NOT NULL DEFAULT 'WRITE',
+  `visible_modules` VARCHAR(1000) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_care_member` (`patient_id`,`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Family Carecompletemember';

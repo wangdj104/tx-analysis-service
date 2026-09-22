@@ -35,7 +35,7 @@ class MedicationReminderWorkflowTest {
         when(reminders.selectById(1L)).thenReturn(reminder);
         when(medications.selectById(3L)).thenReturn(medication);
         when(intakes.selectList(any())).thenReturn(Collections.emptyList());
-        when(delivery.notifyUser(any(), anyString(), anyString())).thenReturn(true);
+        when(delivery.notifyUser(any(), anyString(), anyString(), anyString())).thenReturn(true);
     }
 
     @Test void generatesWholeDayAndDoesNotDuplicate() {
@@ -74,9 +74,9 @@ class MedicationReminderWorkflowTest {
         when(intakes.selectOne(any())).thenReturn(task);
         service.checkAndTriggerReminders();
         assertEquals("MISSED", task.getStatus());
-        verify(delivery).notifyUser(eq(7L), eq("用药提醒"), contains("testMedication"));
+        verify(delivery).notifyUser(eq(7L), eq("MEDICATION_REMINDER"), eq("Medication Reminders"), contains("testMedication"));
         service.checkAndTriggerReminders();
-        verify(delivery, times(1)).notifyUser(any(), anyString(), anyString());
+        verify(delivery, times(1)).notifyUser(any(), anyString(), anyString(), anyString());
     }
 
     @Test void snoozeWaitsAndThenResumesWithoutImmediateMissedStatus() {
@@ -88,7 +88,7 @@ class MedicationReminderWorkflowTest {
         task.setSnoozeUntil(LocalDateTime.now().minusMinutes(1));
         service.checkAndTriggerReminders(); assertEquals("PENDING", task.getStatus());
         service.checkAndTriggerReminders(); assertEquals("PENDING", task.getStatus());
-        verify(delivery, times(1)).notifyUser(any(), anyString(), anyString());
+        verify(delivery, times(1)).notifyUser(any(), anyString(), anyString(), anyString());
     }
 
     @Test void notificationFailureDoesNotHideMissedDose() {
@@ -96,7 +96,7 @@ class MedicationReminderWorkflowTest {
         reminder.setRemindTime(due.toLocalTime().toString());
         MedicationIntake task = task("PENDING", due);
         when(intakes.selectList(any())).thenReturn(Collections.singletonList(task)); when(intakes.selectOne(any())).thenReturn(task);
-        when(delivery.notifyUser(any(), anyString(), anyString())).thenReturn(false);
+        when(delivery.notifyUser(any(), anyString(), anyString(), anyString())).thenReturn(false);
         service.checkAndTriggerReminders(); assertEquals("MISSED", task.getStatus()); assertNull(reminder.getLastTriggerAt());
     }
 

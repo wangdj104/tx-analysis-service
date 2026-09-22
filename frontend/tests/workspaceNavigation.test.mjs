@@ -63,7 +63,7 @@ test('unknown and explicitly empty permissions expose only the safe workspace', 
   assert.deepEqual(allPaths(getFallbackWorkspaceMenus()), ['/monitoring']);
 });
 
-test('backend groups, custom labels and icons take priority over defaults', () => {
+test('backend groups and icons are preserved while canonical feature labels stay consistent', () => {
   const customIcon = { name: 'custom-icon' };
   const input = [{ label: 'I health', icon: customIcon, children: [
     { path: '/medical-record', label: 'I Report', icon: 'Document', custom: true, children: [
@@ -74,16 +74,16 @@ test('backend groups, custom labels and icons take priority over defaults', () =
 
   assert.equal(result[0].label, 'I health');
   assert.equal(result[0].icon, customIcon);
-  assert.equal(result[0].children[0].label, 'I Report');
+  assert.equal(result[0].children[0].label, 'Medical Records');
   assert.equal(result[0].children[0].custom, true);
   assert.deepEqual(result[0].children[0].children[0], {
-    path: '/medical-record?tab=upload', entryPath: '/medical-record?tab=upload', label: 'Scan Report', icon: 'Camera', iconTheme: 'custom', children: []
+    path: '/medical-record?tab=upload', entryPath: '/medical-record?tab=upload', label: 'Upload Report', icon: 'Camera', iconTheme: 'custom', children: []
   });
   assert.equal(input[0].children[0].children.length, 1);
   assert.notEqual(result[0].children, input[0].children);
 });
 
-test('duplicate paths are merged while the first backend label is preserved', () => {
+test('duplicate paths are merged while canonical feature labels remain consistent', () => {
   const result = normalizeWorkspaceMenus([
     { path: '/medication', label: 'I Medication', children: [
       { path: '/medication?tab=logs', label: 'I medication intakehistory', icon: 'Notebook' }
@@ -96,9 +96,9 @@ test('duplicate paths are merged while the first backend label is preserved', ()
   const paths = allPaths(result);
 
   assert.equal(result.length, 1);
-  assert.equal(result[0].label, 'I Medication');
-  assert.equal(result[0].children[0].label, 'I medication intakehistory');
-  assert.equal(result[0].children[1].label, 'Scan medicationbox');
+  assert.equal(result[0].label, 'Medication Management');
+  assert.equal(result[0].children[0].label, 'Medication Log');
+  assert.equal(result[0].children[1].label, 'Upload and Recognize');
   assert.equal(paths.length, new Set(paths).size);
   assert.equal(result[0].children.length, 5);
 });
@@ -112,7 +112,7 @@ test('existing backend tabs remain in their original group instead of being dupl
   ], { roleCodes: ['admin'] });
 
   assert.equal(result[0].children.some(item => item.path === '/health-analysis?tab=health-report'), false);
-  assert.equal(result[1].children[0].label, 'I Health Report');
+  assert.equal(result[1].children[0].label, 'Health Report');
   assert.equal(allPaths(result).filter(path => path === '/health-analysis?tab=health-report').length, 1);
 });
 
