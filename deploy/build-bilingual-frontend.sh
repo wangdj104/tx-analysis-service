@@ -17,6 +17,11 @@ cp -a "$chinese_frontend/dist/." "$english_output/cn/"
 cp -a "$repository_root/demo/." "$english_output/demo/"
 cp -a "$repository_root/cn/demo/." "$english_output/cn/demo/"
 
+# Nginx normally runs as an unprivileged user. Keep generated files readable
+# even when the deployment account uses a restrictive umask.
+find "$english_output" -type d -exec chmod 755 {} +
+find "$english_output" -type f -exec chmod 644 {} +
+
 test -f "$english_output/index.html"
 test -f "$english_output/cn/index.html"
 test -f "$english_output/demo/index.html"
