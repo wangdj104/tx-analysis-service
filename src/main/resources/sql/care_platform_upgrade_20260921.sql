@@ -379,6 +379,30 @@ PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dialysis_record' AND column_name='access_issue'),'SELECT 1','ALTER TABLE dialysis_record ADD COLUMN access_issue VARCHAR(255) DEFAULT NULL AFTER urr'));
 PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='patient_clinical' AND column_name='dialysis_weekdays'),'SELECT 1','ALTER TABLE patient_clinical ADD COLUMN dialysis_weekdays VARCHAR(32) DEFAULT NULL AFTER fluid_limit_ml'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='patient_clinical' AND column_name='dialysis_time'),'SELECT 1','ALTER TABLE patient_clinical ADD COLUMN dialysis_time VARCHAR(5) DEFAULT NULL AFTER dialysis_weekdays'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='source_type'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN source_type VARCHAR(30) DEFAULT NULL AFTER triggered_at'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='source_id'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN source_id BIGINT DEFAULT NULL AFTER source_type'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='dedupe_key'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN dedupe_key VARCHAR(160) DEFAULT NULL AFTER source_id'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='occurrence_count'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN occurrence_count INT NOT NULL DEFAULT 1 AFTER dedupe_key'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='last_triggered_at'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN last_triggered_at DATETIME DEFAULT NULL AFTER occurrence_count'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='acknowledged_by'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN acknowledged_by BIGINT DEFAULT NULL AFTER status'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='acknowledged_at'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN acknowledged_at DATETIME DEFAULT NULL AFTER acknowledged_by'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='resolved_by'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN resolved_by BIGINT DEFAULT NULL AFTER acknowledged_at'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='resolved_at'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN resolved_at DATETIME DEFAULT NULL AFTER resolved_by'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
 VALUES (40,0,'Care Journey','care-journey','/care-journey','FirstAidKit','care:journey:view',1,2,1)
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);

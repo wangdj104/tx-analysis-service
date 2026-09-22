@@ -89,12 +89,59 @@ const ENGLISH_MENU_LABELS = {
   '/system/branding': 'Platform Branding'
 };
 
-export function getEnglishMenuLabel(path, fallback = '') {
-  const normalizedPath = String(path || '').split('?')[0];
+const ENGLISH_MENU_CODE_LABELS = {
+  workspace: 'Health Overview',
+  'patient-center': 'Patient Center',
+  dialysis: 'Dialysis Management',
+  'doctor-workspace': 'Care Journey',
+  'clinical-record': 'Medical Records',
+  medication: 'Medication Management',
+  'health-monitoring': 'Health Monitoring',
+  'analysis-report': 'Analytics & Reports',
+  system: 'System Administration',
+  'legacy-dashboard': 'Legacy Dashboard',
+  'dialysis-record': 'Dialysis Records',
+  'dialysis-trend': 'Trend Analysis',
+  'dialysis-dry-weight': 'Dry Weight',
+  'dialysis-ai': 'AI Analysis',
+  'dialysis-schedule': 'Dialysis Schedule',
+  'clinical-record-list': 'Record List',
+  'clinical-record-upload': 'Upload Report',
+  'clinical-abnormal': 'Abnormal Results',
+  'clinical-trend': 'Result Trends',
+  'medication-catalog': 'Medication List',
+  'medication-log': 'Medication Log',
+  'medication-reminder': 'Medication Reminders',
+  'system-user': 'User Management',
+  'system-role': 'Role Management',
+  'system-menu': 'Menu Management',
+  'system-audit': 'Audit Log',
+  'platform-branding': 'Platform Branding',
+  'health-vitals': 'Blood Pressure & Glucose',
+  'health-complication': 'Complication Tracking',
+  'health-alert': 'Health Alerts',
+  'health-nutrition': 'Nutrition Diary',
+  'health-nutrition-assessment': 'Nutrition Assessment',
+  'analysis-bp-pattern': 'Blood Pressure Pattern Analysis',
+  'analysis-health-report': 'Health Report',
+  'analysis-data-export': 'Data Export',
+  'clinical-share': 'Clinical Data Sharing',
+  'patient-profile': 'Patient Management',
+  'patient-care': 'Care Plan',
+  'notification-settings': 'Notification Settings'
+};
+
+export function getEnglishMenuLabel(path, fallback = '', code = '') {
+  const rawPath = String(path || '');
+  const normalizedPath = rawPath.split('?')[0];
   const exactDefinition = Object.values(MODULE_MENUS)
     .flatMap(item => [item, ...(item.children || [])])
-    .find(item => item.path === path);
-  return exactDefinition?.label || ENGLISH_MENU_LABELS[path] || ENGLISH_MENU_LABELS[normalizedPath] || fallback;
+    .find(item => item.path === rawPath);
+  return exactDefinition?.label
+    || ENGLISH_MENU_LABELS[rawPath]
+    || ENGLISH_MENU_CODE_LABELS[String(code || '').toLowerCase()]
+    || (!rawPath.includes('?') ? ENGLISH_MENU_LABELS[normalizedPath] : '')
+    || fallback;
 }
 
 /** keepafter endgroup and displayinformation, supplementcompletegetauthorize moduleentry, andRemovecannot access link.  */
@@ -113,7 +160,7 @@ export function normalizeWorkspaceMenus(items, { menuPaths = [], roleCodes = [] 
         continue;
       }
 
-      const node = { ...item, path, label: getEnglishMenuLabel(path, item.label), children: [] };
+      const node = { ...item, path, label: getEnglishMenuLabel(path, item.label, item.menuCode), children: [] };
       if (path) nodesByPath.set(path, node);
       node.children.push(...copyItems(item.children));
       result.push(node);

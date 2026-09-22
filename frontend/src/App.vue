@@ -331,7 +331,7 @@ const loadUserMenus = async () => {
               const c = resolveNavIcon(child);
               return {
                 path: child.menuPath,
-                label: getEnglishMenuLabel(child.menuPath, child.menuName),
+                label: getEnglishMenuLabel(child.menuPath, child.menuName, child.menuCode),
                 icon: c.icon,
                 iconTheme: c.theme
               };
@@ -347,7 +347,8 @@ const loadUserMenus = async () => {
           const nav = resolveNavIcon(menu);
           return {
             path: menu.menuPath,
-            label: getEnglishMenuLabel(menu.menuPath, menu.menuName),
+            label: getEnglishMenuLabel(menu.menuPath, menu.menuName, menu.menuCode),
+            menuCode: menu.menuCode,
             icon: nav.icon,
             iconTheme: nav.theme,
             children: [
@@ -357,7 +358,8 @@ const loadUserMenus = async () => {
                   const c = resolveNavIcon(child);
                   return {
                     path: child.menuPath,
-                    label: getEnglishMenuLabel(child.menuPath, child.menuName),
+                    label: getEnglishMenuLabel(child.menuPath, child.menuName, child.menuCode),
+                    menuCode: child.menuCode,
                     icon: c.icon,
                     iconTheme: c.theme
                   };
@@ -366,7 +368,8 @@ const loadUserMenus = async () => {
                 const sub = resolveNavIcon(c);
                 return {
                   path: c.menuPath || c.path,
-                  label: getEnglishMenuLabel(c.menuPath || c.path, c.menuName || c.label),
+                  label: getEnglishMenuLabel(c.menuPath || c.path, c.menuName || c.label, c.menuCode),
+                  menuCode: c.menuCode,
                   icon: sub.icon,
                   iconTheme: sub.theme
                 };
