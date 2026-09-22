@@ -2,7 +2,7 @@ import { createApp } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import App from './App.vue';
 import ElementPlus from 'element-plus';
-import en from 'element-plus/es/locale/lang/en';
+import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import 'element-plus/dist/index.css';
 import '@/styles/app-theme.css';
 import '@/styles/mobile-optimization.css';
@@ -33,7 +33,7 @@ app.use(i18n);
 
 // routeconfiguration
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory('/cn/'),
   routes: [
     { path: '/login', component: () => import('./views/Login.vue'), meta: { hideNav: true } },
     { path: '/', redirect: '/care' },
@@ -112,7 +112,7 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component);
 }
 app.use(ElementPlus, {
-  locale: en,
+  locale: zhCn,
   zIndex: 3000,
   message: {
     duration: 2500,

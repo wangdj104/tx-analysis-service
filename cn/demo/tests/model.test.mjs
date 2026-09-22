@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../model.js';
 
-const { createState, current, complete, addVital, review, addPlan, addHandover, runFeature, toggleUser, updateBranding, csv } = globalThis.HealthDemo;
+const { createState, current, complete, addVital, review, addPlan, addHandover, runFeature, toggleUser, updateBranding, currentConsultation, sendChatMessage, addDemoReply, csv } = globalThis.HealthDemo;
 
 test('task completion deducts once and never affects another family member', () => {
   const state = createState();
@@ -78,4 +78,15 @@ test('platform branding validates and updates every configurable identity field'
   assert.equal(state.branding.organizationName.zh, 'Demo Hospital');
   assert.equal(state.branding.pageBackground, '#eef6f2');
   assert.throws(() => updateBranding(state, { platformName: '', logo: 'javascript:alert(1)', pageBackground: 'red', ownershipText: '' }), /invalid-branding/);
+});
+
+test('three-party consultation sends messages and receives a demo reply', () => {
+  const state = createState(new Date(2026, 8, 22, 9, 30));
+  const before = currentConsultation(state).messages.length;
+  sendChatMessage(state, '复测血压是 116/72。', 'family', new Date(2026, 8, 22, 9, 31));
+  assert.equal(currentConsultation(state).messages.length, before + 1);
+  assert.equal(currentConsultation(state).messages.at(-1).sender, 'family');
+  addDemoReply(state, 'zh', new Date(2026, 8, 22, 9, 32));
+  assert.equal(currentConsultation(state).messages.at(-1).sender, 'doctor');
+  assert.throws(() => sendChatMessage(state, '   '), /empty-message/);
 });

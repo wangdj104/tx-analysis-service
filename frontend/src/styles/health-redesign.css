@@ -498,6 +498,9 @@ a:focus-visible,
 .workspace-search-results strong { display: block; font-weight: 500; font-size: 14px; }
 .workspace-search-results small { display: block; margin-top: 4px; color: var(--ink-500); font-size: 11px; }
 .workspace-search-hint { font-size: 11px; color: var(--ink-500); }
+.workspace-language { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: #fff; color: var(--care-700); font-size: 12px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.workspace-language:hover, .workspace-language:focus-visible { border-color: var(--care-500); background: var(--care-50); outline: 2px solid color-mix(in srgb, var(--care-500) 28%, transparent); outline-offset: 2px; }
+.workspace-language--guest { position: fixed; z-index: 20; top: 20px; right: 24px; }
 .workspace-account-summary { display: flex; gap: 15px; align-items: center; }
 .workspace-account-summary p { font-size: 12px; color: var(--ink-500); }
 .skip-content { position: fixed; z-index: 4000; top: -100px; left: 20px; padding: 12px 20px; border-radius: 8px; background: var(--care-700); color: #fff; }
@@ -540,6 +543,7 @@ a:focus-visible,
   .care-workspace--guest .workspace-content { padding-bottom: 0; }
   .patient-switcher { padding-left: 0; border: 0; }
   .patient-switcher__field { width: 112px; }
+  .workspace-language { min-height: 30px; padding: 0 9px; }
   .patient-switcher .el-select__wrapper { min-height: 30px; }
   .workspace-bottom-nav { position: fixed; inset: auto 0 0; display: flex; z-index: 1000; padding: 5px 8px calc(7px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: #fffffff5; backdrop-filter: blur(12px); }
   .workspace-bottom-nav a, .workspace-bottom-nav button { flex: 1; min-width: 0; min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; text-decoration: none; background: transparent; border: 0; color: var(--ink-500); font-size: 11px; }

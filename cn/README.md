@@ -54,6 +54,18 @@ docker compose up --build
 
 将服务暴露到任何网络前，请更换全部密钥。Docker 演示仅用于评估，不应用于生产环境。
 
+## 中英文生产部署
+
+生产镜像会在 `/` 提供英文正式系统，在 `/cn/` 提供中文正式系统。用户通过页面右上角切换语言时会保留当前业务页面；两套界面共用同一个 API、账号、登录状态和数据库。
+
+```bash
+cp .env.production.example .env.production
+# 编辑 .env.production，填写现有数据库和正式访问地址。
+docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
+```
+
+访问 `http://服务器地址:8080/` 或 `http://服务器地址:8080/cn/`。同一镜像还在 `/demo/` 和 `/cn/demo/` 提供静态演示。生产编排不会创建 MySQL，也不会导入 `demo-data.sql`，只会连接 `DB_URL` 指定的现有数据库。
+
 ## 技术栈
 
 - 后端：Java 8、Spring Boot 2.5、MyBatis-Plus、MySQL 8、JWT。
@@ -168,6 +180,8 @@ node --test demo/tests/*.test.mjs
 │   ├── init.sql                    # 新数据库完整基线
 │   └── demo-data.sql               # 可选本地演示数据
 ├── .env.example                    # 不含真实密钥的配置模板
+├── .env.production.example         # 连接现有数据库的生产配置模板
+├── docker-compose.production.yml   # 中英文生产部署
 └── docker-compose.yml              # 本地全栈演示
 ```
 

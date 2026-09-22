@@ -1,5 +1,6 @@
 <template>
   <div class="care-workspace" :class="{ 'care-workspace--guest': route.meta.hideNav }">
+    <a v-if="route.meta.hideNav" class="workspace-language workspace-language--guest" :href="languageHref" hreflang="en">English</a>
     <template v-if="!route.meta.hideNav">
       <a class="skip-content" href="#workspace-content">跳到主要内容</a>
       <aside v-if="!isMobile" class="workspace-sidebar">
@@ -29,6 +30,7 @@
         <div class="workspace-topbar__actions">
           <span class="workspace-date">{{ todayLabel }}</span>
           <PatientSwitcher :model-value="currentPatientId || 0" :patients="appPatientList" @update:model-value="switchPatient" />
+          <a class="workspace-language" :href="languageHref" hreflang="en">English</a>
           <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="查找功能" @click="openSearch"><el-icon :size="20"><Search /></el-icon></button>
         </div>
       </header>
@@ -107,6 +109,7 @@ import { platformBranding } from '@/utils/platformBranding';
 
 const route = useRoute();
 const router = useRouter();
+const languageHref = computed(() => route.fullPath || '/');
 const { isMobile } = useMobile();
 
 const rawNavItems = ref([]);

@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
   const proxyTarget = (env.DEV_PROXY_TARGET && String(env.DEV_PROXY_TARGET).trim()) || DEFAULT_PROXY_TARGET;
 
   return {
+    base: '/cn/',
     plugins: [vue()],
     resolve: {
       alias: {

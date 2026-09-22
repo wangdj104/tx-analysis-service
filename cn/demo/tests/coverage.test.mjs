@@ -60,11 +60,22 @@ test('care journey maps all forty requested medical workflows', () => {
   for (const section of ['Daily chronic-disease management','Appointments and follow-up','Remote consultation','Inpatient and recovery','Home care','Emergency information','Child and maternity care','Mental health','Privacy and access','Clinical operations']) assert.ok(demoApp.includes(section));
 });
 
-test('new-user guide requires explicit confirmation and changes by role', () => {
+test('new-user guide uses anchored step confirmation and changes by role', () => {
   assert.match(demoApp, /guideSteps=\{/);
   for (const role of ['doctor','patient','family','admin']) assert.match(demoApp, new RegExp(`${role}:\\[\\[`));
-  assert.match(demoApp, /guide-confirm/);
   assert.match(demoApp, /guide-next/);
-  assert.match(demoApp, /disabled=!e\.target\.checked/);
-  assert.match(demoApp, /Confirm and continue/);
+  assert.match(demoApp, /guide-count/);
+  assert.match(demoApp, /Confirm step and continue/);
+  assert.match(demoApp, /function positionGuide\(target\)/);
+  assert.match(demoApp, /guide-anchor/);
+  assert.match(demoApp, /guide-popover--\$\{placement\}/);
+  assert.match(demoApp, /guide-gesture/);
+});
+
+test('static demo exposes an interactive three-party live consultation', () => {
+  assert.match(demoApp, /function consultation\(\)/);
+  assert.match(demoApp, /id="chat-form"/);
+  assert.match(demoApp, /M\.sendChatMessage/);
+  assert.match(demoApp, /M\.addDemoReply/);
+  for (const role of ['doctor', 'patient', 'family']) assert.match(demoApp, new RegExp(`${role}: \\{[^\\n]+consultation:`));
 });

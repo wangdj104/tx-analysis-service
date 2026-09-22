@@ -46,6 +46,7 @@ config/database-profiles.local.yaml
 .env.test
 
 .env.prod
+.env.production
 
 .code/.env
 

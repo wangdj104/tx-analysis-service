@@ -56,6 +56,18 @@ Password: Demo@123456
 
 Change all secrets before exposing a deployment to any network. The Docker demo is intended for evaluation, not production.
 
+## Bilingual production deployment
+
+The production image serves the English application at `/`, the Chinese application at `/cn/`, and preserves the current route when the language control in the top-right corner is used. Both applications use the same API, accounts, sessions, and database.
+
+```bash
+cp .env.production.example .env.production
+# Edit .env.production with the existing database and public origin.
+docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
+```
+
+Open `http://your-server:8080/` or `http://your-server:8080/cn/`. The same image also exposes the standalone demonstrations at `/demo/` and `/cn/demo/`. This production compose file does not create MySQL and does not import `demo-data.sql`; it connects to the existing database configured by `DB_URL`.
+
 ## Technology stack
 
 - Backend: Java 8, Spring Boot 2.5, MyBatis-Plus, MySQL 8, JWT.
@@ -198,6 +210,8 @@ make build
 │   ├── init.sql                    # Complete baseline for a new database
 │   └── demo-data.sql               # Optional local demo data
 ├── .env.example                    # Configuration template without real secrets
+├── .env.production.example         # Existing-database production template
+├── docker-compose.production.yml   # Bilingual production deployment
 └── docker-compose.yml              # Local full-stack demo
 ```
 

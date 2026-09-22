@@ -4,8 +4,8 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="澄心健康全功能交互式演示：面向医生、患者、家属和管理员的连续健康管理平台。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>澄心健康 · 交互演示</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=20260921-2"><link rel="stylesheet" href="branding.css?v=20260921">
-  <script src="model.js?v=20260921-2" defer></script><script src="app.js?v=20260921-2" defer></script>
+  <title>澄心健康 · 交互演示</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=20260922-1"><link rel="stylesheet" href="branding.css?v=20260922-1">
+  <script src="model.js?v=20260922-1" defer></script><script src="app.js?v=20260922-1" defer></script>
 </head>
 <body>
   <a class="skip" href="#content">跳到主要内容</a>
@@ -21,6 +21,6 @@
   </div>
   <dialog id="action-dialog" aria-labelledby="action-title"><form id="action-form"><div class="dialog-header"><div><span class="eyebrow" id="action-kicker">演示操作</span><h2 id="action-title">新增记录</h2></div><button type="button" class="close-button" data-close aria-label="关闭">×</button></div><p class="muted" id="action-help"></p><div id="action-fields" class="form-grid"></div><p id="form-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="button secondary" data-close>取消</button><button class="button" type="submit" id="action-submit">保存</button></div></form></dialog>
   <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-header"><h2 id="detail-title">详情</h2><button class="close-button" data-close aria-label="关闭">×</button></div><div id="record-detail"></div><div class="dialog-actions"><button class="button secondary" data-close>关闭</button></div></dialog><div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-  <dialog id="guide-dialog" class="guide-dialog" aria-labelledby="guide-title"><div class="dialog-header"><span class="eyebrow" id="guide-progress">新手指引</span><button class="close-button" id="guide-pause" type="button" aria-label="暂停">×</button></div><h2 id="guide-title"></h2><p id="guide-description"></p><div class="guide-do"><b id="guide-do-label">请尝试</b><span id="guide-action"></span></div><label class="guide-confirm"><input id="guide-confirm" type="checkbox"> <span id="guide-confirm-label">我已看懂并完成本步骤。</span></label><div class="dialog-actions"><button class="button secondary" id="guide-previous" type="button">上一步</button><button class="button" id="guide-next" type="button" disabled>确认并继续</button></div></dialog>
+  <div id="guide-tour" class="guide-tour" role="dialog" aria-modal="true" aria-labelledby="guide-title" hidden><div id="guide-anchor" class="guide-anchor" aria-hidden="true"></div><section id="guide-popover" class="guide-popover guide-popover--right"><button class="guide-close" id="guide-pause" type="button" aria-label="暂停指引">×</button><span class="guide-kicker" id="guide-progress">交互指引</span><h2 id="guide-title"></h2><p id="guide-description"></p><div class="guide-instruction"><b id="guide-gesture">点这里</b><span id="guide-action"></span><small>预期结果：<span id="guide-result"></span></small></div><div class="guide-navigation"><button id="guide-previous" type="button" aria-label="上一步">‹</button><span id="guide-count">1 / 5</span><button id="guide-next" type="button" aria-label="确认本步骤并继续">›</button></div></section></div>
   <noscript><p>请启用 JavaScript 使用静态演示，无需部署后端服务。</p></noscript>
 </body></html>
