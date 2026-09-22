@@ -370,6 +370,15 @@ PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='verified_at'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN verified_at DATETIME DEFAULT NULL AFTER verified_by'));
 PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dialysis_record' AND column_name='session_minutes'),'SELECT 1','ALTER TABLE dialysis_record ADD COLUMN session_minutes INT DEFAULT NULL AFTER uf_amount'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dialysis_record' AND column_name='ktv'),'SELECT 1','ALTER TABLE dialysis_record ADD COLUMN ktv DECIMAL(5,2) DEFAULT NULL AFTER session_minutes'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dialysis_record' AND column_name='urr'),'SELECT 1','ALTER TABLE dialysis_record ADD COLUMN urr DECIMAL(5,2) DEFAULT NULL AFTER ktv'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dialysis_record' AND column_name='access_issue'),'SELECT 1','ALTER TABLE dialysis_record ADD COLUMN access_issue VARCHAR(255) DEFAULT NULL AFTER urr'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
 VALUES (40,0,'Care Journey','care-journey','/care-journey','FirstAidKit','care:journey:view',1,2,1)
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
