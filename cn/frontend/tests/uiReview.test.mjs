@@ -3,6 +3,7 @@ import test, { beforeEach } from 'node:test';
 import fs from 'node:fs';
 import { ref, reactive, computed, watch, nextTick } from 'vue';
 import * as sessions from '../src/utils/authSession.js';
+import { localizePayload, localizeServerText } from '../src/utils/serverText.js';
 import * as navigation from '../src/utils/workspaceNavigation.js';
 import * as access from '../src/utils/workspaceAccess.js';
 
@@ -141,7 +142,7 @@ function setupRequestInterceptors() {
   const request = { interceptors: { request: { use: handler => { beforeRequest = handler; } }, response: { use: (success, failure) => { onResponse = success; onError = failure; } } } };
   const source = fs.readFileSync(new URL('../src/utils/request.js', import.meta.url), 'utf8')
     .replace(/^import.*$/gm, '').replace('export default request;', '');
-  const bindings = { console: { error() {} }, axios: { create: () => request }, ElMessage: { error() {} }, ...sessions };
+  const bindings = { console: { error() {} }, axios: { create: () => request }, ElMessage: { error() {} }, localizePayload, localizeServerText, ...sessions };
   new Function(...Object.keys(bindings), source)(...Object.values(bindings));
   return { beforeRequest, onResponse, onError };
 }

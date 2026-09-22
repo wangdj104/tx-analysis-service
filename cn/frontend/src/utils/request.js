@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
 import { captureAuthSession, isAuthSessionCurrent, clearAuthSession } from '@/utils/authSession';
+import { localizePayload, localizeServerText } from '@/utils/serverText';
 
 // Createaxiosinstance
 const request = axios.create({
@@ -19,6 +20,7 @@ request.interceptors.request.use(
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
+    config.headers['Accept-Language'] = 'zh-CN';
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
     }
@@ -38,11 +40,11 @@ request.interceptors.response.use(
       return response.data;
     }
 
-    const res = response.data;
+    const res = localizePayload(response.data);
 
     // ifBack Statuscodenot Yes200, instructionsAPIhas question
     if (res.code && res.code !== 200) {
-      ElMessage.error(res.msg || '请求失败');
+      ElMessage.error(localizeServerText(res.msg) || '请求失败');
 
       // 401: not authorize, skipconvertto Sign Inpage
       if (res.code === 401 && isAuthSessionCurrent(response.config.authSession) && !window.location.pathname.startsWith('/login')) {
@@ -80,7 +82,7 @@ request.interceptors.response.use(
           ElMessage.error('服务发生错误，请稍后重试。');
           break;
         default:
-          ElMessage.error(error.response.data?.msg || '请求失败');
+          ElMessage.error(localizeServerText(error.response.data?.msg) || '请求失败');
       }
     } else {
       ElMessage.error('网络连接不可用。');

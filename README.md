@@ -10,6 +10,26 @@ Chengxin Health is an open-source continuous-care platform that connects clinici
 
 > This project helps people record and organize health information. It does not diagnose conditions or replace professional medical advice.
 
+## Why Chengxin Health
+
+Health management often breaks down between visits: measurements live in one place, medication plans in another, family updates in chat messages, and clinical decisions in disconnected records. Chengxin Health turns those fragments into a shared, permission-aware care journey.
+
+- **For clinicians:** reduce repetitive collection work, surface exceptions first, review imported or AI-assisted content before it reaches patients, and keep follow-up work measurable.
+- **For patients:** understand today's plan, record health data with less friction, keep appointments and instructions together, and retain a portable longitudinal record.
+- **For families and caregivers:** coordinate medication, measurements, appointments, and handovers without losing accountability or exposing unrelated private information.
+- **For healthcare organizations:** standardize continuous-care workflows, improve follow-up completion and data quality, preserve an audit trail, and apply the organization's own brand without rebuilding the product.
+
+The platform is designed around **human-in-the-loop healthcare**. Automation creates reminders, detects threshold breaches, assembles trends, and prepares review queues; clinicians remain responsible for diagnosis, treatment decisions, prescriptions, and approval of AI-assisted output.
+
+## One platform, role-specific experiences
+
+| Role | Primary workspace | Typical outcomes |
+| --- | --- | --- |
+| Doctor | Assigned patients, risk queue, clinical review, care plans, schedules, reports | Spend attention on exceptions, document decisions, and coordinate follow-up |
+| Patient | Daily plan, measurements, medication check-ins, visits, consultation, records | Know what to do next and keep a continuous personal health history |
+| Family / caregiver | Shared tasks, delegated recording, reminders, handovers, emergency card | Support care safely with explicit access boundaries |
+| Administrator | Accounts, roles, menus, branding, notification channels, audit logs | Operate a configurable, traceable platform across teams |
+
 ## Product capabilities
 
 - Role-specific workspaces, menus, and data scopes for doctors, patients, family caregivers, and administrators.
@@ -22,6 +42,25 @@ Chengxin Health is an open-source continuous-care platform that connects clinici
 - Nutrition diary and assessment, complication tracking, alert rules, reports, and scheduled analysis.
 - WeCom/DingTalk webhook notifications, browser notifications, delivery channels, and audit logs.
 - Account, role, menu, permission, privacy-masking, backup, and restore controls.
+
+## End-to-end care scenarios
+
+- **Daily chronic-care management:** blood pressure, glucose, oxygen saturation, weight and heart-rate entry; threshold alerts; trend review; medication lists; adherence check-ins; missed-dose escalation; recurring follow-up tasks.
+- **Appointments and follow-up:** clinician availability, booking, rescheduling and cancellation; shared schedules; post-visit summaries; prescription records; recurring follow-up reminders; visit timeline.
+- **Remote consultation:** three-party text consultation with near-real-time message refresh, voice/video WebRTC sessions, structured symptom intake, record attachments, archived transcripts and specialty recommendations.
+- **Hospital and recovery:** treatment plans, procedure and medication schedules, rehabilitation check-ins, wound and drainage observations, discharge instructions and abnormal-symptom escalation.
+- **Home care and emergency readiness:** multiple caregivers with graded permissions, shift handovers, care logs, medication inventory, emergency calls and an offline-readable critical medical card.
+- **Special populations:** child growth observations, vaccination plans, maternity timelines, multiple guardians, mental-health questionnaires and private visibility controls.
+- **Governance and operations:** patient-controlled sharing, multi-clinician authorization, masked exports, operation audit, clinician scheduling, patient grouping and completion/adherence/target-rate reporting.
+
+## Product principles
+
+1. **One longitudinal record:** measurements, treatment events, consultations and documents remain connected to the patient timeline.
+2. **Exception-first workflows:** dashboards prioritize overdue work, abnormal readings, incomplete records and review-required AI output.
+3. **Explicit consent and least privilege:** role permissions and patient-level grants are separate, visible and revocable.
+4. **Automation with confirmation:** safe administrative steps can run automatically; clinically meaningful changes retain a human approval point.
+5. **Traceability:** sensitive reads and writes, review decisions and notification delivery are auditable.
+6. **Deployable branding:** logo, platform name, organization name, ownership text and page background can be configured without a source-code fork.
 
 ## Try the static demo
 

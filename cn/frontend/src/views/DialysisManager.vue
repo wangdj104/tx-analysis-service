@@ -323,13 +323,13 @@
                         {{ item.dwAdjustNeeded === 'Yes' ? '建议调整' : '无需调整' }}
                       </el-tag>
                       <el-tag v-if="item.weightControlEval" :type="evalTagType(item.weightControlEval)" size="small">
-                        体重{{ item.weightControlEval }}
+                        体重{{ evalLabel(item.weightControlEval) }}
                       </el-tag>
                       <el-tag v-if="item.dehydrationEval" :type="evalTagType(item.dehydrationEval)" size="small">
-                        脱水{{ item.dehydrationEval }}
+                        脱水{{ evalLabel(item.dehydrationEval) }}
                       </el-tag>
                       <el-tag v-if="item.bpControlEval" :type="evalTagType(item.bpControlEval)" size="small">
-                        血压{{ item.bpControlEval }}
+                        血压{{ evalLabel(item.bpControlEval) }}
                       </el-tag>
                     </div>
                     <el-button link type="danger" size="small" @click.stop="handleDeleteAnalysis(item.id)">
@@ -1684,6 +1684,10 @@ function evalTagType(value) {
   if (value === 'Fair') return 'warning';
   if (value === 'difference') return 'danger';
   return 'info';
+}
+
+function evalLabel(value) {
+  return { excellent: '优秀', Good: '良好', Fair: '一般', difference: '较差' }[value] || value;
 }
 
 async function handleExportData() {

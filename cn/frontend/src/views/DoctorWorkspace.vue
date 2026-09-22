@@ -42,7 +42,7 @@
       </el-tab-pane>
       <el-tab-pane label="照护计划" name="plans">
         <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" @change="loadPatientContext" /><div class="plan-grid">
-          <article v-for="plan in plans" :key="plan.id"><el-tag>{{ plan.status }}</el-tag><h3>{{ plan.title }}</h3><p>{{ plan.instructions }}</p><small>{{ plan.planType }} · 目标日期 {{ plan.targetDate || '持续执行' }}</small></article>
+          <article v-for="plan in plans" :key="plan.id"><el-tag>{{ statusLabel(plan.status) }}</el-tag><h3>{{ plan.title }}</h3><p>{{ plan.instructions }}</p><small>{{ planTypeLabel(plan.planType) }} · 目标日期 {{ plan.targetDate || '持续执行' }}</small></article>
           <el-empty v-if="selectedPatientId && !plans.length" description="该患者暂无照护计划" />
         </div></section>
       </el-tab-pane>
@@ -77,6 +77,8 @@ async function submitNote(){if(!noteForm.noteText.trim()){ElMessage.warning('请
 async function submitPlan(){if(!planForm.title.trim()||!planForm.instructions.trim()){ElMessage.warning('请输入计划标题和执行说明。');return}saving.value=true;try{await saveDoctorPlan({patientId:selectedPatientId.value,status:'ACTIVE',...planForm});ElMessage.success('照护计划已启用。');planVisible.value=false;await loadAll()}finally{saving.value=false}}
 async function review(item,decision){const {value}=await ElMessageBox.prompt(decision==='APPROVED'?'可选的通过说明':'请输入驳回原因','临床复核',{confirmButtonText:decision==='APPROVED'?'通过':'驳回',cancelButtonText:'取消',inputType:'textarea'});await completeDoctorReview({sourceType:item.sourceType,sourceId:item.sourceId,decision,reviewNote:value});ElMessage.success('复核已完成。');await loadAll()}
 function sourceLabel(type){return type==='MEDICAL_RECORD'?'导入的医疗记录':'AI 辅助分析'}
+function statusLabel(value){return {ACTIVE:'执行中',DRAFT:'草稿',COMPLETED:'已完成',CANCELLED:'已取消'}[value]||value}
+function planTypeLabel(value){return {FOLLOW_UP:'随访计划',MEDICATION:'用药计划',DIALYSIS:'透析计划',NUTRITION:'营养计划'}[value]||value}
 onMounted(loadAll);
 </script>
 

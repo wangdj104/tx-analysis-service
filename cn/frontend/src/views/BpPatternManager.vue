@@ -17,10 +17,10 @@
           <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
             <div>
               <el-button type="primary" @click="handleAnalyze" :loading="analyzing">
-                <el-icon><DataAnalysis /></el-icon>runanalysis
+                <el-icon><DataAnalysis /></el-icon>运行分析
               </el-button>
               <el-button @click="loadData">
-                <el-icon><Refresh /></el-icon>Refresh
+                <el-icon><Refresh /></el-icon>刷新
               </el-button>
             </div>
             <TimeScopeFilter
@@ -44,7 +44,7 @@
               <el-col :xs="12" :sm="8" :md="4">
                 <el-statistic title="收缩压标准差" :value="currentAnalysis.stdDeviation || 0">
                   <template #suffix>
-                    <span v-if="currentAnalysis.stdDeviation > 15" style="color: #f56c6c; font-size: 12px;"> (slightlylarge)</span>
+                    <span v-if="currentAnalysis.stdDeviation > 15" style="color: #f56c6c; font-size: 12px;">（波动偏大）</span>
                   </template>
                 </el-statistic>
               </el-col>
@@ -58,7 +58,7 @@
                 <el-statistic title="体重—血压相关性" :value="currentAnalysis.correlationWeightGainBp || 0" />
               </el-col>
             </el-row>
-            <el-alert v-if="currentAnalysis.analysisSummary" :title="currentAnalysis.analysisSummary" type="info" :closable="false" style="margin-top: 12px;" />
+            <el-alert v-if="currentAnalysis.analysisSummary" :title="localizeSummary(currentAnalysis.analysisSummary)" type="info" :closable="false" style="margin-top: 12px;" />
           </div>
 
           <!-- NonedataNotice -->
@@ -69,7 +69,7 @@
             <div class="list-panel-title">
               <el-icon><TrendCharts /></el-icon>
               <span>分析历史</span>
-              <span class="list-count">{{ historyList.length }} items</span>
+              <span class="list-count">共 {{ historyList.length }} 项</span>
             </div>
           </div>
           <el-table v-if="historyList.length" :data="historyList" stripe class="app-data-table">
@@ -126,13 +126,13 @@
           </el-descriptions-item>
           <el-descriptions-item label="平均超滤量">{{ detailRecord.avgUfAmount }} kg</el-descriptions-item>
           <el-descriptions-item label="体位性低血压次数">
-            <el-tag :type="detailRecord.orthostaticCount > 0 ? 'warning' : 'success'" size="small">{{ detailRecord.orthostaticCount }} times</el-tag>
+            <el-tag :type="detailRecord.orthostaticCount > 0 ? 'warning' : 'success'" size="small">{{ detailRecord.orthostaticCount }} 次</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="低血压次数（<90）">
-            <el-tag :type="detailRecord.lowBpCount > 0 ? 'warning' : 'success'" size="small">{{ detailRecord.lowBpCount }} times</el-tag>
+            <el-tag :type="detailRecord.lowBpCount > 0 ? 'warning' : 'success'" size="small">{{ detailRecord.lowBpCount }} 次</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="高血压次数（>140）">
-            <el-tag :type="detailRecord.highBpCount > 0 ? 'danger' : 'success'" size="small">{{ detailRecord.highBpCount }} times</el-tag>
+            <el-tag :type="detailRecord.highBpCount > 0 ? 'danger' : 'success'" size="small">{{ detailRecord.highBpCount }} 次</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="体重增长与血压相关性">
             <span :style="correlationStyle(detailRecord.correlationWeightGainBp)">
@@ -142,7 +142,7 @@
         </el-descriptions>
         <div v-if="detailRecord.analysisSummary" style="margin-top: 16px; padding: 12px 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
           <p style="font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">分析摘要</p>
-          <p style="font-size: 13px; color: #64748b; line-height: 1.6;">{{ detailRecord.analysisSummary }}</p>
+          <p style="font-size: 13px; color: #64748b; line-height: 1.6;">{{ localizeSummary(detailRecord.analysisSummary) }}</p>
         </div>
       </template>
     </el-dialog>
@@ -170,6 +170,17 @@ const detailRecord = ref(null);
 
 const TIME_TYPE_MAP = { month: '按月', week: '按周', year: '按年' };
 function timeTypeLabel(v) { return TIME_TYPE_MAP[v] || v; }
+function localizeSummary(value) {
+  return String(value || '')
+    .replace(/Average systolic pressure\s*/gi, '平均收缩压 ')
+    .replace(/variationrange\s*/gi, '波动范围 ')
+    .replace(/Blood Pressurevariabilityrelativelylarge\(standard deviation/gi, '血压波动较大（标准差 ')
+    .replace(/\), needattention\./gi, '），需要关注。')
+    .replace(/Dialysisinorthostatic hypotensionBlood Pressure\s*/gi, '透析中发生体位性低血压 ')
+    .replace(/lowBlood Pressure\(<90\)\s*/gi, '低血压（<90）')
+    .replace(/highBlood Pressure\(>140\)\s*/gi, '高血压（>140）')
+    .replace(/\btimes\b/gi, '次')
+}
 
 function correlationStyle(val) {
   if (!val) return '';

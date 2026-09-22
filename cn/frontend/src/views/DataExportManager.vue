@@ -7,7 +7,7 @@
             <div class="left">
               <div>
                 <h1>数据导出</h1>
-                <p class="subtitle">will Dialysis, Blood Pressure, Nutritionetc.数据导出for CSVfile, convenientinexternalanalysis and archive</p>
+                <p class="subtitle">将透析、血压、营养等数据导出为 CSV 文件，便于外部分析和归档。</p>
               </div>
             </div>
           </div>
@@ -126,7 +126,7 @@ onMounted(() => {
 });
 
 const rules = {
-  dataType: [{ required: true, message: 'Select数据类型', trigger: 'change' }],
+  dataType: [{ required: true, message: '请选择数据类型', trigger: 'change' }],
   timeType: [{ required: true, message: '请选择时间维度', trigger: 'change' }],
   timeValue: [{ required: true, message: '请选择时间范围', trigger: 'change' }]
 };

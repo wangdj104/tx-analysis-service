@@ -163,8 +163,8 @@ const ruleForm = reactive({
   thresholdValue: '', alertLevel: 'WARNING'
 });
 
-const LEVEL_MAP = { INFO: 'Information', WARNING: 'Warning', CRITICAL: 'Critical' };
-const STATUS_MAP = { PENDING: 'Pending', CONFIRMED: 'Acknowledged', OBSERVING: 'Observing', CONSULTED: 'Consulted', RECHECKED: 'Rechecked', RESOLVED: 'Resolved' };
+const LEVEL_MAP = { INFO: '提示', WARNING: '警告', CRITICAL: '危急' };
+const STATUS_MAP = { PENDING: '待处理', CONFIRMED: '已确认', OBSERVING: '观察中', CONSULTED: '已问诊', RECHECKED: '已复查', RESOLVED: '已解决' };
 const THRESHOLD_MAP = { ABOVE: '高于', BELOW: '低于', OUT_OF_RANGE: '超出范围' };
 
 function levelLabel(v) { return LEVEL_MAP[v] || v; }

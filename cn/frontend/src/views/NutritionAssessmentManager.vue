@@ -12,7 +12,7 @@
             </div>
             <div class="right">
               <el-button type="primary" @click="showAddDialog">
-                <el-icon><Plus /></el-icon>Addassessment
+                <el-icon><Plus /></el-icon>新增评估
               </el-button>
             </div>
           </div>
@@ -24,10 +24,10 @@
             <div class="list-panel-title">
               <el-icon><FirstAidKit /></el-icon>
               <span>评估记录</span>
-              <span v-if="records.length" class="list-count">{{ records.length }} items</span>
+              <span v-if="records.length" class="list-count">共 {{ records.length }} 项</span>
             </div>
             <el-button @click="loadData" :loading="loading">
-              <el-icon><Refresh /></el-icon>Refresh
+              <el-icon><Refresh /></el-icon>刷新
             </el-button>
           </div>
 
@@ -200,7 +200,7 @@ const rules = {
 };
 
 const STATUS_MAP = { GOOD: '良好', AT_RISK: '有风险', DEFICIENT: '营养不良' };
-const SGA_MAP = { A: 'Good', B: 'mildModerateNutritionadverse', C: 'severeNutritionadverse' };
+const SGA_MAP = { A: '营养状况良好', B: '轻至中度营养不良', C: '重度营养不良' };
 
 function statusLabel(v) { return STATUS_MAP[v] || v; }
 function statusTagType(v) { return { GOOD: 'success', AT_RISK: 'warning', DEFICIENT: 'danger' }[v] || 'info'; }

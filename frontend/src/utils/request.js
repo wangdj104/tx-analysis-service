@@ -19,6 +19,7 @@ request.interceptors.request.use(
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
+    config.headers['Accept-Language'] = 'en-US';
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
     }
