@@ -168,9 +168,34 @@ function setupMonitoring(getMonitoringSnapshot) {
     ElMessage: { error() {}, success() {} },
     inject: () => ref([]), watch() {},
     useCurrentPatient: () => ({ currentPatientId: ref(1), currentPatientName: ref('test') }),
-    getMonitoringSnapshot
-  }, ['loadSnapshot', 'days', 'loadedDays', 'snapshot', 'loadError', 'chartOption']);
+    getMonitoringSnapshot, localizeServerText
+  }, ['loadSnapshot', 'days', 'loadedDays', 'snapshot', 'loadError', 'chartOption', 'recentEvents']);
 }
+
+test('Chinese response localization covers menus, timeline summaries, periods and units', () => {
+  const payload = localizePayload({
+    menuName: 'Care Journey', roleName: 'Administrator',
+    title: 'Dialysis Records',
+    summary: 'Pre-dialysis Weight 61.83 kg; Post-dialysis Weight 59.75 kg',
+    period: '2026-09 Monthly overview', unit: 'kg weight gain'
+  });
+  assert.deepEqual(payload, {
+    menuName: '健康照护全流程', roleName: '系统管理员',
+    title: '透析记录', summary: '透析前体重 61.83 kg；透析后体重 59.75 kg',
+    period: '2026-09 月度概览', unit: 'kg 增重'
+  });
+});
+
+test('monitoring view localizes server-generated signal and timeline content', async () => {
+  const view = setupMonitoring(async () => ({ code: 200, data: {
+    signals: [{ key: 'dialysis', status: 'WARNING', unit: 'kg weight gain', value: '1.67' }],
+    recentEvents: [{ id: 1, type: 'DIALYSIS', title: 'Dialysis Records', summary: 'Pre-dialysis Weight 61.83 kg; Post-dialysis Weight 59.75 kg' }]
+  } }));
+  await view.loadSnapshot();
+  assert.equal(view.snapshot.value.signals[0].unit, 'kg 增重');
+  assert.equal(view.recentEvents.value[0].title, '透析记录');
+  assert.equal(view.recentEvents.value[0].summary, '透析前体重 61.83 kg；透析后体重 59.75 kg');
+});
 
 test('failed 7-day reload restores the selector to the displayed 90-day dataset', async () => {
   let fail = false;

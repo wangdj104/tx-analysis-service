@@ -166,6 +166,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { getMonitoringSnapshot } from '@/api/monitoring'
+import { localizeServerText } from '@/utils/serverText'
 import { acknowledge, checkThresholds, resolve } from '@/api/alert'
 import { actionIntake } from '@/api/familyHealth'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
@@ -195,7 +196,11 @@ let snapshotRequestEpoch = 0
 const metrics = computed(() => snapshot.value.metrics || {})
 const activeAlerts = computed(() => snapshot.value.activeAlerts || [])
 const todayTasks = computed(() => snapshot.value.todayTasks || [])
-const recentEvents = computed(() => snapshot.value.recentEvents || [])
+const recentEvents = computed(() => (snapshot.value.recentEvents || []).map(event => ({
+  ...event,
+  title: localizeEventText(event.title),
+  summary: localizeEventText(event.summary)
+})))
 const primarySuggestion = computed(() => snapshot.value.careSuggestions?.[0] || '持续记录后，系统将提供更可靠的趋势判断。')
 const statusTone = computed(() => ({ CRITICAL: 'critical', WARNING: 'warning', STABLE: 'stable', NO_DATA: 'empty' }[snapshot.value.overallStatus] || 'empty'))
 const statusIcon = computed(() => snapshot.value.overallStatus === 'STABLE' ? SuccessFilled : WarningFilled)
@@ -340,7 +345,8 @@ function localizeSnapshot(data) {
     ...signal,
     label: signalLabels[signal.key] || signal.label,
     statusLabel: signalStatus[signal.status] || signal.statusLabel,
-    freshnessText: signal.updatedAt ? formatRelative(signal.updatedAt) : (signal.key === 'medication' ? '今日暂无用药任务' : '等待首次记录')
+    freshnessText: signal.updatedAt ? formatRelative(signal.updatedAt) : (signal.key === 'medication' ? '今日暂无用药任务' : '等待首次记录'),
+    unit: signal.key === 'dialysis' && signal.unit === 'kg weight gain' ? 'kg 增重' : localizeServerText(signal.unit)
   }))
   const suggestions = []
   if (data.overallStatus === 'CRITICAL') suggestions.push('检测到严重异常，请立即复测；如伴随明显不适，请按医嘱联系医生或及时就医。')
@@ -351,6 +357,15 @@ function localizeSnapshot(data) {
   if ((data.metrics?.dataCompleteness ?? 0) < 50) suggestions.push('当前监测数据覆盖不足，持续记录后趋势判断会更可靠。')
   if (!suggestions.length) suggestions.push('当前没有紧急事项，请继续按计划记录、用药和复诊。')
   return { ...data, statusLabel: statusLabels[data.overallStatus] || data.statusLabel, signals, careSuggestions: suggestions }
+}
+
+function localizeEventText(value) {
+  return localizeServerText(value)
+    .replace(/^Blood Pressure & Glucoserecord$/i, '血压与血糖记录')
+    .replace(/^Blood Pressure\s*/i, '血压 ')
+    .replace(/^Blood Glucose\s*/i, '血糖 ')
+    .replace(/^Taken:\s*/i, '已服用：')
+    .replace(/^medicationrecord:\s*/i, '用药记录：');
 }
 
 watch(patientId, () => {

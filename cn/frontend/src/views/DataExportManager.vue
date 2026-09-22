@@ -77,38 +77,38 @@ const dataTypeOptions = computed(() => {
 
   // Dialysis Records: needneedDialysisMenuPermission
   if (hasMenu('/dialysis')) {
-    options.push({ label: 'Dialysis Records', value: 'dialysis' });
+    options.push({ label: '透析记录', value: 'dialysis' });
   }
   // Blood Pressure Pattern Analysis
-  if (hasMenuName('Blood Pressure Pattern Analysis')) {
-    options.push({ label: 'Blood Pressure Pattern Analysis', value: 'bp_analysis' });
+  if (hasMenuName('血压模式分析') || hasMenuName('Blood Pressure Pattern Analysis')) {
+    options.push({ label: '血压模式分析', value: 'bp_analysis' });
   }
   // Nutrition Diary
-  if (hasMenuName('Nutrition Diary')) {
-    options.push({ label: 'Nutrition Diary', value: 'nutrition' });
+  if (hasMenuName('营养日记') || hasMenuName('Nutrition Diary')) {
+    options.push({ label: '营养日记', value: 'nutrition' });
   }
   // Complication Tracking
-  if (hasMenuName('Complication Tracking')) {
-    options.push({ label: 'complicationrecord', value: 'complication' });
+  if (hasMenuName('并发症跟踪') || hasMenuName('Complication Tracking')) {
+    options.push({ label: '并发症记录', value: 'complication' });
   }
   // medicationrecord: needneedMedicationmanagementPermission
   if (hasMenu('/medication')) {
-    options.push({ label: 'medicationrecord', value: 'medication' });
+    options.push({ label: '用药记录', value: 'medication' });
   }
   // Blood GlucoseBlood Pressurerecord
-  if (hasMenuName('Blood GlucoseBlood Pressurerecord')) {
-    options.push({ label: 'Blood GlucoseBlood Pressurerecord', value: 'bp_self_monitor' });
+  if (hasMenuName('血压血糖记录') || hasMenuName('Blood GlucoseBlood Pressurerecord')) {
+    options.push({ label: '血压血糖记录', value: 'bp_self_monitor' });
   }
   return options;
 });
 
 const DATA_TYPE_LABELS = {
-  dialysis: 'Dialysis Records',
-  bp_analysis: 'Blood Pressure Pattern Analysis',
-  nutrition: 'Nutrition Diary',
-  complication: 'complicationrecord',
-  medication: 'medicationrecord',
-  bp_self_monitor: 'Blood GlucoseBlood Pressurerecord'
+  dialysis: '透析记录',
+  bp_analysis: '血压模式分析',
+  nutrition: '营养日记',
+  complication: '并发症记录',
+  medication: '用药记录',
+  bp_self_monitor: '血压血糖记录'
 };
 
 const form = reactive({

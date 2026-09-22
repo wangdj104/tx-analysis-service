@@ -94,7 +94,9 @@
                 <span v-if="!row.lowBpCount && !row.highBpCount && !row.orthostaticCount" style="color: #67c23a;">正常</span>
               </template>
             </el-table-column>
-            <el-table-column prop="analysisSummary" label="分析摘要" min-width="200" show-overflow-tooltip />
+            <el-table-column label="分析摘要" min-width="200" show-overflow-tooltip>
+              <template #default="{ row }">{{ localizeSummary(row.analysisSummary) }}</template>
+            </el-table-column>
             <el-table-column label="操作" width="120" align="center" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="showDetail(row)">详情</el-button>

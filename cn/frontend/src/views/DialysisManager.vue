@@ -314,7 +314,7 @@
                   @click="viewHistoryItem(item)"
                 >
                   <div class="ai-history-left">
-                    <span class="ai-history-period">{{ item.periodLabel || item.timeValue }}</span>
+                    <span class="ai-history-period">{{ localizePeriodLabel(item.periodLabel || item.timeValue) }}</span>
                     <span class="ai-history-time">{{ formatDateTime(item.createdAt) }}</span>
                   </div>
                   <div class="ai-history-right">
@@ -648,7 +648,7 @@
               <strong>{{ formPreview.dailyGain }}</strong>
             </div>
             <div class="form-preview__item">
-              <span>3% / 5% threshold</span>
+              <span>3% / 5% 阈值</span>
               <strong>{{ formPreview.thresholdText }}</strong>
             </div>
           </div>
@@ -871,9 +871,9 @@ function rowKey(row, index) {
 const timeRangeLabel = computed(() => {
   const t = currentTimeType.value;
   const v = currentTimeValue.value;
-  if (t === 'year') return `${v} Yearleveloverview`;
-  if (t === 'week') return `${v} when weekoverview`;
-  return `${v} Monthly overview`;
+  if (t === 'year') return `${v} 年度概览`;
+  if (t === 'week') return `${v} 周概览`;
+  return `${v} 月度概览`;
 });
 
 const matchRateLevel = computed(() => {
@@ -1244,7 +1244,7 @@ function formatDateMain(dateStr) {
 
 function formatDateWeek(dateStr) {
   if (!dateStr) return '-';
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '-';
   return weekDays[d.getDay()];
@@ -1684,6 +1684,13 @@ function evalTagType(value) {
   if (value === 'Fair') return 'warning';
   if (value === 'difference') return 'danger';
   return 'info';
+}
+
+function localizePeriodLabel(value) {
+  return String(value || '')
+    .replace(/^(\d{4}-\d{2}) Monthly overview$/i, '$1 月度概览')
+    .replace(/^(\d{4}) Year(?:level)?overview$/i, '$1 年度概览')
+    .replace(/^(\d{4}-W\d{1,2}) (?:when week|Weekly )?overview$/i, '$1 周概览');
 }
 
 function evalLabel(value) {

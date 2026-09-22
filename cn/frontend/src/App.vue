@@ -188,7 +188,10 @@ const navigationGroups = computed(() => {
   for (const item of navItems.value) {
     if (item.path === '/dashboard') continue;
     if (item.label === '系统管理' || item.label === 'System Administration') { management.push(item); continue; }
-    if (['/dialysis', '/medical-record', '/medication', '/dry-weight'].includes(item.path) || /analysis|Report/.test(item.label)) records.push(item);
+    const childPaths = (item.children || []).map(child => child.path || '').join(' ');
+    if (['/dialysis', '/medical-record', '/medication', '/dry-weight', '/health-analysis'].includes(item.path)
+      || childPaths.includes('/health-analysis')
+      || /analysis|report|分析|报告/i.test(item.label)) records.push(item);
     else daily.push(item);
   }
   if (systemMenu.value?.children?.length && !management.length) management.push(systemMenu.value);
@@ -207,6 +210,9 @@ const activeModule = computed(() => {
 watch([activeModule, () => platformBranding.platformName], ([item]) => { document.title = (item?.label ? item.label + ' · ' : '') + platformBranding.platformName; }, { immediate: true });
 const contextTabs = computed(() => {
   const item = activeModule.value;
+  // Care Journey already owns a complete, task-oriented tab bar inside the page.
+  // Showing its database-derived child menus here creates a second duplicate row.
+  if (route.path === '/care-journey' || item?.path === '/care-journey') return [];
   const children = item?.children || [];
   const defaultTab = defaultTabs[item?.path];
   const permissions = readPermissionCache() || {};
@@ -316,7 +322,7 @@ const loadUserMenus = async () => {
 
 
       // pointawaySystem AdministrationMenu, placeto avatardown pullin
-      const sysIdx = topMenus.findIndex(m => m.menuName === 'System Administration');
+      const sysIdx = topMenus.findIndex(m => m.menuCode === 'system' || ['System Administration', '系统管理'].includes(m.menuName));
       if (sysIdx !== -1) {
         const sys = topMenus[sysIdx];
         const sysNav = resolveNavIcon({ menuCode: sys.menuCode, menuPath: sys.menuPath });

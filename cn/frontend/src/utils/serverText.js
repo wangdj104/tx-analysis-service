@@ -65,7 +65,66 @@ const exact = {
   'The latest blood-pressure reading is outside the usual range. Rest, repeat the measurement, and continue recording results.': '最近血压超出常用范围，建议休息后复测并持续记录。',
   'No recent blood glucose record is available. Add one if it is part of the care plan.': '暂无近期血糖记录；如照护计划包含血糖监测，请补充一次。',
   'Monitoring coverage is limited. Regular entries will make trend assessments more reliable.': '当前监测数据覆盖不足，持续记录后趋势判断会更可靠。',
-  'No urgent items are present. Continue recording measurements, medications, and follow-up visits as planned.': '当前没有紧急事项，请继续按计划记录、用药和复查。'
+  'No urgent items are present. Continue recording measurements, medications, and follow-up visits as planned.': '当前没有紧急事项，请继续按计划记录、用药和复查。',
+  Workspace: '健康概览',
+  'Patient Center': '患者中心',
+  'Patient Profiles': '患者档案',
+  'Care Plan': '家庭照护',
+  'Care Journey': '健康照护全流程',
+  'Dialysis Management': '透析管理',
+  'Dialysis Records': '透析记录',
+  'Trend Analysis': '趋势分析',
+  'Dry Weight Management': '干体重管理',
+  'AI Health Analytics': 'AI 健康分析',
+  'Dialysis Schedule': '透析计划',
+  'Medical Records': '临床档案',
+  'Record List': '记录列表',
+  'Upload Report': '上传报告',
+  'Abnormal Results': '异常结果',
+  'Result Trends': '结果趋势',
+  'Medication Management': '用药管理',
+  'Medication List': '药品列表',
+  'Medication Log': '用药记录',
+  medicationrecord: '用药记录',
+  'Medication Reminders': '用药提醒',
+  'Health Monitoring': '健康监测',
+  'Blood Pressure & Glucose': '血压与血糖',
+  'Complication Tracking': '并发症跟踪',
+  complicationrecord: '并发症记录',
+  'Health Alerts': '健康告警',
+  'Nutrition Diary': '营养日记',
+  'Nutrition Assessment': '营养评估',
+  'Analytics & Reports': '分析与报告',
+  'Blood Pressure Pattern Analysis': '血压模式分析',
+  'Blood GlucoseBlood Pressurerecord': '血压血糖记录',
+  'Health Report': '健康报告',
+  'Data Export': '数据导出',
+  'System Administration': '系统管理',
+  'User Management': '用户管理',
+  'Role Management': '角色管理',
+  'Menu Management': '菜单管理',
+  'Notification Settings': '通知设置',
+  'Audit Log': '审计日志',
+  'Clinical Workbench': '临床工作台',
+  'Doctor Workspace': '医生工作台',
+  Administrator: '系统管理员',
+  'Standard User': '普通用户',
+  Doctor: '医生',
+  Patient: '患者',
+  'Family Caregiver': '家庭照护者',
+  'Platform Branding': '平台品牌',
+  'kg weight gain': 'kg 增重',
+  'Dialysisschedule': '透析计划',
+  'by timemedication intake': '按时服药',
+  'DeletedMedication': '已删除药品',
+  doses: '次',
+  'Replenish stock or revise the active prescription': '请补充库存或修订当前处方。',
+  'Average interdialytic weight gain is above 4% of target dry weight.': '平均透析间期体重增幅超过目标干体重的 4%。',
+  'Average ultrafiltration rate is above 13 mL/kg/hour.': '平均超滤率超过 13 mL/kg/小时。',
+  'Average recorded Kt/V is below 1.2.': '已记录的平均 Kt/V 低于 1.2。',
+  'Average recorded URR is below 65%.': '已记录的平均 URR 低于 65%。',
+  'Date missing': '缺少日期',
+  'Facility missing': '缺少医疗机构'
 }
 
 const patterns = [
@@ -78,16 +137,28 @@ const patterns = [
   [/^Unsupported file format: /, '不支持的文件格式：'],
   [/^Notification delivery failed: /, '通知发送失败：'],
   [/^Remaining /, '剩余 '],
-  [/^Low medication stock · /, '药品库存不足 · ']
+  [/^Low medication stock · /, '药品库存不足 · '],
+  [/^Pre-dialysis Weight\s*/i, '透析前体重 '],
+  [/;\s*Post-dialysis Weight\s*/i, '；透析后体重 '],
+  [/^(\d{4}-\d{2}) Monthly overview$/i, '$1 月度概览'],
+  [/^(\d{4}) Year(?:level)?overview$/i, '$1 年度概览'],
+  [/^(\d{4}-W\d{1,2}) (?:when week|Weekly )?overview$/i, '$1 周概览'],
+  [/^(\d+) sessions include a vascular-access concern\.$/i, '$1 次透析记录存在血管通路风险。'],
+  [/^(.+) · PENDING$/i, '$1 · 待处理'],
+  [/^(.+) · MISSED$/i, '$1 · 已漏服'],
+  [/^(.+) · SNOOZED$/i, '$1 · 已延后'],
+  [/^(\d+) pending$/i, '$1 项待处理'],
+  [/^Based on today's plan$/i, '依据今日计划']
 ]
 
 export function localizeServerText(value) {
   if (typeof value !== 'string') return value
   if (exact[value]) return exact[value]
+  let localized = value
   for (const [pattern, replacement] of patterns) {
-    if (pattern.test(value)) return value.replace(pattern, replacement)
+    localized = localized.replace(pattern, replacement)
   }
-  return value
+  return localized
 }
 
 export function localizePayload(value, seen = new WeakSet()) {
