@@ -144,6 +144,8 @@ mysql -u root -p family_health < src/main/resources/sql/care_platform_upgrade_20
 
 New databases require all three scripts in this order: [base schema](src/main/resources/sql/init.sql), [doctor workspace](src/main/resources/sql/doctor_workspace_20260921.sql), then [care platform](src/main/resources/sql/care_platform_upgrade_20260921.sql). `init.sql` alone does not contain the care-journey tables. Existing installations apply only the applicable idempotent upgrade scripts after backing up data; do not rerun the baseline as a reset. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
 
+The additive [patient specialty role upgrade](src/main/resources/sql/patient_specialty_roles_20260923.sql) runs on MySQL/MariaDB application startup. Back up the database before deploying this release; the database account needs `CREATE` and `INSERT` permissions. Existing patients are not assigned a specialty role automatically. Assign `Dialysis Patient` in the patient editor to enable dialysis navigation for an individual patient.
+
 ### 2. Configure environment variables
 
 Copy `.env.example` and set at least the following. Compose reads `.env`, but Maven/Spring Boot does not automatically load it: set these values in your shell or IDE run configuration before starting the backend.

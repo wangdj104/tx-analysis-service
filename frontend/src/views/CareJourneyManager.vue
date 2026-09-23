@@ -56,7 +56,17 @@
       </el-tab-pane>
 
       <el-tab-pane label="Privacy & access" name="privacy">
-        <el-card><template #header><b>Patient-controlled access</b></template><el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top" class="inline-form"><el-form-item label="User ID"><el-input-number v-model="grant.granteeUserId"/></el-form-item><el-form-item label="Role"><el-select v-model="grant.granteeRole"><el-option label="Doctor" value="DOCTOR"/><el-option label="Family" value="FAMILY"/><el-option label="Guardian" value="GUARDIAN"/></el-select></el-form-item><el-form-item label="Level"><el-select v-model="grant.accessLevel"><el-option label="Read only" value="READ"/><el-option label="Can record" value="WRITE"/><el-option label="Can act for patient" value="PROXY"/></el-select></el-form-item><el-form-item label="Visible modules"><el-input v-model="grant.visibleModules" placeholder="MEASUREMENTS,APPOINTMENTS or blank for all"/></el-form-item><el-button type="primary" @click="createGrant">Authorize</el-button></el-form><el-table :data="grants"><el-table-column prop="real_name" label="Person"/><el-table-column prop="grantee_role" label="Role"/><el-table-column prop="access_level" label="Level"/><el-table-column prop="visible_modules" label="Visible modules"/><el-table-column prop="status" label="Status"/><el-table-column label=""><template #default="{row}"><el-button link type="danger" @click="revoke(row)">Revoke</el-button></template></el-table-column></el-table></el-card>
+        <el-card><template #header><b>Patient-controlled access</b></template>
+          <el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top" class="inline-form">
+            <el-form-item label="Role"><el-select v-model="grant.granteeRole" @change="grant.granteeUserId=null"><el-option label="Doctor" value="DOCTOR"/><el-option label="Family" value="FAMILY"/><el-option label="Guardian" value="GUARDIAN"/></el-select></el-form-item>
+            <el-form-item v-if="grant.granteeRole==='DOCTOR'" label="Doctor" class="grant-choice"><el-select v-model="grant.granteeUserId" filterable clearable placeholder="Search platform doctors"><el-option v-for="doctor in clinicians" :key="doctor.id" :value="doctor.id" :label="doctor.real_name && doctor.real_name!==doctor.username ? `${doctor.real_name} (${doctor.username})` : doctor.username"/></el-select></el-form-item>
+            <el-form-item v-else label="Recipient user ID"><el-input-number v-model="grant.granteeUserId"/></el-form-item>
+            <el-form-item label="Level"><el-select v-model="grant.accessLevel"><el-option label="Read only" value="READ"/><el-option label="Can record" value="WRITE"/><el-option label="Can act for patient" value="PROXY"/></el-select></el-form-item>
+            <el-form-item label="Visible modules" class="grant-choice"><el-select v-model="grantModules" multiple collapse-tags collapse-tags-tooltip clearable placeholder="Leave empty for all modules"><el-option v-for="module in grantModuleOptions" :key="module.value" :label="module.label" :value="module.value"/></el-select></el-form-item>
+            <el-button type="primary" @click="createGrant">Authorize</el-button>
+          </el-form>
+          <el-table :data="grants"><el-table-column prop="real_name" label="Person"/><el-table-column prop="grantee_role" label="Role"/><el-table-column prop="access_level" label="Level"/><el-table-column prop="visible_modules" label="Visible modules"/><el-table-column prop="status" label="Status"/><el-table-column label=""><template #default="{row}"><el-button link type="danger" @click="revoke(row)">Revoke</el-button></template></el-table-column></el-table>
+        </el-card>
       </el-tab-pane>
 
       <el-tab-pane v-if="isDoctor" label="Operations" name="operations">
@@ -91,7 +101,8 @@ const plan=reactive({planType:'INPATIENT',title:''}),planText=ref(''),rehab=reac
 const emergency=reactive({locationText:'',latitude:null,longitude:null})
 const growth=reactive({recordDate:today(),heightCm:null,weightKg:null,headCircumferenceCm:null,heightPercentile:null,weightPercentile:null}),vaccine=reactive({vaccineName:'',doseNo:'',plannedDate:today(),remindAt:''}),maternity=reactive({recordType:'PRENATAL',recordDate:today(),title:''}),maternityText=ref('')
 const mental=reactive({scaleCode:'PHQ9'}),mentalAnswers=ref(''),mentalVisible=ref(false),mentalSchedule=reactive({scaleCode:'PHQ9',intervalDays:14,nextDueAt:now()})
-const grant=reactive({granteeUserId:null,granteeRole:'FAMILY',accessLevel:'READ',visibleModules:''}),schedule=reactive({doctorUserId:null,workDate:today(),startTime:'09:00:00',endTime:'12:00:00',slotMinutes:30}),group=reactive({groupName:'',description:''})
+const grant=reactive({granteeUserId:null,granteeRole:'DOCTOR',accessLevel:'READ'}),grantModules=ref([]),schedule=reactive({doctorUserId:null,workDate:today(),startTime:'09:00:00',endTime:'12:00:00',slotMinutes:30}),group=reactive({groupName:'',description:''})
+const grantModuleOptions=[{value:'MEASUREMENTS',label:'Measurements'},{value:'APPOINTMENTS',label:'Appointments'},{value:'VISITS',label:'Visit summaries'},{value:'MEDICATION',label:'Medication'},{value:'CONSULTATION',label:'Consultations'},{value:'TREATMENT',label:'Treatment plans'},{value:'REHAB',label:'Recovery'},{value:'EMERGENCY',label:'Emergency'},{value:'SPECIALTY',label:'Child and maternity'},{value:'MENTAL',label:'Mental health'},{value:'MEDICAL',label:'Medical records'},{value:'DIALYSIS',label:'Dialysis'}]
 const metricOptions=[{label:'Blood pressure',value:'BP'},{label:'Blood glucose',value:'GLUCOSE'},{label:'Blood oxygen',value:'SPO2'},{label:'Weight',value:'WEIGHT'},{label:'Heart rate',value:'HEART_RATE'},{label:'Temperature',value:'TEMPERATURE'},{label:'Custom',value:'CUSTOM'}]
 function syncTab(name){const query={...route.query,tab:name};if(name!=='consultation')delete query.consultationId;router.replace({query})}
 function pid(){if(!currentPatientId.value)throw new Error('Select a patient first.');return currentPatientId.value}
@@ -149,7 +160,7 @@ async function submitMental(){await safely(async()=>{const values=mentalAnswers.
 async function scheduleMental(){await safely(async()=>{validate(mentalSchedule.nextDueAt && Number(mentalSchedule.intervalDays)>0,'Enter the next delivery time and a positive interval.');await api.saveMentalSchedule({...mentalSchedule,scaleCode:mental.scaleCode,patientId:pid(),familyVisibility:mentalVisible.value?'VISIBLE':'PRIVATE'});await loadMental()},'Assessment scheduled')}
 async function disableMentalSchedule(row){if(!row||row.enabled!==1)return;await safely(async()=>{await api.disableMentalSchedule(row.id);await loadMental()},'Assessment schedule disabled')}
 async function loadGrants(){await loadPatientData('grants',id=>api.listAccessGrants(id),response=>{grants.value=response.data||[]})}
-async function createGrant(){await safely(async()=>{validate(Number(grant.granteeUserId)>0,'Enter a valid user ID for the recipient.');await api.saveAccessGrant({...grant,patientId:pid()});await loadGrants()},'Access authorized')}
+async function createGrant(){await safely(async()=>{validate(Number(grant.granteeUserId)>0,'Select a recipient.');if(grant.granteeRole==='DOCTOR')validate(clinicians.value.some(doctor=>Number(doctor.id)===Number(grant.granteeUserId)),'Select a doctor from the list.');await api.saveAccessGrant({...grant,visibleModules:grantModules.value.join(','),patientId:pid()});await loadGrants()},'Access authorized')}
 async function revoke(row){await safely(async()=>{await api.revokeAccessGrant(row.id);await loadGrants()},'Access revoked')}
 async function createSchedule(){await safely(async()=>{validate(!roles.includes('admin') || schedule.doctorUserId,'Choose the doctor whose schedule you are creating.');validate(schedule.workDate && schedule.startTime && schedule.endTime && schedule.endTime>schedule.startTime,'Enter a date and a schedule ending after its start time.');await api.saveDoctorSchedule({...schedule})},'Availability added')}
 async function createGroup(){await safely(async()=>{validate(group.groupName.trim(),'Enter the patient group name.');await api.savePatientGroup({...group});group.groupName='';group.description='';groups.value=(await api.listPatientGroups()).data||[]})}
@@ -187,7 +198,7 @@ async function cancelInboxAppointment(row){
   }catch{}finally{busy.value=false}
 }
 async function loadOperations(){await Promise.allSettled([loadAppointmentInbox(),(async()=>{operations.value=(await api.getOperationsReport({})).data})(),(async()=>{groups.value=(await api.listPatientGroups()).data||[]})()])}
-async function loadTab(){const current=tab.value;const loaders={measurements:loadMeasurements,appointments:loadAppointments,recovery:loadRecovery,specialty:loadSpecialty,emergency:loadEmergencyTab,mental:loadMental,privacy:loadGrants,operations:loadOperations};if(['appointments','operations'].includes(current)&&!clinicians.value.length){try{clinicians.value=(await api.listClinicians()).data||[]}catch{clinicians.value=[]}}try{if(loaders[current])await loaders[current]()}catch{}}
+async function loadTab(){const current=tab.value;const loaders={measurements:loadMeasurements,appointments:loadAppointments,recovery:loadRecovery,specialty:loadSpecialty,emergency:loadEmergencyTab,mental:loadMental,privacy:loadGrants,operations:loadOperations};if(['appointments','operations','privacy'].includes(current)&&!clinicians.value.length){try{clinicians.value=(await api.listClinicians()).data||[]}catch{clinicians.value=[]}}try{if(loaders[current])await loaders[current]()}catch{}}
 const mentalSeverityLabel=row=>({MINIMAL:'Below review threshold',MILD:'Mild',MODERATE:'Moderate',MODERATELY_SEVERE:'Moderately severe',SEVERE:'Severe',REVIEW_REQUIRED:'Further assessment suggested'})[row.severity]||row.severity||'—'
 function validate(valid,text){if(!valid){const error=new Error(text);error.validation=true;throw error}}
 async function loadSpecialty(){await loadPatientData('specialty',id=>Promise.all(['growth','vaccination','maternity'].map(type=>api.listSpecialty(type,id))),responses=>{['growth','vaccination','maternity'].forEach((type,index)=>{specialtyRows[type]=responses[index].data||[]})})}
@@ -216,6 +227,7 @@ onMounted(()=>{if(route.query.tab&&!allowedTabs.includes(route.query.tab))syncTa
 </script>
 
 <style scoped>
+.inline-form .grant-choice{flex:1 1 260px;min-width:min(260px,100%)}
 .appointment-inbox{margin-bottom:18px;min-width:0}.inbox-description{margin:0 0 16px;color:#637a75;line-height:1.7}
 .prescription-version+.prescription-version{margin-top:22px;padding-top:18px;border-top:1px solid #e4ece8}.prescription-version p{color:#6a7e79;white-space:pre-wrap}.form-grid{min-width:0}.form-grid :deep(.el-form-item__content){min-width:0}.form-grid :deep(.el-date-editor){max-width:100%}.card-head{flex-wrap:wrap}
 

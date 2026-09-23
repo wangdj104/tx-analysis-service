@@ -15,7 +15,7 @@ function setup(t, overrides = {}, roles = [], initialTab = 'measurements') {
   const source = content.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
   const successes = []
   const deps = { computed, reactive, ref, watch, onMounted() {}, useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }), useCurrentPatient: () => ({ currentPatientId: patient, currentPatientName: ref('Patient') }), ElMessage: { success: message => successes.push(message), warning: message => warnings.push(message) }, ElMessageBox: { confirm: async () => {} }, api, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }, navigator: { geolocation: null } }
-  const scope = effectScope(), exposed = ['loadMeasurements','measurements','measurement','recordMeasurement','loadEmergencyCard','emergencyCard','loadEmergencyEvents','emergencyEvents','openEmergency','selectedEmergency','sos','loadMental','mentalSchedules','disableMentalSchedule','mental','mentalAnswers','submitMental','mentalSchedule','scheduleMental','loadTab','busy','tab','saveSpecial','specialtyRows','schedule','createSchedule','appointmentInbox','loadAppointmentInbox','cancelInboxAppointment','completeInboxAppointment','syncTab']
+  const scope = effectScope(), exposed = ['loadMeasurements','measurements','measurement','recordMeasurement','loadEmergencyCard','emergencyCard','loadEmergencyEvents','emergencyEvents','openEmergency','selectedEmergency','sos','loadMental','mentalSchedules','disableMentalSchedule','mental','mentalAnswers','submitMental','mentalSchedule','scheduleMental','loadTab','busy','tab','saveSpecial','specialtyRows','schedule','createSchedule','appointmentInbox','loadAppointmentInbox','cancelInboxAppointment','completeInboxAppointment','syncTab','grant','grantModules','clinicians','createGrant']
   const view = scope.run(() => new Function(...Object.keys(deps), source + '\nreturn {' + exposed.map(name => `${name}: typeof ${name} === 'undefined' ? undefined : ${name}`).join(',') + '}')(...Object.values(deps)))
   t.after(() => scope.stop())
   return { ...view, patient, route, warnings, successes, storage }
@@ -28,6 +28,24 @@ test('a failed clinician directory does not block independent patient tabs', asy
   })
   await view.loadTab()
   assert.deepEqual(view.measurements.value.map(row => row.id), [17])
+})
+
+test('privacy loads all active doctors and submits selected module codes', async t => {
+  const saved = []
+  const view = setup(t, {
+    listClinicians: async () => ({ data: [{ id: 23, real_name: 'Doctor A', username: 'doctor.a' }] }),
+    listAccessGrants: async () => ({ data: [] }),
+    saveAccessGrant: async body => { saved.push(body) }
+  }, [], 'privacy')
+  await view.loadTab()
+  assert.equal(view.clinicians.value[0].id, 23)
+  assert.equal(view.grant.granteeRole, 'DOCTOR')
+  view.grant.granteeUserId = 23
+  view.grantModules.value = ['MEASUREMENTS', 'CONSULTATION']
+  await view.createGrant()
+  assert.equal(saved.length, 1)
+  assert.equal(saved[0].granteeUserId, 23)
+  assert.equal(saved[0].visibleModules, 'MEASUREMENTS,CONSULTATION')
 })
 
 test('mental schedules are visible after creation and can be disabled', async t => {

@@ -102,6 +102,8 @@ import { normalizeWorkspaceMenus, getFallbackWorkspaceMenus, getEnglishMenuLabel
 import { getAuthSessionKey, saveAuthSession, captureAuthSession, isAuthSessionCurrent, clearPermissionCache, savePermissionCache, readPermissionCache } from '@/utils/authSession';
 import { DEFAULT_WORKSPACE_TABS, canAccessWorkspace, resolveWorkspaceEntry } from '@/utils/workspaceAccess';
 import { getPatientNames } from '@/api/patient';
+import { filterSpecialtyMenus, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
+import { clearPatientSpecialtyScope, loadPatientSpecialtyScope } from '@/utils/patientSpecialtyScope';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import { useMobile } from '@/composables/useMobile';
 import { ElMessage } from 'element-plus';
@@ -114,18 +116,25 @@ const languageHref = computed(() => `/cn${route.fullPath === '/' ? '/' : route.f
 const { isMobile } = useMobile();
 
 const rawNavItems = ref([]);
-const profileVersion = ref(0);
+const specialtyScope = ref(null);
 const navItems = computed(() => {
-  profileVersion.value;
-  let settings = {};
-  try { settings = JSON.parse(localStorage.getItem(`care-profile:${currentPatientId.value}`) || '{}'); } catch {}
-  const dialysisEnabled = settings.dialysisEnabled !== false;
-  const hidden = item => !dialysisEnabled && ['/dialysis', '/dry-weight'].some(path => item.path?.startsWith(path));
-  const filtered = rawNavItems.value
-    .filter(item => !hidden(item))
-    .map(item => ({ ...item, children: item.children?.filter(child => !hidden(child)) }));
+  const filtered = filterSpecialtyMenus(rawNavItems.value, specialtyScope.value);
   return [{ path: '/care', entryPath: '/care', label: 'Family Care', icon: 'House', children: [] }, ...filtered.filter(item => item.path !== '/care')];
 });
+let specialtyEpoch = 0;
+async function refreshSpecialtyScope() {
+  const epoch = ++specialtyEpoch;
+  const patientId = currentPatientId.value;
+  specialtyScope.value = null;
+  clearPatientSpecialtyScope();
+  const scope = await loadPatientSpecialtyScope(patientId);
+  if (epoch !== specialtyEpoch || patientId !== currentPatientId.value) return;
+  specialtyScope.value = scope;
+  if (!route.meta.hideNav && !specialtyPathAllowed(route.fullPath, scope)
+      && (route.path === '/dialysis' || route.path === '/dry-weight' || scope?.restrictedPaths?.includes(route.fullPath))) {
+    router.replace('/monitoring');
+  }
+}
 const menuLoadError = ref('');
 const menusLoading = ref(false);
 let menuRequestEpoch = 0;
@@ -143,7 +152,7 @@ const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPas
 const { currentPatientId, setPatientList } = useCurrentPatient();
 const appPatientList = ref([]);
 document.body.classList.toggle('care-senior', localStorage.getItem('care-senior') === 'true');
-function careProfileChanged() { profileVersion.value++; }
+
 
 // towardchildcomponentraiseprovideuserMenuPermission
 provide('userMenus', userMenus);
@@ -151,6 +160,9 @@ provide('userMenus', userMenus);
 function resetNavState() {
   menuRequestEpoch++;
   patientRequestEpoch++;
+  specialtyEpoch++;
+  specialtyScope.value = null;
+  clearPatientSpecialtyScope();
   menuLoadError.value = '';
   menusLoading.value = false;
   rawNavItems.value = [];
@@ -248,13 +260,13 @@ function onSearchShortcut(event) {
 onMounted(() => {
   window.addEventListener('keydown', onSearchShortcut);
   window.addEventListener('auth-session-cleared', resetNavState);
-  window.addEventListener('care-profile-changed', careProfileChanged);
+  window.addEventListener('patient-specialty-changed', refreshSpecialtyScope);
   window.addEventListener('care-patients-changed', loadPatientList);
 });
 onUnmounted(() => {
   window.removeEventListener('keydown', onSearchShortcut);
   window.removeEventListener('auth-session-cleared', resetNavState);
-  window.removeEventListener('care-profile-changed', careProfileChanged);
+  window.removeEventListener('patient-specialty-changed', refreshSpecialtyScope);
   window.removeEventListener('care-patients-changed', loadPatientList);
 });
 
@@ -399,6 +411,7 @@ const loadUserMenus = async () => {
       const authorizedEntry = resolveWorkspaceEntry(currentPath, menuPaths, roleCodes);
       if (!route.meta.hideNav && authorizedEntry !== currentPath) router.replace(authorizedEntry || '/monitoring');
       await loadPatientList();
+      await refreshSpecialtyScope();
     } else if (res.code === 401) {
       resetNavState();
       router.replace('/login');
@@ -642,6 +655,8 @@ async function submitPasswordChange() {
     passwordChanging.value = false;
   }
 }
+
+watch(currentPatientId, refreshSpecialtyScope, { immediate: true });
 
 watch(
   () => route.path,

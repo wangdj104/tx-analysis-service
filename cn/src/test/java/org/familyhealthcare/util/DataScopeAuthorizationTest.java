@@ -32,7 +32,10 @@ class DataScopeAuthorizationTest {
         jdbc.execute("CREATE TABLE sys_user(id BIGINT,status INT DEFAULT 1,deleted INT DEFAULT 0)");
         jdbc.execute("CREATE TABLE sys_role(id BIGINT,role_code VARCHAR(30),status INT DEFAULT 1,deleted INT DEFAULT 0)");
         jdbc.execute("CREATE TABLE sys_user_role(user_id BIGINT,role_id BIGINT)");
+        jdbc.execute("CREATE TABLE patient_specialty_role(patient_id BIGINT,role_id BIGINT)");
         jdbc.update("INSERT INTO patient VALUES(1,7,0)");
+        jdbc.update("INSERT INTO sys_role VALUES(101,'specialty_dialysis',1,0)");
+        jdbc.update("INSERT INTO patient_specialty_role VALUES(1,101)");
         Patient patient=new Patient();patient.setId(1L);patient.setUserId(7L);patient.setDeleted(0);
         PatientMapper patients=mock(PatientMapper.class);when(patients.selectById(1L)).thenReturn(patient);
         membership=mock(CareMembershipService.class);when(membership.accessiblePatients(11L)).thenReturn(Collections.emptyList());
@@ -56,6 +59,13 @@ class DataScopeAuthorizationTest {
         request("POST","/api/medication/save");assertThrows(IllegalStateException.class,()->scope.requirePatient(1L));
         jdbc.update("UPDATE care_access_grant SET access_level='WRITE'");assertNotNull(scope.requirePatient(1L));
         request("POST","/api/medical-record/save");assertThrows(IllegalStateException.class,()->scope.requirePatient(1L));
+    }
+
+    @Test void dialysisDataRequiresTheSelectedPatientsDialysisRole() {
+        request("GET","/api/dialysis/list").setAttribute("userId",7L);
+        assertNotNull(scope.requirePatient(1L));
+        jdbc.update("DELETE FROM patient_specialty_role WHERE patient_id=1");
+        assertThrows(IllegalStateException.class, () -> scope.requirePatient(1L));
     }
 
     @Test void revokedOrExpiredGrantsDoNotFallBackToFamilyMembership() {

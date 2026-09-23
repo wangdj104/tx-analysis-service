@@ -61,7 +61,7 @@
           </div>
         </div>
       </template>
-      <div class="consultation-context"><b>{{ copy.symptom }}: </b>{{ activeConsultation.symptom }}<span v-if="activeConsultation.duration_text"> · {{ activeConsultation.duration_text }}</span><p v-if="activeConsultation.medical_history"><b>{{ copy.history }}: </b>{{ activeConsultation.medical_history }}</p></div>
+      <div class="consultation-context"><p><b>{{ copy.symptom }}: </b>{{ activeConsultation.symptom }}</p><p v-if="activeConsultation.duration_text"><b>{{ copy.duration }}: </b>{{ activeConsultation.duration_text }}</p><p v-if="activeConsultation.medical_history"><b>{{ copy.history }}: </b>{{ activeConsultation.medical_history }}</p></div>
       <el-alert v-if="activeConsultation.mode !== 'TEXT' && !mediaSupported && activeConsultation.status === 'OPEN'" :title="copy.httpsRequired" type="info" show-icon :closable="false" class="consultation-notice" />
       <div v-if="callActive" class="consultation-media">
         <video ref="localVideo" autoplay muted playsinline />

@@ -195,6 +195,8 @@ Vite 通常监听 `http://localhost:5174`，将 `/api` 代理到 `http://localho
 
 ## 测试与构建
 
+患者专病角色升级脚本为 [`patient_specialty_roles_20260923.sql`](src/main/resources/sql/patient_specialty_roles_20260923.sql)。MySQL/MariaDB 服务启动时会自动执行幂等升级；发布前请备份数据库，并确保数据库用户有 `CREATE` 和 `INSERT` 权限。现有患者不会自动获得透析专病角色，需在患者编辑页选择“透析患者”。
+
 ```bash
 mvn clean test
 cd frontend

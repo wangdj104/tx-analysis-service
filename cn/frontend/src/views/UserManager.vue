@@ -176,7 +176,7 @@ async function loadUsers() {
 async function loadRoles() {
   try {
     const res = await getRoleList();
-    if (res.code === 200) roles.value = res.data || [];
+    if (res.code === 200) roles.value = (res.data || []).filter(role => !role.roleCode?.startsWith('specialty_'));
   } catch (e) {
     console.error(e);
   }
@@ -223,7 +223,7 @@ async function handleDelete(id) {
 async function showRoleDialog(row) {
   currentUserId.value = row.id;
   const res = await getUserRoles(row.id);
-  if (res.code === 200) selectedRoleIds.value = res.data || [];
+  if (res.code === 200) selectedRoleIds.value = (res.data || []).filter(id => roles.value.some(role => role.id === id));
   roleDialogVisible.value = true;
 }
 

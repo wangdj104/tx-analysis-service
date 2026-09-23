@@ -6,6 +6,7 @@ import lombok.Data;
 import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @TableName("patient")
@@ -48,4 +49,7 @@ public class Patient implements Serializable {
     private Integer deleted;
 
     private Long userId;
+
+    @TableField(exist = false)
+    private List<Long> specialtyRoleIds;
 }

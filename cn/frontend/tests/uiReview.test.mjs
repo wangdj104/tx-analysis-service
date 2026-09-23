@@ -6,6 +6,7 @@ import * as sessions from '../src/utils/authSession.js';
 import { localizePayload, localizeServerText } from '../src/utils/serverText.js';
 import * as navigation from '../src/utils/workspaceNavigation.js';
 import * as access from '../src/utils/workspaceAccess.js';
+import * as specialtyNavigation from '../src/utils/patientSpecialtyNavigation.js';
 
 beforeEach(() => {
   const storage = new Map();
@@ -42,7 +43,8 @@ function setupSfc(file, bindings, returned) {
       Object.keys(target).forEach(key => delete target[key]);
       if (value) Object.assign(target, value);
     },
-    ...sessions, ...navigation, ...access, ...bindings
+    ...sessions, ...navigation, ...access, ...specialtyNavigation,
+    clearPatientSpecialtyScope() {}, loadPatientSpecialtyScope: async () => ({ restrictedPaths: [], allowedPaths: [] }), ...bindings
   };
   return new Function(...Object.keys(dependencies), source + '\nreturn {' + returned.join(',') + '}')(...Object.values(dependencies));
 }

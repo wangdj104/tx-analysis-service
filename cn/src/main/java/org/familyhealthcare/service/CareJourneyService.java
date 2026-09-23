@@ -109,7 +109,7 @@ public class CareJourneyService {
         return jdbc.queryForList("SELECT * FROM doctor_schedule WHERE doctor_user_id=? AND work_date BETWEEN ? AND ? ORDER BY work_date,start_time",id,from==null?LocalDate.now():from,to==null?LocalDate.now().plusDays(30):to);
     }
 
-    public List<Map<String,Object>> clinicians(){return jdbc.queryForList("SELECT DISTINCT u.id,u.username,u.real_name FROM sys_user u JOIN sys_user_role ur ON ur.user_id=u.id JOIN sys_role r ON r.id=ur.role_id WHERE r.role_code='doctor' AND u.status=1 AND COALESCE(u.deleted,0)=0 ORDER BY COALESCE(u.real_name,u.username)");}
+    public List<Map<String,Object>> clinicians(){return jdbc.queryForList("SELECT DISTINCT u.id,u.username,u.real_name FROM sys_user u JOIN sys_user_role ur ON ur.user_id=u.id JOIN sys_role r ON r.id=ur.role_id WHERE r.role_code='doctor' AND r.status=1 AND COALESCE(r.deleted,0)=0 AND u.status=1 AND COALESCE(u.deleted,0)=0 ORDER BY COALESCE(u.real_name,u.username)");}
 
     public Map<String,Object> saveDoctorSchedule(Map<String,Object> body) {
         requireDoctor(); Long doctorId=body.get("doctorUserId")==null?userId():requiredLong(body,"doctorUserId");

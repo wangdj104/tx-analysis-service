@@ -12,6 +12,8 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue';
 import faviconUrl from '@/assets/logo.svg?url';
 import i18n from '@/i18n';
 import { loadPlatformBranding } from '@/utils/platformBranding';
+import { specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
+import { loadPatientSpecialtyScope } from '@/utils/patientSpecialtyScope';
 
 function applyFavicon(href) {
   if (!href) return;
@@ -67,7 +69,7 @@ const router = createRouter({
 });
 
 // routeguard
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('token');
 
   if (to.path === '/login') {
@@ -107,6 +109,13 @@ router.beforeEach((to, from, next) => {
     (!hasQuery && (menuPaths.includes(to.path) || menuPaths.some(path => path.startsWith(`${to.path}?`))));
 
   if (!allowed) {
+    next('/monitoring');
+    return;
+  }
+  const scope = await loadPatientSpecialtyScope();
+  const restricted = ['/dialysis', '/dry-weight'].includes(to.path)
+    || scope?.restrictedPaths?.some(path => path === to.fullPath || path === to.path);
+  if (restricted && !specialtyPathAllowed(to.fullPath, scope)) {
     next('/monitoring');
     return;
   }

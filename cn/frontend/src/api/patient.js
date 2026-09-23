@@ -19,3 +19,7 @@ export function deletePatient(id) {
 export function getPatientNames() {
   return request({ url: '/patient/names', method: 'get' });
 }
+
+export const getSpecialtyRoles = () => request({ url: '/patient/specialty-roles', method: 'get' });
+export const getPatientSpecialtyRoles = id => request({ url: `/patient/${id}/specialty-roles`, method: 'get' });
+export const getPatientSpecialtyMenuScope = patientId => request({ url: '/patient/specialty-menu-scope', method: 'get', params: patientId ? { patientId } : {} });

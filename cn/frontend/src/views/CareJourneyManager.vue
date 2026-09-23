@@ -56,7 +56,17 @@
       </el-tab-pane>
 
       <el-tab-pane label="隐私与授权" name="privacy">
-        <el-card><template #header><b>患者自主授权</b></template><el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top" class="inline-form"><el-form-item label="用户编号"><el-input-number v-model="grant.granteeUserId"/></el-form-item><el-form-item label="角色"><el-select v-model="grant.granteeRole"><el-option label="医生" value="DOCTOR"/><el-option label="家属" value="FAMILY"/><el-option label="监护人" value="GUARDIAN"/></el-select></el-form-item><el-form-item label="权限级别"><el-select v-model="grant.accessLevel"><el-option label="只读" value="READ"/><el-option label="可录入" value="WRITE"/><el-option label="可代办" value="PROXY"/></el-select></el-form-item><el-form-item label="可见模块"><el-input v-model="grant.visibleModules" placeholder="例如：健康指标、预约复诊；留空表示全部"/></el-form-item><el-button type="primary" @click="createGrant">授权</el-button></el-form><el-table :data="grants"><el-table-column prop="real_name" label="人员"/><el-table-column prop="grantee_role" label="角色"><template #default="{row}">{{ roleLabel(row.grantee_role) }}</template></el-table-column><el-table-column prop="access_level" label="权限级别"><template #default="{row}">{{ accessLabel(row.access_level) }}</template></el-table-column><el-table-column prop="visible_modules" label="可见模块"><template #default="{row}">{{ modulesLabel(row.visible_modules) }}</template></el-table-column><el-table-column prop="status" label="状态"><template #default="{row}">{{ statusLabel(row.status) }}</template></el-table-column><el-table-column label=""><template #default="{row}"><el-button link type="danger" @click="revoke(row)">撤销</el-button></template></el-table-column></el-table></el-card>
+        <el-card><template #header><b>患者自主授权</b></template>
+          <el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top" class="inline-form">
+            <el-form-item label="角色"><el-select v-model="grant.granteeRole" @change="grant.granteeUserId=null"><el-option label="医生" value="DOCTOR"/><el-option label="家属" value="FAMILY"/><el-option label="监护人" value="GUARDIAN"/></el-select></el-form-item>
+            <el-form-item v-if="grant.granteeRole==='DOCTOR'" label="授权医生" class="grant-choice"><el-select v-model="grant.granteeUserId" filterable clearable placeholder="搜索并选择平台医生"><el-option v-for="doctor in clinicians" :key="doctor.id" :value="doctor.id" :label="doctor.real_name && doctor.real_name!==doctor.username ? `${doctor.real_name}（${doctor.username}）` : doctor.username"/></el-select></el-form-item>
+            <el-form-item v-else label="授权对象用户编号"><el-input-number v-model="grant.granteeUserId"/></el-form-item>
+            <el-form-item label="权限级别"><el-select v-model="grant.accessLevel"><el-option label="只读" value="READ"/><el-option label="可录入" value="WRITE"/><el-option label="可代办" value="PROXY"/></el-select></el-form-item>
+            <el-form-item label="可见模块" class="grant-choice"><el-select v-model="grantModules" multiple collapse-tags collapse-tags-tooltip clearable placeholder="不选择表示全部模块"><el-option v-for="module in grantModuleOptions" :key="module.value" :label="module.label" :value="module.value"/></el-select></el-form-item>
+            <el-button type="primary" @click="createGrant">授权</el-button>
+          </el-form>
+          <el-table :data="grants"><el-table-column prop="real_name" label="人员"/><el-table-column prop="grantee_role" label="角色"><template #default="{row}">{{ roleLabel(row.grantee_role) }}</template></el-table-column><el-table-column prop="access_level" label="权限级别"><template #default="{row}">{{ accessLabel(row.access_level) }}</template></el-table-column><el-table-column prop="visible_modules" label="可见模块"><template #default="{row}">{{ modulesLabel(row.visible_modules) }}</template></el-table-column><el-table-column prop="status" label="状态"><template #default="{row}">{{ statusLabel(row.status) }}</template></el-table-column><el-table-column label=""><template #default="{row}"><el-button link type="danger" @click="revoke(row)">撤销</el-button></template></el-table-column></el-table>
+        </el-card>
       </el-tab-pane>
 
       <el-tab-pane v-if="isDoctor" label="运营管理" name="operations">
@@ -91,7 +101,7 @@ const plan=reactive({planType:'INPATIENT',title:''}),planText=ref(''),rehab=reac
 const emergency=reactive({locationText:'',latitude:null,longitude:null})
 const growth=reactive({recordDate:today(),heightCm:null,weightKg:null,headCircumferenceCm:null,heightPercentile:null,weightPercentile:null}),vaccine=reactive({vaccineName:'',doseNo:'',plannedDate:today(),remindAt:''}),maternity=reactive({recordType:'PRENATAL',recordDate:today(),title:''}),maternityText=ref('')
 const mental=reactive({scaleCode:'PHQ9'}),mentalAnswers=ref(''),mentalVisible=ref(false),mentalSchedule=reactive({scaleCode:'PHQ9',intervalDays:14,nextDueAt:now()})
-const grant=reactive({granteeUserId:null,granteeRole:'FAMILY',accessLevel:'READ',visibleModules:''}),schedule=reactive({doctorUserId:null,workDate:today(),startTime:'09:00:00',endTime:'12:00:00',slotMinutes:30}),group=reactive({groupName:'',description:''})
+const grant=reactive({granteeUserId:null,granteeRole:'DOCTOR',accessLevel:'READ'}),grantModules=ref([]),schedule=reactive({doctorUserId:null,workDate:today(),startTime:'09:00:00',endTime:'12:00:00',slotMinutes:30}),group=reactive({groupName:'',description:''})
 const metricOptions=[{label:'血压',value:'BP'},{label:'血糖',value:'GLUCOSE'},{label:'血氧',value:'SPO2'},{label:'体重',value:'WEIGHT'},{label:'心率',value:'HEART_RATE'},{label:'体温',value:'TEMPERATURE'},{label:'自定义指标',value:'CUSTOM'}]
 const planTypes=[{value:'INPATIENT',label:'住院治疗'},{value:'SURGERY',label:'手术计划'},{value:'REHAB',label:'康复计划'},{value:'DISCHARGE',label:'出院计划'}]
 const rehabTypes=[{value:'EXERCISE',label:'康复训练'},{value:'WOUND',label:'伤口记录'},{value:'DRAIN',label:'引流记录'},{value:'SYMPTOM',label:'异常症状'}]
@@ -100,7 +110,8 @@ const modeLabels={IN_PERSON:'线下面诊',TEXT:'图文',VOICE:'语音',VIDEO:'�
 const roleLabels={DOCTOR:'医生',FAMILY:'家属',GUARDIAN:'监护人',PATIENT:'患者'}
 const accessLabels={READ:'只读',WRITE:'可录入',PROXY:'可代办'}
 const severityLabels={NONE:'无明显风险',NORMAL:'正常',MILD:'轻度',MODERATE:'中度',SEVERE:'重度',LOW:'低风险',MEDIUM:'中风险',HIGH:'高风险',CRITICAL:'危急'}
-const moduleLabels={MEASUREMENTS:'健康指标',APPOINTMENTS:'预约复诊',CONSULTATIONS:'远程问诊',MEDICATIONS:'用药管理',RECORDS:'医疗记录',DIALYSIS:'透析管理'}
+const grantModuleOptions=[{value:'MEASUREMENTS',label:'健康指标'},{value:'APPOINTMENTS',label:'预约复诊'},{value:'VISITS',label:'诊后小结'},{value:'MEDICATION',label:'用药管理'},{value:'CONSULTATION',label:'远程问诊'},{value:'TREATMENT',label:'治疗计划'},{value:'REHAB',label:'住院与康复'},{value:'EMERGENCY',label:'急诊与呼救'},{value:'SPECIALTY',label:'儿童与孕产'},{value:'MENTAL',label:'心理健康'},{value:'MEDICAL',label:'医疗记录'},{value:'DIALYSIS',label:'透析管理'}]
+const moduleLabels=Object.fromEntries(grantModuleOptions.map(item=>[item.value,item.label]))
 const statusLabel=value=>statusLabels[value]||value||'—'
 const modeLabel=value=>modeLabels[value]||value||'—'
 const metricLabel=value=>metricOptions.find(item=>item.value===value)?.label||value||'—'
@@ -166,7 +177,7 @@ async function submitMental(){await safely(async()=>{const values=mentalAnswers.
 async function scheduleMental(){await safely(async()=>{validate(mentalSchedule.nextDueAt && Number(mentalSchedule.intervalDays)>0,'请填写下次推送时间和有效间隔天数。');await api.saveMentalSchedule({...mentalSchedule,scaleCode:mental.scaleCode,patientId:pid(),familyVisibility:mentalVisible.value?'VISIBLE':'PRIVATE'});await loadMental()},'量表推送计划已设置')}
 async function disableMentalSchedule(row){if(!row||row.enabled!==1)return;await safely(async()=>{await api.disableMentalSchedule(row.id);await loadMental()},'量表推送计划已停用')}
 async function loadGrants(){await loadPatientData('grants',id=>api.listAccessGrants(id),response=>{grants.value=response.data||[]})}
-async function createGrant(){await safely(async()=>{validate(Number(grant.granteeUserId)>0,'请填写有效的授权对象用户编号。');await api.saveAccessGrant({...grant,patientId:pid()});await loadGrants()},'授权已生效')}
+async function createGrant(){await safely(async()=>{validate(Number(grant.granteeUserId)>0,'请选择授权对象。');if(grant.granteeRole==='DOCTOR')validate(clinicians.value.some(doctor=>Number(doctor.id)===Number(grant.granteeUserId)),'请从医生列表中选择授权对象。');await api.saveAccessGrant({...grant,visibleModules:grantModules.value.join(','),patientId:pid()});await loadGrants()},'授权已生效')}
 async function revoke(row){await safely(async()=>{await api.revokeAccessGrant(row.id);await loadGrants()},'授权已撤销')}
 async function createSchedule(){await safely(async()=>{validate(!roles.includes('admin') || schedule.doctorUserId,'请选择需要排班的医生。');validate(schedule.workDate && schedule.startTime && schedule.endTime && schedule.endTime>schedule.startTime,'请填写排班日期，且结束时间应晚于开始时间。');await api.saveDoctorSchedule({...schedule})},'可预约时段已添加')}
 async function createGroup(){await safely(async()=>{validate(group.groupName.trim(),'请填写患者分组名称。');await api.savePatientGroup({...group});group.groupName='';group.description='';groups.value=(await api.listPatientGroups()).data||[]})}
@@ -204,7 +215,7 @@ async function cancelInboxAppointment(row){
   }catch{}finally{busy.value=false}
 }
 async function loadOperations(){await Promise.allSettled([loadAppointmentInbox(),(async()=>{operations.value=(await api.getOperationsReport({})).data})(),(async()=>{groups.value=(await api.listPatientGroups()).data||[]})()])}
-async function loadTab(){const current=tab.value;const loaders={measurements:loadMeasurements,appointments:loadAppointments,recovery:loadRecovery,specialty:loadSpecialty,emergency:loadEmergencyTab,mental:loadMental,privacy:loadGrants,operations:loadOperations};if(['appointments','operations'].includes(current)&&!clinicians.value.length){try{clinicians.value=(await api.listClinicians()).data||[]}catch{clinicians.value=[]}}try{if(loaders[current])await loaders[current]()}catch{}}
+async function loadTab(){const current=tab.value;const loaders={measurements:loadMeasurements,appointments:loadAppointments,recovery:loadRecovery,specialty:loadSpecialty,emergency:loadEmergencyTab,mental:loadMental,privacy:loadGrants,operations:loadOperations};if(['appointments','operations','privacy'].includes(current)&&!clinicians.value.length){try{clinicians.value=(await api.listClinicians()).data||[]}catch{clinicians.value=[]}}try{if(loaders[current])await loaders[current]()}catch{}}
 const mentalSeverityLabel=row=>({MINIMAL:'未达评估提醒阈值',MILD:'轻度',MODERATE:'中度',MODERATELY_SEVERE:'中重度',SEVERE:'重度',REVIEW_REQUIRED:'建议进一步评估'})[row.severity]||row.severity||'—'
 function validate(valid,text){if(!valid){const error=new Error(text);error.validation=true;throw error}}
 async function loadSpecialty(){await loadPatientData('specialty',id=>Promise.all(['growth','vaccination','maternity'].map(type=>api.listSpecialty(type,id))),responses=>{['growth','vaccination','maternity'].forEach((type,index)=>{specialtyRows[type]=responses[index].data||[]})})}
@@ -233,6 +244,7 @@ onMounted(()=>{if(route.query.tab&&!allowedTabs.includes(route.query.tab))syncTa
 </script>
 
 <style scoped>
+.inline-form .grant-choice{flex:1 1 260px;min-width:min(260px,100%)}
 .appointment-inbox{margin-bottom:18px;min-width:0}.inbox-description{margin:0 0 16px;color:#637a75;line-height:1.7}
 .prescription-version+.prescription-version{margin-top:22px;padding-top:18px;border-top:1px solid #e4ece8}.prescription-version p{color:#6a7e79;white-space:pre-wrap}.form-grid{min-width:0}.form-grid :deep(.el-form-item__content){min-width:0}.form-grid :deep(.el-date-editor){max-width:100%}.card-head{flex-wrap:wrap}
 

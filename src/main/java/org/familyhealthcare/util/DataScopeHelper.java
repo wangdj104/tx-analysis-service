@@ -30,6 +30,8 @@ public class DataScopeHelper {
         if(!CurrentUserUtil.isAdmin())throw new IllegalStateException("Only administrators can perform this action.");
     }
     public <T> void applyUserScope(QueryWrapper<T> query) {
+        if ("DIALYSIS".equals(requestModule()))
+            query.inSql("patient_id", "SELECT psr.patient_id FROM patient_specialty_role psr JOIN sys_role r ON r.id=psr.role_id WHERE r.role_code='specialty_dialysis' AND r.status=1 AND COALESCE(r.deleted,0)=0");
         if(CurrentUserUtil.isAdmin())return;
         Long uid=requireUserId();List<Long> ids=accessiblePatientIds(uid);
         query.and(q->{q.and(legacy->legacy.eq("user_id",uid).isNull("patient_id"));if(!ids.isEmpty())q.or().in("patient_id",ids);});
@@ -42,6 +44,10 @@ public class DataScopeHelper {
         if(patientId==null)return null;
         Patient patient=patientMapper.selectById(patientId);
         if(patient==null||Objects.equals(patient.getDeleted(),1))throw new IllegalStateException("The patient does not exist.");
+        if("DIALYSIS".equals(module)) {
+            Integer specialty=jdbcTemplate.queryForObject("SELECT COUNT(*) FROM patient_specialty_role psr JOIN sys_role r ON r.id=psr.role_id WHERE psr.patient_id=? AND r.role_code='specialty_dialysis' AND r.status=1 AND COALESCE(r.deleted,0)=0",Integer.class,patientId);
+            if(specialty==null||specialty==0)throw new IllegalStateException("Dialysis care is not enabled for this patient.");
+        }
         if(!CurrentUserUtil.isAdmin()&&!Objects.equals(patient.getUserId(),requireUserId())
                 &&!accessiblePatientIds(requireUserId(),module,write).contains(patientId))
             throw new IllegalStateException("You do not have access to this patient or action.");

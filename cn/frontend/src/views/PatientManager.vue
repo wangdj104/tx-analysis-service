@@ -169,6 +169,11 @@
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="备注信息" />
         </el-form-item>
+        <el-form-item label="专病角色">
+          <el-select v-model="form.specialtyRoleIds" multiple filterable clearable :loading="specialtyLoading" placeholder="可选择多个专病角色；留空为普通患者" style="width:100%">
+            <el-option v-for="role in specialtyRoles" :key="role.id" :label="role.roleName" :value="role.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
             <el-radio :value="1">正常</el-radio>
@@ -178,7 +183,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSave">保存</el-button>
+        <el-button type="primary" :disabled="specialtyLoading || !specialtyReady" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -187,7 +192,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import { getPatientList, savePatient, updatePatient, deletePatient } from '@/api/patient.js';
+import { getPatientList, savePatient, updatePatient, deletePatient, getSpecialtyRoles, getPatientSpecialtyRoles } from '@/api/patient.js';
 import { getClinicalByPatient, saveClinical } from '@/api/patientClinical.js';
 import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
@@ -215,11 +220,19 @@ const displayPatients = computed(() => showSensitive.value ? patients.value : pa
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const formRef = ref(null);
+const specialtyRoles = ref([]), specialtyLoading = ref(false), specialtyReady = ref(false);
+
+async function loadSpecialtyRoles() {
+  specialtyLoading.value = true;
+  try { const res = await getSpecialtyRoles(); if (res.code !== 200 || !Array.isArray(res.data)) throw new Error('Specialty roles unavailable'); specialtyRoles.value = res.data; specialtyReady.value = true; }
+  catch { specialtyReady.value = false; ElMessage.error('专病角色加载失败，请重试。'); }
+  finally { specialtyLoading.value = false; }
+}
 
 const form = reactive({
   id: null, name: '', gender: '', birthDate: '', phone: '', idCard: '',
   address: '', emergencyContact: '', emergencyPhone: '', medicalHistory: '',
-  remark: '', status: 1
+  remark: '', status: 1, specialtyRoleIds: []
 });
 
 const rules = {
@@ -278,19 +291,32 @@ function showAddDialog() {
   Object.assign(form, {
     id: null, name: '', gender: '', birthDate: '', phone: '', idCard: '',
     address: '', emergencyContact: '', emergencyPhone: '', medicalHistory: '',
-    remark: '', status: 1
+    remark: '', status: 1, specialtyRoleIds: []
   });
   dialogVisible.value = true;
+  if (!specialtyReady.value) loadSpecialtyRoles();
 }
 
-function showEditDialog(row) {
+async function showEditDialog(row) {
   isEdit.value = true;
   const source = patients.value.find(item => item.id === row.id) ?? row;
-  Object.assign(form, { ...source });
+  Object.assign(form, { ...source, specialtyRoleIds: [] });
   dialogVisible.value = true;
+  specialtyLoading.value = true;
+  specialtyReady.value = false;
+  try {
+    const [roles, selected] = await Promise.all([getSpecialtyRoles(), getPatientSpecialtyRoles(row.id)]);
+    if (form.id !== row.id || !dialogVisible.value) return;
+    if (roles.code !== 200 || selected.code !== 200 || !Array.isArray(roles.data) || !Array.isArray(selected.data)) throw new Error('Specialty roles unavailable');
+    specialtyRoles.value = roles.data;
+    form.specialtyRoleIds = selected.data;
+    specialtyReady.value = true;
+  } catch { ElMessage.error('专病角色加载失败，请重新打开患者资料。'); }
+  finally { specialtyLoading.value = false; }
 }
 
 async function handleSave() {
+  if (!specialtyReady.value || specialtyLoading.value) return;
   try {
     await formRef.value.validate();
     const res = isEdit.value ? await updatePatient(form) : await savePatient(form);
@@ -298,6 +324,7 @@ async function handleSave() {
       ElMessage.success(res.data || '保存成功');
       dialogVisible.value = false;
       loadPatients();
+      window.dispatchEvent(new Event('patient-specialty-changed'));
     } else {
       ElMessage.error(res.msg || '保存失败');
     }
@@ -318,6 +345,7 @@ async function handleDelete(id) {
 
 onMounted(() => {
   loadPatients();
+  loadSpecialtyRoles();
 });
 </script>
 
