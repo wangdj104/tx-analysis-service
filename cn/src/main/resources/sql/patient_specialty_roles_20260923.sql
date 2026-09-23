@@ -13,6 +13,12 @@ CREATE TABLE IF NOT EXISTS `patient_specialty_role` (
 INSERT IGNORE INTO `sys_role` (`role_code`,`role_name`,`description`,`status`) VALUES
 ('specialty_dialysis','透析患者','患者档案的透析专病菜单范围',1);
 
+UPDATE `sys_role`
+SET `role_name` = IF(`role_name` = 'Dialysis Patient', '透析患者', `role_name`),
+    `description` = IF(`description` = 'Patient-specific dialysis menu scope', '患者档案的透析专病菜单范围', `description`)
+WHERE `role_code` = 'specialty_dialysis'
+  AND (`role_name` = 'Dialysis Patient' OR `description` = 'Patient-specific dialysis menu scope');
+
 INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
 SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.id IN (1,11,12,13,14,15) WHERE r.role_code='specialty_dialysis'
 ON DUPLICATE KEY UPDATE role_id=role_id;

@@ -196,6 +196,7 @@ import { getPatientList, savePatient, updatePatient, deletePatient, getSpecialty
 import { getClinicalByPatient, saveClinical } from '@/api/patientClinical.js';
 import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
+import { localizeSpecialtyRole } from '@/utils/specialtyRoleLabels';
 
 const PATIENT_COLUMN_DEFS = [
   { key: 'name', label: 'Name' },
@@ -224,7 +225,7 @@ const specialtyRoles = ref([]), specialtyLoading = ref(false), specialtyReady = 
 
 async function loadSpecialtyRoles() {
   specialtyLoading.value = true;
-  try { const res = await getSpecialtyRoles(); if (res.code !== 200 || !Array.isArray(res.data)) throw new Error('Specialty roles unavailable'); specialtyRoles.value = res.data; specialtyReady.value = true; }
+  try { const res = await getSpecialtyRoles(); if (res.code !== 200 || !Array.isArray(res.data)) throw new Error('Specialty roles unavailable'); specialtyRoles.value = res.data.map(localizeSpecialtyRole); specialtyReady.value = true; }
   catch { specialtyReady.value = false; ElMessage.error('Unable to load specialty roles. Please retry.'); }
   finally { specialtyLoading.value = false; }
 }
@@ -308,7 +309,7 @@ async function showEditDialog(row) {
     const [roles, selected] = await Promise.all([getSpecialtyRoles(), getPatientSpecialtyRoles(row.id)]);
     if (form.id !== row.id || !dialogVisible.value) return;
     if (roles.code !== 200 || selected.code !== 200 || !Array.isArray(roles.data) || !Array.isArray(selected.data)) throw new Error('Specialty roles unavailable');
-    specialtyRoles.value = roles.data;
+    specialtyRoles.value = roles.data.map(localizeSpecialtyRole);
     form.specialtyRoleIds = selected.data;
     specialtyReady.value = true;
   } catch { ElMessage.error('Unable to load specialty roles. Reopen this patient.'); }

@@ -103,6 +103,7 @@ import { getRoleList, saveRole, deleteRole, getRoleMenus, assignMenus } from '@/
 import { getMenuList } from '@/api/menu.js';
 import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
+import { localizeSpecialtyRole } from '@/utils/specialtyRoleLabels';
 
 const ROLE_COLUMN_DEFS = [
   { key: 'roleCode', label: '编码' },
@@ -149,7 +150,7 @@ const rules = {
 async function loadRoles() {
   try {
     const res = await getRoleList();
-    if (res.code === 200) roles.value = res.data || [];
+    if (res.code === 200) roles.value = (res.data || []).map(localizeSpecialtyRole);
   } catch (e) {
     console.error(e);
   }
