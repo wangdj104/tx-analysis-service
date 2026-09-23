@@ -38,6 +38,10 @@ public class PermissionInterceptor implements HandlerInterceptor {
         if(roles instanceof List && ((List<?>)roles).contains("admin"))return true;
         String path=request.getRequestURI();
         if(request.getAttribute("userId")!=null && path.equals("/api/user/changePassword"))return true;
+        if(request.getAttribute("userId")!=null && "GET".equalsIgnoreCase(request.getMethod())
+                && (path.equals("/api/patient/specialty-menu-scope")
+                    || path.equals("/api/patient/specialty-roles")
+                    || path.matches("/api/patient/[0-9]+/specialty-roles")))return true;
         for(String prefix:ADMIN_ONLY)if(path.startsWith(prefix))return deny(response);
         // Daily family-care pages are available to every signed-in account; each record still checks the selected patient's membership.
         if(request.getAttribute("userId")!=null){

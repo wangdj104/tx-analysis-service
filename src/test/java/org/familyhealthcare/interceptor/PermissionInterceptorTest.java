@@ -30,4 +30,22 @@ class PermissionInterceptorTest {
         request.setAttribute("roleCodes",Collections.singletonList("user"));
         assertTrue(interceptor.preHandle(request,new MockHttpServletResponse(),new Object()));
     }
+    @Test void signedInPatientCanReadSpecialtyScopeWithoutPatientManagePermission() throws Exception {
+        PermissionInterceptor interceptor=new PermissionInterceptor();
+        SysMenuMapper mapper=mock(SysMenuMapper.class);
+        ReflectionTestUtils.setField(interceptor,"menuMapper",mapper);
+        when(mapper.selectMenusByUserId(7L)).thenReturn(Collections.emptyList());
+        for(String path: new String[]{"/api/patient/specialty-menu-scope", "/api/patient/specialty-roles", "/api/patient/7/specialty-roles"}) {
+            MockHttpServletRequest request=new MockHttpServletRequest("GET",path);
+            request.setAttribute("userId",7L);
+            request.setAttribute("roleCodes",Collections.singletonList("user"));
+            assertTrue(interceptor.preHandle(request,new MockHttpServletResponse(),new Object()),path);
+        }
+        MockHttpServletRequest write=new MockHttpServletRequest("POST","/api/patient/save");
+        write.setAttribute("userId",7L);
+        write.setAttribute("roleCodes",Collections.singletonList("user"));
+        assertFalse(interceptor.preHandle(write,new MockHttpServletResponse(),new Object()));
+        MockHttpServletRequest anonymous=new MockHttpServletRequest("GET","/api/patient/specialty-menu-scope");
+        assertFalse(interceptor.preHandle(anonymous,new MockHttpServletResponse(),new Object()));
+    }
 }

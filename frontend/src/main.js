@@ -12,7 +12,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue';
 import faviconUrl from '@/assets/logo.svg?url';
 import i18n from '@/i18n';
 import { loadPlatformBranding } from '@/utils/platformBranding';
-import { specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
+import { knownSpecialtyPath, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
 import { loadPatientSpecialtyScope } from '@/utils/patientSpecialtyScope';
 
 function applyFavicon(href) {
@@ -113,7 +113,7 @@ router.beforeEach(async (to, from, next) => {
     return;
   }
   const scope = await loadPatientSpecialtyScope();
-  const restricted = ['/dialysis', '/dry-weight'].includes(to.path)
+  const restricted = knownSpecialtyPath(to.fullPath)
     || scope?.restrictedPaths?.some(path => path === to.fullPath || path === to.path);
   if (restricted && !specialtyPathAllowed(to.fullPath, scope)) {
     next('/monitoring');

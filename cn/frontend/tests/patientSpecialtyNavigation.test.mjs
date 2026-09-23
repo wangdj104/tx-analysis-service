@@ -22,6 +22,10 @@ test('specialty menus follow the selected patient and preserve general menus', (
 })
 
 test('scope loading failure hides specialty navigation', () => {
-  assert.deepEqual(filterSpecialtyMenus(menus, null), [])
+  const visible = filterSpecialtyMenus(menus, null)
+  assert.deepEqual(visible.map(item => item.path), ['/medical-record', '/family-health'])
+  assert.deepEqual(visible[1].children.map(item => item.path), ['/family-health?tab=today'])
   assert.equal(specialtyPathAllowed('/dialysis', null), false)
+  assert.equal(specialtyPathAllowed('/family-health?tab=schedule', null), false)
+  assert.equal(specialtyPathAllowed('/medical-record', null), true)
 })

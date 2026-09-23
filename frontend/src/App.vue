@@ -102,7 +102,7 @@ import { normalizeWorkspaceMenus, getFallbackWorkspaceMenus, getEnglishMenuLabel
 import { getAuthSessionKey, saveAuthSession, captureAuthSession, isAuthSessionCurrent, clearPermissionCache, savePermissionCache, readPermissionCache } from '@/utils/authSession';
 import { DEFAULT_WORKSPACE_TABS, canAccessWorkspace, resolveWorkspaceEntry } from '@/utils/workspaceAccess';
 import { getPatientNames } from '@/api/patient';
-import { filterSpecialtyMenus, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
+import { filterSpecialtyMenus, knownSpecialtyPath, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
 import { clearPatientSpecialtyScope, loadPatientSpecialtyScope } from '@/utils/patientSpecialtyScope';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import { useMobile } from '@/composables/useMobile';
@@ -126,12 +126,12 @@ async function refreshSpecialtyScope() {
   const epoch = ++specialtyEpoch;
   const patientId = currentPatientId.value;
   specialtyScope.value = null;
-  clearPatientSpecialtyScope();
+  if (!localStorage.getItem('token') || route.meta.hideNav) return;
   const scope = await loadPatientSpecialtyScope(patientId);
   if (epoch !== specialtyEpoch || patientId !== currentPatientId.value) return;
   specialtyScope.value = scope;
   if (!route.meta.hideNav && !specialtyPathAllowed(route.fullPath, scope)
-      && (route.path === '/dialysis' || route.path === '/dry-weight' || scope?.restrictedPaths?.includes(route.fullPath))) {
+      && (knownSpecialtyPath(route.fullPath) || scope?.restrictedPaths?.includes(route.fullPath))) {
     router.replace('/monitoring');
   }
 }
@@ -156,6 +156,11 @@ document.body.classList.toggle('care-senior', localStorage.getItem('care-senior'
 
 // towardchildcomponentraiseprovideuserMenuPermission
 provide('userMenus', userMenus);
+
+function specialtyChanged() {
+  clearPatientSpecialtyScope();
+  refreshSpecialtyScope();
+}
 
 function resetNavState() {
   menuRequestEpoch++;
@@ -260,13 +265,13 @@ function onSearchShortcut(event) {
 onMounted(() => {
   window.addEventListener('keydown', onSearchShortcut);
   window.addEventListener('auth-session-cleared', resetNavState);
-  window.addEventListener('patient-specialty-changed', refreshSpecialtyScope);
+  window.addEventListener('patient-specialty-changed', specialtyChanged);
   window.addEventListener('care-patients-changed', loadPatientList);
 });
 onUnmounted(() => {
   window.removeEventListener('keydown', onSearchShortcut);
   window.removeEventListener('auth-session-cleared', resetNavState);
-  window.removeEventListener('patient-specialty-changed', refreshSpecialtyScope);
+  window.removeEventListener('patient-specialty-changed', specialtyChanged);
   window.removeEventListener('care-patients-changed', loadPatientList);
 });
 
