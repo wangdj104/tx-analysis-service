@@ -1,12 +1,15 @@
 package org.familyhealthcare.service;
 
 import org.familyhealthcare.entity.NotificationChannel;
+import org.familyhealthcare.mapper.NotificationChannelMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.*;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import java.util.Arrays;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
@@ -37,5 +40,19 @@ class NotificationDeliveryServiceTest {
         NotificationChannel channel = new NotificationChannel();channel.setChannelType("WEBHOOK");channel.setWebhookUrl("https://example.test/hook");
         server.expect(requestTo(channel.getWebhookUrl())).andExpect(content().json("{\"title\":\"t\",\"content\":\"c\"}")).andRespond(withServerError());
         assertThrows(RuntimeException.class,()->service.send(channel,"t","c"));server.verify();
+    }
+
+    @Test void oneSuccessfulChannelCountsAsDeliveredEvenWhenAnotherFails() {
+        NotificationDeliveryService service = new NotificationDeliveryService();
+        NotificationChannelMapper mapper = mock(NotificationChannelMapper.class);
+        NotificationChannel good = new NotificationChannel();good.setChannelType("WEBHOOK");good.setWebhookUrl("https://example.test/good");
+        NotificationChannel bad = new NotificationChannel();bad.setChannelType("WEBHOOK");bad.setWebhookUrl("https://example.test/bad");
+        when(mapper.selectList(any())).thenReturn(Arrays.asList(good,bad));
+        ReflectionTestUtils.setField(service,"mapper",mapper);
+        MockRestServiceServer server=MockRestServiceServer.bindTo((RestTemplate)ReflectionTestUtils.getField(service,"client")).build();
+        server.expect(requestTo(good.getWebhookUrl())).andRespond(withSuccess("{}",MediaType.APPLICATION_JSON));
+        server.expect(requestTo(bad.getWebhookUrl())).andRespond(withServerError());
+        assertTrue(service.notifyUser(7L,"EMERGENCY","Help","Location"));
+        server.verify();
     }
 }

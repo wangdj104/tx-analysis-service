@@ -7,18 +7,66 @@ function deferred() { let resolve; const promise = new Promise(done => { resolve
 function setup(t, overrides = {}, roles = [], initialTab = 'measurements') {
   const patient = ref(10), route = reactive({ query: { tab: initialTab } }), warnings = [], storage = new Map([['userRoleCodes', JSON.stringify(roles)], ['userId', '8']])
   const api = {
-    listClinicians: async () => ({ data: [] }), listMeasurements: async () => ({ data: [] }), listMentalAssessments: async () => ({ data: [] }),
-    listAppointments: async () => ({ data: [] }), listVisits: async () => ({ data: [] }), listPrescriptions: async () => ({ data: [] }),
+    listClinicians: async () => ({ data: [] }), listMeasurements: async () => ({ data: [] }), listMentalAssessments: async () => ({ data: [] }), listMentalSchedules: async () => ({ data: [] }),
+    listAppointments: async () => ({ data: [] }), listVisits: async () => ({ data: [] }), listPrescriptions: async () => ({ data: [] }), listEmergencies: async () => ({ data: [] }),
     ...overrides
   }
   const content = fs.readFileSync(new URL('../src/views/CareJourneyManager.vue', import.meta.url), 'utf8')
   const source = content.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
-  const deps = { computed, reactive, ref, watch, onMounted() {}, useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }), useCurrentPatient: () => ({ currentPatientId: patient, currentPatientName: ref('Patient') }), ElMessage: { success() {}, warning: message => warnings.push(message) }, ElMessageBox: { confirm: async () => {} }, api, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) } }
-  const scope = effectScope(), exposed = ['loadMeasurements','measurements','measurement','recordMeasurement','loadEmergencyCard','emergencyCard','mental','mentalAnswers','submitMental','mentalSchedule','scheduleMental','busy','tab','saveSpecial','specialtyRows','schedule','createSchedule','appointmentInbox','loadAppointmentInbox','cancelInboxAppointment','completeInboxAppointment','syncTab']
-  const view = scope.run(() => new Function(...Object.keys(deps), source + '\nreturn {' + exposed.join(',') + '}')(...Object.values(deps)))
+  const successes = []
+  const deps = { computed, reactive, ref, watch, onMounted() {}, useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }), useCurrentPatient: () => ({ currentPatientId: patient, currentPatientName: ref('Patient') }), ElMessage: { success: message => successes.push(message), warning: message => warnings.push(message) }, ElMessageBox: { confirm: async () => {} }, api, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }, navigator: { geolocation: null } }
+  const scope = effectScope(), exposed = ['loadMeasurements','measurements','measurement','recordMeasurement','loadEmergencyCard','emergencyCard','loadEmergencyEvents','emergencyEvents','openEmergency','selectedEmergency','sos','loadMental','mentalSchedules','disableMentalSchedule','mental','mentalAnswers','submitMental','mentalSchedule','scheduleMental','loadTab','busy','tab','saveSpecial','specialtyRows','schedule','createSchedule','appointmentInbox','loadAppointmentInbox','cancelInboxAppointment','completeInboxAppointment','syncTab']
+  const view = scope.run(() => new Function(...Object.keys(deps), source + '\nreturn {' + exposed.map(name => `${name}: typeof ${name} === 'undefined' ? undefined : ${name}`).join(',') + '}')(...Object.values(deps)))
   t.after(() => scope.stop())
-  return { ...view, patient, route, warnings, storage }
+  return { ...view, patient, route, warnings, successes, storage }
 }
+
+test('a failed clinician directory does not block independent patient tabs', async t => {
+  const view = setup(t, {
+    listClinicians: async () => { throw new Error('directory unavailable') },
+    listMeasurements: async () => ({ data: [{ id: 17, patient_id: 10 }] })
+  })
+  await view.loadTab()
+  assert.deepEqual(view.measurements.value.map(row => row.id), [17])
+})
+
+test('mental schedules are visible after creation and can be disabled', async t => {
+  const schedules = [{ id: 4, enabled: 1 }]
+  const view = setup(t, {
+    listMentalSchedules: async () => ({ data: schedules.map(row => ({ ...row })) }),
+    saveMentalSchedule: async () => { schedules.push({ id: 5, enabled: 1 }) },
+    disableMentalSchedule: async id => { schedules.find(row => row.id === id).enabled = 0 }
+  })
+  await view.loadMental()
+  assert.equal(view.mentalSchedules.value.length, 1)
+  await view.scheduleMental()
+  assert.equal(view.mentalSchedules.value.length, 2)
+  await view.disableMentalSchedule(view.mentalSchedules.value[0])
+  assert.equal(view.mentalSchedules.value[0].enabled, 0)
+})
+
+test('emergency reports zero delivered notifications without claiming dispatch', async t => {
+  const view = setup(t, { triggerEmergency: async () => ({ data: { deliveryCount: 0, recipientCount: 2 } }) })
+  await view.sos()
+  assert.equal(view.successes.length, 0)
+  assert.equal(view.warnings.length, 1)
+})
+
+test('emergency event details never appear under another selected patient', async t => {
+  const pending = deferred()
+  const view = setup(t, {
+    listEmergencies: async () => ({ data: [{ id: 31, patient_id: 10 }] }),
+    getEmergency: async () => pending.promise
+  })
+  await view.loadEmergencyEvents()
+  assert.equal(view.emergencyEvents.value[0].id, 31)
+  const opening = view.openEmergency(view.emergencyEvents.value[0])
+  view.patient.value = 20
+  await nextTick()
+  pending.resolve({ data: { id: 31, patient_id: 10, snapshot: { patient: { name: 'Old patient' } } } })
+  await opening
+  assert.equal(view.selectedEmergency.value, null)
+})
 
 test('care journey ignores measurements returned for a previously selected patient', async t => {
   const pending = deferred()

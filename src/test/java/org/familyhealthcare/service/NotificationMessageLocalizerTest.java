@@ -55,6 +55,11 @@ class NotificationMessageLocalizerTest {
                 "EMERGENCY", "Emergency call from bound patient", "Open the emergency event.", "zh-CN");
         assertEquals("绑定患者发起紧急呼救", message.getTitle());
         assertEquals("请打开紧急事件查看定位、既往病史、过敏史和当前用药。", message.getContent());
+        String detail="Emergency event #42 for Patient Zhang. Location: Home (31.2, 121.5). Open Care journey > Emergency to review the medical snapshot.";
+        String localized=localizer.localize("EMERGENCY","Emergency call from bound patient",detail,"zh-CN").getContent();
+        org.junit.jupiter.api.Assertions.assertTrue(localized.contains("#42"));
+        org.junit.jupiter.api.Assertions.assertTrue(localized.contains("Patient Zhang"));
+        org.junit.jupiter.api.Assertions.assertTrue(localized.contains("Home (31.2, 121.5)"));
     }
 
     @Test void preservesDynamicValuesWhenLocalizingMedication() {

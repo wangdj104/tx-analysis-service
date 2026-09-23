@@ -76,6 +76,8 @@ class CareJourneyScenarioTest {
         assertEquals("CANCELLED",service.appointments(1L).get(0).get("status"));
         assertNull(service.appointments(1L).get(0).get("next_follow_up_at"));
         verify(audience,times(1)).notifyCareTeam(eq(1L),eq("APPOINTMENT_CANCELLED"),anyString(),anyString());
+        assertThrows(IllegalArgumentException.class,()->service.saveAppointment(request));
+        assertEquals("CANCELLED",service.appointments(1L).get(0).get("status"));
     }
 
     @Test void selectedAppointmentDoctorGetsScopedInboxAndCanCompleteWithoutFullPatientAccess() {
@@ -94,6 +96,10 @@ class CareJourneyScenarioTest {
         ReflectionTestUtils.invokeMethod(service,"completeAppointment",appointment);
         assertEquals("COMPLETED",jdbc.queryForObject("SELECT status FROM care_appointment WHERE id=?",String.class,appointment));
         assertThrows(IllegalArgumentException.class,()->service.cancelAppointment(appointment,"Already completed"));
+        login(7,"patient");
+        Map<String,Object> reschedule=map("id",appointment,"patientId",1L,"doctorUserId",13L,"startAt",day.plusDays(1)+"T09:00:00","endAt",day.plusDays(1)+"T09:30:00");
+        assertThrows(IllegalArgumentException.class,()->service.saveAppointment(reschedule));
+        assertEquals("COMPLETED",jdbc.queryForObject("SELECT status FROM care_appointment WHERE id=?",String.class,appointment));
     }
 
     @Test void periodicFollowUpsHaveOneRecurrenceOwnerAndDoNotDoubleBookClinicians() {
@@ -150,9 +156,23 @@ class CareJourneyScenarioTest {
 
     @Test void emergencySnapshotReadsCurrentSchemaAndOnlyRoutesToBoundRecipients() {
         Map<String,Object> card=service.emergencyCard(1L);assertNotNull(card.get("patient"));
+        when(audience.notifyWithDeliveryCount(anyCollection(),eq(1L),eq("EMERGENCY"),anyString(),anyString())).thenReturn(1);
         Map<String,Object> emergency=service.triggerEmergency(map("patientId",1L,"locationText","Home","latitude",31.2,"longitude",121.5));
         assertEquals("TRIGGERED",emergency.get("status"));assertNotNull(emergency.get("snapshot"));
-        verify(audience).notify(eq(new LinkedHashSet<>(Arrays.asList(9L,11L))),eq(1L),eq("EMERGENCY"),anyString(),anyString());
+        assertEquals(1,emergency.get("deliveryCount"));
+        assertEquals(2,emergency.get("recipientCount"));
+        verify(audience).notifyWithDeliveryCount(eq(new LinkedHashSet<>(Arrays.asList(9L,11L))),eq(1L),eq("EMERGENCY"),anyString(),contains("Home"));
+        assertEquals(1,service.emergencies(1L).size());
+        assertEquals("Home",service.emergency(id(emergency)).get("location_text"));
+        login(11,"family");
+        assertThrows(IllegalStateException.class,()->service.emergency(id(emergency)));
+    }
+
+    @Test void emergencyWithNoWorkingChannelReportsFailureWithoutClaimingDelivery() {
+        when(audience.recipients(1L)).thenReturn(new LinkedHashSet<>(Collections.singletonList(7L)));
+        Map<String,Object> emergency=service.triggerEmergency(map("patientId",1L,"locationText","Home"));
+        assertEquals(0,emergency.get("recipientCount"));
+        assertEquals(0,emergency.get("deliveryCount"));
     }
 
     @Test void growthVaccinationAndMaternityRecordsRoundTrip() {
@@ -173,6 +193,12 @@ class CareJourneyScenarioTest {
         assertEquals(3,service.mentalAssessments(1L).size());
         verify(audience,times(2)).notify(eq(Collections.singletonList(9L)),eq(1L),eq("MENTAL_ASSESSMENT"),anyString(),anyString());
         service.saveMentalSchedule(map("patientId",1L,"scaleCode","WHO5","intervalDays",7));
+        service.saveMentalSchedule(map("patientId",1L,"scaleCode","WHO5","intervalDays",14));
+        assertEquals(1,service.mentalSchedules(1L).size());
+        Long scheduleId=id(service.mentalSchedules(1L).get(0));
+        assertEquals(14,((Number)service.mentalSchedules(1L).get(0).get("interval_days")).intValue());
+        service.disableMentalSchedule(scheduleId);
+        assertEquals(0,((Number)service.mentalSchedules(1L).get(0).get("enabled")).intValue());
         assertThrows(IllegalArgumentException.class,()->service.saveMentalSchedule(map("patientId",1L,"scaleCode","WHO5","intervalDays",0)));
         jdbc.update("INSERT INTO care_member(patient_id,user_id,relation_name) VALUES(1,11,'Family')");
         login(11,"family");assertTrue(service.mentalAssessments(1L).isEmpty());assertTrue(service.mentalSchedules(1L).isEmpty());

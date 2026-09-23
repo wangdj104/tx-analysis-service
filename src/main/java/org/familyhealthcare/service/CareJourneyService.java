@@ -151,10 +151,13 @@ public class CareJourneyService {
         Long scheduleId=optionalLong(body,"scheduleId");
         if(scheduleId!=null){Map<String,Object>s=one("SELECT * FROM doctor_schedule WHERE id=? AND doctor_user_id=? AND status='AVAILABLE'",scheduleId,doctorId);if(s==null)throw new IllegalArgumentException("The selected clinician availability is no longer available.");LocalDate workDate=LocalDate.parse(s.get("work_date").toString());LocalDateTime availableFrom=LocalDateTime.of(workDate,LocalTime.parse(s.get("start_time").toString())),availableTo=LocalDateTime.of(workDate,LocalTime.parse(s.get("end_time").toString()));if(start.isBefore(availableFrom)||end.isAfter(availableTo))throw new IllegalArgumentException("The appointment must fit inside the selected clinician availability.");}
         Long appointmentId=body.get("id")==null?null:requiredLong(body,"id");
+        Map<String,Object> current=appointmentId==null?null:one("SELECT * FROM care_appointment WHERE id=? FOR UPDATE",appointmentId);
+        if(appointmentId!=null&&(current==null||!Objects.equals(number(current.get("patient_id")),patientId)))throw new IllegalArgumentException("Appointment not found.");
+        if(current!=null&&!"BOOKED".equals(current.get("status")))throw new IllegalArgumentException("Only a booked appointment can be rescheduled.");
         Integer conflicts=jdbc.queryForObject("SELECT COUNT(*) FROM care_appointment WHERE doctor_user_id=? AND status='BOOKED' AND start_at<? AND end_at>? AND (? IS NULL OR id<>?)",Integer.class,doctorId,end,start,appointmentId,appointmentId);
         if(conflicts!=null&&conflicts>0)throw new IllegalStateException("The clinician time slot is already occupied.");
         if(appointmentId==null){appointmentId=insert("INSERT INTO care_appointment(patient_id,doctor_user_id,schedule_id,appointment_type,consultation_mode,start_at,end_at,status,reason,recurrence_days,next_follow_up_at,created_by) VALUES(?,?,?,?,?,?,?,'BOOKED',?,?,?,?)",patientId,doctorId,scheduleId,text(body,"appointmentType","FOLLOW_UP"),text(body,"consultationMode","IN_PERSON"),start,end,text(body,"reason",null),integer(body,"recurrenceDays",null),dateTime(body.get("nextFollowUpAt"),null),userId());}
-        else {Map<String,Object> current=one("SELECT * FROM care_appointment WHERE id=?",appointmentId);if(current==null||!Objects.equals(number(current.get("patient_id")),patientId))throw new IllegalArgumentException("Appointment not found.");jdbc.update("UPDATE care_appointment SET doctor_user_id=?,schedule_id=?,appointment_type=?,consultation_mode=?,start_at=?,end_at=?,reason=?,recurrence_days=?,next_follow_up_at=?,status='BOOKED',cancel_reason=NULL WHERE id=?",doctorId,scheduleId,text(body,"appointmentType","FOLLOW_UP"),text(body,"consultationMode","IN_PERSON"),start,end,text(body,"reason",null),integer(body,"recurrenceDays",null),dateTime(body.get("nextFollowUpAt"),null),appointmentId);}
+        else {jdbc.update("UPDATE care_appointment SET doctor_user_id=?,schedule_id=?,appointment_type=?,consultation_mode=?,start_at=?,end_at=?,reason=?,recurrence_days=?,next_follow_up_at=?,notified_at=NULL WHERE id=?",doctorId,scheduleId,text(body,"appointmentType","FOLLOW_UP"),text(body,"consultationMode","IN_PERSON"),start,end,text(body,"reason",null),integer(body,"recurrenceDays",null),dateTime(body.get("nextFollowUpAt"),null),appointmentId);}
         notifyAppointment(patientId,doctorId,"APPOINTMENT_UPDATED","Appointment updated","Appointment scheduled for "+start+". The shared care calendar has been updated.");
         jdbc.update("UPDATE care_appointment SET notified_at=NULL WHERE id=?",appointmentId);
         return one("SELECT * FROM care_appointment WHERE id=?",appointmentId);
@@ -269,7 +272,35 @@ public class CareJourneyService {
 
     public Map<String,Object> emergencyCard(Long patientId){requireRead(patientId,"EMERGENCY");Map<String,Object>card=new LinkedHashMap<>();card.put("patient",one("SELECT id,name,gender,birth_date,emergency_contact,emergency_phone,medical_history FROM patient WHERE id=?",patientId));card.put("clinical",one("SELECT allergy_drugs,blood_type,primary_diagnosis,dialysis_type,vascular_access,target_dry_weight,remark FROM patient_clinical WHERE patient_id=?",patientId));card.put("medications",jdbc.queryForList("SELECT drug_name,default_dosage,remark FROM medication WHERE patient_id=? AND is_active=1 ORDER BY drug_name",patientId));card.put("generatedAt",LocalDateTime.now());card.put("offlineReadable",true);card.put("disclaimer","Emergency information is patient-maintained and must be clinically verified.");return card;}
 
-    @Transactional public Map<String,Object> triggerEmergency(Map<String,Object>body){Long patientId=requiredLong(body,"patientId");requireWrite(patientId,"EMERGENCY");Map<String,Object>snapshot=emergencyCard(patientId);Set<Long>recipients=audience.recipients(patientId);recipients.remove(userId());long id=insert("INSERT INTO emergency_event(patient_id,triggered_by,latitude,longitude,location_text,snapshot_json,status,notified_user_ids) VALUES(?,?,?,?,?,?,'TRIGGERED',?)",patientId,userId(),decimal(body,"latitude",false),decimal(body,"longitude",false),text(body,"locationText",null),JSON.toJSONString(snapshot),join(recipients));audience.notify(recipients,patientId,"EMERGENCY","Emergency call from bound patient","Open the emergency event to view location, medical history, allergies, and current medication.");Map<String,Object>result=one("SELECT * FROM emergency_event WHERE id=?",id);result.put("snapshot",snapshot);return result;}
+    @Transactional public Map<String,Object> triggerEmergency(Map<String,Object>body){
+        Long patientId=requiredLong(body,"patientId");requireWrite(patientId,"EMERGENCY");
+        Map<String,Object>snapshot=emergencyCard(patientId);
+        Set<Long>recipients=audience.recipients(patientId);recipients.remove(userId());
+        String location=text(body,"locationText","Not provided");
+        BigDecimal latitude=decimal(body,"latitude",false),longitude=decimal(body,"longitude",false);
+        long id=insert("INSERT INTO emergency_event(patient_id,triggered_by,latitude,longitude,location_text,snapshot_json,status,notified_user_ids) VALUES(?,?,?,?,?,?,'TRIGGERED',?)",patientId,userId(),latitude,longitude,text(body,"locationText",null),JSON.toJSONString(snapshot),join(recipients));
+        Map<?,?> patient=(Map<?,?>)snapshot.get("patient");
+        String patientName=patient==null?"Patient":String.valueOf(patient.get("name"));
+        String content="Emergency event #"+id+" for "+patientName+". Location: "+location+(latitude==null||longitude==null?"":" ("+latitude+", "+longitude+")")+". Open Care journey > Emergency to review the medical snapshot.";
+        int delivered=audience.notifyWithDeliveryCount(recipients,patientId,"EMERGENCY","Emergency call from bound patient",content);
+        Map<String,Object>result=one("SELECT * FROM emergency_event WHERE id=?",id);
+        result.put("snapshot",snapshot);result.put("recipientCount",recipients.size());result.put("deliveryCount",delivered);
+        return result;
+    }
+
+    public List<Map<String,Object>> emergencies(Long patientId){
+        requireRead(patientId,"EMERGENCY");
+        return jdbc.queryForList("SELECT id,patient_id,triggered_by,latitude,longitude,location_text,status,triggered_at,notified_user_ids FROM emergency_event WHERE patient_id=? ORDER BY triggered_at DESC,id DESC LIMIT 100",patientId);
+    }
+
+    public Map<String,Object> emergency(Long id){
+        Map<String,Object>event=one("SELECT * FROM emergency_event WHERE id=?",id);
+        if(event==null)throw new IllegalArgumentException("Emergency event not found.");
+        requireRead(number(event.get("patient_id")),"EMERGENCY");
+        event.put("snapshot",JSON.parseObject(String.valueOf(event.get("snapshot_json"))));
+        event.remove("snapshot_json");
+        return event;
+    }
 
     public List<Map<String,Object>> specialty(String type,Long patientId){requireRead(patientId,"SPECIALTY");String table=specialtyTable(type);return jdbc.queryForList("SELECT * FROM "+table+" WHERE patient_id=? ORDER BY "+specialtyDateColumn(type)+" DESC,id DESC",patientId);}
 
@@ -303,14 +334,25 @@ public class CareJourneyService {
         boolean privileged = Objects.equals(owner, userId()) || CurrentUserUtil.isAdmin() || CurrentUserUtil.hasRole("doctor");
         return jdbc.queryForList("SELECT * FROM mental_assessment_schedule WHERE patient_id=?" + (privileged ? "" : " AND family_visibility='VISIBLE'") + " ORDER BY next_due_at", patientId);
     }
-    public Map<String,Object> saveMentalSchedule(Map<String,Object> body) {
+    @Transactional public Map<String,Object> saveMentalSchedule(Map<String,Object> body) {
         Long patientId = requiredLong(body, "patientId"); requireWrite(patientId, "MENTAL");
+        one("SELECT id FROM patient WHERE id=? FOR UPDATE",patientId);
         String scale = MentalAssessmentScoring.scale(required(body, "scaleCode"));
         int interval = integer(body, "intervalDays", 14);
         if (interval < 1 || interval > 3650) throw new IllegalArgumentException("Assessment interval must be between 1 and 3650 days.");
         String visibility = validatedVisibility(body);
-        long id = insert("INSERT INTO mental_assessment_schedule(patient_id,scale_code,interval_days,next_due_at,family_visibility,enabled,created_by) VALUES(?,?,?,?,?,1,?)", patientId, scale, interval, dateTime(body.get("nextDueAt"), LocalDateTime.now()), visibility, userId());
+        Map<String,Object>active=one("SELECT id FROM mental_assessment_schedule WHERE patient_id=? AND scale_code=? AND enabled=1 ORDER BY id LIMIT 1 FOR UPDATE",patientId,scale);
+        long id;
+        if(active==null)id=insert("INSERT INTO mental_assessment_schedule(patient_id,scale_code,interval_days,next_due_at,family_visibility,enabled,created_by) VALUES(?,?,?,?,?,1,?)", patientId, scale, interval, dateTime(body.get("nextDueAt"), LocalDateTime.now()), visibility, userId());
+        else{id=number(active.get("id"));jdbc.update("UPDATE mental_assessment_schedule SET interval_days=?,next_due_at=?,family_visibility=? WHERE id=?",interval,dateTime(body.get("nextDueAt"), LocalDateTime.now()),visibility,id);jdbc.update("UPDATE mental_assessment_schedule SET enabled=0 WHERE patient_id=? AND scale_code=? AND enabled=1 AND id<>?",patientId,scale,id);}
         return one("SELECT * FROM mental_assessment_schedule WHERE id=?", id);
+    }
+
+    @Transactional public void disableMentalSchedule(Long id){
+        Map<String,Object>row=one("SELECT patient_id FROM mental_assessment_schedule WHERE id=? FOR UPDATE",id);
+        if(row==null)throw new IllegalArgumentException("Assessment schedule not found.");
+        requireWrite(number(row.get("patient_id")),"MENTAL");
+        jdbc.update("UPDATE mental_assessment_schedule SET enabled=0 WHERE id=?",id);
     }
 
     private String validatedVisibility(Map<String,Object> body) {

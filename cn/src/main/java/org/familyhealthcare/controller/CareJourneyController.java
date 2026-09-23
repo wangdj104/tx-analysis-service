@@ -60,6 +60,8 @@ public class CareJourneyController {
     @PostMapping("/rehab-checkins") public Result<Map<String,Object>> saveRehab(@RequestBody Map<String,Object>body){return Result.ok(service.saveRehabCheckin(body));}
 
     @GetMapping("/emergency-card") public Result<Map<String,Object>> emergencyCard(@RequestParam Long patientId){return Result.ok(service.emergencyCard(patientId));}
+    @GetMapping("/emergencies") public Result<List<Map<String,Object>>> emergencies(@RequestParam Long patientId){return Result.ok(service.emergencies(patientId));}
+    @GetMapping("/emergencies/{id}") public Result<Map<String,Object>> emergencyDetail(@PathVariable Long id){return Result.ok(service.emergency(id));}
     @PostMapping("/emergencies") public Result<Map<String,Object>> emergency(@RequestBody Map<String,Object>body){return Result.ok(service.triggerEmergency(body));}
 
     @GetMapping("/specialty/{type}") public Result<List<Map<String,Object>>> specialty(@PathVariable String type,@RequestParam Long patientId){return Result.ok(service.specialty(type,patientId));}
@@ -68,6 +70,7 @@ public class CareJourneyController {
     @PostMapping("/mental-assessments") public Result<Map<String,Object>> saveMental(@RequestBody Map<String,Object>body){return Result.ok(service.saveMentalAssessment(body));}
     @GetMapping("/mental-schedules") public Result<List<Map<String,Object>>> mentalSchedules(@RequestParam Long patientId){return Result.ok(service.mentalSchedules(patientId));}
     @PostMapping("/mental-schedules") public Result<Map<String,Object>> saveMentalSchedule(@RequestBody Map<String,Object>body){return Result.ok(service.saveMentalSchedule(body));}
+    @PostMapping("/mental-schedules/{id}/disable") public Result<String> disableMentalSchedule(@PathVariable Long id){service.disableMentalSchedule(id);return Result.ok("Assessment schedule disabled.");}
 
     @GetMapping("/patient-groups") public Result<List<Map<String,Object>>> groups(){return Result.ok(service.patientGroups());}
     @PostMapping("/patient-groups") public Result<Map<String,Object>> saveGroup(@RequestBody Map<String,Object>body){return Result.ok(service.savePatientGroup(body));}

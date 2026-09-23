@@ -60,7 +60,13 @@ public class NotificationMessageLocalizer {
             case "TREATMENT_PLAN": return "医生新增或调整了治疗与康复计划，请及时查看。";
             case "REHAB_ALERT":
                 return clinicalTemplate(type,content,true);
-            case "EMERGENCY": return "请打开紧急事件查看定位、既往病史、过敏史和当前用药。";
+            case "EMERGENCY":
+                if(content.startsWith("Emergency event #") && content.endsWith(". Open Care journey > Emergency to review the medical snapshot."))
+                    return content.replaceFirst("^Emergency event #", "紧急事件 #")
+                            .replaceFirst(" for ", "，患者：")
+                            .replaceFirst("\\. Location: ", "。位置：")
+                            .replace(". Open Care journey > Emergency to review the medical snapshot.", "。请在健康照护全流程的急诊与呼救页查看医疗信息。");
+                return "请打开紧急事件查看定位、既往病史、过敏史和当前用药。";
             case "MENTAL_ASSESSMENT":
                 return clinicalTemplate(type,content,true);
             case "MENTAL_ASSESSMENT_DUE":

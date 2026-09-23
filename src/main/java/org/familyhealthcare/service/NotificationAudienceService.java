@@ -70,11 +70,19 @@ public class NotificationAudienceService {
     }
 
     public void notify(Collection<Long> userIds, Long patientId, String eventType, String title, String content) {
+        notifyWithDeliveryCount(userIds, patientId, eventType, title, content);
+    }
+
+    /** Count recipients with at least one successful outbound channel while retaining delivery logs. */
+    public int notifyWithDeliveryCount(Collection<Long> userIds, Long patientId, String eventType, String title, String content) {
+        int deliveredCount = 0;
         for (Long userId : userIds) {
             boolean delivered = delivery.notifyUser(userId, eventType, title, content);
+            if (delivered) deliveredCount++;
             jdbc.update("INSERT INTO notification_delivery_log(recipient_user_id,patient_id,event_type,title,delivery_status,detail) VALUES(?,?,?,?,?,?)",
                     userId, patientId, eventType, title, delivered ? "DELIVERED" : "NO_CHANNEL", delivered ? null : "No enabled channel or delivery failed");
         }
+        return deliveredCount;
     }
 
     public List<Long> assignedDoctors(Long patientId) {

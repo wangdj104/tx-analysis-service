@@ -75,16 +75,15 @@ public class NotificationDeliveryService {
     }
 
     public boolean notifyUser(Long userId, Collection<Long> channelIds, String eventType, String title, String content) {
-        boolean success = true;
+        boolean success = false;
         QueryWrapper<NotificationChannel> query = new QueryWrapper<NotificationChannel>().eq("user_id", userId).eq("enabled", 1);
         if (channelIds != null && !channelIds.isEmpty()) query.in("id", channelIds);
         List<NotificationChannel> channels = mapper.selectList(query);
         if (channels.isEmpty()) return false;
         NotificationMessageLocalizer.Message message = localized(userId, eventType, title, content);
         for (NotificationChannel channel : channels) {
-            try { send(channel, message.getTitle(), message.getContent()); }
+            try { send(channel, message.getTitle(), message.getContent()); success = true; }
             catch (Exception e) {
-                success = false;
                 org.slf4j.LoggerFactory.getLogger(getClass()).warn("Notification delivery failed, channelId={}", channel.getId(), e);
             }
         }
