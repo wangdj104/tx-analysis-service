@@ -119,7 +119,7 @@ const rawNavItems = ref([]);
 const specialtyScope = ref(null);
 const navItems = computed(() => {
   const filtered = filterSpecialtyMenus(rawNavItems.value, specialtyScope.value);
-  return [{ path: '/care', entryPath: '/care', label: 'Family Care', icon: 'House', children: [] }, ...filtered.filter(item => item.path !== '/care')];
+  return [{ path: '/care', entryPath: '/care', label: '家庭照护', icon: 'House', children: [] }, ...filtered.filter(item => item.path !== '/care')];
 });
 let specialtyEpoch = 0;
 async function refreshSpecialtyScope() {
