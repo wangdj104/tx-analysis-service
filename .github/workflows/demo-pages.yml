@@ -40,7 +40,7 @@ jobs:
           cp demo/assets/* _site/assets/
           cp cn/demo/index.html cn/demo/style.css cn/demo/branding.css cn/demo/model.js cn/demo/app.js _site/cn/
           cp cn/demo/assets/* _site/cn/assets/
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
       - name: Publish demo
