@@ -227,6 +227,15 @@ test('monitoring view localizes server-generated signal and timeline content', a
   assert.equal(view.recentEvents.value[0].summary, '透析前体重 61.83 kg；透析后体重 59.75 kg');
 });
 
+test('monitoring view tolerates timeline events without a title or summary', async () => {
+  const view = setupMonitoring(async () => ({ code: 200, data: {
+    recentEvents: [{ id: 1, type: 'NOTE', title: null, summary: null }]
+  } }));
+  await view.loadSnapshot();
+  assert.equal(view.recentEvents.value[0].title, null);
+  assert.equal(view.recentEvents.value[0].summary, null);
+});
+
 test('failed 7-day reload restores the selector to the displayed 90-day dataset', async () => {
   let fail = false;
   const view = setupMonitoring(async (_patient, days) => { if (fail) throw new Error('offline'); return { code: 200, data: { vitalTrend: [{ systolic: days }] } }; });

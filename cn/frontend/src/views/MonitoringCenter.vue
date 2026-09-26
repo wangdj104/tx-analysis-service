@@ -360,6 +360,7 @@ function localizeSnapshot(data) {
 }
 
 function localizeEventText(value) {
+  if (typeof value !== 'string') return value
   return localizeServerText(value)
     .replace(/^Blood Pressure & Glucoserecord$/i, '血压与血糖记录')
     .replace(/^Blood Pressure\s*/i, '血压 ')
