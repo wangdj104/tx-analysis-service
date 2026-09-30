@@ -24,13 +24,13 @@
       <header class="workspace-topbar">
         <div class="workspace-topbar__location">
           <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="Open navigation menu" @click="mobileNavVisible = true"><el-icon :size="21"><Menu /></el-icon></button>
-          <span class="workspace-breadcrumb">My Health Workspace<span>/</span><strong>{{ activeModule?.label || 'Health Management' }}</strong></span>
+          <span class="workspace-breadcrumb"><strong>{{ activeModule?.label || 'Health Management' }}</strong></span>
           <strong v-if="isMobile" class="workspace-mobile-brand">{{ platformBranding.platformName }}</strong>
         </div>
         <div class="workspace-topbar__actions">
           <span class="workspace-date">{{ todayLabel }}</span>
           <router-link v-if="userInfo.roles?.some(role => role.roleCode === 'doctor')" class="workspace-consultations" to="/care-journey?tab=consultation" aria-label="Open consultation inbox"><el-icon><ChatDotRound /></el-icon><span v-if="!isMobile">Consultations</span></router-link>
-          <PatientSwitcher :model-value="currentPatientId || 0" :patients="appPatientList" @update:model-value="switchPatient" />
+          <PatientSwitcher :model-value="currentPatientId || 0" :patients="route.path === '/care' ? patientList : appPatientList" :allow-all="route.path !== '/care'" @update:model-value="switchPatient" />
           <a class="workspace-language" :href="languageHref" hreflang="zh-CN">中文</a>
           <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="Find a feature" @click="openSearch"><el-icon :size="20"><Search /></el-icon></button>
         </div>
@@ -46,7 +46,7 @@
       </el-drawer>
 
       <nav v-if="isMobile" class="workspace-bottom-nav" aria-label="Primary navigation">
-        <router-link v-for="item in mobilePrimaryNav" :key="item.path" :to="item.entryPath || item.path" :class="{ 'is-active': isItemActive(item) }"><el-icon :size="21"><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></router-link>
+        <router-link v-for="item in mobilePrimaryNav" :key="item.path" :to="item.entryPath || item.path" :class="{ 'is-active': isItemActive(item) }" :aria-current="isItemActive(item) ? 'page' : undefined"><el-icon :size="21"><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></router-link>
         <button type="button" @click="mobileNavVisible = true"><el-icon :size="21"><Menu /></el-icon><span>All Features</span></button>
       </nav>
     </template>
@@ -149,7 +149,7 @@ const passwordChanging = ref(false);
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
 
 // alllayoutcurrentPatientStatus
-const { currentPatientId, setPatientList } = useCurrentPatient();
+const { currentPatientId, patientList, setPatientList } = useCurrentPatient();
 const appPatientList = ref([]);
 document.body.classList.toggle('care-senior', localStorage.getItem('care-senior') === 'true');
 
@@ -624,8 +624,10 @@ function switchPatient(id) {
   } else {
     ElMessage.info('Showing all patients.');
   }
-  // Refreshcurrentpagedata: throughchangerouterViewKeytriggerchildcomponentagainmount
-  routerViewKey.value = getAuthSessionKey() + '-' + (id || 'all') + '-' + Date.now();
+  // CareCenter watches the patient itself; preserve its selected tab and filters.
+  if (route.path !== '/care') {
+    routerViewKey.value = getAuthSessionKey() + '-' + (id || 'all') + '-' + Date.now();
+  }
 }
 
 // Sign Out

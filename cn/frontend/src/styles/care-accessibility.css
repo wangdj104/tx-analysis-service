@@ -1,10 +1,24 @@
 body.care-senior { font-size: 19px; }
-.care-senior .care-center { max-width: 1450px; }
-.care-senior .care-center p, .care-senior .care-center strong, .care-senior .el-form-item__label { font-size: 20px; line-height: 1.7; }
-.care-senior .care-center small { font-size: 17px; }
-.care-senior .el-button { min-height: 48px; font-size: 18px; padding: 12px 18px; }
-.care-senior .el-input__inner, .care-senior .el-textarea__inner, .care-senior .el-select__placeholder { font-size: 19px; }
-.care-senior .el-input__wrapper, .care-senior .el-select__wrapper { min-height: 44px; }
-.care-senior .el-table, .care-senior .el-tabs__item { font-size: 18px; }
-.care-senior .el-checkbox__label, .care-senior .el-radio__label, .care-senior .el-tag { font-size: 17px; }
-.care-senior .quick-actions { position: sticky; top: 0; z-index: 5; background: white; padding: 12px 0; }
+body.care-senior .care-center { max-width: 1450px; }
+body.care-senior .care-center p, body.care-senior .care-center strong, body.care-senior .el-form-item__label { font-size: 20px; line-height: 1.7; }
+body.care-senior .care-center small { font-size: 17px; }
+body.care-senior .el-button, body.care-senior .care-center .el-button { min-height: 48px; font-size: 18px; padding: 12px 18px; }
+body.care-senior .el-input__inner, body.care-senior .el-textarea__inner, body.care-senior .el-select__placeholder { font-size: 19px; }
+body.care-senior .el-input__wrapper, body.care-senior .el-select__wrapper { min-height: 44px; }
+body.care-senior .el-table, body.care-senior .el-tabs__item, body.care-senior .care-center .el-tabs__item { font-size: 18px; }
+body.care-senior .el-checkbox__label, body.care-senior .el-radio__label, body.care-senior .el-tag { font-size: 17px; }
+/* Let enlarged actions scroll naturally, without covering tasks or the sticky header. */
+body.care-senior .quick-actions { position: static; }
+body.care-senior .workspace-nav__link { font-size: 18px; }
+body.care-senior .workspace-nav__label, body.care-senior .patient-switcher label { font-size: 14px; }
+body.care-senior .workspace-topbar { position: relative; }
+body.care-senior .workspace-breadcrumb, body.care-senior .workspace-bottom-nav a, body.care-senior .workspace-bottom-nav button { font-size: 16px; }
+body.care-senior .care-controls .el-radio-button__inner, body.care-senior .care-options summary { font-size: 18px; min-height: 48px; }
+body.care-senior .care-center .care-context strong { overflow-wrap: anywhere; }
+body.care-senior .care-center .quick-actions small { font-size: 17px; }
+body.care-senior .care-center .care-columns { grid-template-columns: 1fr; }
+body.care-senior .care-count { font-size: 17px; }
+@media (max-width: 768px) {
+  body.care-senior .workspace-content { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+  body.care-senior .care-center .quick-actions { grid-template-columns: 1fr; }
+}

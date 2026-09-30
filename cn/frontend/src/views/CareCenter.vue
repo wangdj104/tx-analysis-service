@@ -1,14 +1,39 @@
 <template>
-  <main class="care-center" v-loading="loading">
-    <header class="care-header"><div><span class="eyebrow">家庭照护</span><h1>{{ mode === 'PATIENT' ? '照顾好今天的自己' : '携手照护家人' }}</h1><p>在一个清晰的工作区中管理日程、医嘱和家庭交接。</p></div><picture class="care-header-art"><source media="(max-width:800px)" :srcset="careMomentsSmall"/><img :src="careMoments" alt="" width="210" height="140" decoding="async"/></picture><div class="mode-switch"><el-radio-group v-model="mode"><el-radio-button value="PATIENT">我是患者</el-radio-button><el-radio-button value="FAMILY">我是照护者</el-radio-button></el-radio-group><el-switch v-model="senior" active-text="大字模式"/><el-button @click="reload">刷新</el-button></div></header>
-    <div class="care-toolbar"><el-select v-model="patientId" placeholder="选择家庭成员" style="max-width:260px"><el-option v-for="p in home" :key="p.patient.id" :label="p.patient.name" :value="p.patient.id"/></el-select><el-button @click="joinVisible=true">加入共享照护</el-button><el-button @click="tab='backup'">备份与恢复</el-button></div>
-    <section v-if="mode==='FAMILY'" class="family-cards"><button v-for="p in home" :key="p.patient.id" :class="{selected:p.patient.id===patientId}" @click="patientId=p.patient.id"><strong>{{p.patient.name}}</strong><span>{{pendingCount(p)}} 项需要关注</span><small>{{nextAppointment(p)}}</small></button></section>
+  <section class="care-center" aria-labelledby="care-heading" v-loading="loading">
+    <header class="care-header">
+      <div class="care-header__copy">
+        <span class="eyebrow">家庭照护</span>
+        <h1 id="care-heading">{{ mode === 'PATIENT' ? '照顾好今天的自己' : '携手照护家人' }}</h1>
+        <p class="care-context"><span>当前档案</span><strong>{{ selectedPatientName || '请在顶部选择患者' }}</strong></p>
+      </div>
+      <picture class="care-header-art"><source media="(max-width:800px)" :srcset="careMomentsSmall"/><img :src="careMoments" alt="" width="120" height="80" decoding="async"/></picture>
+    </header>
+    <div class="care-controls">
+      <el-radio-group v-model="mode" aria-label="照护角色"><el-radio-button value="PATIENT">我是患者</el-radio-button><el-radio-button value="FAMILY">我是照护者</el-radio-button></el-radio-group>
+      <div class="care-controls__utilities">
+        <el-switch v-model="senior" active-text="大字模式" aria-label="大字模式"/>
+        <details class="care-options">
+          <summary>照护选项</summary>
+          <div class="care-toolbar">
+            <el-button @click="joinVisible=true">加入共享照护</el-button>
+            <el-button @click="tab='backup'">备份与恢复</el-button>
+            <el-button :loading="loading" @click="reload">刷新</el-button>
+          </div>
+        </details>
+      </div>
+    </div>
+    <section v-if="mode==='FAMILY'" class="family-cards" aria-label="家庭成员">
+      <button v-for="p in home" :key="p.patient.id" type="button" :class="{selected:p.patient.id===patientId}" :aria-pressed="p.patient.id===patientId" @click="patientId=p.patient.id">
+        <span class="family-card__heading"><strong>{{p.patient.name}}</strong><span v-if="p.patient.id===patientId" class="family-card__selected">当前</span></span>
+        <span>{{pendingCount(p)}} 项需要关注</span><small>{{nextAppointment(p)}}</small>
+      </button>
+    </section>
     <el-alert v-if="!patientId" title="请选择家庭成员，或使用邀请码加入共享照护。" :closable="false" type="info"/>
     <el-tabs v-model="tab" class="care-tabs">
       <el-tab-pane label="今日" name="today" :disabled="!patientId">
-        <section class="quick-actions"><el-button type="primary" @click="quickVisible=true">记录血压或血糖</el-button><el-button @click="open('SYMPTOM')">记录症状</el-button><el-button @click="open('QUESTION')">添加就诊问题</el-button><el-button v-if="mode==='FAMILY'" @click="open('HANDOVER')">添加家庭交接</el-button></section>
-        <div class="care-columns"><section class="care-card"><h2>今日用药</h2><el-empty v-if="!activeIntakes.length" description="今天没有用药任务"/><article v-for="i in activeIntakes" :key="i.id" class="care-task"><div><strong>{{i.scheduledAt?.slice(11,16)}} {{i.drugName}}</strong><p>{{i.dosage}}</p><small v-if="lastActor(i.id)">{{lastActor(i.id)}}</small><small v-if="i.status==='SNOOZED'">将在 {{i.snoozeUntil}} 再次提醒</small></div><el-tag>{{statusText(i.status)}}</el-tag><div v-if="['PENDING','MISSED','SNOOZED'].includes(i.status)" class="task-actions"><el-button type="success" :disabled="busy" @click="openIntake(i)">{{mode==='FAMILY'?'代记已服':'我已服药'}}</el-button><el-button :disabled="busy" @click="intakeAction(i,'SNOOZED')">15 分钟后提醒</el-button><el-button :disabled="busy" @click="skipIntake(i)">跳过</el-button></div></article></section>
-          <section class="care-card"><h2>预约与照护任务</h2><el-empty v-if="!dueTasks.length" description="近期没有待处理事项"/><article v-for="item in dueTasks" :key="item.id" class="care-task"><div><strong>{{item.title}}</strong><p>{{item.eventAt || '未设置时间'}}</p><small>负责人：{{memberName(item.assignedUserId)}} · 记录人：{{item.actorName||'家庭成员'}}</small><p>{{item.details?.note || item.details?.preparation}}</p></div><el-button :disabled="busy" type="primary" @click="action(item,'DONE')">完成</el-button><el-button @click="open(item.kind,item)">查看</el-button></article></section></div>
+        <section class="quick-actions" aria-label="记录健康"><el-button class="quick-actions__primary" type="primary" @click="quickVisible=true"><span>记录健康<small>血压 / 血糖</small></span></el-button><el-button @click="open('SYMPTOM')">记录症状</el-button><el-button @click="open('QUESTION')">添加就诊问题</el-button><el-button v-if="mode==='FAMILY'" @click="open('HANDOVER')">添加家庭交接</el-button></section>
+        <div class="care-columns"><section class="care-card"><div class="care-card__heading"><h2>今日用药</h2><span class="care-count">{{pendingMedicationCount}} 项待办</span></div><el-empty v-if="!activeIntakes.length" description="今天没有用药任务"/><article v-for="i in activeIntakes" :key="i.id" class="care-task"><div><strong>{{i.scheduledAt?.slice(11,16)}} {{i.drugName}}</strong><p>{{i.dosage}}</p><small v-if="lastActor(i.id)">{{lastActor(i.id)}}</small><small v-if="i.status==='SNOOZED'">将在 {{i.snoozeUntil}} 再次提醒</small></div><el-tag>{{statusText(i.status)}}</el-tag><div v-if="['PENDING','MISSED','SNOOZED'].includes(i.status)" class="task-actions"><el-button type="success" :disabled="busy" @click="openIntake(i)">{{mode==='FAMILY'?'代记已服':'我已服药'}}</el-button><el-button :disabled="busy" @click="intakeAction(i,'SNOOZED')">15 分钟后提醒</el-button><el-button :disabled="busy" @click="skipIntake(i)">跳过</el-button></div></article></section>
+          <section class="care-card"><div class="care-card__heading"><h2>预约与照护任务</h2><span class="care-count">{{dueTasks.length}} 项待办</span></div><el-empty v-if="!dueTasks.length" description="近期没有待处理事项"/><article v-for="item in dueTasks" :key="item.id" class="care-task"><div><strong>{{item.title}}</strong><p>{{item.eventAt || '未设置时间'}}</p><small>负责人：{{memberName(item.assignedUserId)}} · 记录人：{{item.actorName||'家庭成员'}}</small><p>{{item.details?.note || item.details?.preparation}}</p></div><div class="task-actions"><el-button :disabled="busy" type="primary" @click="action(item,'DONE')">完成</el-button><el-button @click="open(item.kind,item)">查看</el-button></div></article></section></div>
         <el-alert v-for="s in lowStocks" :key="s.id" :title="s.drugName + ' 剩余 ' + s.quantity + ' ' + s.unit + (s.estimatedDays != null ? '（约 ' + s.estimatedDays + ' 天），请安排补充。' : '，请检查库存。')" type="warning" :closable="false"/>
       </el-tab-pane>
       <el-tab-pane label="预约" name="appointments" :disabled="!patientId">
@@ -50,7 +75,7 @@
     <el-dialog v-model="stockVisible" title="设置或修正库存" width="min(480px,94vw)"><el-form label-position="top"><el-form-item label="药品"><el-select v-model="stockForm.medicationId" :disabled="!!stockForm.id"><el-option v-for="m in context.medications||[]" :key="m.id" :value="m.id" :label="m.drugName"/></el-select></el-form-item><el-form-item label="实际剩余数量"><el-input-number v-model="stockForm.quantity" :min="0" :precision="3"/></el-form-item><el-form-item label="单位（需与医嘱一致）"><el-input v-model="stockForm.unit"/></el-form-item><el-form-item label="剩余天数低于此值时提醒"><el-input-number v-model="stockForm.warningDays" :min="0"/></el-form-item><el-form-item label="或数量低于此值时提醒"><el-input-number v-model="stockForm.warningQuantity" :min="0"/></el-form-item></el-form><template #footer><el-button :loading="busy" type="primary" @click="submitStock">保存</el-button></template></el-dialog>
     <el-dialog v-model="historyVisible" title="库存历史" width="min(800px,94vw)"><el-table :data="stockHistory"><el-table-column prop="created_at" label="时间"/><el-table-column prop="quantity" label="数量变化"/><el-table-column prop="reason" label="原因"/><el-table-column prop="actor_name" label="记录人"/></el-table></el-dialog>
     <el-dialog v-model="joinVisible" title="加入共享照护" width="min(460px,94vw)"><p>请向该家庭成员记录的所有者索取邀请码。</p><el-input v-model="joinCode" placeholder="粘贴邀请码"/><el-input v-model="joinRelation" placeholder="你与患者的关系，例如：女儿" style="margin-top:14px"/><template #footer><el-button type="primary" :loading="busy" @click="join">加入</el-button></template></el-dialog>
-  </main>
+  </section>
 </template>
 <script setup>
 import {ref,reactive,computed,watch,onMounted,onUnmounted} from 'vue'
@@ -68,6 +93,12 @@ const entryVisible=ref(false),entryKind=ref('APPOINTMENT'),entryRow=ref(null),ca
 const quickVisible=ref(false),quick=reactive({systolicBp:undefined,diastolicBp:undefined,bloodGlucose:undefined,measurePeriod:localStorage.getItem('care-measure-period')||'Fasting',remark:''})
 const intakeVisible=ref(false),selectedIntake=ref(null),intakeQuantity=ref(undefined),stockVisible=ref(false),stockForm=reactive({}),historyVisible=ref(false),stockHistory=ref([])
 const joinVisible=ref(false),joinCode=ref(''),joinRelation=ref('家庭照护者'),inviteCode=ref(''),profile=reactive({escalationUserId:null,escalationMinutes:60})
+const selectedPatientName=computed(()=>{
+  if(!patientId.value)return ''
+  return home.value.find(p=>p.patient.id===patientId.value)?.patient.name
+    || (context.value.patient?.id===patientId.value ? context.value.patient.name : '') || ''
+})
+const pendingMedicationCount=computed(()=>(context.value.intakes||[]).filter(i=>['PENDING','MISSED','SNOOZED'].includes(i.status)).length)
 const items=computed(()=>context.value.items||[]),byKind=kind=>computed(()=>items.value.filter(i=>i.kind===kind))
 const appointments=byKind('APPOINTMENT'),orders=byKind('ORDER'),symptoms=byKind('SYMPTOM'),questions=byKind('QUESTION'),handovers=byKind('HANDOVER'),activities=byKind('ACTIVITY')
 const activeIntakes=computed(()=>(context.value.intakes||[]).filter(i=>i.status!=='CANCELLED')),lowStocks=computed(()=>(context.value.stocks||[]).filter(s=>s.low))
@@ -111,6 +142,91 @@ const statusText=s=>({OPEN:'待处理',DONE:'已完成',CANCELLED:'已取消',AC
 const daysText=s=>String(s||'').split(',').map(x=>['','周一','周二','周三','周四','周五','周六','周日'][Number(x)]).join('、')
 </script>
 <style scoped>
-.care-header{position:relative}
-.care-center{max-width:1400px;margin:auto;padding:30px}.care-header,.section-head{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:20px}.care-header>div:first-child{min-width:0;flex:1}.care-header-art{width:210px;height:140px;flex:0 0 auto}.care-header-art img{display:block;width:100%;height:100%;object-fit:contain}.care-header h1{font-size:28px;margin:8px 0}.care-header p,.care-center small{color:#64748b}.eyebrow{color:#267266;font-weight:700}.mode-switch,.care-toolbar,.quick-actions,.task-actions,.attachment-links{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.mode-switch{justify-content:flex-end}.care-toolbar,.quick-actions{margin:18px 0}.family-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:20px 0}.family-cards button{background:#fff;border:1px solid #dde8e5;border-radius:14px;padding:18px;text-align:left;display:flex;flex-direction:column;gap:8px;cursor:pointer}.family-cards button.selected{border:2px solid #267266;background:#f0f9f6}.family-cards strong{font-size:20px}.care-tabs{background:#fff;border:1px solid #dde8e5;border-radius:16px;padding:22px}.care-columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}.care-card{padding:20px;border:1px solid #e3ece9;border-radius:14px;margin-bottom:18px;background:#fff}.care-card h2,.care-card h3{margin:0 0 12px}.care-card p{line-height:1.7}.care-task{padding:16px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center;border-bottom:1px solid #e7eeeb}.care-task>div:first-child{flex:1;min-width:180px}.care-task small{display:block}.task-actions{margin-top:12px}.calendar-cell button{display:block;border:0;background:#e8f4ee;color:#226854;padding:3px;text-align:left;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:4px;cursor:pointer;margin-top:4px}.invite-code{padding:16px;background:#f0f9f6;overflow-wrap:anywhere}.attachment-links{margin:14px 0}.order-card small{display:block}@media(max-width:1050px){.care-header-art{width:150px;height:100px}}@media(max-width:800px){.care-center{padding:16px}.care-header,.section-head{align-items:flex-start;flex-direction:column}.care-header-art{position:absolute;right:16px;width:108px;height:72px;opacity:.9}.care-header>div:first-child{padding-right:100px}.mode-switch{justify-content:flex-start}.care-columns{grid-template-columns:1fr}.care-tabs{padding:12px}.quick-actions .el-button{flex:1;min-width:140px;margin:0}.care-header h1{font-size:25px}.care-tabs :deep(.el-calendar__body){padding:0}.care-tabs :deep(.el-calendar-day){height:85px;padding:4px}}
+.care-center { max-width: 1400px; margin: auto; padding: 24px 28px 32px; }
+.care-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.care-header__copy { min-width: 0; }
+.eyebrow { color: var(--care-700); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.care-header h1 { margin: 5px 0 8px; font-size: 28px; line-height: 1.25; letter-spacing: -.025em; }
+.care-context { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 0; color: var(--ink-500); font-size: 14px; }
+.care-context strong { color: var(--ink-950); font-size: 16px; overflow-wrap: anywhere; }
+.care-header-art { width: 120px; height: 80px; flex: 0 0 auto; }
+.care-header-art img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.care-controls, .care-controls__utilities { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.care-controls { justify-content: space-between; margin-bottom: 20px; }
+.care-controls :deep(.el-radio-button__inner) { min-height: 42px; display: inline-flex; align-items: center; padding: 10px 18px; font-size: 14px; }
+.care-options { position: relative; }
+.care-options summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; color: var(--care-700); font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; list-style: none; }
+.care-options summary::-webkit-details-marker { display: none; }
+.care-options summary::after { content: '+'; font-size: 18px; }
+.care-options[open] summary::after { content: '−'; }
+.care-options summary:hover { background: var(--care-50); }
+.care-options summary:focus-visible { outline: 2px solid var(--care-700); outline-offset: 2px; }
+.care-toolbar { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; width: max-content; max-width: min(300px, 85vw); display: grid; gap: 8px; padding: 12px; background: #fff; border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 8px 24px #20342c14; }
+.care-toolbar :deep(.el-button) { margin: 0; }
+.family-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 12px; margin: 0 0 20px; }
+.family-cards button { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px; text-align: left; font: inherit; color: var(--ink-700); background: #fff; border: 1px solid var(--line-strong); border-radius: 12px; }
+.family-cards button.selected { border-color: var(--care-700); box-shadow: inset 0 0 0 1px var(--care-700); background: var(--care-50); }
+.family-card__heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
+.family-cards strong { color: var(--ink-950); font-size: 18px; overflow-wrap: anywhere; }
+.family-card__selected { margin-left: auto; font-size: 12px; color: var(--care-700); font-weight: 700; }
+.care-center small { color: var(--ink-500); font-size: 14px; line-height: 1.55; }
+.care-tabs { min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 0 20px 20px; }
+.care-tabs :deep(.el-tabs__header) { margin-bottom: 0; }
+.care-tabs :deep(.el-tabs__item) { height: 54px; padding-inline: 16px; font-size: 15px; }
+.care-tabs :deep(.el-tabs__nav-next), .care-tabs :deep(.el-tabs__nav-prev) { line-height: 54px; }
+.care-tabs :deep(.el-tabs__content) { padding-top: 20px; }
+.quick-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 20px; }
+.quick-actions :deep(.el-button) { flex: 1; min-width: 150px; min-height: 56px; height: auto; margin: 0; padding: 12px; white-space: normal; line-height: 1.4; }
+.quick-actions :deep(.el-button > span) { white-space: normal; }
+.quick-actions__primary small { display: block; color: inherit; font-size: 13px; font-weight: 400; }
+.care-columns { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; align-items: start; }
+.care-card { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 16px; background: #fff; }
+.care-card__heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.care-card h2, .care-card h3 { margin: 0; font-size: 18px; line-height: 1.4; }
+.care-count { padding: 4px 8px; border-radius: 6px; background: var(--care-50); color: var(--care-700); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.care-card p { margin: 6px 0; line-height: 1.65; }
+.care-task { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; padding: 16px 0; border-bottom: 1px solid var(--line-soft); }
+.care-task:last-child { padding-bottom: 0; border-bottom: 0; }
+.care-task > div:first-child { flex: 1; min-width: min(180px,100%); }
+.care-task strong { font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.care-task small { display: block; }
+.task-actions, .attachment-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.care-task > .task-actions { flex: 0 0 100%; margin-top: 0; }
+.task-actions :deep(.el-button) { min-height: 44px; height: auto; margin: 0; padding: 10px 12px; white-space: normal; }
+.task-actions :deep(.el-button > span) { white-space: normal; }
+.section-head { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 20px; }
+.calendar-cell button { display: block; border: 0; background: var(--care-50); color: var(--care-700); padding: 3px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 4px; margin-top: 4px; }
+.invite-code { padding: 16px; background: var(--care-50); overflow-wrap: anywhere; }
+.attachment-links { margin-block: 14px; }
+.order-card small { display: block; }
+@media (max-width: 1100px) { .care-columns { grid-template-columns: 1fr; } }
+@media (max-width: 768px) {
+  .care-center { padding: 18px 14px 24px; }
+  .care-header { margin-bottom: 14px; gap: 10px; }
+  .care-header h1 { font-size: 25px; }
+  .care-header-art { width: 84px; height: 64px; }
+  .care-controls { gap: 10px; margin-bottom: 16px; }
+  .care-controls__utilities { gap: 12px; }
+  .care-controls :deep(.el-radio-button__inner) { padding-inline: 14px; }
+  .family-cards { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+  .family-cards button { padding: 12px; }
+  .family-card__selected { margin-left: 0; }
+  .care-tabs { padding: 0 12px 12px; }
+  .care-tabs :deep(.el-tabs__item) { height: 48px; }
+  .care-tabs :deep(.el-tabs__nav-next), .care-tabs :deep(.el-tabs__nav-prev) { line-height: 48px; }
+  .care-tabs :deep(.el-tabs__content) { padding-top: 14px; }
+  .quick-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-bottom: 16px; }
+  .quick-actions :deep(.el-button) { min-width: 0; width: 100%; min-height: 48px; }
+  .quick-actions__primary { grid-column: 1 / -1; }
+  .care-card { padding: 14px; }
+  .care-card h2 { font-size: 17px; }
+  .section-head { align-items: flex-start; flex-direction: column; }
+  .care-tabs :deep(.el-calendar__body) { padding: 0; }
+  .care-tabs :deep(.el-calendar-day) { height: 85px; padding: 4px; }
+}
+@media (max-width: 480px) {
+  .care-header-art { display: none; }
+  .care-controls__utilities { width: 100%; justify-content: space-between; }
+  .family-cards { grid-template-columns: 1fr; }
+}
 </style>

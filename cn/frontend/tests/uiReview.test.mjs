@@ -63,7 +63,7 @@ function setupApp(getUserInfo, getPatientNames = async () => ({ code: 200, data:
     useMobile: () => ({ isMobile: ref(false) }),
     useCurrentPatient: () => ({ currentPatientId: ref(null), setPatientList: value => { patientList.value = value; } }),
     getUserInfo, getPatientNames, ElMessage: { success() {}, info() {} }
-  }, ['loadUserMenus', 'resetNavState', 'userInfo', 'userMenus', 'appPatientList', 'navItems', 'menuLoadError']);
+  }, ['loadUserMenus', 'resetNavState', 'userInfo', 'userMenus', 'appPatientList', 'navItems', 'menuLoadError', 'switchPatient', 'routerViewKey', 'currentPatientId']);
   return { ...app, patientList, route, redirects };
 }
 
@@ -388,4 +388,17 @@ test('switching sessions while router readiness is pending invalidates the old r
   assert.deepEqual(patientCalls, ['B']);
   assert.equal(app.userInfo.value.username, 'B');
   assert.deepEqual(app.userMenus.value, ['/medical-record']);
+});
+
+
+test('switching the care patient preserves the mounted care tab; other modules still refresh', () => {
+  const app = setupApp(async () => info('A'), undefined, { path: '/care', fullPath: '/care' });
+  const initialKey = app.routerViewKey.value;
+  app.switchPatient(11);
+  assert.equal(app.currentPatientId.value, 11);
+  assert.equal(app.routerViewKey.value, initialKey);
+  app.route.path = '/monitoring';
+  app.switchPatient(22);
+  assert.equal(app.currentPatientId.value, 22);
+  assert.notEqual(app.routerViewKey.value, initialKey);
 });
