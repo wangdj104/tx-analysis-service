@@ -4,8 +4,8 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="澄心健康全功能交互式演示：面向医生、患者、家属和管理员的连续健康管理平台。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>澄心健康 · 交互演示</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=20260922-1"><link rel="stylesheet" href="branding.css?v=20260922-1">
-  <script src="model.js?v=20260922-1" defer></script><script src="app.js?v=20260922-1" defer></script>
+  <title>澄心健康 · 交互演示</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=20260930-1"><link rel="stylesheet" href="branding.css?v=20260930-1">
+  <script src="model.js?v=20260930-1" defer></script><script src="app.js?v=20260930-1" defer></script>
 </head>
 <body>
   <a class="skip" href="#content">跳到主要内容</a>
@@ -15,7 +15,7 @@
     <div class="sidebar-bottom"><button class="guide-entry" id="guide-start" type="button"><b>新手指引</b><small>逐步讲解 · 每步需要确认</small></button><p>一份档案，一个照护团队</p><div class="demo-account"><span class="avatar" id="account-avatar">医</span><div><b id="account-name">陈医生</b><small>演示账号 · 虚构数据</small></div></div></div>
   </aside>
   <div class="workspace">
-    <header class="topbar"><span><b id="workspace-label">医生工作台</b> <i>/</i> <strong id="breadcrumb">工作概览</strong></span><div class="top-actions"><label class="patient-select"><span id="member-label">患者</span><select id="patient"></select></label><a class="language-link" href="../">English</a></div></header>
+    <header class="topbar"><span><b id="workspace-label">医生工作台</b> <i>/</i> <strong id="breadcrumb">工作概览</strong></span><div class="top-actions"><label class="patient-select"><span id="member-label">患者</span><select id="patient"></select></label><button class="text-size-toggle" id="text-size" type="button" aria-pressed="false">大字模式</button><a class="language-link" href="../">English</a></div></header>
     <div class="demo-banner"><span><b>全功能交互演示</b> 流程与真实平台对应，使用虚构且仅保留在当前标签页的数据；不会上传文件、调用 AI 或发送任何消息。</span><button class="text-button" id="reset">重置演示</button></div>
     <main id="content" tabindex="-1"></main><footer class="footer"><strong id="ownership">© 2026 澄心健康 版权所有</strong><span>仅供产品演示，不构成医疗建议，请勿输入真实健康信息。</span></footer>
   </div>
