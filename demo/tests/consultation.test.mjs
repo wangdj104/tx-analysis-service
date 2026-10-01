@@ -174,8 +174,8 @@ for (const edition of ['en', 'zh']) {
     assert.equal(chat.messages.length, before + 2);
     assert.equal(chat.messages.at(-1).sender, 'doctor');
     assert.equal(app.state.patientId, 1);
-    assert.ok(app.node('content').writes > writes);
-    assert.ok(app.node('content').innerHTML.includes(chat.messages.at(-1).text[edition === 'en' ? 'en' : 'zh']));
+    assert.equal(app.node('content').writes, writes);
+    assert.ok(app.node('chat-messages').innerHTML.includes(chat.messages.at(-1).text[edition === 'en' ? 'en' : 'zh']));
     assert.match(app.node('toast').textContent, edition === 'en' ? /simulated clinician reply/i : /模拟医生回复/);
   });
 
