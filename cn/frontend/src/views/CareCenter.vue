@@ -106,18 +106,39 @@ const filteredSymptoms=computed(()=>symptoms.value.filter(s=>!symptomFilter.valu
 const dueTasks=computed(()=>items.value.filter(i=>['APPOINTMENT','HANDOVER'].includes(i.kind)&&i.status==='OPEN'&&(!i.eventAt||new Date(i.eventAt.replace(' ','T')).getTime()<Date.now()+7*86400000)))
 const canManage=computed(()=>Number(localStorage.getItem('userId'))===context.value.patient?.userId||JSON.parse(localStorage.getItem('userRoleCodes')||'[]').includes('admin'))
 watch(mode,v=>localStorage.setItem('care-mode',v));watch(senior,v=>{localStorage.setItem('care-senior',v);document.body.classList.toggle('care-senior',v)},{immediate:true})
-let generation=0,timer
+let generation=0, patientEpoch=0, historyRequest=0, inviteRequest=0, timer
 async function reload(){const v=++generation;loading.value=true;try{const r=await api.getCareHome();if(v!==generation)return;home.value=r.data||[];setPatientList(home.value.map(x=>({id:x.patient.id,patientName:x.patient.name})));if(!patientId.value&&home.value.length){patientId.value=home.value[0].patient.id;return}if(patientId.value){const id=patientId.value,c=await api.getCareContext(id);if(v!==generation||id!==patientId.value)return;context.value=c.data||{};const p=items.value.find(x=>x.kind==='PROFILE');Object.assign(profile,{escalationUserId:null,escalationMinutes:60},p?.details||{});}}finally{if(v===generation)loading.value=false}}
-watch(patientId,()=>{generation++;context.value={};entryVisible.value=false;quickVisible.value=false;intakeVisible.value=false;stockVisible.value=false;inviteCode.value='';reload()})
+function resetQuick() {
+  Object.assign(quick, { systolicBp: undefined, diastolicBp: undefined, bloodGlucose: undefined, remark: '' })
+}
+watch(patientId, () => {
+  generation++; patientEpoch++; historyRequest++; inviteRequest++
+  context.value = {}; entryRow.value = null; selectedIntake.value = null
+  entryVisible.value = false; quickVisible.value = false; intakeVisible.value = false; stockVisible.value = false
+  historyVisible.value = false; stockHistory.value = []; inviteCode.value = ''; symptomFilter.value = ''
+  Object.assign(profile, { escalationUserId: null, escalationMinutes: 60 })
+  resetQuick()
+  reload()
+}, { flush: 'sync' })
 onMounted(()=>{reload();timer=setInterval(()=>{if(!busy.value&&!entryVisible.value&&!stockVisible.value&&!quickVisible.value&&!intakeVisible.value&&tab.value==='today')reload()},60000)})
-onUnmounted(()=>{generation++;clearInterval(timer)})
+onUnmounted(()=>{generation++;patientEpoch++;historyRequest++;inviteRequest++;clearInterval(timer)})
 async function perform(operation){if(busy.value)return;busy.value=true;try{await operation();ElMessage.success('保存成功。');await reload()}finally{busy.value=false}}
 function open(kind,row){if(!patientId.value)return;entryKind.value=kind;entryRow.value=row||null;entryVisible.value=true}
 function changeOrder(row,action){const data=JSON.parse(JSON.stringify(row));delete data.id;data.details.action=action;data.details.startDate=localDateKey();data.details.endDate=null;data.title=`${drugName(data.details.medicationId)}${action==='STOP'?'停药':'用药调整'}`;open('ORDER',data)}
 async function action(row,status){await perform(()=>api.careAction(row.id,status))}
 async function removeItem(row){await perform(()=>api.deleteCareItem(row.id))}
 async function answer(row){const r=await ElMessageBox.prompt('记录医生答复','就诊答复',{inputType:'textarea',inputValue:row.details.answer||''}).catch(()=>null);if(r)await perform(()=>api.careAction(row.id,'ANSWERED',r.value))}
-async function submitQuick(){const data={...quick,patientId:patientId.value};await perform(async()=>{await api.quickVitals(data);quickVisible.value=false;localStorage.setItem('care-measure-period',quick.measurePeriod);Object.assign(quick,{systolicBp:undefined,diastolicBp:undefined,bloodGlucose:undefined,remark:''})})}
+async function submitQuick() {
+  if (!patientId.value) return
+  const epoch = patientEpoch, data = { ...quick, patientId: patientId.value }
+  await perform(async () => {
+    await api.quickVitals(data)
+    if (epoch !== patientEpoch) return
+    quickVisible.value = false
+    localStorage.setItem('care-measure-period', data.measurePeriod)
+    resetQuick()
+  })
+}
 function openIntake(i){selectedIntake.value=i;intakeQuantity.value=undefined;intakeVisible.value=true}
 async function confirmIntake(){await intakeAction(selectedIntake.value,'TAKEN','',intakeQuantity.value);intakeVisible.value=false}
 async function intakeAction(i,status,reason='',quantity){await perform(()=>api.recordIntake(i.id,status,reason,quantity,mode.value==='FAMILY'?'FAMILY':'SELF'))}
@@ -125,8 +146,21 @@ async function skipIntake(i){const r=await ElMessageBox.prompt('请输入跳过�
 function openStock(row){Object.assign(stockForm,{id:null,medicationId:null,quantity:0,unit:'片',warningDays:7,warningQuantity:0},row?{id:row.id,medicationId:row.medication_id,quantity:Number(row.quantity),unit:row.unit,warningDays:row.warning_days,warningQuantity:Number(row.warning_quantity)}:{});stockVisible.value=true}
 async function submitStock(){await perform(async()=>{await api.saveStock({...stockForm,patientId:patientId.value});stockVisible.value=false})}
 async function purchase(row){const pid=patientId.value,r=await ElMessageBox.prompt(`要补充多少${row.unit}？`,row.drugName,{inputPattern:/^\d+(\.\d{1,3})?$/,inputErrorMessage:'请输入有效数值'}).catch(()=>null);if(r&&pid===patientId.value)await perform(()=>api.purchaseStock({patientId:pid,medicationId:row.medication_id,quantity:Number(r.value),reason:'补充库存'}))}
-async function showStockHistory(row){stockHistory.value=(await api.getStockHistory(patientId.value,row.medication_id)).data||[];historyVisible.value=true}
-async function invite(){inviteCode.value=(await api.createCareInvite(patientId.value)).data}
+async function showStockHistory(row) {
+  if (!patientId.value) return
+  const epoch = patientEpoch, request = ++historyRequest
+  const result = await api.getStockHistory(patientId.value, row.medication_id)
+  if (epoch !== patientEpoch || request !== historyRequest) return
+  stockHistory.value = result.data || []
+  historyVisible.value = true
+}
+async function invite() {
+  if (!patientId.value) return
+  const epoch = patientEpoch, request = ++inviteRequest
+  const result = await api.createCareInvite(patientId.value)
+  if (epoch !== patientEpoch || request !== inviteRequest) return
+  inviteCode.value = result.data
+}
 async function copyInvite(){try{await navigator.clipboard.writeText(inviteCode.value);ElMessage.success('邀请码已复制。')}catch{ElMessage.info('请手动选择并复制邀请码。')}}
 async function join(){await perform(async()=>{const r=await api.joinCare(joinCode.value.trim(),joinRelation.value);joinVisible.value=false;patientId.value=r.data;window.dispatchEvent(new Event('care-patients-changed'))})}
 async function removeMember(row){await perform(()=>api.removeCareMember(patientId.value,row.userId))}
