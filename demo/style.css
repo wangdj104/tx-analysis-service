@@ -96,6 +96,13 @@ body.large-text .workspace main { max-width: 1500px; }
 body.large-text :is(.button, .button.small, .table-wrap .button, .sidebar nav a, .role-switch button, .patient-select select, .text-size-toggle, .language-link, .form-grid input, .form-grid textarea) { min-height: 48px; font-size: 18px; }
 body.large-text :is(.page-heading p, .care-context strong, .task-copy b, .note p, .muted, table, .table-wrap table, .form-grid label, .report-card p, .capability-card p) { font-size: 18px; }
 body.large-text :is(.task-copy small, .time, .tag, .care-count, .stats span, .stats p, .stats strong small, .care-primary small, .patient-select, .topbar > span, .demo-banner, .demo-banner b) { font-size: 16px; }
+.chat-message p { overflow-wrap: anywhere; }
+.chat-message > div { flex-wrap: wrap; }
+.participant-list span { min-width: 0; overflow-wrap: anywhere; }
+.chat-compose { grid-template-columns: minmax(0,1fr) auto; }
+.chat-compose textarea { min-width: 0; }
+body.large-text :is(.chat-message p, .chat-summary > p, .participant-list span, .chat-compose textarea) { font-size: 18px; }
+body.large-text :is(.chat-message > div, .typing-indicator, .live-pill) { font-size: 16px; }
 body.large-text .care-task-columns { grid-template-columns: 1fr; }
 body.large-text .care-actions { grid-template-columns: repeat(2,minmax(0,1fr)); }
 body.large-text .care-primary { grid-column: 1 / -1; }
@@ -110,6 +117,9 @@ body.large-text .care-primary { grid-column: 1 / -1; }
   .sidebar { position: static; width: auto; padding: 14px 16px; }
   .brand { margin-bottom: 12px; }
   .brand strong { font-size: 19px; }
+  .sidebar-bottom { display: block; margin-top: 0; padding-top: 8px; }
+  .sidebar-bottom > p, .sidebar-bottom .demo-account { display: none; }
+  body .guide-entry { margin-bottom: 0; }
   .role-switch { grid-template-columns: repeat(4,minmax(0,1fr)); margin-bottom: 10px; }
   .role-switch button { min-height: 44px; font-size: 14px; }
   .sidebar nav { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 3px 3px 7px; }
@@ -143,6 +153,9 @@ body.large-text .care-primary { grid-column: 1 / -1; }
   .dialog-actions .button { flex: 1; }
   body.large-text .heading-art { display: none; }
   body.large-text .stats { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .chat-compose { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
