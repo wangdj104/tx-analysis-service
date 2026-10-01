@@ -190,7 +190,7 @@ const canStart = computed(() => Boolean(props.patientId && form.doctorUserId && 
 const canMessage = computed(() => activeConsultation.value?.status === 'OPEN' && activeConsultation.value?.can_message === true)
 const canClose = computed(() => activeConsultation.value?.status === 'OPEN' && activeConsultation.value?.can_close === true)
 const canSend = computed(() => canMessage.value && !sending.value && !closing.value && Boolean(draft.content.trim()) && (draft.messageType === 'TEXT' || recordOptions.value.some(record => Number(record.id) === Number(draft.attachmentRecordId))))
-let disposed = false, contextVersion = 0, roomVersion = 0, listRequest = 0, listTimer = null, messageTimer = null, signalTimer = null
+let disposed = false, contextVersion = 0, roomVersion = 0, navigationVersion = 0, listRequest = 0, listTimer = null, messageTimer = null, signalTimer = null
 let localStream = null, callVersion = 0, lastSignalId = 0, signalBusy = false
 const peers = new Map(), pendingIce = new Map()
 function currentContext(version) { return !disposed && props.enabled && version === contextVersion }
@@ -252,25 +252,29 @@ async function activateConsultation(detail) {
 }
 async function openConsultation(id, updateRoute = true) {
   if (!id || disposed) return
-  const context = contextVersion, requestVersion = ++roomVersion
+  const context = contextVersion, navigation = ++navigationVersion, requestVersion = ++roomVersion
   stopMessageSync(); stopCall(); activeConsultation.value = null; recordOptions.value = []; clearDraft()
   openingId.value = id
   try {
     const response = await api.getConsultation(id)
-    if (!currentContext(context) || requestVersion !== roomVersion) return
+    if (!currentContext(context) || navigation !== navigationVersion || requestVersion !== roomVersion) return
     await activateConsultation(response.data)
-    if (updateRoute && currentContext(context) && Number(activeConsultation.value?.id) === Number(id)) await router.replace({ query: { ...route.query, tab: 'consultation', consultationId: String(id) } })
-  } catch {} finally { if (currentContext(context) && Number(openingId.value) === Number(id)) openingId.value = null }
+    if (updateRoute && currentContext(context) && navigation === navigationVersion && Number(activeConsultation.value?.id) === Number(id)) await router.replace({ query: { ...route.query, tab: 'consultation', consultationId: String(id) } })
+  } catch {} finally { if (currentContext(context) && navigation === navigationVersion) openingId.value = null }
 }
 async function beginConsultation() {
   if (!canStart.value) return
-  const context = contextVersion, patientId = props.patientId
-  starting.value = true
+  const context = contextVersion, navigation = ++navigationVersion, patientId = props.patientId
+  starting.value = true; openingId.value = null
   try {
     const response = await api.startConsultation({ ...form, symptom: form.symptom.trim(), patientId, familyVisibility: visibleToFamily.value ? 'VISIBLE' : 'PRIVATE', participantUserIds: visibleToFamily.value ? [...participantUserIds.value] : [] })
-    if (!currentContext(context)) return
+    if (!currentContext(context) || navigation !== navigationVersion) return
     form.symptom = ''; form.durationText = ''; form.medicalHistory = ''
+    const version = roomVersion + 1
     await activateConsultation(response.data)
+    if (!currentContext(context) || navigation !== navigationVersion || !currentRoom(version, response.data.id)) return
+    await router.replace({ query: { ...route.query, tab: 'consultation', consultationId: String(response.data.id) } })
+    if (!currentContext(context) || navigation !== navigationVersion || !currentRoom(version, response.data.id)) return
     ElMessage.success(copy.value.started)
     await loadConsultations()
   } catch {} finally { if (currentContext(context)) starting.value = false }
@@ -421,7 +425,7 @@ function stopCall() {
   localStream = null; remoteStreams.value = {}; callActive.value = false; callStarting.value = false; lastSignalId = 0
 }
 function resetContext() {
-  contextVersion++; roomVersion++; listRequest++
+  contextVersion++; roomVersion++; navigationVersion++; listRequest++
   stopListSync(); stopMessageSync(); stopCall()
   activeConsultation.value = null; consultations.value = []; recordOptions.value = []; openingId.value = null
   chatSyncing.value = false; listLoading.value = false; starting.value = false; sending.value = false; closing.value = false; downloadingId.value = null

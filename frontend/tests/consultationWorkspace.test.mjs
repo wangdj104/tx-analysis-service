@@ -30,7 +30,7 @@ function setup(t, overrides = {}, propOverrides = {}) {
     localStorage: { getItem: () => '1' }, window: { isSecureContext: false, setTimeout: fn => { scheduled.push(fn); return scheduled.length }, setInterval() {} },
     navigator: {}, ElMessage: { success() {}, warning() {}, error() {} }, ElMessageBox: { prompt: async () => ({ value: '' }), confirm: async () => {} }, api
   }
-  const exposed = ['consultations','activeConsultation','draft','recordOptions','canMessage','canSend','canClose','loadConsultations','openConsultation','activateConsultation','refreshActiveConsultation','sendMessage','finishConsultation','resetContext','initialize','sending','listError','openingId','onComposerKeydown']
+  const exposed = ['consultations','activeConsultation','draft','recordOptions','canMessage','canSend','canClose','loadConsultations','openConsultation','activateConsultation','refreshActiveConsultation','sendMessage','finishConsultation','resetContext','initialize','sending','listError','openingId','onComposerKeydown','form','beginConsultation','starting','chatSyncing']
   const scope = effectScope()
   const view = scope.run(() => new Function(...Object.keys(deps), source + '\nreturn {' + exposed.join(',') + '}')(...Object.values(deps)))
   t.after(() => { view.resetContext(); scope.stop() })
@@ -155,4 +155,87 @@ test('Enter preserves multiline input; Ctrl+Enter sends unless an IME compositio
   assert.equal(calls, 1)
   assert.equal(prevented, 1)
   await nextTick()
+})
+
+
+test('late consultation creation cannot replace a subsequently opened room or its draft', async t => {
+  const pending = deferred()
+  const view = setup(t, { startConsultation: () => pending.promise })
+  view.form.doctorUserId = 9; view.form.symptom = 'Fictional question'
+  const creating = view.beginConsultation()
+  await view.openConsultation(2)
+  view.draft.content = 'Draft for room 2'
+  pending.resolve({ data: consultation(1) }); await creating
+  assert.equal(view.activeConsultation.value.id, 2)
+  assert.equal(view.route.query.consultationId, '2')
+  assert.equal(view.draft.content, 'Draft for room 2')
+  assert.equal(view.starting.value, false)
+})
+
+test('successful consultation creation replaces the previous room URL', async t => {
+  const view = setup(t, { startConsultation: async () => ({ data: consultation(2) }) })
+  await view.openConsultation(1)
+  view.form.doctorUserId = 9; view.form.symptom = 'New question'
+  await view.beginConsultation()
+  assert.equal(view.activeConsultation.value.id, 2)
+  assert.equal(view.route.query.consultationId, '2')
+  assert.equal(view.route.query.tab, 'consultation')
+  assert.equal(view.form.symptom, '')
+})
+
+test('repeated consultation creation submits once and permits retry after failure', async t => {
+  const pending = deferred(), requests = []
+  const view = setup(t, { startConsultation: payload => { requests.push(payload); return pending.promise } })
+  view.form.doctorUserId = 9; view.form.symptom = 'Fictional question'
+  const creating = view.beginConsultation()
+  await view.beginConsultation()
+  assert.equal(requests.length, 1)
+  pending.reject(new Error('offline')); await creating
+  assert.equal(view.starting.value, false)
+  assert.equal(view.form.symptom, 'Fictional question')
+  view.api.startConsultation = async payload => { requests.push(payload); return { data: consultation(3) } }
+  await view.beginConsultation()
+  assert.equal(requests.length, 2)
+  assert.equal(view.activeConsultation.value.id, 3)
+})
+
+
+for (const firstResponse of ['open', 'create']) test(`new consultation supersedes an older pending open when ${firstResponse} resolves first`, async t => {
+  const pendingOpen = deferred(), pendingCreate = deferred(), created = []
+  const view = setup(t, {
+    getConsultation: () => pendingOpen.promise,
+    startConsultation: payload => { created.push(payload); return pendingCreate.promise }
+  })
+  const opening = view.openConsultation(1)
+  view.form.doctorUserId = 9; view.form.symptom = 'New question'
+  const creating = view.beginConsultation()
+  if (firstResponse === 'open') {
+    pendingOpen.resolve({ data: consultation(1) }); await opening
+    assert.equal(view.activeConsultation.value, null, 'superseded open must not activate while the newer create is pending')
+    assert.equal(view.route.query.consultationId, undefined)
+  }
+  pendingCreate.resolve({ data: consultation(2) }); await creating
+  if (firstResponse === 'create') { pendingOpen.resolve({ data: consultation(1) }); await opening }
+  assert.equal(view.activeConsultation.value.id, 2)
+  assert.equal(view.route.query.consultationId, '2')
+  assert.equal(view.form.symptom, '')
+  assert.equal(view.openingId.value, null)
+  assert.equal(view.starting.value, false)
+  await view.beginConsultation()
+  assert.equal(created.length, 1, 'a completed creation must not leave the submitted form ready to duplicate')
+})
+
+test('starting a new consultation does not invalidate the current room polling when creation fails', async t => {
+  const pendingCreate = deferred(), pendingPoll = deferred()
+  const view = setup(t, { startConsultation: () => pendingCreate.promise, getConsultation: () => pendingPoll.promise })
+  await view.activateConsultation(consultation(1))
+  const polling = view.refreshActiveConsultation()
+  view.form.doctorUserId = 9; view.form.symptom = 'New question'
+  const creating = view.beginConsultation()
+  pendingPoll.resolve({ data: consultation(1, { messages: [{ id: 99, content: 'Reply' }] }) }); await polling
+  pendingCreate.reject(new Error('offline')); await creating
+  assert.equal(view.activeConsultation.value.id, 1)
+  assert.equal(view.activeConsultation.value.messages[0].id, 99)
+  assert.equal(view.chatSyncing.value, false)
+  assert.equal(view.form.symptom, 'New question')
 })
