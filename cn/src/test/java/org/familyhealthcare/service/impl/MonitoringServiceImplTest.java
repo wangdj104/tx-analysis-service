@@ -84,6 +84,48 @@ class MonitoringServiceImplTest {
         assertEquals("需要立即关注", result.getStatusLabel());
     }
 
+    @Test
+    void glucoseUnitsUseEquivalentSeverityWithoutChangingStoredReadings() {
+        for (String[] sample : new String[][]{{"6", "NORMAL"}, {"3.9", "NORMAL"}, {"6.1", "NORMAL"}, {"3.0", "WARNING"}, {"2.9", "CRITICAL"}, {"16.7", "WARNING"}, {"16.8", "CRITICAL"}}) {
+            for (String unit : new String[]{"mmol/L", "mg/dL", "MG/DL"}) {
+                BigDecimal value = new BigDecimal(sample[0]);
+                if ("mg/dL".equalsIgnoreCase(unit)) value = value.multiply(new BigDecimal("18"));
+                BpSelfMonitorRecord row = vital(120, 80, value.toPlainString()); row.setBgUnit(unit);
+                when(monitorMapper.selectList(any())).thenReturn(Collections.singletonList(row));
+                MonitoringSnapshotVO result = service.getSnapshot(1L, 7);
+                MonitoringSnapshotVO.Signal signal = result.getSignals().stream().filter(item -> "glucose".equals(item.getKey())).findFirst().orElseThrow(AssertionError::new);
+                assertEquals(sample[1], signal.getStatus(), sample[0] + " " + unit);
+                assertEquals(value, result.getVitalTrend().get(0).getGlucose());
+                assertEquals(unit, result.getVitalTrend().get(0).getGlucoseUnit());
+            }
+        }
+    }
+
+    @Test
+    void postMealAliasesHaveTheSameExistingThresholdsInEitherUnit() {
+        for (String period : new String[]{"After Meal", "After Meal2h"}) {
+            for (String[] sample : new String[][]{{"7", "NORMAL"}, {"7.8", "NORMAL"}, {"7.9", "WARNING"}, {"2", "CRITICAL"}}) {
+                BpSelfMonitorRecord row = vital(120, 80, new BigDecimal(sample[0]).multiply(new BigDecimal("18")).toPlainString());
+                row.setBgUnit("mg/dL"); row.setMeasurePeriod(period);
+                when(monitorMapper.selectList(any())).thenReturn(Collections.singletonList(row));
+                MonitoringSnapshotVO result = service.getSnapshot(1L, 7);
+                assertEquals(sample[1], result.getSignals().stream().filter(item -> "glucose".equals(item.getKey())).findFirst().orElseThrow(AssertionError::new).getStatus());
+            }
+        }
+    }
+
+    @Test
+    void missingLegacyUnitsDefaultToMmolButUnsupportedUnitsAreNotAssessed() {
+        for (String unit : new String[]{null, "", "  ", "mmol/L", "mg/L"}) {
+            BpSelfMonitorRecord row = vital(120, 80, "6"); row.setBgUnit(unit);
+            when(monitorMapper.selectList(any())).thenReturn(Collections.singletonList(row));
+            MonitoringSnapshotVO result = service.getSnapshot(1L, 7);
+            assertEquals("mg/L".equals(unit) ? "NO_DATA" : "NORMAL", result.getSignals().stream().filter(item -> "glucose".equals(item.getKey())).findFirst().orElseThrow(AssertionError::new).getStatus());
+            assertEquals(new BigDecimal("6"), result.getVitalTrend().get(0).getGlucose());
+            assertEquals(unit, result.getVitalTrend().get(0).getGlucoseUnit());
+        }
+    }
+
     private BpSelfMonitorRecord vital(int systolic, int diastolic, String glucose) {
         BpSelfMonitorRecord row = new BpSelfMonitorRecord();
         row.setPatientId(1L);

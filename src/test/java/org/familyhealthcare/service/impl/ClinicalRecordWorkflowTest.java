@@ -147,7 +147,7 @@ class ClinicalRecordWorkflowTest {
         DataScopeHelper scope = mock(DataScopeHelper.class);
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
         ReflectionTestUtils.setField(service, "dataScopeHelper", scope);
-        BpSelfMonitorRecord existing = new BpSelfMonitorRecord(); existing.setId(3L);existing.setPatientId(1L);existing.setUserId(10L);
+        BpSelfMonitorRecord existing = new BpSelfMonitorRecord(); existing.setId(3L);existing.setPatientId(1L);existing.setUserId(10L);existing.setRecordDate(LocalDate.of(2026,9,22));existing.setSystolicBp(120);existing.setDiastolicBp(80);existing.setBloodGlucose(new BigDecimal("6"));
         when(mapper.selectById(3L)).thenReturn(existing);when(mapper.updateById(any())).thenReturn(1);
         BpSelfMonitorRecord edited = new BpSelfMonitorRecord(); edited.setId(3L);edited.setPatientId(999L);edited.setUserId(999L);edited.setMeasureType("BOTH");
         assertTrue(service.updateOwned(edited));

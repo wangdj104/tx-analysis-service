@@ -217,6 +217,14 @@ const illustratedShortcuts = computed(() => {
     .map(item => ({ ...item, path: resolveWorkspaceEntry(item.path, menuPaths, roleCodes) }))
 })
 
+// Existing chart reference lines are in mmol/L. Keep source values and units unchanged.
+function glucoseInMmol(value, unit) {
+  if (!['number', 'string'].includes(typeof value) || String(value).trim() === '' || !Number.isFinite(Number(value))) return null;
+  const normalizedUnit = String(unit ?? '').trim().toLowerCase() || 'mmol/l';
+  if (normalizedUnit === 'mg/dl') return Number((Number(value) / 18).toFixed(8));
+  return normalizedUnit === 'mmol/l' ? Number(value) : null;
+}
+
 const chartOption = computed(() => {
   const rows = snapshot.value.vitalTrend || []
   const labels = rows.map(p => `${String(p.date || '').slice(5)} ${p.time || ''}`.trim())
@@ -243,7 +251,7 @@ const chartOption = computed(() => {
     series: [
       { name: '收缩压', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.systolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.5, color: '#236b63' }, itemStyle: { color: '#236b63' }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d6a642', type: 'dashed' }, label: { color: '#8a6110', formatter: '参考值 140' }, data: [{ yAxis: 140 }] } },
       { name: '舒张压', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.diastolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#589b91' }, itemStyle: { color: '#589b91' } },
-      { name: '血糖', type: 'line', yAxisIndex: 1, smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.glucose, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#d59c2f' }, itemStyle: { color: '#d59c2f' } }
+      { name: '血糖', type: 'line', yAxisIndex: 1, smooth: .25, connectNulls: true, data: rows.map(p => ({ value: glucoseInMmol(p.glucose, p.glucoseUnit), symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#d59c2f' }, itemStyle: { color: '#d59c2f' } }
     ]
   }
 })

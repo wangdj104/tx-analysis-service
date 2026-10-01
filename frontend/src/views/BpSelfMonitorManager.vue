@@ -75,7 +75,7 @@
                 </div>
                 <div class="field-grid field-grid--two">
                   <el-form-item label="Blood Glucosevalue" prop="bloodGlucose">
-                    <el-input-number v-model="form.bloodGlucose" :min="0" :max="50" :precision="1" :step="0.1" controls-position="right" />
+                    <el-input-number v-model="form.bloodGlucose" :min="0" :max="String(form.bgUnit).trim().toLowerCase() === 'mg/dl' ? 900 : 50" :precision="1" :step="0.1" controls-position="right" />
                   </el-form-item>
                   <el-form-item label="Unit">
                     <el-select v-model="form.bgUnit">
@@ -214,8 +214,23 @@ const latestBgText = computed(() => {
 
 const formRules = {
   recordDate: [{ required: true, message: 'Select a date', trigger: 'change' }],
-  measureType: [{ required: true, message: 'Selecttype', trigger: 'change' }]
+  measureType: [{ required: true, message: 'Selecttype', trigger: 'change' }],
+  systolicBp: [{ validator: measurementValidator('bp', 50, 250, true), trigger: 'change' }],
+  diastolicBp: [{ validator: measurementValidator('bp', 30, 150, true), trigger: 'change' }],
+  bloodGlucose: [{ validator: measurementValidator('bg'), trigger: 'change' }]
 };
+function measurementValidator(kind, min, max, integer = false) {
+  return (_rule, value, callback) => {
+    if (kind === 'bp' ? !showBpFields.value : !showBgFields.value) return callback();
+    const number = Number(value);
+    const invalid = value == null || String(value).trim() === '' || !Number.isFinite(number)
+      || (integer && !Number.isInteger(number))
+      || (kind === 'bp' ? number < min || number > max
+        : number <= 0 || !['mmol/l', 'mg/dl'].includes(String(form.bgUnit).trim().toLowerCase()) || number > (String(form.bgUnit).trim().toLowerCase() === 'mg/dl' ? 900 : 50));
+    callback(invalid ? new Error('Enter a valid measurement for the selected type') : undefined);
+  };
+}
+
 
 function measureLabel(type) {
   return type === 'BP' ? 'Blood Pressure' : type === 'BG' ? 'Blood Glucose' : 'Blood Pressure+Blood Glucose';
@@ -289,7 +304,7 @@ function handleEdit(row) {
     systolicBp: row.systolicBp,
     diastolicBp: row.diastolicBp,
     bloodGlucose: row.bloodGlucose,
-    bgUnit: row.bgUnit || 'mmol/L',
+    bgUnit: String(row.bgUnit ?? '').trim() ? row.bgUnit : 'mmol/L',
     measurePeriod: row.measurePeriod || 'Fasting',
     remark: row.remark || ''
   });

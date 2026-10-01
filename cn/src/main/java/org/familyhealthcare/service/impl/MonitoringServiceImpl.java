@@ -456,6 +456,13 @@ public class MonitoringServiceImpl implements MonitoringService {
     private String glucoseSeverity(BpSelfMonitorRecord row, PatientHealthTarget target) {
         if (row == null || row.getBloodGlucose() == null) return "NO_DATA";
         BigDecimal value = row.getBloodGlucose();
+        // Thresholds are in mmol/L; do not alter the recorded value or its display unit.
+        String unit = row.getBgUnit() == null ? "" : row.getBgUnit().trim();
+        if ("mg/dL".equalsIgnoreCase(unit)) {
+            value = value.divide(new BigDecimal("18"), 8, RoundingMode.HALF_UP);
+        } else if (!unit.isEmpty() && !"mmol/L".equalsIgnoreCase(unit)) {
+            return "NO_DATA";
+        }
         if (value.compareTo(new BigDecimal("3.0")) < 0 || value.compareTo(new BigDecimal("16.7")) > 0) return "CRITICAL";
         boolean postMeal = row.getMeasurePeriod() != null && row.getMeasurePeriod().contains("After Meal");
         BigDecimal min = target == null ? null : (postMeal ? target.getPostmealGlucoseMin() : target.getFastingGlucoseMin());

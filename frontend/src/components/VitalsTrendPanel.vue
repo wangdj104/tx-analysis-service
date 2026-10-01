@@ -24,9 +24,16 @@ const hasData=computed(()=>sorted.value.some(x=>x.systolicBp||x.bloodGlucose));
 const labels=computed(()=>sorted.value.map(x=>`${x.recordDate.slice(5)}${x.recordTime?' '+x.recordTime:''}`));
 const base={tooltip:{trigger:'axis'},legend:{bottom:0},grid:{left:46,right:20,top:30,bottom:54},xAxis:{type:'category',data:labels.value,boundaryGap:false},yAxis:{type:'value',scale:true}};
 const bpOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmHg',min:40},series:[{name:'Systolic Pressure',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>x.systolicBp),itemStyle:{color:'#ef4444'},markLine:{symbol:'none',label:{formatter:'referenceup limit 140'},data:[{yAxis:140,lineStyle:{type:'dashed',color:'#f59e0b'}}]}},{name:'Diastolic Pressure',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>x.diastolicBp),itemStyle:{color:'#2563eb'}}]}));
-const bgOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmol/L',min:0},series:[{name:'Blood Glucose',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>x.bloodGlucose),itemStyle:{color:'#059669'},markLine:{symbol:'none',data:[{name:'Fastingreference value',yAxis:6.1,lineStyle:{type:'dashed',color:'#f59e0b'}},{name:'After Mealreference value',yAxis:7.8,lineStyle:{type:'dashed',color:'#ef4444'}}]}}]}));
+const bgOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmol/L',min:0},series:[{name:'Blood Glucose',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>glucoseInMmol(x.bloodGlucose,x.bgUnit)),itemStyle:{color:'#059669'},markLine:{symbol:'none',data:[{name:'Fastingreference value',yAxis:6.1,lineStyle:{type:'dashed',color:'#f59e0b'}},{name:'After Mealreference value',yAxis:7.8,lineStyle:{type:'dashed',color:'#ef4444'}}]}}]}));
 function bpAbnormal(x){return x.systolicBp&&(x.systolicBp>140||x.systolicBp<90||x.diastolicBp>90||x.diastolicBp<60)}
-function bgAbnormal(x){if(!x.bloodGlucose)return false;return x.measurePeriod==='After Meal2h'?x.bloodGlucose>7.8:x.bloodGlucose>6.1||x.bloodGlucose<3.9}
+// Existing chart reference lines are in mmol/L. Keep source values and units unchanged.
+function glucoseInMmol(value, unit) {
+  if (!['number', 'string'].includes(typeof value) || String(value).trim() === '' || !Number.isFinite(Number(value))) return null;
+  const normalizedUnit = String(unit ?? '').trim().toLowerCase() || 'mmol/l';
+  if (normalizedUnit === 'mg/dl') return Number((Number(value) / 18).toFixed(8));
+  return normalizedUnit === 'mmol/l' ? Number(value) : null;
+}
+function bgAbnormal(x){const value=glucoseInMmol(x.bloodGlucose,x.bgUnit);if(value==null)return false;const postMeal=String(x.measurePeriod||'').includes('After Meal');return value<3.9||value>(postMeal?7.8:6.1)}
 const abnormalCount=computed(()=>sorted.value.filter(x=>bpAbnormal(x)||bgAbnormal(x)).length);
 const bpStreak=computed(()=>{let current=0,max=0;for(const row of sorted.value){if(!row.systolicBp)continue;if(bpAbnormal(row)){current++;max=Math.max(max,current)}else current=0}return{current,max}});
 </script>

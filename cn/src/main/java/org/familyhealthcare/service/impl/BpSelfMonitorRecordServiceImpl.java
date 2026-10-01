@@ -56,6 +56,7 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
         if (record.getPatientId() == null) throw new IllegalStateException("Select a patient");
         dataScopeHelper.requirePatient(record.getPatientId());
         Long userId = dataScopeHelper.requireUserId();
+        validateMeasurements(record);
         record.setId(null);
         if ("BOTH".equals(record.getMeasureType())) record.setMeasureType("BP_BG");
         record.setUserId(userId);
@@ -67,10 +68,44 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
         BpSelfMonitorRecord existing = getById(record.getId());
         if (existing == null) return false;
         dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
+        // Validate the effective MyBatis patch without writing untouched measurements back.
+        BpSelfMonitorRecord effective = new BpSelfMonitorRecord();
+        effective.setRecordDate(record.getRecordDate() == null ? existing.getRecordDate() : record.getRecordDate());
+        effective.setMeasureType(record.getMeasureType() == null ? existing.getMeasureType() : record.getMeasureType());
+        effective.setSystolicBp(record.getSystolicBp() == null ? existing.getSystolicBp() : record.getSystolicBp());
+        effective.setDiastolicBp(record.getDiastolicBp() == null ? existing.getDiastolicBp() : record.getDiastolicBp());
+        effective.setBloodGlucose(record.getBloodGlucose() == null ? existing.getBloodGlucose() : record.getBloodGlucose());
+        effective.setBgUnit(record.getBgUnit() == null ? existing.getBgUnit() : record.getBgUnit());
+        validateMeasurements(effective);
         record.setPatientId(existing.getPatientId());
         if ("BOTH".equals(record.getMeasureType())) record.setMeasureType("BP_BG");
         record.setUserId(existing.getUserId());
         return updateById(record);
+    }
+
+    private void validateMeasurements(BpSelfMonitorRecord record) {
+        if (record.getRecordDate() == null) throw new IllegalArgumentException("Record date is required.");
+        String type = record.getMeasureType();
+        boolean bp = "BP".equals(type) || "BP_BG".equals(type) || "BOTH".equals(type);
+        boolean bg = "BG".equals(type) || "BP_BG".equals(type) || "BOTH".equals(type);
+        if (!bp && !bg) throw new IllegalArgumentException("Select a valid measurement type.");
+        if (bp && (record.getSystolicBp() == null || record.getDiastolicBp() == null)) {
+            throw new IllegalArgumentException("Systolic and diastolic blood pressure are required.");
+        }
+        if ((record.getSystolicBp() != null && (record.getSystolicBp() < 40 || record.getSystolicBp() > 300))
+                || (record.getDiastolicBp() != null && (record.getDiastolicBp() < 20 || record.getDiastolicBp() > 200))) {
+            throw new IllegalArgumentException("Blood pressure is outside the accepted input range.");
+        }
+        if (bg && record.getBloodGlucose() == null) throw new IllegalArgumentException("Blood glucose is required.");
+        if (record.getBloodGlucose() != null) {
+            if (record.getBloodGlucose().signum() <= 0) throw new IllegalArgumentException("Blood glucose must be greater than zero.");
+            String unit = record.getBgUnit();
+            // Missing units in historical records mean mmol/L, as in existing displays/exports.
+            if (unit != null && !unit.trim().isEmpty()
+                    && !"mmol/L".equalsIgnoreCase(unit.trim()) && !"mg/dL".equalsIgnoreCase(unit.trim())) {
+                throw new IllegalArgumentException("Blood glucose unit must be mmol/L or mg/dL.");
+            }
+        }
     }
 
     @Override
