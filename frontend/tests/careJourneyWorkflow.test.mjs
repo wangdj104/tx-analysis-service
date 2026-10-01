@@ -228,3 +228,21 @@ test('busy guard prevents duplicate measurement writes', async t => {
   await first
   assert.equal(view.busy.value, false)
 })
+
+test('the newest selected emergency detail wins when requests finish out of order', async t => {
+  const first = deferred(), second = deferred()
+  const view = setup(t, { getEmergency: id => id === 1 ? first.promise : second.promise })
+  const oldRequest = view.openEmergency({ id: 1 }), latestRequest = view.openEmergency({ id: 2 })
+  second.resolve({ data: { id: 2, patient_id: 10 } }); await latestRequest
+  first.resolve({ data: { id: 1, patient_id: 10 } }); await oldRequest
+  assert.equal(view.selectedEmergency.value.id, 2)
+})
+
+test('returning to a patient does not revive an abandoned emergency detail', async t => {
+  const pending = deferred(), view = setup(t, { getEmergency: () => pending.promise })
+  const request = view.openEmergency({ id: 1 })
+  view.patient.value = 20; await nextTick()
+  view.patient.value = 10; await nextTick()
+  pending.resolve({ data: { id: 1, patient_id: 10 } }); await request
+  assert.equal(view.selectedEmergency.value, null)
+})

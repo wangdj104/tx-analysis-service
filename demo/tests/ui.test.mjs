@@ -78,7 +78,7 @@ test('both editions ship the same UI behavior, styles and versioned assets', () 
   const en = demo('en'), zh = demo('zh');
   for (const file of ['app.js', 'model.js', 'style.css']) assert.equal(en.read(file), zh.read(file));
   for (const app of [en, zh]) {
-    assert.match(app.read('index.html'), /app\.js\?v=20261001-1/);
+    assert.match(app.read('index.html'), /app\.js\?v=20261001-r5/);
     assert.match(app.read('index.html'), /model\.js\?v=20261001-1/);
     assert.match(app.read('index.html'), /style\.css\?v=20261001-1/);
     assert.match(app.read('index.html'), /branding\.css\?v=20261001-1/);

@@ -168,7 +168,12 @@ async function loadEmergencyCard(){
 }
 async function loadEmergencyEvents(){await loadPatientData('emergencyEvents',id=>api.listEmergencies(id),response=>{emergencyEvents.value=response.data||[]})}
 async function loadEmergencyTab(){await Promise.allSettled([loadEmergencyCard(),loadEmergencyEvents()])}
-async function openEmergency(row){const patientId=currentPatientId.value;selectedEmergency.value=null;const response=await api.getEmergency(row.id);if(patientId===currentPatientId.value&&Number(response.data?.patient_id)===Number(patientId))selectedEmergency.value=response.data}
+async function openEmergency(row) {
+  selectedEmergency.value = null
+  await loadPatientData('emergencyDetail', () => api.getEmergency(row.id), (response, patientId) => {
+    if (Number(response.data?.patient_id) === Number(patientId)) selectedEmergency.value = response.data
+  })
+}
 async function sos(){if(busy.value||!currentPatientId.value)return;const selected=pid();busy.value=true;try{await ElMessageBox.confirm('系统会记录紧急事件并尝试通知已绑定的照护联系人，是否继续？','紧急呼救',{confirmButtonText:'立即发送',type:'warning'})}catch{busy.value=false;return}if(currentPatientId.value!==selected){busy.value=false;return}try{emergency.latitude=null;emergency.longitude=null;if(navigator.geolocation)await new Promise(resolve=>navigator.geolocation.getCurrentPosition(p=>{emergency.latitude=p.coords.latitude;emergency.longitude=p.coords.longitude;resolve()},()=>resolve(),{timeout:5000}));if(currentPatientId.value!==selected)return;const response=await api.triggerEmergency({...emergency,patientId:selected});if(currentPatientId.value!==selected)return;const {deliveryCount=0,recipientCount=0,id}=response.data||{};if(deliveryCount===0)ElMessage.warning(`紧急事件 #${id} 已记录，但没有联系人收到通知。请立即通过其他方式求助。`);else if(deliveryCount<recipientCount)ElMessage.warning(`紧急事件 #${id} 已记录，${recipientCount} 位联系人中有 ${deliveryCount} 位收到通知。`);else ElMessage.success(`紧急事件 #${id} 已记录，${deliveryCount} 位联系人收到通知。`);await loadEmergencyEvents()}catch{}finally{busy.value=false}}
 async function saveSpecial(type,data){await safely(async()=>{if(type==='growth')validate(data.recordDate && [data.heightCm,data.weightKg,data.headCircumferenceCm].some(value=>Number(value)>0),'请填写日期及至少一项有效的身高、体重或头围。');if(type==='vaccination')validate(data.vaccineName?.trim() && data.plannedDate,'请填写疫苗名称和计划接种日期。');if(type==='maternity')validate(data.recordDate && data.title?.trim(),'请填写记录日期和标题。');await api.saveSpecialty(type,{...data,patientId:pid()});await loadSpecialty()})}
 async function saveMaternity(){await saveSpecial('maternity',{...maternity,data:{details:maternityText.value}})}
