@@ -58,6 +58,7 @@ class HealthExportWorkflowTest {
 
     @Test void reportsUseRequestedLanguageEscapePatientContentAndRenderPdf() throws Exception {
         HealthReportServiceImpl service=new HealthReportServiceImpl();
+        ReflectionTestUtils.setField(service,"pdfFontPath",new java.io.File(getClass().getResource("/fonts/wqy-report-subset.ttf").toURI()).getAbsolutePath());
         PatientMapper patients=mock(PatientMapper.class);Patient patient=new Patient();patient.setName("<script>alert(1)</script>");
         when(patients.selectById(2L)).thenReturn(patient);
         ReflectionTestUtils.setField(service,"dataScopeHelper",mock(DataScopeHelper.class));ReflectionTestUtils.setField(service,"patientMapper",patients);

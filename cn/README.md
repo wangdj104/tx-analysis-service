@@ -110,7 +110,7 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 
 首次启动前必须完成下方数据库初始化，已有库需单独执行适用升级。生产编排关闭管理员自动初始化，首次使用前应明确创建管理员。部署后检查公开地址的 `/api/health`；它仅检查进程存活，还应验证登录与患者页面再验收。以上双语生产命令均从仓库根目录执行。
 
-中文 PDF 下载要求后端主机安装中文字体。后端 Docker 镜像已安装 Noto CJK；非 Docker/systemd 部署在 Debian/Ubuntu 上需通过系统包管理器安装 `fonts-noto-cjk`，并确认服务账号可读取 `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`。其他发行版需提供 `HealthReportServiceImpl` 已识别路径中的 Noto CJK 或文泉驿微米黑字体。安装后重启应用，并实际下载中文 PDF 检查正文与患者姓名；仅检查 HTML 预览不能确认 PDF 字体正常。
+中文 PDF 导出需要具有 TrueType（`glyf`）轮廓的中文字体。后端 Docker 镜像安装 `fonts-wqy-microhei`；非 Docker/systemd 部署在 Debian/Ubuntu 上请安装该包，并确认服务账号可读取 `/usr/share/fonts/truetype/wqy/wqy-microhei.ttc`。可用 `REPORT_PDF_FONT_PATH` 指定兼容的自定义字体。使用 CFF 轮廓的 Noto CJK 字体集合不受当前 PDFBox 渲染器支持，将被跳过。如果没有可覆盖报告中文字形的字体，导出会返回字体配置错误，不会生成不可读文本。安装后重启应用，并实际下载中文 PDF 检查正文与患者姓名；HTML 预览不能证明 PDF 字体正常。
 
 ## 技术栈
 
