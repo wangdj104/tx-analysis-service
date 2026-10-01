@@ -55,4 +55,6 @@ jobs:
           node-version: '20'
       - run: node --check demo/app.js
       - run: node --check cn/demo/app.js
-      - run: node --test demo/tests/*.test.mjs
+      - run: |
+          node --test demo/tests/*.test.mjs
+          node --test cn/demo/tests/*.test.mjs

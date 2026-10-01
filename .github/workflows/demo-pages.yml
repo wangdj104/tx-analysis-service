@@ -31,7 +31,9 @@ jobs:
         with:
           node-version: '20'
       - name: Check demo behavior
-        run: node --test demo/tests/*.test.mjs
+        run: |
+          node --test demo/tests/*.test.mjs
+          node --test cn/demo/tests/*.test.mjs
       - uses: actions/configure-pages@v5
       - name: Prepare public files only
         run: |
