@@ -42,17 +42,11 @@ public class MedicationStockService {
         }return BigDecimal.ZERO;
     }
     public BigDecimal doseFor(MedicationIntake intake) {
-        for(CareItem p:items.selectList(new QueryWrapper<CareItem>().eq("patient_id",intake.getPatientId()).eq("kind","ORDER").orderByDesc("id"))){
-            Map<String,Object>d=p.getDetails();List<?> ids=(List<?>)d.getOrDefault("reminderIds",Collections.emptyList());
-            if(ids.stream().noneMatch(id->String.valueOf(id).equals(String.valueOf(intake.getReminderId()))))continue;
-            for(Object obj:(List<?>)d.getOrDefault("doses",Collections.emptyList())){Map<?,?>dose=(Map<?,?>)obj;
-                if(intake.getScheduledAt().toLocalTime().equals(LocalTime.parse(dose.get("time").toString())))return new BigDecimal(dose.get("quantity").toString());
-            }
-        }
-        // 普通用药提醒仅在明确的剂量单位与库存单位一致时自动扣库。
+        // 服药任务保存本次打卡的剂量快照，包括普通提醒中修改的剂量。
+        // 历史处方关联不能覆盖任务当前的药品、数量或单位。
         List<String> stockUnits=jdbc.queryForList("SELECT unit FROM medication_stock WHERE patient_id=? AND medication_id=?",String.class,intake.getPatientId(),intake.getMedicationId());
         if(stockUnits.isEmpty()||intake.getDosage()==null)return null;
-        java.util.regex.Matcher dose=java.util.regex.Pattern.compile("^\\s*(\\d+(?:\\.\\d+)?)\\s*([^\\d\\s]+)\\s*$").matcher(intake.getDosage());
+        java.util.regex.Matcher dose=java.util.regex.Pattern.compile("^\\s*(\\d+(?:\\.\\d+)?)\\s*([^\\d]+)\\s*$").matcher(intake.getDosage());
         if(!dose.matches()||!stockUnit(dose.group(2)).equals(stockUnit(stockUnits.get(0))))return null;
         BigDecimal quantity=new BigDecimal(dose.group(1));return quantity.signum()>0?quantity:null;
     }
