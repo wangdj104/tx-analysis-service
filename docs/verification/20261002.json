@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "applicationCommit": "a12cf0951cc0e24c6a2aac0e5efdcba5161cbd74",
+  "applicationTree": "b8ad9df697d7a0491f51768364478b4cfbceb273",
+  "finalRegression": {
+    "startUtc": "2026-10-02T11:15:18.168Z",
+    "endUtc": "2026-10-02T11:15:41.949Z",
+    "totalTests": 1171,
+    "allExitCodesZero": true,
+    "checks": [
+      {
+        "name": "backend-en",
+        "directory": ".",
+        "startedUtc": "2026-10-02T11:15:18.171Z",
+        "finishedUtc": "2026-10-02T11:15:31.127Z",
+        "elapsedSeconds": 12.956,
+        "exitCode": 0,
+        "testTotals": {
+          "tests": 233,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "logSha256": "777605b249588d3299905d1379c632ed871ea36fa143734929c90bb123f3092a"
+      },
+      {
+        "name": "backend-cn",
+        "directory": "cn",
+        "startedUtc": "2026-10-02T11:15:18.171Z",
+        "finishedUtc": "2026-10-02T11:15:31.447Z",
+        "elapsedSeconds": 13.276,
+        "exitCode": 0,
+        "testTotals": {
+          "tests": 233,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "logSha256": "f8d114dc9b916e5e09d19b153f2e620a2a232207c3209548ba3a7b9faac7ad04"
+      },
+      {
+        "name": "frontend-en",
+        "directory": "frontend",
+        "startedUtc": "2026-10-02T11:15:18.172Z",
+        "finishedUtc": "2026-10-02T11:15:20.693Z",
+        "elapsedSeconds": 2.521,
+        "exitCode": 0,
+        "tests": 298,
+        "pass": 298,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "logSha256": "3149c0bee479b0be0d73b69ce3bf6c027993e1087c4fa6432120761c0abc0845"
+      },
+      {
+        "name": "frontend-cn",
+        "directory": "cn/frontend",
+        "startedUtc": "2026-10-02T11:15:18.172Z",
+        "finishedUtc": "2026-10-02T11:15:20.826Z",
+        "elapsedSeconds": 2.654,
+        "exitCode": 0,
+        "tests": 305,
+        "pass": 305,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "logSha256": "853524b8707b881d44af1f681b4687cd7a75979d439409e9a3d9261b7a4cee2a"
+      },
+      {
+        "name": "demo",
+        "directory": ".",
+        "startedUtc": "2026-10-02T11:15:18.173Z",
+        "finishedUtc": "2026-10-02T11:15:18.897Z",
+        "elapsedSeconds": 0.724,
+        "exitCode": 0,
+        "tests": 102,
+        "pass": 102,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "logSha256": "f3ed4598c824fa9ca8d552f427ddb13cacffaac711d566a737c477d241b665c9"
+      },
+      {
+        "name": "build-en",
+        "directory": "frontend",
+        "startedUtc": "2026-10-02T11:15:31.455Z",
+        "finishedUtc": "2026-10-02T11:15:41.820Z",
+        "elapsedSeconds": 10.365,
+        "exitCode": 0,
+        "logSha256": "124010b4dd7dfd7eb1d10021d249a473383863ed5ccd6dc5507efc7c690f767e"
+      },
+      {
+        "name": "build-cn",
+        "directory": "cn/frontend",
+        "startedUtc": "2026-10-02T11:15:31.455Z",
+        "finishedUtc": "2026-10-02T11:15:41.444Z",
+        "elapsedSeconds": 9.988,
+        "exitCode": 0,
+        "logSha256": "ea1d54bda69eae523cfc5a4d9acd552e1dc41738f55dfa6f195e2dbf6e5d9060"
+      },
+      {
+        "name": "release-integrity",
+        "directory": ".",
+        "startedUtc": "2026-10-02T11:15:41.820Z",
+        "finishedUtc": "2026-10-02T11:15:41.949Z",
+        "elapsedSeconds": 0.129,
+        "exitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "coreObservation": {
+    "scope": "Local synthetic real-timer Vue-script workflow stability check",
+    "limitations": [
+      "Actual shipped script bodies and actual Vue reactivity; no template rendering or browser E2E",
+      "All API, compression, FileReader, DOM, object URL, router, and notification bindings are synthetic adapters",
+      "Synthetic data only; no network requests or real patient load",
+      "Not production server uptime, backend availability, real OCR accuracy, or actual browser media behavior",
+      "Resource peaks are sampled checkpoints, not continuous peak capture; counts of instrumented resources do not prove absence of all memory leaks",
+      "Components are recreated each cycle; this checks long-lived harness/runtime behavior and repeated lifecycle cleanup, not a single browser session kept mounted for the entire span"
+    ],
+    "testedRuntime": {
+      "node": "v24.19.0",
+      "vue": "3.5.43",
+      "nativeProductPollingDelaysMs": [
+        1800,
+        6000
+      ]
+    },
+    "monitoredSourceSha256": {
+      "frontend/src/views/MedicalRecordManager.vue": "939925e4098a13efff4d5ffe56bac451b1a8a989d6679166a34aeb078f69aa5c",
+      "frontend/src/components/ConsultationWorkspace.vue": "ee2bce4cd43ae343913a1fc00b90f091428c224d2eda8b35026fcae07b05d581",
+      "frontend/src/views/DoctorWorkspace.vue": "ca973ff156754dcdd8d4d1d106561e583ee13b26135cacf4db7ceb83b1977182",
+      "frontend/src/utils/medicalRecordItems.js": "8a1cd69dccfbfb4d8689e70f5025c3142d6a7f8b45cc9d535ef7a911d36849ea",
+      "frontend/src/utils/familyHealth.js": "4826e3e3494b5465daa2b8ed8b82a60ee59b3979d8696c4161fe2e93627d7b6b",
+      "frontend/package-lock.json": "9876b2174f67560c1480589f9284662d26d3b4e03d039f5467c0a0751dcb0903"
+    },
+    "sourceHashesIdenticalAcrossSegments": true,
+    "segments": [
+      {
+        "state": "failed",
+        "startUtc": "2026-10-02T02:51:23.645Z",
+        "endUtc": "2026-10-02T03:02:50.376Z",
+        "monotonicElapsedMs": 686730.736,
+        "completedCycles": 17,
+        "incompleteCycle": 18,
+        "assertionsExecutedIncludingPartialCycle": 1062,
+        "productFailures": 0,
+        "harnessFailures": 1,
+        "failureClassification": "harness-timer-precision-false-positive",
+        "failureExplanation": "Native setTimeout resumed fractionally before a strict performance.now deadline. Product checks passed before this harness-only dwell assertion; the following segment used a condition-based monotonic deadline helper.",
+        "recordedInternalObservationGaps": [],
+        "maxCycleStartGapMs": 40001.136,
+        "everyCompletedCycleHadZeroTrackedResources": true,
+        "sampledPeakResourcesBytes": {
+          "rss": 59817984,
+          "heapUsed": 12265088,
+          "heapTotal": 16982016,
+          "external": 4710813,
+          "arrayBuffers": 301797
+        },
+        "endingOrLatestResources": {
+          "rss": 59654144,
+          "heapUsed": 12265088,
+          "heapTotal": 15147008,
+          "external": 4365079,
+          "arrayBuffers": 301797,
+          "activeProductTimers": 0,
+          "activeAdapterTimers": 0,
+          "pendingAdapters": 0,
+          "activeScopes": 1,
+          "activePreviewURLs": 0,
+          "eventLoopLagMs": {
+            "mean": 20.138,
+            "max": 36.209,
+            "p99": 21.053
+          },
+          "cpu": {
+            "user": 2027050,
+            "system": 309821
+          }
+        },
+        "interruptedScopeExplanation": "The failed partial-cycle snapshot retained one Vue scope; the fail-stop process exited. No later cycle in this segment is claimed.",
+        "driverSha256": "0592a49e7400c2ffd8646427e840482f317445547f24f8610f3d11854fdccb80"
+      },
+      {
+        "state": "completed",
+        "startUtc": "2026-10-02T03:04:30.051Z",
+        "endUtc": "2026-10-02T11:15:00.001Z",
+        "monotonicElapsedMs": 29429950.026,
+        "completedCycles": 736,
+        "incompleteCycle": null,
+        "assertionsExecutedIncludingPartialCycle": 44896,
+        "productFailures": 0,
+        "harnessFailures": 0,
+        "failureClassification": null,
+        "failureExplanation": null,
+        "recordedInternalObservationGaps": [],
+        "maxCycleStartGapMs": 40002.216,
+        "everyCompletedCycleHadZeroTrackedResources": true,
+        "sampledPeakResourcesBytes": {
+          "rss": 72843264,
+          "heapUsed": 19808936,
+          "heapTotal": 27992064,
+          "external": 4710813,
+          "arrayBuffers": 712949
+        },
+        "endingOrLatestResources": {
+          "rss": 72458240,
+          "heapUsed": 19777264,
+          "heapTotal": 24846336,
+          "external": 4365079,
+          "arrayBuffers": 236261,
+          "activeProductTimers": 0,
+          "activeAdapterTimers": 0,
+          "pendingAdapters": 0,
+          "activeScopes": 0,
+          "activePreviewURLs": 0,
+          "eventLoopLagMs": {
+            "mean": 20.121,
+            "max": 64.651,
+            "p99": 20.644
+          },
+          "cpu": {
+            "user": 81072528,
+            "system": 13165601
+          }
+        },
+        "interruptedScopeExplanation": null,
+        "driverSha256": "a77fc88a571eb37be270b2a7336be679425a34eafe32c01796a1f0029202b894"
+      }
+    ],
+    "totals": {
+      "completedCycles": 753,
+      "recordedActionInvocations": 21853,
+      "syntheticAdapterCalls": 36945,
+      "assertionsExecutedIncludingPartialCycle": 45958,
+      "assertionsAtCompletedCycleBoundaries": 45933,
+      "productFailures": 0,
+      "harnessFailures": 1,
+      "sumMeasuredMonotonicElapsedMs": 30116680.762,
+      "gapBetweenSegmentsMs": 99675.0,
+      "allCompletedCycleBoundariesHadZeroTrackedResources": true
+    },
+    "restartGapSeconds": 99.675,
+    "originalFailureEvidencePreserved": true
+  },
+  "profileObservation": {
+    "status": "passed",
+    "headCommit": "a0dcaf665900d72450f9a5ac29a8dbf252d9e8a2",
+    "start": "2026-10-02T04:04:30.971Z",
+    "end": "2026-10-02T04:14:31.026Z",
+    "elapsedMs": 600055,
+    "plannedDurationMs": 600000,
+    "cadenceMs": 2000,
+    "batches": 289,
+    "editionCycles": 578,
+    "assertions": 3496,
+    "apiCalls": 1954,
+    "cases": {
+      "cancelled-validation": 74,
+      "same-patient-reopen": 72,
+      "old-save-new-draft": 72,
+      "duplicate-save-snapshot": 72,
+      "catalog-selection-overlap": 72,
+      "stale-read-failure-finally": 72,
+      "failure-deliberate-retry": 72,
+      "old-finally-new-save": 72
+    },
+    "pendingRequests": 0,
+    "activeTimers": 0,
+    "activeScopes": 0,
+    "sourceHashes": {
+      "frontend/src/views/PatientManager.vue": "3a03d6e24fb804ec5ec6a5289dbb3887117a4204c0bcee7b8060ced8031d5b95",
+      "cn/frontend/src/views/PatientManager.vue": "37d78dfdae9a2d8ff4ac9ec8741216829f35d874c64223bcd4d77fd23fc31121",
+      "frontend/tests/patientProfileDialog.test.mjs": "d5c3236e8377dc9282adacc4b34dcf7815feaa409ec571f303754b95343ada29",
+      "cn/frontend/tests/patientProfileDialog.test.mjs": "d5c3236e8377dc9282adacc4b34dcf7815feaa409ec571f303754b95343ada29"
+    },
+    "scope": "Separate synthetic normal-profile lifecycle observation, not browser/backend/end-to-end coverage"
+  },
+  "recordings": {
+    "count": 4,
+    "format": "H.264 at 15 fps, real continuous cloud desktop capture; browser crops with added captions",
+    "publicRepositoryContainsVideoFiles": false,
+    "narrowBrowserWindowPixels": [
+      508,
+      848
+    ],
+    "limitations": "Synthetic public demo only; not backend E2E, device emulation or physical phone testing"
+  }
+}
