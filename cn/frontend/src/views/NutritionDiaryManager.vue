@@ -145,7 +145,7 @@
                 </template>
               </el-table-column>
               <el-table-column label="液体摄入" width="100">
-                <template #default="{ row }">{{ row.fluidIntake ? row.fluidIntake + ' ml' : '-' }}</template>
+                <template #default="{ row }">{{ row.fluidIntake === 0 || row.fluidIntake ? row.fluidIntake + ' ml' : '-' }}</template>
               </el-table-column>
               <el-table-column label="症状" min-width="120" show-overflow-tooltip>
                 <template #default="{ row }">
@@ -182,6 +182,7 @@ import { ElMessage } from 'element-plus';
 import { Check, Refresh, EditPen, TrendCharts } from '@element-plus/icons-vue';
 import { listDiaries, saveDiary, updateDiary, deleteDiary } from '@/api/nutritionDiary.js';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
+import { localDateKey } from '@/utils/familyHealth';
 
 const { currentPatientId } = useCurrentPatient();
 const loading = ref(false);
@@ -214,7 +215,7 @@ function invalidateEditor() {
 const SYMPTOM_OPTIONS = ['乏力', '水肿', '恶心', '瘙痒', '失眠', '食欲差', '腹胀', '肌肉痉挛'];
 
 const form = reactive({
-  recordDate: new Date().toISOString().slice(0, 10),
+  recordDate: localDateKey(),
   bodyWeight: null,
   appetite: '',
   mealBreakfast: false,
@@ -269,7 +270,7 @@ function toggleSymptom(name) {
 function resetForm() {
   invalidateEditor();
   editingId.value = null;
-  form.recordDate = new Date().toISOString().slice(0, 10);
+  form.recordDate = localDateKey();
   form.bodyWeight = null;
   form.appetite = '';
   form.mealBreakfast = false;
@@ -280,7 +281,8 @@ function resetForm() {
   form.symptoms = '';
   form.remark = '';
   selectedSymptoms.value = [];
-  formRef.value?.resetFields();
+  // Explicit defaults own the new draft; resetFields can restore the mounted day.
+  formRef.value?.clearValidate?.();
 }
 
 async function loadRecords() {

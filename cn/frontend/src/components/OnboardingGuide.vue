@@ -3,7 +3,9 @@
   <div v-if="active" class="guide-layer" role="dialog" aria-modal="false" :aria-labelledby="`guide-title-${stepIndex}`"><div class="guide-anchor" :style="anchorStyle" aria-hidden="true"></div><section class="guide-card" :class="`guide-card--${cardPlacement}`" :style="cardStyle"><button class="guide-close" type="button" aria-label="暂停指引" @click="pause">×</button><span class="guide-kicker">交互指引</span><h2 ref="guideTitle" :id="`guide-title-${stepIndex}`" tabindex="-1">{{current.title}}</h2><p>{{current.description}}</p><div class="guide-instruction"><strong>{{current.gesture}}</strong><span>{{current.action}}</span><small>预期结果：{{current.result}}</small></div><footer><button type="button" :disabled="stepIndex===0" aria-label="上一步" @click="previous">‹</button><span>{{stepIndex+1}} / {{steps.length}}</span><button type="button" :aria-label="stepIndex===steps.length-1?'完成指引':'确认本步骤并继续'" @click="confirmStep">{{stepIndex===steps.length-1?'✓':'›'}}</button></footer></section></div>
 </template>
 <script setup>
+import { useReducedMotion } from '@/composables/useReducedMotion';
 import{computed,nextTick,onBeforeUnmount,reactive,ref,watch}from'vue';import{useRouter}from'vue-router';import{Guide,Menu,Search,User,FirstAidKit,Odometer,House,Setting,Switch}from'@element-plus/icons-vue';
+const reducedMotion = useReducedMotion();
 const props=defineProps({accountId:{type:[String,Number],default:''},roleCodes:{type:Array,default:()=>[]}}),router=useRouter(),welcomeVisible=ref(false),active=ref(false),stepIndex=ref(0),targetBox=reactive({top:80,left:80,width:220,height:80}),viewport=reactive({width:1280,height:800}),cardPlacement=ref('right'),role=computed(()=>['admin','doctor','patient','family'].find(code=>props.roleCodes.includes(code))||'patient');
 const detail=(title,description,action,result,why,selector,icon,gesture,path)=>({title,description,action,result,why,selector,icon,gesture,path});
 const commonEnd=[detail('快速找到任意功能','功能搜索可以直接定位页面，不需要记住每个菜单的位置。','点击手势指向的搜索框，输入“用药”或“报告”，再选择一个结果。','对应页面打开，顶部面包屑随之变化。','不熟悉菜单时，这是最快且最稳妥的入口。','.workspace-search',Search,'点这里搜索'),detail('确认当前患者','所有医疗记录和照护操作都归属于此处选中的患者。','打开手势指向的患者选择器，录入数据前核对姓名。','患者姓名持续显示在页面顶部。','先核对身份可避免把信息写入错误的健康档案。','.patient-switcher',Switch,'先核对姓名'),detail('安全管理账号','修改密码和退出登录都集中在账号区域。','需要账号操作时，点击手势指向的账号区域。','账号面板打开，并显示身份与安全操作。','照护团队每个人都应使用独立且可追溯的账号。','.workspace-account',User,'从这里打开')];
@@ -62,7 +64,7 @@ async function showStep() {
     positionTimer = setTimeout(() => {
       if (!active.value || epoch !== guideEpoch) return;
       highlighted = document.querySelector(step.selector) || document.querySelector('.workspace-content');
-      highlighted?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      highlighted?.scrollIntoView?.({ block: 'center', behavior: reducedMotion.value ? 'auto' : 'smooth' });
       highlighted?.classList.add('guide-target');
       positionGuide();
     }, 260);

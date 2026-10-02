@@ -39,8 +39,8 @@ function mapComponent(value, adapt) {
 
 export function adaptChartOption(option, theme = 'platform') {
   if (!option || typeof option !== 'object') return option;
-  const dark = theme === 'dark', palette = dark ? DARK : LIGHT;
-  const semanticColor = color => dark ? readableColor(color, palette.surface, 3, true) : color;
+  const dark = theme === 'dark', palette = dark ? DARK : theme === 'sand' ? { ...LIGHT, surface: '#fffdf9' } : LIGHT;
+  const semanticColor = color => readableColor(color, palette.surface, 3, dark);
   const text = (style, color = palette.muted) => {
     const result = { ...style, color: typeof style?.color === 'function' ? style.color : color };
     if (style?.rich) result.rich = Object.fromEntries(Object.entries(style.rich).map(([key, value]) => [key, text(value, color)]));

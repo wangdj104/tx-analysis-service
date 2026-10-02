@@ -73,7 +73,7 @@
             </div>
           </div>
           <el-table v-if="historyList.length" :data="historyList" stripe class="app-data-table">
-            <el-table-column prop="Analysis date" label="Analysis date" width="108" />
+            <el-table-column prop="analysisDate" label="Analysis date" width="108" />
             <el-table-column label="Time dimension" width="80">
               <template #default="{ row }">{{ timeTypeLabel(row.timeType) }}</template>
             </el-table-column>
@@ -83,7 +83,7 @@
             </el-table-column>
             <el-table-column label="variability(σ)" width="100">
               <template #default="{ row }">
-                <span :style="row.stdDeviation > 15 ? 'color: #f56c6c; font-weight: 600;' : ''">{{ row.stdDeviation || '-' }}</span>
+                <span :style="row.stdDeviation > 15 ? 'color: #f56c6c; font-weight: 600;' : ''">{{ row.stdDeviation === 0 || row.stdDeviation ? row.stdDeviation : '-' }}</span>
               </template>
             </el-table-column>
             <el-table-column label="Abnormal readings" width="130">

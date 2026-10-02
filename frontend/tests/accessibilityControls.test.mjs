@@ -34,10 +34,11 @@ test('column visibility trigger has a name in icon-only table headers', async ()
 
 // Production script and Vue reactivity, with only DOM, navigation and clocks
 // adapted. No backend, browser, real patient data, or duplicate guide logic.
-function guide(t, { navigate } = {}) {
+function guide(t, { navigate, reducedMotion = false } = {}) {
   const source = read('OnboardingGuide.vue')
   const code = source.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/import[\s\S]*?from\s*['"][^'"]+['"];?/g, '')
-  const listeners = new Map(), timers = new Map(), unmounts = [], focused = [], storage = new Map()
+  const listeners = new Map(), timers = new Map(), unmounts = [], focused = [], storage = new Map(), scrolls = []
+  const motion = Vue.ref(reducedMotion)
   let timerId = 0, visibleModal = false
   const document = {
     body: {}, activeElement: null,
@@ -60,13 +61,14 @@ function guide(t, { navigate } = {}) {
   const opener = node('opener'), main = node('main'), title = node('title'), modal = node('modal')
   const highlights = [], classes = new Set(), target = Object.assign(node('target'), {
     classList: { add: value => { highlights.push(value); classes.add(value) }, remove: value => classes.delete(value) },
-    scrollIntoView() {}, getBoundingClientRect: () => ({ top: 80, left: 80, width: 200, height: 40 })
+    scrollIntoView(options) { scrolls.push(options) }, getBoundingClientRect: () => ({ top: 80, left: 80, width: 200, height: 40 })
   })
   const layer = { contains: element => element === title, closest() { return null } }
   const route = Vue.ref({ path: '/bp-self-monitor' })
   document.activeElement = opener
   const bindings = {
     ...Vue, ...icons, defineProps: () => ({ accountId: 'synthetic-account', roleCodes: ['patient'] }), defineExpose() {},
+    useReducedMotion: () => Vue.readonly(motion),
     useRouter: () => ({ currentRoute: route, push: async path => { await navigate?.(path); route.value.path = path } }),
     document, window: { innerWidth: 1200, innerHeight: 800, addEventListener: document.addEventListener, removeEventListener: document.removeEventListener },
     localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
@@ -101,7 +103,7 @@ function guide(t, { navigate } = {}) {
   }
   function unmount() { unmounts.splice(0).forEach(callback => callback()); scope.stop() }
   t.after(unmount)
-  return { ...view, nodes, focused, document, opener, main, title, target, classes, highlights, timers, route, listeners, flushTimers, key, unmount, modal: value => { visibleModal = value } }
+  return { ...view, motion, scrolls, nodes, focused, document, opener, main, title, target, classes, highlights, timers, route, listeners, flushTimers, key, unmount, modal: value => { visibleModal = value } }
 }
 
 test('interactive guide is non-modal and its heading is programmatically focusable', async t => {
@@ -227,4 +229,24 @@ test('an old welcome close callback cannot steal focus from a restarted guide ta
   closingWelcome(); await tick()
   assert.equal(view.document.activeElement, view.target)
   assert.equal(view.active.value, true)
+})
+
+
+test('guide scrolling follows the live reduced-motion preference', async t => {
+  const view = guide(t, { reducedMotion: true })
+  view.start(); await tick(); view.flushTimers()
+  assert.equal(view.scrolls.at(-1).behavior, 'auto')
+  view.motion.value = false
+  view.confirmStep(); await tick(); view.flushTimers()
+  assert.equal(view.scrolls.at(-1).behavior, 'smooth')
+  view.motion.value = true
+  view.previous(); await tick(); view.flushTimers()
+  assert.equal(view.scrolls.at(-1).behavior, 'auto')
+})
+
+test('a queued guide scroll uses the preference at execution time', async t => {
+  const view = guide(t)
+  view.start(); await tick()
+  view.motion.value = true; view.flushTimers()
+  assert.equal(view.scrolls.at(-1).behavior, 'auto')
 })

@@ -5,11 +5,12 @@ import { reactive, ref, computed, watch, effectScope, nextTick, compile, createS
 import { renderToString } from 'vue/server-renderer'
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus'
 import { Check, Refresh, EditPen, TrendCharts } from '@element-plus/icons-vue'
+import { localDateKey } from '../src/utils/familyHealth.js'
 
 function deferred(){ let resolve, reject; const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject} }
 function setup(t,overrides={}) {
  const patientId=ref(1), messages=[],writes=[],unmountCallbacks=[],scope=effectScope()
- const bindings={ref,reactive,computed,watch,onMounted(){},onUnmounted:fn=>unmountCallbacks.push(fn),
+ const bindings={ref,reactive,computed,watch,localDateKey,onMounted(){},onUnmounted:fn=>unmountCallbacks.push(fn),
   useCurrentPatient:()=>({currentPatientId:patientId}),
   ElMessage:Object.fromEntries(['warning','error','success'].map(kind=>[kind,text=>messages.push({kind,text})])),
   listDiaries:async id=>({code:200,data:[{id:id*10,patientId:id}]}),
@@ -17,7 +18,7 @@ function setup(t,overrides={}) {
  const source=fs.readFileSync(new URL('../src/views/NutritionDiaryManager.vue',import.meta.url),'utf8').match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import.*$/gm,'')
  const names='records,loading,saving,form,formRef,editingId,selectedSymptoms,loadRecords,handleSave,handleEdit,resetForm,handleDelete,latestWeightText,latestAppetiteText,formRules,SYMPTOM_OPTIONS,toggleSymptom,appetiteTagType,appetiteLabel,mealsText'
  const view=scope.run(()=>new Function(...Object.keys(bindings),source+'\nreturn {'+names+'}')(...Object.values(bindings)))
- view.formRef.value={validate:async()=>true,resetFields(){}}
+ view.formRef.value={validate:async()=>true,clearValidate(){}}
  t.after(()=>{unmountCallbacks.forEach(fn=>fn());scope.stop()})
  return {...view,patientId,messages,writes,unmount(){unmountCallbacks.forEach(fn=>fn());scope.stop()}}
 }

@@ -5,6 +5,7 @@ import * as Vue from 'vue'
 import { parse, compileScript } from '@vue/compiler-sfc'
 
 import { adaptChartOption } from '../src/utils/appearanceChart.js'
+import { useReducedMotion } from '../src/composables/useReducedMotion.js'
 
 function contrast(color, background) {
   const luminance = hex => {
@@ -85,13 +86,16 @@ test('dark mode only brightens low-contrast semantic colors within the same hue'
 })
 
 // Catches light themes inheriting stale bright text or dark-adjusted clinical line colors.
-test('every light theme restores semantic series colors with readable labels', () => {
+test('every light theme retains readable semantic colors and darkens faint strokes within their hue', () => {
   const source = fixture()
   adaptChartOption(source, 'dark')
   for (const theme of ['platform', 'white', 'blue', 'mint', 'sand']) {
     const result = adaptChartOption(source, theme)
     assert.equal(result.series[0].itemStyle.color, '#236b63', theme)
-    assert.deepEqual(result.color, ['#ef4444', '#236b63', '#d6a642'], theme)
+    assert.deepEqual(result.color.slice(0, 2), ['#ef4444', '#236b63'], theme)
+    assert.ok(contrast(result.color[2], theme === 'sand' ? '#fffdf9' : '#ffffff') >= 3, theme)
+    const amber = [1, 3, 5].map(index => parseInt(result.color[2].slice(index, index + 2), 16))
+    assert.ok(amber[0] > amber[1] && amber[1] > amber[2], theme)
     assert.ok(contrast(result.xAxis.axisLabel.color, '#ffffff') >= 4.5, theme)
     assert.ok(contrast(result.series[0].label.color, '#ffffff') >= 4.5, theme)
   }
@@ -129,7 +133,7 @@ function chartWrapper() {
   assert.ok(fs.existsSync(filename), 'HealthChart wrapper exists')
   const { descriptor } = parse(fs.readFileSync(filename, 'utf8'))
   let script = compileScript(descriptor, { id: 'health-chart-test', inlineTemplate: true }).content
-  const deps = { appearanceTheme: Vue.ref('white'), adaptChartOption, VChart: { name: 'ChartBoundary' } }
+  const deps = { appearanceTheme: Vue.ref('white'), adaptChartOption, useReducedMotion, VChart: { name: 'ChartBoundary' } }
   script = script.replace(/^import\s+\{([^}]+)\}\s+from\s+['"]vue['"];?$/gm, (_, names) => {
     names.split(',').forEach(name => { const [key, alias = key] = name.trim().split(/\s+as\s+/); deps[alias] = Vue[key] })
     return ''

@@ -19,7 +19,9 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { useReducedMotion } from '@/composables/useReducedMotion';
 import { Guide, Menu, Search, User, FirstAidKit, Odometer, House, Setting, Switch } from '@element-plus/icons-vue';
+const reducedMotion = useReducedMotion();
 const props=defineProps({accountId:{type:[String,Number],default:''},roleCodes:{type:Array,default:()=>[]}}),router=useRouter();
 const welcomeVisible=ref(false),active=ref(false),stepIndex=ref(0),targetBox=reactive({top:80,left:80,width:220,height:80}),viewport=reactive({width:1280,height:800}),cardPlacement=ref('right');
 const role=computed(()=>['admin','doctor','patient','family'].find(code=>props.roleCodes.includes(code))||'patient');
@@ -91,7 +93,7 @@ async function showStep() {
     positionTimer = setTimeout(() => {
       if (!active.value || epoch !== guideEpoch) return;
       highlighted = document.querySelector(step.selector) || document.querySelector('.workspace-content');
-      highlighted?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      highlighted?.scrollIntoView?.({ block: 'center', behavior: reducedMotion.value ? 'auto' : 'smooth' });
       highlighted?.classList.add('guide-target');
       positionGuide();
     }, 260);

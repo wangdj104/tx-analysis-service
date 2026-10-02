@@ -83,7 +83,7 @@
             </el-table-column>
             <el-table-column label="变异性（σ）" width="100">
               <template #default="{ row }">
-                <span :style="row.stdDeviation > 15 ? 'color: #f56c6c; font-weight: 600;' : ''">{{ row.stdDeviation || '-' }}</span>
+                <span :style="row.stdDeviation > 15 ? 'color: #f56c6c; font-weight: 600;' : ''">{{ row.stdDeviation === 0 || row.stdDeviation ? row.stdDeviation : '-' }}</span>
               </template>
             </el-table-column>
             <el-table-column label="异常读数" width="130">

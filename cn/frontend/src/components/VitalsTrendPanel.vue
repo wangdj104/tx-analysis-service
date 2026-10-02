@@ -3,10 +3,10 @@
     <header class="trend-head"><div><h2>生命体征趋势</h2><p>集中观察血压和血糖变化，参考线仅用于辅助识别异常趋势。</p></div><el-radio-group v-model="mode" size="small"><el-radio-button value="both">全部</el-radio-button><el-radio-button value="bp">血压</el-radio-button><el-radio-button value="bg">血糖</el-radio-button></el-radio-group></header>
     <div class="risk-strip"><span>当前连续血压异常 <b>{{ bpStreak.current }}</b> 次</span><span>最长连续血压异常 <b>{{ bpStreak.max }}</b> 次</span><span>异常记录共 <b>{{ abnormalCount }}</b> 条</span></div>
     <div v-if="hasData" class="chart-grid" :class="{'single':mode!=='both'}">
-      <article v-if="mode!=='bg'" class="chart-card"><h3>血压趋势</h3><v-chart class="chart" :option="bpOption" autoresize /></article>
-      <article v-if="mode!=='bp'" class="chart-card"><h3>血糖趋势</h3><v-chart class="chart" :option="bgOption" autoresize /></article>
+      <article v-if="mode!=='bg'" class="chart-card"><h3>血压趋势</h3><v-chart v-if="hasBpData" class="chart" :option="bpOption" autoresize /><el-empty v-else description="暂无可用于分析的血压记录" /></article>
+      <article v-if="mode!=='bp'" class="chart-card"><h3>血糖趋势</h3><v-chart v-if="hasBgData" class="chart" :option="bgOption" autoresize /><el-empty v-else description="暂无可用于分析的血糖记录" /></article>
     </div>
-  <el-empty v-else description="暂无可用于分析的生命体征记录" />
+  <el-empty v-else :description="emptyDescription" />
   </section>
 </template>
 
@@ -20,7 +20,14 @@ import VChart from '@/components/HealthChart.vue';
 use([CanvasRenderer,LineChart,GridComponent,LegendComponent,MarkLineComponent,TooltipComponent]);
 const props=defineProps({records:{type:Array,default:()=>[]}});const mode=ref('both');
 const sorted=computed(()=>[...props.records].sort((a,b)=>`${a.recordDate} ${a.recordTime||''}`.localeCompare(`${b.recordDate} ${b.recordTime||''}`)));
-const hasData=computed(()=>sorted.value.some(x=>x.systolicBp||x.bloodGlucose));
+// Availability controls presentation only; keep source readings and clinical rules intact.
+function positiveReading(value) {
+  return ['number', 'string'].includes(typeof value) && String(value).trim() !== '' && Number.isFinite(Number(value)) && Number(value) > 0;
+}
+const hasBpData = computed(() => sorted.value.some(row => positiveReading(row.systolicBp) || positiveReading(row.diastolicBp)));
+const hasBgData = computed(() => sorted.value.some(row => positiveReading(glucoseInMmol(row.bloodGlucose, row.bgUnit))));
+const hasData = computed(() => mode.value === 'bp' ? hasBpData.value : mode.value === 'bg' ? hasBgData.value : hasBpData.value || hasBgData.value);
+const emptyDescription = computed(() => ({ bp: '暂无可用于分析的血压记录', bg: '暂无可用于分析的血糖记录', both: '暂无可用于分析的生命体征记录' })[mode.value]);
 const labels=computed(()=>sorted.value.map(x=>`${x.recordDate.slice(5)}${x.recordTime?' '+x.recordTime:''}`));
 const base={tooltip:{trigger:'axis'},legend:{bottom:0},grid:{left:46,right:20,top:30,bottom:54},xAxis:{type:'category',data:labels.value,boundaryGap:false},yAxis:{type:'value',scale:true}};
 const bpOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmHg',min:40},series:[{name:'收缩压',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>x.systolicBp),itemStyle:{color:'#ef4444'},markLine:{symbol:'none',label:{formatter:'参考上限 140'},data:[{yAxis:140,lineStyle:{type:'dashed',color:'#f59e0b'}}]}},{name:'舒张压',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>x.diastolicBp),itemStyle:{color:'#2563eb'}}]}));
