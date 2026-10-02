@@ -153,7 +153,9 @@ const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPas
 // alllayoutcurrentPatientStatus
 const { currentPatientId, patientList, setPatientList } = useCurrentPatient();
 const appPatientList = ref([]);
-document.body.classList.toggle('care-senior', localStorage.getItem('care-senior') === 'true');
+let savedSeniorMode = false;
+try { savedSeniorMode = localStorage.getItem('care-senior') === 'true'; } catch { /* Use standard text when preference storage is unavailable. */ }
+document.body.classList.toggle('care-senior', savedSeniorMode);
 
 
 // towardchildcomponentraiseprovideuserMenuPermission

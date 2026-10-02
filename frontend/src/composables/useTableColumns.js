@@ -14,7 +14,8 @@ export function useTableColumns(storageKey, columns) {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter(k => columns.some(c => c.key === k));
+          const validKeys = parsed.filter(k => columns.some(c => c.key === k));
+          return validKeys.length ? validKeys : [...defaultKeys];
         }
       }
     } catch {

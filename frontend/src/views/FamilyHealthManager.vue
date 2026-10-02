@@ -86,21 +86,35 @@ const activeIntakes=computed(()=>intakes.value.filter(x=>x.status!=='CANCELLED')
 const takenCount=computed(()=>activeIntakes.value.filter(x=>x.status==='TAKEN').length),missedCount=computed(()=>activeIntakes.value.filter(x=>x.status==='MISSED').length)
 const todaySchedule=computed(()=>schedules.value.find(x=>x.scheduleDate===today.value))
 let requestVersion=0, taskVersion=0, summaryVersion=0, timer
+let disposed=false, taskPending=null
 async function reload(){
-  taskVersion++
-  const id=patientId.value,version=++requestVersion
-  if(!id)return
+  const id=patientId.value
+  if(disposed || !id)return
+  const version=++requestVersion,intakeVersion=++taskVersion
   loading.value=true
   try {
     const [a,b,c,d]=await Promise.all([api.getIntakes(id),api.getTimeline(id,eventRange.value?.[0],eventRange.value?.[1]),api.getDialysisSchedules(id),api.getHealthTarget(id)])
-    if(id!==patientId.value || version!==requestVersion)return
-    intakes.value=a.data||[];events.value=b.data||[];schedules.value=c.data||[];replaceTarget(target,d.data);today.value=localDateKey()
-  } finally {if(version===requestVersion)loading.value=false}
+    if(disposed || id!==patientId.value || version!==requestVersion)return
+    // Full reload and task-only refresh share ownership of the intake list.
+    if(intakeVersion===taskVersion){intakes.value=a.data||[];today.value=localDateKey()}
+    events.value=b.data||[];schedules.value=c.data||[];replaceTarget(target,d.data)
+  } finally {if(!disposed && version===requestVersion)loading.value=false}
 }
-watch(patientId,()=>{requestVersion++;taskVersion++;summaryVersion++;intakes.value=[];events.value=[];schedules.value=[];summary.value=null;summaryLoading.value=false;eventVisible.value=false;scheduleVisible.value=false;replaceTarget(target,null);loading.value=false;reload()},{immediate:true})
-async function refreshTasks(){const id=patientId.value,v=++taskVersion;if(!id || saving.value)return;try{const a=await api.getIntakes(id);if(id===patientId.value && v===taskVersion){intakes.value=a.data||[];today.value=localDateKey()}}catch{/* request utility displays failures */}}
+watch(patientId,()=>{requestVersion++;taskVersion++;summaryVersion++;taskPending=null;intakes.value=[];events.value=[];schedules.value=[];summary.value=null;summaryLoading.value=false;eventVisible.value=false;scheduleVisible.value=false;replaceTarget(target,null);loading.value=false;reload()},{immediate:true})
+async function refreshTasks(){
+  const id=patientId.value
+  // Skip redundant background reads before advancing result ownership.
+  if(disposed || !id || saving.value || loading.value || (taskPending?.id===id && taskPending.version===taskVersion))return
+  const pending={id,version:++taskVersion}
+  taskPending=pending
+  try{
+    const a=await api.getIntakes(id)
+    if(!disposed && id===patientId.value && pending.version===taskVersion){intakes.value=a.data||[];today.value=localDateKey()}
+  }catch{/* request utility displays failures */}
+  finally{if(taskPending===pending)taskPending=null}
+}
 onMounted(()=>{timer=window.setInterval(refreshTasks,30000)})
-onUnmounted(()=>{window.clearInterval(timer);requestVersion++;taskVersion++;summaryVersion++})
+onUnmounted(()=>{disposed=true;taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;summaryVersion++})
 async function save(operation){if(saving.value)return;const id=patientId.value;if(!id)return;saving.value=true;try{await operation(id);ElMessage.success('Saved successfully.');if(id===patientId.value){summaryVersion++;summary.value=null;summaryLoading.value=false;await reload()}}finally{saving.value=false}}
 async function doIntake(item,status){const id=patientId.value;let reason='';if(status==='SKIPPED'){const answer=await ElMessageBox.prompt('Briefly explain why this dose was skipped.','Skip this medication dose').catch(()=>null);if(!answer)return;reason=answer.value}if(id!==patientId.value)return;await save(()=>api.actionIntake(item.id,status,reason))}
 function openEvent(row){Object.keys(eventForm).forEach(k=>delete eventForm[k]);Object.assign(eventForm,{id:null,eventDate:localDateKey(),eventTime:'',eventType:'SYMPTOM',title:'',summary:''},row||{});eventVisible.value=true}

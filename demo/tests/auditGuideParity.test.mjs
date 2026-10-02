@@ -68,3 +68,15 @@ test('CI and Pages verify the separate Chinese demo tests as well as shared beha
     assert.match(source,/node --test cn\/demo\/tests\/\*\.test\.mjs/);
   }
 });
+
+test('CI packages both backend editions after their tests with read-only permissions', async () => {
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../../.github/workflows/ci.yml',import.meta.url),'utf8');
+  const backend=source.split('\n  backend:')[1].split('\n  frontend:')[0];
+  assert.match(backend,/directory: \['\.', cn\]/);
+  const testCommand=backend.indexOf('mvn -B -DskipTests=false test');
+  const packageCommand=backend.indexOf('mvn -B -DskipTests package');
+  assert.ok(testCommand>=0 && packageCommand>testCommand, 'Package only after the backend tests pass');
+  assert.match(source,/permissions:\n  contents: read/);
+  assert.doesNotMatch(backend,/upload-artifact|secrets\.|permissions:/);
+});

@@ -26,6 +26,8 @@ jobs:
           cache: maven
       - name: Test backend
         run: mvn -B -DskipTests=false test
+      - name: Package backend
+        run: mvn -B -DskipTests package
 
   frontend:
     runs-on: ubuntu-latest

@@ -199,7 +199,9 @@ tbody tr:hover { background: var(--health-soft); }
 .chart-legend span:nth-child(2) { color: var(--health-chart-secondary); }
 .chart-legend small { color: var(--muted); }
 .grid-lines line { stroke: var(--line); }
-.grid-lines text, .axis-label { fill: var(--muted); font-size: 11px; }
+.chart { width: 100%; height: 240px; max-height: none; }
+.grid-lines text, .axis-label { fill: var(--muted); font-size: 14px; }
+body.large-text .grid-lines text, body.large-text .axis-label { font-size: 18px; }
 .line-primary { stroke: var(--health-chart-primary); stroke-width: 3; }
 .line-secondary { stroke: var(--health-chart-secondary); stroke-dasharray: 6 4; stroke-width: 2.5; }
 .chart circle { fill: var(--health-chart-primary); }

@@ -192,6 +192,8 @@ const loadError = ref('')
 const autoRefresh = ref(true)
 let timer = null
 let snapshotRequestEpoch = 0
+let snapshotPending = null
+let snapshotDisposed = false
 
 const metrics = computed(() => snapshot.value.metrics || {})
 const activeAlerts = computed(() => snapshot.value.activeAlerts || [])
@@ -259,34 +261,43 @@ const chartOption = computed(() => {
 async function loadSnapshot(silent = false) {
   const requestedPatientId = patientId.value
   const requestedDays = days.value
+  if (snapshotDisposed || !requestedPatientId) return
   const requestEpoch = ++snapshotRequestEpoch
-  if (!requestedPatientId) return
+  const pending = { patientId: requestedPatientId, days: requestedDays }
+  snapshotPending = pending
   if (!silent) loading.value = true
   try {
     const res = await getMonitoringSnapshot(requestedPatientId, requestedDays)
-    if (requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
+    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
     if (res.code === 200) {
       snapshot.value = localizeSnapshot(res.data || {})
       loadedDays.value = requestedDays
       loadError.value = ''
     }
   } catch (error) {
-    if (requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
+    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
     if (!silent) {
       days.value = loadedDays.value
       loadError.value = error.message || '监测数据加载失败'
     }
   } finally {
-    if (requestEpoch === snapshotRequestEpoch) loading.value = false
+    if (snapshotPending === pending) snapshotPending = null
+    if (!snapshotDisposed && requestEpoch === snapshotRequestEpoch) loading.value = false
   }
+}
+
+// Only automatic wakes share a pending read. Explicit and post-write refreshes
+// must still dispatch so new patient/range choices and saved changes take priority.
+function refreshSnapshotInBackground() {
+  if (snapshotDisposed || document.hidden || !autoRefresh.value) return
+  if (snapshotPending?.patientId === patientId.value && snapshotPending?.days === days.value) return
+  return loadSnapshot(true)
 }
 
 function resetTimer() {
   if (timer) window.clearInterval(timer)
   timer = null
-  if (autoRefresh.value) timer = window.setInterval(() => {
-    if (!document.hidden) loadSnapshot(true)
-  }, 30000)
+  if (autoRefresh.value && !snapshotDisposed) timer = window.setInterval(refreshSnapshotInBackground, 30000)
 }
 
 async function runCheck() {
@@ -379,6 +390,8 @@ function localizeEventText(value) {
 
 watch(patientId, () => {
   snapshotRequestEpoch++
+  snapshotPending = null
+  loading.value = false
   snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {}, vitalTrend: [] }
   loadedDays.value = days.value
   loadError.value = ''
@@ -386,8 +399,14 @@ watch(patientId, () => {
   resetTimer()
 }, { immediate: true })
 onMounted(() => { resetTimer(); document.addEventListener('visibilitychange', handleVisibility) })
-onUnmounted(() => { if (timer) window.clearInterval(timer); document.removeEventListener('visibilitychange', handleVisibility) })
-function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSnapshot(true) }
+onUnmounted(() => {
+  snapshotDisposed = true
+  snapshotRequestEpoch++
+  snapshotPending = null
+  if (timer) window.clearInterval(timer)
+  document.removeEventListener('visibilitychange', handleVisibility)
+})
+function handleVisibility() { return refreshSnapshotInBackground() }
 </script>
 
 <style scoped>

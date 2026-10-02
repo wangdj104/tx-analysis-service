@@ -1242,30 +1242,63 @@ function dedupeRecognizedItemsLocal() {
   }
 }
 
+let recordListRequest = 0, recordListDisposed = false;
+onUnmounted(() => {
+  recordListDisposed = true;
+  recordListRequest++;
+  loading.value = false;
+});
+
 async function loadRecords() {
+  if (recordListDisposed) return;
+  const request = ++recordListRequest;
+  const params = { ...filterForm };
+  const isCurrent = () => !recordListDisposed && request === recordListRequest
+    && Object.keys(params).every(key => params[key] === filterForm[key]);
   loading.value = true;
   try {
-    const res = await api.listRecords(filterForm);
+    const res = await api.listRecords(params);
+    if (!isCurrent()) return;
     if (res.code === 200) {
       records.value = res.data || [];
     }
   } catch (e) {
-    ElMessage.error('Failed to load: ' + e.message);
+    if (isCurrent()) ElMessage.error('Failed to load: ' + e.message);
   } finally {
-    loading.value = false;
+    if (!recordListDisposed && request === recordListRequest) loading.value = false;
   }
 }
 
+let trendRequest = 0, itemNamesRequest = 0, medicalReadDisposed = false;
+function invalidateTrend() {
+  trendRequest++;
+  trendData.value = [];
+  trendLoading.value = false;
+}
+watch(() => [trendForm.patientId, trendForm.itemName], invalidateTrend, { flush: 'sync' });
+onUnmounted(() => {
+  medicalReadDisposed = true;
+  invalidateTrend();
+  itemNamesRequest++;
+  allItemNames.value = [];
+});
+
 async function loadTrend() {
+  if (medicalReadDisposed) return;
   const patient = patientList.value.find(p => p.id === trendForm.patientId);
   trendForm.patientName = patient?.patientName || '';
   if (!trendForm.patientId || !trendForm.itemName) {
     ElMessage.warning('Select a patient and a test item');
     return;
   }
+  const request = ++trendRequest;
+  const params = { ...trendForm };
+  const isCurrent = () => !medicalReadDisposed && request === trendRequest
+    && params.patientId === trendForm.patientId && params.itemName === trendForm.itemName;
   trendLoading.value = true;
   try {
-    const res = await api.getItemTrend(trendForm.patientId, trendForm.patientName, trendForm.itemName);
+    const res = await api.getItemTrend(params.patientId, params.patientName, params.itemName);
+    if (!isCurrent()) return;
     if (res.code === 200) {
       trendData.value = res.data || [];
       if (trendData.value.length === 0) {
@@ -1275,15 +1308,20 @@ async function loadTrend() {
       ElMessage.error(res.message || 'Query failed');
     }
   } catch (e) {
-    ElMessage.error('Query failed: ' + e.message);
+    if (isCurrent()) ElMessage.error('Query failed: ' + e.message);
   } finally {
-    trendLoading.value = false;
+    if (isCurrent()) trendLoading.value = false;
   }
 }
 
 async function loadItemNames() {
+  if (medicalReadDisposed) return;
+  const request = ++itemNamesRequest, patientId = currentPatientId.value;
+  const isCurrent = () => !medicalReadDisposed && request === itemNamesRequest && patientId === currentPatientId.value;
+  allItemNames.value = [];
   try {
-    const res = await api.getAllItemNames(currentPatientId.value);
+    const res = await api.getAllItemNames(patientId);
+    if (!isCurrent()) return;
     if (res.code === 200) {
       const dbNames = res.data || [];
       const defaults = [
@@ -1303,6 +1341,7 @@ async function loadItemNames() {
       allItemNames.value = merged.sort((a, b) => a.localeCompare(b, 'zh'));
     }
   } catch (e) {
+    if (!isCurrent()) return;
     console.error('Failed to load test items', e);
     ElMessage.warning('The test item list could not be loaded; you can still enter an item manually');
   }

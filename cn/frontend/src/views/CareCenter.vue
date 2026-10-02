@@ -88,9 +88,12 @@ import {localDateKey} from '@/utils/familyHealth'
 import careMoments from '@/assets/illustrations/care-moments.webp'
 import careMomentsSmall from '@/assets/illustrations/care-moments-small.webp'
 const {currentPatientId:patientId,setPatientList}=useCurrentPatient()
-const mode=ref(localStorage.getItem('care-mode')||'PATIENT'),senior=ref(localStorage.getItem('care-senior')==='true'),tab=ref('today'),home=ref([]),context=ref({}),loading=ref(false),busy=ref(false)
+function readCarePreference(key, fallback = '') {
+  try { return localStorage.getItem(key) || fallback } catch { return fallback }
+}
+const mode=ref(readCarePreference('care-mode','PATIENT')),senior=ref(readCarePreference('care-senior')==='true'),tab=ref('today'),home=ref([]),context=ref({}),loading=ref(false),busy=ref(false)
 const entryVisible=ref(false),entryKind=ref('APPOINTMENT'),entryRow=ref(null),calendarDate=ref(new Date()),symptomFilter=ref('')
-const quickVisible=ref(false),quick=reactive({systolicBp:undefined,diastolicBp:undefined,bloodGlucose:undefined,measurePeriod:localStorage.getItem('care-measure-period')||'Fasting',remark:''})
+const quickVisible=ref(false),quick=reactive({systolicBp:undefined,diastolicBp:undefined,bloodGlucose:undefined,measurePeriod:readCarePreference('care-measure-period','Fasting'),remark:''})
 const intakeVisible=ref(false),selectedIntake=ref(null),intakeQuantity=ref(undefined),stockVisible=ref(false),stockForm=reactive({}),historyVisible=ref(false),stockHistory=ref([])
 const joinVisible=ref(false),joinCode=ref(''),joinRelation=ref('家庭照护者'),inviteCode=ref(''),profile=reactive({escalationUserId:null,escalationMinutes:60})
 const selectedPatientName=computed(()=>{
@@ -105,7 +108,11 @@ const activeIntakes=computed(()=>(context.value.intakes||[]).filter(i=>i.status!
 const filteredSymptoms=computed(()=>symptoms.value.filter(s=>!symptomFilter.value||s.title===symptomFilter.value))
 const dueTasks=computed(()=>items.value.filter(i=>['APPOINTMENT','HANDOVER'].includes(i.kind)&&i.status==='OPEN'&&(!i.eventAt||new Date(i.eventAt.replace(' ','T')).getTime()<Date.now()+7*86400000)))
 const canManage=computed(()=>Number(localStorage.getItem('userId'))===context.value.patient?.userId||JSON.parse(localStorage.getItem('userRoleCodes')||'[]').includes('admin'))
-watch(mode,v=>localStorage.setItem('care-mode',v));watch(senior,v=>{localStorage.setItem('care-senior',v);document.body.classList.toggle('care-senior',v)},{immediate:true})
+watch(mode,v=>{try{localStorage.setItem('care-mode',v)}catch{/* Keep the live selection when storage is unavailable. */}})
+watch(senior,v=>{
+  document.body.classList.toggle('care-senior',v)
+  try{localStorage.setItem('care-senior',v)}catch{/* Large text still applies for this visit. */}
+},{immediate:true})
 let generation=0, patientEpoch=0, historyRequest=0, inviteRequest=0, timer
 let editorOperation=null, disposed=false
 const editorVersions={quick:0,stock:0}
@@ -154,7 +161,7 @@ async function saveEditor(kind, form, save, finish) {
 }
 async function submitQuick() {
   await saveEditor('quick',quick,data=>api.quickVitals(data),data=>{
-    localStorage.setItem('care-measure-period',data.measurePeriod)
+    try{localStorage.setItem('care-measure-period',data.measurePeriod)}catch{/* The reading is saved even when this preference cannot be remembered. */}
     resetQuick()
     quickVisible.value=false
   })
