@@ -282,7 +282,7 @@
               <span v-if="!showAiHistory && aiResult" class="ai-toolbar-hint">already generate, can Save or againanalysis</span>
             </div>
             <div class="ai-toolbar-actions">
-              <el-button v-if="currentAiResult && !showAiHistory" type="success" @click="handleSaveAnalysis">
+              <el-button v-if="currentAiResult && !showAiHistory" type="success" :loading="aiSaving" @click="handleSaveAnalysis">
                 Saveanalysis
               </el-button>
               <el-button :class="{ 'is-active': showAiHistory }" @click="toggleAiHistory">
@@ -572,9 +572,9 @@
 
     <!-- Add/Editdialog -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" :width="isMobile ? '92%' : '560px'" destroy-on-close>
-      <el-form :model="form" :label-width="isMobile ? 'auto' : '130px'" :label-position="isMobile ? 'top' : 'right'" :rules="rules" ref="formRef">
+      <el-form :model="form" :disabled="formSaving" :label-width="isMobile ? 'auto' : '130px'" :label-position="isMobile ? 'top' : 'right'" :rules="rules" ref="formRef">
         <el-form-item label="Patient">
-          <el-select v-model="form.patientId" placeholder="Select a patient" filterable style="width:100%">
+          <el-select v-model="form.patientId" :disabled="isEdit || formSaving" placeholder="Select a patient" filterable style="width:100%">
             <el-option v-for="patient in patientList" :key="patient.id" :label="patient.patientName" :value="patient.id" />
           </el-select>
         </el-form-item>
@@ -657,7 +657,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="submitForm">Save</el-button>
+        <el-button type="primary" :loading="formSaving" @click="submitForm">Save</el-button>
       </template>
     </el-dialog>
 
@@ -722,6 +722,8 @@ const dialogVisible = ref(false);
 const dialogTitle = ref('Add dialysis record');
 const formRef = ref(null);
 const isEdit = ref(false);
+const formSaving = ref(false);
+const aiSaving = ref(false);
 
 const { currentPatientId } = useCurrentPatient();
 const patientList = ref([]);
@@ -1199,7 +1201,9 @@ function buildStatDisplay(s) {
 }
 
 function goToDataEntry() {
+  invalidateView();
   activeMenu.value = 'data';
+  return loadData();
 }
 
 function buildInsightTags(s) {
@@ -1303,11 +1307,58 @@ function cardStatusClass(status) {
   return '';
 }
 
+// Patient, view and operation identities keep delayed work tied to its origin.
+let disposed = false, patientEpoch = 0, viewEpoch = 0, editorEpoch = 0;
+let activeFormSave = null, activeAnalysisSave = null, analysisContext = null, editingPatientId = null;
+const requestVersions = new Map();
+const rowOperations = new Set();
+function captureContext() {
+  return { epoch: viewEpoch, patientId: currentPatientId.value, timeType: currentTimeType.value, timeValue: currentTimeValue.value };
+}
+function isContextCurrent(context) {
+  return !disposed && context.epoch === viewEpoch && context.patientId === currentPatientId.value
+    && context.timeType === currentTimeType.value && context.timeValue === currentTimeValue.value;
+}
+function beginRequest(key) {
+  const version = (requestVersions.get(key) || 0) + 1;
+  requestVersions.set(key, version);
+  return { ...captureContext(), key, version };
+}
+function isRequestCurrent(request) {
+  return isContextCurrent(request) && requestVersions.get(request.key) === request.version;
+}
+function clearStats() {
+  statsHero.value = null; statGroups.value = []; monthlyStats.value = []; insightTags.value = []; pieData.value = [];
+  for (const values of [chartDates, chartOnWeight, chartOffWeight, chartDryWeight, chartWeightGain, chartUfAmount,
+    chartSystolic, chartDiastolic, chart3pct, chart5pct, chartDailyGain]) values.value = [];
+}
+function invalidateView() {
+  viewEpoch++;
+  records.value = []; listFilterOverride.value = ''; clearStats();
+  aiResult.value = ''; currentAiResult.value = null; analysisContext = null; aiHistory.value = []; showAiHistory.value = false;
+  loading.value = false; chartLoading.value = false; aiLoading.value = false;
+  activeAnalysisSave = null; aiSaving.value = false;
+}
+function invalidateEditor() {
+  editorEpoch++; activeFormSave = null; formSaving.value = false;
+}
+function clearForm() {
+  Object.assign(form, {
+    id: null, patientId: currentPatientId.value, recordDate: null, intervalDays: null, lastOffWeight: null, onWeight: null,
+    offWeight: null, systolicBp: null, diastolicBp: null, sessionMinutes: null, ktv: null, urr: null,
+    accessIssue: '', isIncomplete: false, remark: ''
+  });
+  editingPatientId = null;
+}
+
 async function loadData() {
+  const request = beginRequest('records');
+  if (!request.patientId || disposed) { records.value = []; loading.value = false; return; }
   listFilterOverride.value = '';
   loading.value = true;
   try {
-    const res = await listRecords(currentTimeType.value, currentTimeValue.value, currentPatientId.value);
+    const res = await listRecords(request.timeType, request.timeValue, request.patientId);
+    if (!isRequestCurrent(request)) return;
     if (res.code === 200) {
       records.value = Array.isArray(res.data) ? res.data : [];
     } else {
@@ -1315,18 +1366,22 @@ async function loadData() {
       ElMessage.error(res.msg || 'Failed to load records');
     }
   } catch {
+    if (!isRequestCurrent(request)) return;
     records.value = [];
     ElMessage.error('Failed to load records, Please Examinationnetwork or after endservice');
   } finally {
-    loading.value = false;
+    if (isRequestCurrent(request)) loading.value = false;
   }
 }
 
 async function loadAllRecords() {
+  const request = beginRequest('records');
+  if (!request.patientId || disposed) { records.value = []; loading.value = false; return; }
   listFilterOverride.value = 'Allhistory';
   loading.value = true;
   try {
-    const res = await listRecords(null, '', currentPatientId.value);
+    const res = await listRecords(null, '', request.patientId);
+    if (!isRequestCurrent(request)) return;
     if (res.code === 200) {
       records.value = Array.isArray(res.data) ? res.data : [];
       if (records.value.length) {
@@ -1339,11 +1394,16 @@ async function loadAllRecords() {
       ElMessage.error(res.msg || 'Failed to load');
     }
   } catch {
+    if (!isRequestCurrent(request)) return;
     records.value = [];
     ElMessage.error('Failed to load');
   } finally {
-    loading.value = false;
+    if (isRequestCurrent(request)) loading.value = false;
   }
+}
+
+function refreshRecords() {
+  return listFilterOverride.value === 'Allhistory' ? loadAllRecords() : loadData();
 }
 
 function switchToYearFilter() {
@@ -1409,21 +1469,25 @@ function reconcileAnalysisStats(stats, chart) {
 async function loadPatientList() {
   try {
     const res = await getPatientNames();
+    if (disposed) return;
     if (res.code === 200) {
       patientList.value = res.data || [];
     }
   } catch (e) {
-    console.error('Failed to load patients', e);
+    if (!disposed) console.error('Failed to load patients', e);
   }
 }
 
 async function loadStats() {
+  const request = beginRequest('stats');
+  if (!request.patientId || disposed) { clearStats(); chartLoading.value = false; return; }
   chartLoading.value = true;
   try {
     const [statsRes, chartRes] = await Promise.all([
-      getStats(currentTimeType.value, currentTimeValue.value, currentPatientId.value),
-      getChartData(currentTimeType.value, currentTimeValue.value, currentPatientId.value)
+      getStats(request.timeType, request.timeValue, request.patientId),
+      getChartData(request.timeType, request.timeValue, request.patientId)
     ]);
+    if (!isRequestCurrent(request)) return;
     const chartData = chartRes.code === 200 ? chartRes.data : null;
     if (statsRes.code === 200) {
       const s = reconcileAnalysisStats(statsRes.data, chartData);
@@ -1453,12 +1517,17 @@ async function loadStats() {
       chart5pct.value = c.weight5pctList || [];
       chartDailyGain.value = c.dailyWeightGainList || [];
     }
+  } catch {
+    if (!isRequestCurrent(request)) return;
+    clearStats(); ElMessage.error('Failed to load statistics');
   } finally {
-    chartLoading.value = false;
+    if (isRequestCurrent(request)) chartLoading.value = false;
   }
 }
 
 function handleAdd() {
+  if (disposed || !currentPatientId.value) return;
+  invalidateEditor(); editingPatientId = null;
   isEdit.value = false;
   dialogTitle.value = 'Add dialysis record';
   Object.assign(form, {
@@ -1470,6 +1539,8 @@ function handleAdd() {
 }
 
 function handleEdit(row) {
+  if (disposed || !currentPatientId.value || (row.patientId && Number(row.patientId) !== Number(currentPatientId.value))) return;
+  invalidateEditor(); editingPatientId = row.patientId || currentPatientId.value;
   isEdit.value = true;
   dialogTitle.value = 'Edit dialysis record';
   Object.assign(form, {
@@ -1484,43 +1555,64 @@ function handleEdit(row) {
 }
 
 async function handleDelete(id) {
-  const res = await deleteRecord(id);
-  if (res.code === 200) {
-    ElMessage.success('Deleted successfully');
-    loadData();
-  } else {
-    ElMessage.error(res.msg || 'Failed to delete');
+  const key = 'record:' + id;
+  if (disposed || !currentPatientId.value || rowOperations.has(key)) return;
+  const context = captureContext();
+  rowOperations.add(key);
+  try {
+    const res = await deleteRecord(id);
+    if (!isContextCurrent(context)) return;
+    if (res.code === 200) {
+      ElMessage.success('Deleted successfully');
+      refreshRecords();
+    } else {
+      ElMessage.error(res.msg || 'Failed to delete');
+    }
+  } catch {
+    if (isContextCurrent(context)) ElMessage.error('Failed to delete');
+  } finally {
+    rowOperations.delete(key);
   }
 }
 
 async function submitForm() {
-  const valid = await formRef.value.validate().catch(() => false);
-  if (!valid) return;
-
-  const duplicate = records.value.find(row =>
-    row.id !== form.id &&
-    Number(row.patientId) === Number(form.patientId) &&
-    row.recordDate === form.recordDate
-  );
-  if (duplicate) {
-    ElMessage.warning(`${form.recordDate} already has Dialysis Records, Please Editwhen daysoriginalrecord`);
-    return;
-  }
-
-  const api = isEdit.value ? updateRecord : saveRecord;
-  const payload = { ...form };
-  if (payload.intervalDays == null || payload.intervalDays === '') {
-    payload.intervalDays = null;
-  }
-  payload.recordType = payload.isIncomplete ? 'INCOMPLETE' : 'NORMAL';
-  delete payload.isIncomplete;
-  const res = await api(payload);
-  if (res.code === 200) {
-    ElMessage.success(isEdit.value ? 'Updated successfully' : 'Saved successfully');
-    dialogVisible.value = false;
-    loadData();
-  } else {
-    ElMessage.error(res.msg || 'Operation failed');
+  if (disposed || !dialogVisible.value || formSaving.value) return;
+  if (!form.patientId || !currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
+  if (isEdit.value && Number(form.patientId) !== Number(editingPatientId)) return;
+  const signature = JSON.stringify(form), payload = JSON.parse(signature), isEditing = isEdit.value;
+  const operation = { epoch: patientEpoch, editor: editorEpoch, patientId: currentPatientId.value };
+  activeFormSave = operation; formSaving.value = true;
+  const ownsEditor = () => !disposed && activeFormSave === operation && operation.epoch === patientEpoch
+    && operation.editor === editorEpoch && operation.patientId === currentPatientId.value && dialogVisible.value;
+  const draftUnchanged = () => signature === JSON.stringify(form);
+  try {
+    const valid = await formRef.value?.validate().catch(() => false);
+    if (!valid || !ownsEditor() || !draftUnchanged()) return;
+    const duplicate = records.value.find(row =>
+      row.id !== payload.id &&
+      Number(row.patientId) === Number(payload.patientId) &&
+      row.recordDate === payload.recordDate
+    );
+    if (duplicate) {
+      ElMessage.warning(`${payload.recordDate} already has Dialysis Records, Please Editwhen daysoriginalrecord`);
+      return;
+    }
+    if (payload.intervalDays == null || payload.intervalDays === '') payload.intervalDays = null;
+    payload.recordType = payload.isIncomplete ? 'INCOMPLETE' : 'NORMAL';
+    delete payload.isIncomplete;
+    const res = await (isEditing ? updateRecord : saveRecord)(payload);
+    if (!ownsEditor() || !draftUnchanged()) return;
+    if (res.code === 200) {
+      ElMessage.success(isEditing ? 'Updated successfully' : 'Saved successfully');
+      dialogVisible.value = false;
+      refreshRecords();
+    } else {
+      ElMessage.error(res.msg || 'Operation failed');
+    }
+  } catch {
+    if (ownsEditor() && draftUnchanged()) ElMessage.error('Operation failed');
+  } finally {
+    if (activeFormSave === operation) { activeFormSave = null; formSaving.value = false; }
   }
 }
 
@@ -1545,6 +1637,9 @@ function onTimeChange() {
 }
 
 async function loadAiAnalysis() {
+  const request = beginRequest('analysis');
+  currentAiResult.value = null; analysisContext = null; aiResult.value = '';
+  if (disposed) return;
   aiLoading.value = true;
   try {
     if (!currentPatientId.value) {
@@ -1552,32 +1647,39 @@ async function loadAiAnalysis() {
       currentAiResult.value = null;
       return;
     }
-    const res = await analyzeDialysis(currentTimeType.value, currentTimeValue.value, currentPatientId.value);
+    const res = await analyzeDialysis(request.timeType, request.timeValue, request.patientId);
+    if (!isRequestCurrent(request)) return;
     if (res.code === 200) {
       currentAiResult.value = res.data;
+      analysisContext = request;
       aiResult.value = res.data?.rawText || '';
     } else {
       aiResult.value = 'analysisfailed: ' + (res.msg || 'Unknown error');
       currentAiResult.value = null;
     }
+  } catch {
+    if (!isRequestCurrent(request)) return;
+    currentAiResult.value = null; analysisContext = null; aiResult.value = 'Analysis failed. Please retry.';
+    ElMessage.error('Analysis failed. Please retry.');
   } finally {
-    aiLoading.value = false;
+    if (isRequestCurrent(request)) aiLoading.value = false;
   }
 }
 
 async function handleSaveAnalysis() {
-  if (!currentAiResult.value) return;
+  if (aiSaving.value || !currentAiResult.value || !analysisContext || !isRequestCurrent(analysisContext)) return;
+  const context = analysisContext;
   if (!currentPatientId.value) {
     ElMessage.warning('Select a patient first.');
     return;
   }
   const vo = currentAiResult.value;
   const record = {
-    timeType: currentTimeType.value,
-    timeValue: currentTimeValue.value,
+    timeType: context.timeType,
+    timeValue: context.timeValue,
     periodLabel: vo.periodLabel || timeRangeLabel.value,
     analysisContent: vo.rawText,
-    patientId: currentPatientId.value,
+    patientId: context.patientId,
     dwAdjustNeeded: vo.dwAdjustNeeded,
     dwAdjustAmount: vo.dwAdjustAmount,
     dwTargetWeight: vo.dwTargetWeight,
@@ -1598,26 +1700,40 @@ async function handleSaveAnalysis() {
     avgUfAmount: vo.avgUfAmount,
     dehydrationMatchRate: vo.dehydrationMatchRate
   };
-  const res = await saveAnalysis(record);
-  if (res.code === 200) {
-    ElMessage.success('analysisresultSaved successfully.');
-    loadAiHistory();
-  } else {
-    ElMessage.error(res.msg || 'Failed to save');
+  const operation = {};
+  activeAnalysisSave = operation; aiSaving.value = true;
+  try {
+    const res = await saveAnalysis(record);
+    if (!isRequestCurrent(context) || activeAnalysisSave !== operation) return;
+    if (res.code === 200) {
+      ElMessage.success('analysisresultSaved successfully.');
+      loadAiHistory();
+    } else {
+      ElMessage.error(res.msg || 'Failed to save');
+    }
+  } catch {
+    if (isRequestCurrent(context) && activeAnalysisSave === operation) ElMessage.error('Failed to save');
+  } finally {
+    if (activeAnalysisSave === operation) { activeAnalysisSave = null; aiSaving.value = false; }
   }
 }
 
 async function loadAiHistory() {
+  const request = beginRequest('history');
+  if (disposed) return;
   try {
     if (!currentPatientId.value) {
       aiHistory.value = [];
       return;
     }
-    const res = await listHistory(currentTimeType.value, currentTimeValue.value, currentPatientId.value);
+    const res = await listHistory(request.timeType, request.timeValue, request.patientId);
+    if (!isRequestCurrent(request)) return;
     if (res.code === 200) {
       aiHistory.value = Array.isArray(res.data) ? res.data : [];
     }
   } catch (e) {
+    if (!isRequestCurrent(request)) return;
+    aiHistory.value = [];
     console.error('loadhistoryfailed', e);
   }
 }
@@ -1636,16 +1752,23 @@ function viewHistoryItem(item) {
 }
 
 async function handleDeleteAnalysis(id) {
+  const key = 'analysis:' + id;
+  if (disposed || !currentPatientId.value || rowOperations.has(key)) return;
+  const context = captureContext();
+  rowOperations.add(key);
   try {
     const res = await deleteAnalysis(id);
+    if (!isContextCurrent(context)) return;
     if (res.code === 200) {
       ElMessage.success('Deleted successfully');
       loadAiHistory();
     } else {
       ElMessage.error(res.msg || 'Failed to delete');
     }
-  } catch (e) {
-    ElMessage.error('Failed to delete');
+  } catch {
+    if (isContextCurrent(context)) ElMessage.error('Failed to delete');
+  } finally {
+    rowOperations.delete(key);
   }
 }
 
@@ -1687,8 +1810,11 @@ function evalTagType(value) {
 }
 
 async function handleExportData() {
+  const request = beginRequest('export');
+  if (!request.patientId || disposed) return;
   try {
-    const res = await listRecords(currentTimeType.value, currentTimeValue.value);
+    const res = await listRecords(request.timeType, request.timeValue, request.patientId);
+    if (!isRequestCurrent(request)) return;
     if (res.code !== 200 || !res.data || !res.data.length) {
       ElMessage.warning('currentTimesectionNo datacan Export');
       return;
@@ -1715,7 +1841,7 @@ async function handleExportData() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.href = url;
-    const fileName = `Dialysisdata_${currentTimeValue.value || 'All'}.csv`;
+    const fileName = `Dialysisdata_${request.patientId}_${request.timeValue || 'All'}.csv`;
     link.setAttribute('download', fileName);
     document.body.appendChild(link);
     link.click();
@@ -1723,6 +1849,7 @@ async function handleExportData() {
     URL.revokeObjectURL(url);
     ElMessage.success(`already Export ${rows.length} itemsrecord`);
   } catch (e) {
+    if (!isRequestCurrent(request)) return;
     ElMessage.error('Exportfailed: ' + (e.message || 'Unknown error'));
   }
 }
@@ -1761,23 +1888,26 @@ function syncActiveMenuFromRoute() {
   }
 }
 
-watch(() => route.query.tab, () => {
-  syncActiveMenuFromRoute();
+function loadActiveView() {
+  if (disposed || !currentPatientId.value) return;
   if (activeMenu.value === 'analysis') loadStats();
-  if (activeMenu.value === 'ai') loadAiAnalysis();
-});
+  else if (activeMenu.value === 'ai') loadAiAnalysis();
+  else loadData();
+}
+watch(() => route.query.tab, () => {
+  invalidateView();
+  dialogVisible.value = false;
+  syncActiveMenuFromRoute();
+  loadActiveView();
+}, { flush: 'sync' });
 
-watch(currentPatientId, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    form.patientId = newVal;
-    if (activeMenu.value === 'data') {
-      loadData();
-    }
-    if (activeMenu.value === 'analysis') {
-      loadStats();
-    }
-  }
-});
+watch(currentPatientId, () => {
+  patientEpoch++; invalidateView(); invalidateEditor();
+  dialogVisible.value = false; clearForm(); isEdit.value = false;
+  loadActiveView();
+}, { flush: 'sync' });
+watch([currentTimeType, currentTimeValue], invalidateView, { flush: 'sync' });
+watch(dialogVisible, visible => { if (!visible) invalidateEditor(); }, { flush: 'sync' });
 
 function checkMobile() {
   isMobile.value = window.innerWidth <= 768;
@@ -1802,6 +1932,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  disposed = true; patientEpoch++; invalidateView(); invalidateEditor();
   window.removeEventListener('resize', checkMobile);
 });
 </script>

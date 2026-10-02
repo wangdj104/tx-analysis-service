@@ -107,12 +107,21 @@ const dueTasks=computed(()=>items.value.filter(i=>['APPOINTMENT','HANDOVER'].inc
 const canManage=computed(()=>Number(localStorage.getItem('userId'))===context.value.patient?.userId||JSON.parse(localStorage.getItem('userRoleCodes')||'[]').includes('admin'))
 watch(mode,v=>localStorage.setItem('care-mode',v));watch(senior,v=>{localStorage.setItem('care-senior',v);document.body.classList.toggle('care-senior',v)},{immediate:true})
 let generation=0, patientEpoch=0, historyRequest=0, inviteRequest=0, timer
+let editorOperation=null, disposed=false
+const editorVersions={quick:0,stock:0}
+function invalidateEditor(kind) {
+  editorVersions[kind]++
+  if(editorOperation?.kind===kind){editorOperation=null;busy.value=false}
+}
+watch(quickVisible,()=>invalidateEditor('quick'),{flush:'sync'})
+watch(stockVisible,()=>invalidateEditor('stock'),{flush:'sync'})
 async function reload(){const v=++generation;loading.value=true;try{const r=await api.getCareHome();if(v!==generation)return;home.value=r.data||[];setPatientList(home.value.map(x=>({id:x.patient.id,patientName:x.patient.name})));if(!patientId.value&&home.value.length){patientId.value=home.value[0].patient.id;return}if(patientId.value){const id=patientId.value,c=await api.getCareContext(id);if(v!==generation||id!==patientId.value)return;context.value=c.data||{};const p=items.value.find(x=>x.kind==='PROFILE');Object.assign(profile,{escalationUserId:null,escalationMinutes:60},p?.details||{});}}finally{if(v===generation)loading.value=false}}
 function resetQuick() {
   Object.assign(quick, { systolicBp: undefined, diastolicBp: undefined, bloodGlucose: undefined, remark: '' })
 }
 watch(patientId, () => {
   generation++; patientEpoch++; historyRequest++; inviteRequest++
+  invalidateEditor('quick'); invalidateEditor('stock')
   context.value = {}; entryRow.value = null; selectedIntake.value = null
   entryVisible.value = false; quickVisible.value = false; intakeVisible.value = false; stockVisible.value = false
   historyVisible.value = false; stockHistory.value = []; inviteCode.value = ''; symptomFilter.value = ''
@@ -121,30 +130,41 @@ watch(patientId, () => {
   reload()
 }, { flush: 'sync' })
 onMounted(()=>{reload();timer=setInterval(()=>{if(!busy.value&&!entryVisible.value&&!stockVisible.value&&!quickVisible.value&&!intakeVisible.value&&tab.value==='today')reload()},60000)})
-onUnmounted(()=>{generation++;patientEpoch++;historyRequest++;inviteRequest++;clearInterval(timer)})
+onUnmounted(()=>{disposed=true;generation++;patientEpoch++;historyRequest++;inviteRequest++;invalidateEditor('quick');invalidateEditor('stock');clearInterval(timer)})
 async function perform(operation){if(busy.value)return;busy.value=true;try{await operation();ElMessage.success('Saved successfully.');await reload()}finally{busy.value=false}}
 function open(kind,row){if(!patientId.value)return;entryKind.value=kind;entryRow.value=row||null;entryVisible.value=true}
 function changeOrder(row,action){const data=JSON.parse(JSON.stringify(row));delete data.id;data.details.action=action;data.details.startDate=localDateKey();data.details.endDate=null;data.title=`${drugName(data.details.medicationId)}${action==='STOP'?'stop medication':'medication adjustment'}`;open('ORDER',data)}
 async function action(row,status){await perform(()=>api.careAction(row.id,status))}
 async function removeItem(row){await perform(()=>api.deleteCareItem(row.id))}
 async function answer(row){const r=await ElMessageBox.prompt("Record the clinician's answer",'Visit answer',{inputType:'textarea',inputValue:row.details.answer||''}).catch(()=>null);if(r)await perform(()=>api.careAction(row.id,'ANSWERED',r.value))}
+async function saveEditor(kind, form, save, finish) {
+  if(busy.value||!patientId.value||disposed)return
+  const id=patientId.value,epoch=patientEpoch,editor=editorVersions[kind]
+  const data={...form,patientId:id},draft=JSON.stringify(form),operation={kind}
+  const current=()=>!disposed&&editorOperation===operation&&epoch===patientEpoch&&id===patientId.value&&editor===editorVersions[kind]
+  editorOperation=operation;busy.value=true
+  try{
+    await save(data)
+    if(!current()||JSON.stringify(form)!==draft)return
+    finish(data)
+    ElMessage.success('Saved successfully.')
+    await reload()
+  }catch(error){if(current()&&JSON.stringify(form)===draft)throw error}
+  finally{if(editorOperation===operation){editorOperation=null;busy.value=false}}
+}
 async function submitQuick() {
-  if (!patientId.value) return
-  const epoch = patientEpoch, data = { ...quick, patientId: patientId.value }
-  await perform(async () => {
-    await api.quickVitals(data)
-    if (epoch !== patientEpoch) return
-    quickVisible.value = false
-    localStorage.setItem('care-measure-period', data.measurePeriod)
+  await saveEditor('quick',quick,data=>api.quickVitals(data),data=>{
+    localStorage.setItem('care-measure-period',data.measurePeriod)
     resetQuick()
+    quickVisible.value=false
   })
 }
 function openIntake(i){selectedIntake.value=i;intakeQuantity.value=undefined;intakeVisible.value=true}
 async function confirmIntake(){await intakeAction(selectedIntake.value,'TAKEN','',intakeQuantity.value);intakeVisible.value=false}
 async function intakeAction(i,status,reason='',quantity){await perform(()=>api.recordIntake(i.id,status,reason,quantity,mode.value==='FAMILY'?'FAMILY':'SELF'))}
 async function skipIntake(i){const r=await ElMessageBox.prompt('Reason for skipping','Skip this dose').catch(()=>null);if(r)await intakeAction(i,'SKIPPED',r.value)}
-function openStock(row){Object.assign(stockForm,{id:null,medicationId:null,quantity:0,unit:'tablet',warningDays:7,warningQuantity:0},row?{id:row.id,medicationId:row.medication_id,quantity:Number(row.quantity),unit:row.unit,warningDays:row.warning_days,warningQuantity:Number(row.warning_quantity)}:{});stockVisible.value=true}
-async function submitStock(){await perform(async()=>{await api.saveStock({...stockForm,patientId:patientId.value});stockVisible.value=false})}
+function openStock(row){invalidateEditor('stock');Object.assign(stockForm,{id:null,medicationId:null,quantity:0,unit:'tablet',warningDays:7,warningQuantity:0},row?{id:row.id,medicationId:row.medication_id,quantity:Number(row.quantity),unit:row.unit,warningDays:row.warning_days,warningQuantity:Number(row.warning_quantity)}:{});stockVisible.value=true}
+async function submitStock(){await saveEditor('stock',stockForm,data=>api.saveStock(data),()=>{stockVisible.value=false})}
 async function purchase(row){const pid=patientId.value,r=await ElMessageBox.prompt(`How many ${row.unit} should be added?`,row.drugName,{inputPattern:/^\d+(\.\d{1,3})?$/,inputErrorMessage:'Enter a valid number'}).catch(()=>null);if(r&&pid===patientId.value)await perform(()=>api.purchaseStock({patientId:pid,medicationId:row.medication_id,quantity:Number(r.value),reason:'Restock'}))}
 async function showStockHistory(row) {
   if (!patientId.value) return

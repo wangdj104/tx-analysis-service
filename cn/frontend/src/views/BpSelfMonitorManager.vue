@@ -33,14 +33,14 @@
               <el-icon><Plus /></el-icon>
               <span>{{ editingId ? '编辑记录' : '新增记录' }}</span>
             </div>
-            <el-radio-group v-model="form.measureType" class="measure-switch">
+            <el-radio-group v-model="form.measureType" :disabled="saving" class="measure-switch">
               <el-radio-button value="BP">血压</el-radio-button>
               <el-radio-button value="BG">血糖</el-radio-button>
               <el-radio-button value="BP_BG">血压和血糖</el-radio-button>
             </el-radio-group>
           </div>
 
-          <el-form :model="form" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
+          <el-form :model="form" :disabled="saving" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
             <div class="form-grid form-grid--meta">
               <el-form-item label="记录日期" prop="recordDate">
                 <el-date-picker v-model="form.recordDate" value-format="YYYY-MM-DD" :clearable="false" />
@@ -116,7 +116,7 @@
               <span v-if="records.length" class="list-count">共 {{ records.length }} 条</span>
             </div>
             <div class="records-tools">
-              <el-radio-group v-model="filterType" @change="loadRecords" class="filter-switch">
+              <el-radio-group v-model="filterType" class="filter-switch">
                 <el-radio-button value="">全部</el-radio-button>
                 <el-radio-button value="BP">血压</el-radio-button>
                 <el-radio-button value="BG">血糖</el-radio-button>
@@ -155,7 +155,7 @@
               <el-table-column label="操作" width="120" align="center" fixed="right">
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
+                    <el-button link type="primary" size="small" @click="handleEdit(row)" :disabled="saving">编辑</el-button>
                     <el-popconfirm title="确认删除这条记录吗？" @confirm="handleDelete(row)">
                       <template #reference>
                         <el-button link type="danger" size="small">删除</el-button>
@@ -174,7 +174,7 @@
 
 <script setup>
 import { localDateKey } from '@/utils/familyHealth';
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Check, Plus, Refresh, TrendCharts } from '@element-plus/icons-vue';
 import { listBpSelfMonitorRecords, saveBpSelfMonitorRecord, updateBpSelfMonitorRecord, deleteBpSelfMonitorRecord } from '@/api/bpSelfMonitor.js';
@@ -188,6 +188,27 @@ const records = ref([]);
 const filterType = ref('');
 const editingId = ref(null);
 const formRef = ref(null);
+let patientEpoch = 0;
+let editorEpoch = 0;
+let listRequest = 0;
+let saveRequest = 0;
+let disposed = false;
+const pendingDeletes = new Map();
+
+function captureContext() {
+  return { patientId: currentPatientId.value, patientEpoch, editorEpoch };
+}
+
+function isCurrentContext(context, includeEditor = true) {
+  return !disposed && !!context.patientId && context.patientId === currentPatientId.value
+    && context.patientEpoch === patientEpoch && (!includeEditor || context.editorEpoch === editorEpoch);
+}
+
+function invalidateEditor() {
+  editorEpoch++;
+  saveRequest++;
+  saving.value = false;
+}
 
 const form = reactive({
   recordDate: localDateKey(),
@@ -245,6 +266,7 @@ function measureTagType(type) {
 }
 
 function resetForm() {
+  invalidateEditor();
   editingId.value = null;
   form.recordDate = localDateKey();
   form.recordTime = '';
@@ -255,51 +277,56 @@ function resetForm() {
   form.bgUnit = 'mmol/L';
   form.measurePeriod = 'Fasting';
   form.remark = '';
-  formRef.value?.resetFields();
+  // Defaults above own the new draft; resetFields can restore another patient's cached values.
+  formRef.value?.clearValidate?.();
 }
 
 async function loadRecords() {
-  if (!currentPatientId.value) {
-    records.value = [];
-    return;
-  }
+  const request = ++listRequest;
+  const context = captureContext();
+  const type = filterType.value;
+  const isCurrentList = () => request === listRequest && isCurrentContext(context, false) && type === filterType.value;
+  if (!context.patientId || disposed) { records.value = []; loading.value = false; return; }
   loading.value = true;
   try {
-    const res = await listBpSelfMonitorRecords(currentPatientId.value, filterType.value || undefined);
-    if (res.code === 200) {
-      records.value = res.data || [];
-    }
+    const res = await listBpSelfMonitorRecords(context.patientId, type || undefined);
+    if (!isCurrentList()) return;
+    if (res.code === 200) records.value = res.data || [];
   } catch (e) {
-    ElMessage.error('加载记录失败');
-  } finally { loading.value = false; }
+    if (isCurrentList()) ElMessage.error('加载记录失败');
+  } finally { if (isCurrentList()) loading.value = false; }
 }
 
 async function handleSave() {
+  if (saving.value || disposed) return;
   if (!currentPatientId.value) { ElMessage.warning('请先选择患者。'); return; }
-  try { await formRef.value.validate(); } catch { return; }
+  if (!formRef.value) return;
+  const context = captureContext();
+  const request = ++saveRequest;
+  const isEdit = !!editingId.value;
+  const data = { ...form, patientId: context.patientId, id: editingId.value || undefined };
+  const isCurrentSave = () => request === saveRequest && isCurrentContext(context);
   saving.value = true;
   try {
-    const data = {
-      patientId: currentPatientId.value,
-      ...form,
-      id: editingId.value || undefined
-    };
-    const res = editingId.value
-      ? await updateBpSelfMonitorRecord(data)
-      : await saveBpSelfMonitorRecord(data);
+    try { await formRef.value.validate(); } catch { return; }
+    if (!isCurrentSave()) return;
+    const res = isEdit ? await updateBpSelfMonitorRecord(data) : await saveBpSelfMonitorRecord(data);
+    if (!isCurrentSave()) return;
     if (res.code === 200) {
-      ElMessage.success(editingId.value ? '更新成功' : '保存成功');
+      ElMessage.success(isEdit ? '更新成功' : '保存成功');
       resetForm();
-      await loadRecords();
+      loadRecords();
     } else {
       ElMessage.error(res.msg || '操作失败');
     }
   } catch (e) {
-    ElMessage.error('操作失败');
-  } finally { saving.value = false; }
+    if (isCurrentSave()) ElMessage.error('操作失败');
+  } finally { if (isCurrentSave()) saving.value = false; }
 }
 
 function handleEdit(row) {
+  if (saving.value || disposed || !currentPatientId.value || row.patientId !== currentPatientId.value) return;
+  invalidateEditor();
   editingId.value = row.id;
   Object.assign(form, {
     recordDate: row.recordDate,
@@ -315,23 +342,47 @@ function handleEdit(row) {
 }
 
 async function handleDelete(row) {
+  if (disposed || !currentPatientId.value || row.patientId !== currentPatientId.value || pendingDeletes.has(row.id)) return;
+  const context = captureContext();
+  const operation = {};
+  pendingDeletes.set(row.id, operation);
   try {
     const res = await deleteBpSelfMonitorRecord(row.id);
+    if (!isCurrentContext(context, false)) return;
     if (res.code === 200) {
       ElMessage.success('删除成功');
-      await loadRecords();
+      loadRecords();
     }
   } catch (e) {
-    ElMessage.error('删除失败');
-  }
+    if (isCurrentContext(context, false)) ElMessage.error('删除失败');
+  } finally { if (pendingDeletes.get(row.id) === operation) pendingDeletes.delete(row.id); }
 }
 
 watch(currentPatientId, () => {
+  patientEpoch++;
+  listRequest++;
+  pendingDeletes.clear();
+  records.value = [];
+  loading.value = false;
   resetForm();
   loadRecords();
-});
+}, { flush: 'sync' });
+watch(filterType, () => {
+  listRequest++;
+  records.value = [];
+  loading.value = false;
+  loadRecords();
+}, { flush: 'sync' });
 
 onMounted(() => { loadRecords(); });
+onUnmounted(() => {
+  disposed = true;
+  patientEpoch++;
+  listRequest++;
+  pendingDeletes.clear();
+  loading.value = false;
+  invalidateEditor();
+});
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>

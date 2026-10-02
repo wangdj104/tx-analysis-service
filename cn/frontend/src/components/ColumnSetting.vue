@@ -1,7 +1,7 @@
 <template>
   <el-popover trigger="click" placement="bottom-end" :width="220">
     <template #reference>
-      <el-button size="small" class="col-setting-btn" :class="{ 'col-setting-btn--icon-only': iconOnly }">
+      <el-button size="small" :aria-label="iconOnly ? '列显示设置' : undefined" class="col-setting-btn" :class="{ 'col-setting-btn--icon-only': iconOnly }">
         <el-icon><Setting /></el-icon>
         <span v-if="!iconOnly">列显示</span>
       </el-button>

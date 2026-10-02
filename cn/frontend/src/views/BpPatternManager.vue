@@ -152,7 +152,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { DataAnalysis, TrendCharts, Refresh } from '@element-plus/icons-vue';
 import { analyzeBpPattern, listBpPatterns, deleteBpPattern } from '@/api/bpPattern.js';
@@ -169,6 +169,32 @@ const currentAnalysis = ref(null);
 const historyList = ref([]);
 const detailVisible = ref(false);
 const detailRecord = ref(null);
+let patientEpoch = 0;
+let analysisEpoch = 0;
+let listRequest = 0;
+let analysisRequest = 0;
+let disposed = false;
+const pendingDeletes = new Map();
+
+function captureContext() {
+  return { patientId: currentPatientId.value, patientEpoch, analysisEpoch, timeType: timeType.value, timeValue: timeValue.value };
+}
+
+function isCurrentContext(context, includeAnalysis = false) {
+  return !disposed && !!context.patientId && context.patientId === currentPatientId.value
+    && context.patientEpoch === patientEpoch && (!includeAnalysis || context.analysisEpoch === analysisEpoch);
+}
+
+function invalidateAnalysis() {
+  analysisEpoch++;
+  analysisRequest++;
+  analyzing.value = false;
+}
+
+function clearDetail() {
+  detailVisible.value = false;
+  detailRecord.value = null;
+}
 
 const TIME_TYPE_MAP = { month: '按月', week: '按周', year: '按年' };
 function timeTypeLabel(v) { return TIME_TYPE_MAP[v] || v; }
@@ -196,43 +222,79 @@ function onDimensionChange() { loadData(); }
 function onDateChange() { loadData(); }
 
 async function loadData() {
-  if (!currentPatientId.value) { historyList.value = []; currentAnalysis.value = null; return; }
+  const request = ++listRequest;
+  const context = captureContext();
+  const isCurrentList = () => request === listRequest && isCurrentContext(context);
+  if (!context.patientId || disposed) { historyList.value = []; currentAnalysis.value = null; return; }
   try {
-    const res = await listBpPatterns(currentPatientId.value);
+    const res = await listBpPatterns(context.patientId);
+    if (!isCurrentList()) return;
     if (res.code === 200) {
       historyList.value = res.data || [];
       currentAnalysis.value = historyList.value.length > 0 ? historyList.value[0] : null;
     }
-  } catch (e) { console.error(e); }
+  } catch (e) { if (isCurrentList()) console.error(e); }
 }
 
 async function handleAnalyze() {
+  if (analyzing.value || disposed) return;
   if (!currentPatientId.value) { ElMessage.warning('请先选择患者。'); return; }
   if (!timeValue.value) { ElMessage.warning('请选择时间范围'); return; }
+  const context = captureContext();
+  const request = ++analysisRequest;
+  const isCurrentAnalysis = () => request === analysisRequest && isCurrentContext(context, true);
   analyzing.value = true;
   try {
-    const res = await analyzeBpPattern(currentPatientId.value, timeType.value, timeValue.value);
+    const res = await analyzeBpPattern(context.patientId, context.timeType, context.timeValue);
+    if (!isCurrentAnalysis()) return;
     if (res.code === 200) { ElMessage.success('分析完成'); loadData(); }
     else ElMessage.error(res.msg || '分析失败');
-  } catch (e) { ElMessage.error('分析失败'); }
-  finally { analyzing.value = false; }
+  } catch (e) { if (isCurrentAnalysis()) ElMessage.error('分析失败'); }
+  finally { if (isCurrentAnalysis()) analyzing.value = false; }
 }
 
 function showDetail(row) {
+  if (disposed || !currentPatientId.value || row.patientId !== currentPatientId.value) return;
   detailRecord.value = row;
   detailVisible.value = true;
 }
 
 async function handleDelete(id) {
+  const row = historyList.value.find(item => item.id === id);
+  if (disposed || !currentPatientId.value || !row || row.patientId !== currentPatientId.value || pendingDeletes.has(id)) return;
+  const context = captureContext();
+  const operation = {};
+  pendingDeletes.set(id, operation);
   try {
     const res = await deleteBpPattern(id);
+    if (!isCurrentContext(context)) return;
     if (res.code === 200) { ElMessage.success('删除成功'); loadData(); }
     else ElMessage.error(res.msg || '删除失败');
-  } catch (e) { ElMessage.error('删除失败'); }
+  } catch (e) { if (isCurrentContext(context)) ElMessage.error('删除失败'); }
+  finally { if (pendingDeletes.get(id) === operation) pendingDeletes.delete(id); }
 }
 
-watch(currentPatientId, () => loadData());
+watch(currentPatientId, () => {
+  patientEpoch++;
+  listRequest++;
+  pendingDeletes.clear();
+  historyList.value = [];
+  currentAnalysis.value = null;
+  clearDetail();
+  invalidateAnalysis();
+  loadData();
+}, { flush: 'sync' });
+watch([timeType, timeValue], invalidateAnalysis, { flush: 'sync' });
+watch(detailVisible, visible => { if (!visible) detailRecord.value = null; }, { flush: 'sync' });
 onMounted(() => loadData());
+onUnmounted(() => {
+  disposed = true;
+  patientEpoch++;
+  listRequest++;
+  pendingDeletes.clear();
+  clearDetail();
+  invalidateAnalysis();
+});
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>

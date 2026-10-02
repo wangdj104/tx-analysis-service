@@ -1,14 +1,14 @@
 <template>
-  <el-dialog v-model="welcomeVisible" title="Welcome to your health workspace" width="min(480px, 94vw)" :close-on-click-modal="false">
+  <el-dialog v-model="welcomeVisible" title="Welcome to your health workspace" width="min(480px, 94vw)" :close-on-click-modal="false" @close-auto-focus="focusAfterWelcome">
     <div class="guide-welcome"><el-icon :size="34"><Guide /></el-icon><div><h3>Start an interactive walkthrough?</h3><p>A pointer will lead you to the real control, explain what it does, and wait for your confirmation at every step.</p></div></div>
     <template #footer><el-button @click="dismissWelcome">Maybe Later</el-button><el-button type="primary" @click="begin">Start Interactive Guide</el-button></template>
   </el-dialog>
-  <div v-if="active" class="guide-layer" role="dialog" aria-modal="true" :aria-labelledby="`guide-title-${stepIndex}`">
+  <div v-if="active" class="guide-layer" role="dialog" aria-modal="false" :aria-labelledby="`guide-title-${stepIndex}`">
     <div class="guide-anchor" :style="anchorStyle" aria-hidden="true"></div>
     <section class="guide-card" :class="`guide-card--${cardPlacement}`" :style="cardStyle">
       <button class="guide-close" type="button" aria-label="Pause guide" @click="pause">×</button>
       <span class="guide-kicker">GUIDED TOUR</span>
-      <h2 :id="`guide-title-${stepIndex}`">{{ current.title }}</h2>
+      <h2 ref="guideTitle" :id="`guide-title-${stepIndex}`" tabindex="-1">{{ current.title }}</h2>
       <p>{{ current.description }}</p>
       <div class="guide-instruction"><strong>{{ current.gesture }}</strong><span>{{ current.action }}</span><small>Expected: {{ current.result }}</small></div>
       <footer><button type="button" :disabled="stepIndex===0" aria-label="Previous step" @click="previous">‹</button><span>{{stepIndex+1}} / {{steps.length}}</span><button type="button" :aria-label="stepIndex===steps.length-1?'Finish guide':'Confirm step and continue'" @click="confirmStep">{{stepIndex===steps.length-1?'✓':'›'}}</button></footer>
@@ -39,14 +39,112 @@ const steps=computed(()=>[...(roleSteps[role.value]||roleSteps.patient),...commo
 const current=computed(()=>steps.value[stepIndex.value]),storageKey=computed(()=>`care-onboarding:${props.accountId||'guest'}:${role.value}`),promptKey=computed(()=>`care-onboarding-prompt:${props.accountId||'guest'}:${role.value}`);
 const anchorStyle=computed(()=>{const side=cardPlacement.value;return{left:`${side==='left'?targetBox.left:side==='right'?targetBox.left+targetBox.width:targetBox.left+targetBox.width/2}px`,top:`${side==='top'?targetBox.top+targetBox.height:side==='bottom'?targetBox.top:targetBox.top+targetBox.height/2}px`}});
 const cardStyle=computed(()=>{const width=Math.min(370,viewport.width-24),height=285,gap=20;let left,top;if(viewport.width<720){cardPlacement.value='bottom';left=12;top=Math.max(12,viewport.height-height-12)}else if(targetBox.left+targetBox.width+gap+width<viewport.width){cardPlacement.value='right';left=targetBox.left+targetBox.width+gap;top=targetBox.top+targetBox.height/2-height/2}else if(targetBox.left-width-gap>0){cardPlacement.value='left';left=targetBox.left-width-gap;top=targetBox.top+targetBox.height/2-height/2}else if(targetBox.top+targetBox.height+gap+height<viewport.height){cardPlacement.value='top';left=targetBox.left+targetBox.width/2-width/2;top=targetBox.top+targetBox.height+gap}else{cardPlacement.value='bottom';left=targetBox.left+targetBox.width/2-width/2;top=targetBox.top-height-gap}return{left:`${Math.max(12,Math.min(left,viewport.width-width-12))}px`,top:`${Math.max(12,Math.min(top,viewport.height-height-12))}px`,width:`${width}px`}});
-let highlighted,positionTimer;
-function clearHighlight(){clearTimeout(positionTimer);highlighted?.classList.remove('guide-target');highlighted=null}
-function positionGuide(){viewport.width=window.innerWidth;viewport.height=window.innerHeight;const rect=highlighted?.getBoundingClientRect();if(!rect){Object.assign(targetBox,{top:70,left:20,width:Math.min(260,viewport.width-40),height:90});return}const pad=8;Object.assign(targetBox,{top:Math.max(6,rect.top-pad),left:Math.max(6,rect.left-pad),width:Math.min(viewport.width-12,rect.width+pad*2),height:Math.min(viewport.height-12,rect.height+pad*2)})}
-async function showStep(){clearHighlight();if(current.value.path&&router.currentRoute.value.path!==current.value.path)await router.push(current.value.path);await nextTick();positionTimer=setTimeout(()=>{highlighted=document.querySelector(current.value.selector)||document.querySelector('.workspace-content');highlighted?.scrollIntoView?.({block:'center',behavior:'smooth'});highlighted?.classList.add('guide-target');positionGuide()},260)}
-function begin(){welcomeVisible.value=false;localStorage.setItem(promptKey.value,'seen');const saved=Number(localStorage.getItem(storageKey.value));stepIndex.value=Number.isInteger(saved)&&saved>=0&&saved<steps.value.length?saved:0;active.value=true;window.addEventListener('resize',positionGuide);showStep()}
-function start(){const saved=Number(localStorage.getItem(storageKey.value));stepIndex.value=Number.isInteger(saved)&&saved>=0&&saved<steps.value.length?saved:0;active.value=true;welcomeVisible.value=false;window.addEventListener('resize',positionGuide);showStep()}
-function dismissWelcome(){welcomeVisible.value=false;localStorage.setItem(promptKey.value,'seen')}function pause(){localStorage.setItem(storageKey.value,String(stepIndex.value));active.value=false;clearHighlight();window.removeEventListener('resize',positionGuide)}function previous(){if(stepIndex.value>0){stepIndex.value--;showStep()}}function confirmStep(){if(stepIndex.value===steps.value.length-1){localStorage.setItem(storageKey.value,'complete');active.value=false;clearHighlight();window.removeEventListener('resize',positionGuide);return}stepIndex.value++;localStorage.setItem(storageKey.value,String(stepIndex.value));showStep()}
-watch(()=>[props.accountId,props.roleCodes.join(',')],()=>{if(props.accountId&&!localStorage.getItem(promptKey.value)&&localStorage.getItem(storageKey.value)!=='complete')welcomeVisible.value=true},{immediate:true});onBeforeUnmount(()=>{clearHighlight();window.removeEventListener('resize',positionGuide)});defineExpose({start});
+const guideTitle = ref(null);
+let highlighted, positionTimer, guideEpoch = 0, returnFocus = null, welcomeFocusEpoch = null;
+function clearHighlight() {
+  clearTimeout(positionTimer);
+  highlighted?.classList.remove('guide-target');
+  highlighted = null;
+}
+function positionGuide() {
+  viewport.width = window.innerWidth; viewport.height = window.innerHeight;
+  const rect = highlighted?.getBoundingClientRect();
+  if (!rect) { Object.assign(targetBox, { top: 70, left: 20, width: Math.min(260, viewport.width - 40), height: 90 }); return; }
+  const pad = 8;
+  Object.assign(targetBox, { top: Math.max(6, rect.top - pad), left: Math.max(6, rect.left - pad), width: Math.min(viewport.width - 12, rect.width + pad * 2), height: Math.min(viewport.height - 12, rect.height + pad * 2) });
+}
+function canReceiveFocus(element) {
+  return element?.isConnected && element !== document.body && element !== document.documentElement && !element.disabled && typeof element.focus === 'function'
+    && !element.closest?.('[hidden], [inert], [aria-hidden="true"]')
+    && element.getClientRects?.().length !== 0;
+}
+function closeGuide(restore = true) {
+  ++guideEpoch;
+  welcomeFocusEpoch = null;
+  active.value = false;
+  clearHighlight();
+  window.removeEventListener('resize', positionGuide);
+  document.removeEventListener('keydown', onGuideKeydown);
+  const opener = returnFocus;
+  returnFocus = null;
+  if (restore) {
+    const target = canReceiveFocus(opener) ? opener : document.querySelector('#workspace-content');
+    if (canReceiveFocus(target)) target.focus({ preventScroll: true });
+  }
+}
+function onGuideKeydown(event) {
+  if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || !active.value) return;
+  // A control opened by a guide step owns Escape before this non-modal guide.
+  const dialogs = document.querySelectorAll('dialog[open], [role="dialog"][aria-modal="true"], [role="alertdialog"]');
+  if (Array.from(dialogs).some(canReceiveFocus)) return;
+  event.preventDefault();
+  pause();
+}
+async function showStep() {
+  const epoch = ++guideEpoch, step = current.value;
+  clearHighlight();
+  try {
+    if (step.path && router.currentRoute.value.path !== step.path) await router.push(step.path);
+    await nextTick();
+    if (!active.value || epoch !== guideEpoch) return;
+    guideTitle.value?.focus({ preventScroll: true });
+    positionTimer = setTimeout(() => {
+      if (!active.value || epoch !== guideEpoch) return;
+      highlighted = document.querySelector(step.selector) || document.querySelector('.workspace-content');
+      highlighted?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      highlighted?.classList.add('guide-target');
+      positionGuide();
+    }, 260);
+  } catch {
+    if (active.value && epoch === guideEpoch) closeGuide();
+  }
+}
+async function focusAfterWelcome() {
+  // Element Plus restores its dialog opener after emitting close-auto-focus.
+  const epoch = welcomeFocusEpoch;
+  welcomeFocusEpoch = null;
+  await nextTick();
+  if (active.value && epoch === guideEpoch) guideTitle.value?.focus({ preventScroll: true });
+}
+function start(opener = document.activeElement) {
+  if (!active.value) returnFocus = opener;
+  const closingWelcome = welcomeVisible.value;
+  const saved = Number(localStorage.getItem(storageKey.value));
+  stepIndex.value = Number.isInteger(saved) && saved >= 0 && saved < steps.value.length ? saved : 0;
+  active.value = true;
+  welcomeVisible.value = false;
+  window.addEventListener('resize', positionGuide);
+  document.addEventListener('keydown', onGuideKeydown);
+  showStep();
+  if (closingWelcome) welcomeFocusEpoch = guideEpoch;
+}
+function begin() {
+  localStorage.setItem(promptKey.value, 'seen');
+  // The welcome's Start button stays visible during leave, then disappears.
+  start(null);
+}
+function dismissWelcome() { welcomeVisible.value = false; localStorage.setItem(promptKey.value, 'seen'); }
+function pause() {
+  if (!active.value) return;
+  try { localStorage.setItem(storageKey.value, String(stepIndex.value)); }
+  finally { closeGuide(); }
+}
+function previous() { if (stepIndex.value > 0) { stepIndex.value--; showStep(); } }
+function confirmStep() {
+  if (stepIndex.value === steps.value.length - 1) {
+    try { localStorage.setItem(storageKey.value, 'complete'); }
+    finally { closeGuide(); }
+    return;
+  }
+  stepIndex.value++;
+  localStorage.setItem(storageKey.value, String(stepIndex.value));
+  showStep();
+}
+watch(() => [props.accountId, props.roleCodes.join(',')], () => {
+  if (props.accountId && !localStorage.getItem(promptKey.value) && localStorage.getItem(storageKey.value) !== 'complete') welcomeVisible.value = true;
+}, { immediate: true });
+onBeforeUnmount(() => closeGuide(false));
+defineExpose({ start });
 </script>
 
 <style scoped>

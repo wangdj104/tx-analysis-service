@@ -1,6 +1,6 @@
 <template>
-  <el-dialog v-model="welcomeVisible" title="欢迎使用健康工作台" width="min(480px, 94vw)" :close-on-click-modal="false"><div class="guide-welcome"><el-icon :size="34"><Guide /></el-icon><div><h3>是否开启交互式新手指引？</h3><p>手势会指向页面上的真实控件，详细说明用途，并在每一步等待你确认。</p></div></div><template #footer><el-button @click="dismissWelcome">以后再说</el-button><el-button type="primary" @click="begin">开始交互式指引</el-button></template></el-dialog>
-  <div v-if="active" class="guide-layer" role="dialog" aria-modal="true" :aria-labelledby="`guide-title-${stepIndex}`"><div class="guide-anchor" :style="anchorStyle" aria-hidden="true"></div><section class="guide-card" :class="`guide-card--${cardPlacement}`" :style="cardStyle"><button class="guide-close" type="button" aria-label="暂停指引" @click="pause">×</button><span class="guide-kicker">交互指引</span><h2 :id="`guide-title-${stepIndex}`">{{current.title}}</h2><p>{{current.description}}</p><div class="guide-instruction"><strong>{{current.gesture}}</strong><span>{{current.action}}</span><small>预期结果：{{current.result}}</small></div><footer><button type="button" :disabled="stepIndex===0" aria-label="上一步" @click="previous">‹</button><span>{{stepIndex+1}} / {{steps.length}}</span><button type="button" :aria-label="stepIndex===steps.length-1?'完成指引':'确认本步骤并继续'" @click="confirmStep">{{stepIndex===steps.length-1?'✓':'›'}}</button></footer></section></div>
+  <el-dialog v-model="welcomeVisible" title="欢迎使用健康工作台" width="min(480px, 94vw)" :close-on-click-modal="false" @close-auto-focus="focusAfterWelcome"><div class="guide-welcome"><el-icon :size="34"><Guide /></el-icon><div><h3>是否开启交互式新手指引？</h3><p>手势会指向页面上的真实控件，详细说明用途，并在每一步等待你确认。</p></div></div><template #footer><el-button @click="dismissWelcome">以后再说</el-button><el-button type="primary" @click="begin">开始交互式指引</el-button></template></el-dialog>
+  <div v-if="active" class="guide-layer" role="dialog" aria-modal="false" :aria-labelledby="`guide-title-${stepIndex}`"><div class="guide-anchor" :style="anchorStyle" aria-hidden="true"></div><section class="guide-card" :class="`guide-card--${cardPlacement}`" :style="cardStyle"><button class="guide-close" type="button" aria-label="暂停指引" @click="pause">×</button><span class="guide-kicker">交互指引</span><h2 ref="guideTitle" :id="`guide-title-${stepIndex}`" tabindex="-1">{{current.title}}</h2><p>{{current.description}}</p><div class="guide-instruction"><strong>{{current.gesture}}</strong><span>{{current.action}}</span><small>预期结果：{{current.result}}</small></div><footer><button type="button" :disabled="stepIndex===0" aria-label="上一步" @click="previous">‹</button><span>{{stepIndex+1}} / {{steps.length}}</span><button type="button" :aria-label="stepIndex===steps.length-1?'完成指引':'确认本步骤并继续'" @click="confirmStep">{{stepIndex===steps.length-1?'✓':'›'}}</button></footer></section></div>
 </template>
 <script setup>
 import{computed,nextTick,onBeforeUnmount,reactive,ref,watch}from'vue';import{useRouter}from'vue-router';import{Guide,Menu,Search,User,FirstAidKit,Odometer,House,Setting,Switch}from'@element-plus/icons-vue';
@@ -10,9 +10,112 @@ const commonEnd=[detail('快速找到任意功能','功能搜索可以直接定�
 const roleSteps={doctor:[detail('复核一项临床记录','医生工作台会把待确认记录和 AI 辅助摘要集中到复核队列。','核对患者和来源后，再使用高亮的审核按钮。','项目移出队列，并记录审核决定。','临床决定保持明确且可审计。','.review-actions .el-button',FirstAidKit,'操作这个按钮','/doctor-workspace')],patient:[detail('录入到期指标','血压页面会按患者和测量时间保存读数。','在高亮字段填写读数，核对时间后保存。','新读数出现在历史列表，并更新趋势。','连续规范的数据才能形成可用于照护的长期趋势。','.entry-panel input',Odometer,'在这里输入','/bp-self-monitor')],family:[detail('打开家庭照护操作','家庭工作台整合用药、测量、预约和交接任务。','选择正确家人后，再使用高亮的操作按钮。','共享日程会为照护团队同步更新。','避免照护操作遗漏或记录到错误家人。','.care-toolbar .el-button',House,'操作这个按钮','/care')],admin:[detail('打开账号管理操作','用户管理将身份和角色分配与临床记录分开管理。','核对角色范围后，再使用高亮的工具栏按钮。','对应的管理流程会打开。','最小权限原则可以保护敏感健康信息。','.toolbar .el-button',Setting,'操作这个按钮','/system/user')]};
 const steps=computed(()=>[...(roleSteps[role.value]||roleSteps.patient),...commonEnd]),current=computed(()=>steps.value[stepIndex.value]),storageKey=computed(()=>`care-onboarding:${props.accountId||'guest'}:${role.value}`),promptKey=computed(()=>`care-onboarding-prompt:${props.accountId||'guest'}:${role.value}`);
 const anchorStyle=computed(()=>{const side=cardPlacement.value;return{left:`${side==='left'?targetBox.left:side==='right'?targetBox.left+targetBox.width:targetBox.left+targetBox.width/2}px`,top:`${side==='top'?targetBox.top+targetBox.height:side==='bottom'?targetBox.top:targetBox.top+targetBox.height/2}px`}});
-const cardStyle=computed(()=>{const width=Math.min(370,viewport.width-24),height=285,gap=20;let left,top;if(viewport.width<720){cardPlacement.value='bottom';left=12;top=Math.max(12,viewport.height-height-12)}else if(targetBox.left+targetBox.width+gap+width<viewport.width){cardPlacement.value='right';left=targetBox.left+targetBox.width+gap;top=targetBox.top+targetBox.height/2-height/2}else if(targetBox.left-width-gap>0){cardPlacement.value='left';left=targetBox.left-width-gap;top=targetBox.top+targetBox.height/2-height/2}else if(targetBox.top+targetBox.height+gap+height<viewport.height){cardPlacement.value='top';left=targetBox.left+targetBox.width/2-width/2;top=targetBox.top+targetBox.height+gap}else{cardPlacement.value='bottom';left=targetBox.left+targetBox.width/2-width/2;top=targetBox.top-height-gap}return{left:`${Math.max(12,Math.min(left,viewport.width-width-12))}px`,top:`${Math.max(12,Math.min(top,viewport.height-height-12))}px`,width:`${width}px`}});let highlighted,positionTimer;
-function clearHighlight(){clearTimeout(positionTimer);highlighted?.classList.remove('guide-target');highlighted=null}function positionGuide(){viewport.width=window.innerWidth;viewport.height=window.innerHeight;const rect=highlighted?.getBoundingClientRect();if(!rect){Object.assign(targetBox,{top:70,left:20,width:Math.min(260,viewport.width-40),height:90});return}const pad=8;Object.assign(targetBox,{top:Math.max(6,rect.top-pad),left:Math.max(6,rect.left-pad),width:Math.min(viewport.width-12,rect.width+pad*2),height:Math.min(viewport.height-12,rect.height+pad*2)})}async function showStep(){clearHighlight();if(current.value.path&&router.currentRoute.value.path!==current.value.path)await router.push(current.value.path);await nextTick();positionTimer=setTimeout(()=>{highlighted=document.querySelector(current.value.selector)||document.querySelector('.workspace-content');highlighted?.scrollIntoView?.({block:'center',behavior:'smooth'});highlighted?.classList.add('guide-target');positionGuide()},260)}
-function begin(){welcomeVisible.value=false;localStorage.setItem(promptKey.value,'seen');const saved=Number(localStorage.getItem(storageKey.value));stepIndex.value=Number.isInteger(saved)&&saved>=0&&saved<steps.value.length?saved:0;active.value=true;window.addEventListener('resize',positionGuide);showStep()}function start(){const saved=Number(localStorage.getItem(storageKey.value));stepIndex.value=Number.isInteger(saved)&&saved>=0&&saved<steps.value.length?saved:0;active.value=true;welcomeVisible.value=false;window.addEventListener('resize',positionGuide);showStep()}function dismissWelcome(){welcomeVisible.value=false;localStorage.setItem(promptKey.value,'seen')}function pause(){localStorage.setItem(storageKey.value,String(stepIndex.value));active.value=false;clearHighlight();window.removeEventListener('resize',positionGuide)}function previous(){if(stepIndex.value>0){stepIndex.value--;showStep()}}function confirmStep(){if(stepIndex.value===steps.value.length-1){localStorage.setItem(storageKey.value,'complete');active.value=false;clearHighlight();window.removeEventListener('resize',positionGuide);return}stepIndex.value++;localStorage.setItem(storageKey.value,String(stepIndex.value));showStep()}watch(()=>[props.accountId,props.roleCodes.join(',')],()=>{if(props.accountId&&!localStorage.getItem(promptKey.value)&&localStorage.getItem(storageKey.value)!=='complete')welcomeVisible.value=true},{immediate:true});onBeforeUnmount(()=>{clearHighlight();window.removeEventListener('resize',positionGuide)});defineExpose({start});
+const cardStyle=computed(()=>{const width=Math.min(370,viewport.width-24),height=285,gap=20;let left,top;if(viewport.width<720){cardPlacement.value='bottom';left=12;top=Math.max(12,viewport.height-height-12)}else if(targetBox.left+targetBox.width+gap+width<viewport.width){cardPlacement.value='right';left=targetBox.left+targetBox.width+gap;top=targetBox.top+targetBox.height/2-height/2}else if(targetBox.left-width-gap>0){cardPlacement.value='left';left=targetBox.left-width-gap;top=targetBox.top+targetBox.height/2-height/2}else if(targetBox.top+targetBox.height+gap+height<viewport.height){cardPlacement.value='top';left=targetBox.left+targetBox.width/2-width/2;top=targetBox.top+targetBox.height+gap}else{cardPlacement.value='bottom';left=targetBox.left+targetBox.width/2-width/2;top=targetBox.top-height-gap}return{left:`${Math.max(12,Math.min(left,viewport.width-width-12))}px`,top:`${Math.max(12,Math.min(top,viewport.height-height-12))}px`,width:`${width}px`}});const guideTitle = ref(null);
+let highlighted, positionTimer, guideEpoch = 0, returnFocus = null, welcomeFocusEpoch = null;
+function clearHighlight() {
+  clearTimeout(positionTimer);
+  highlighted?.classList.remove('guide-target');
+  highlighted = null;
+}
+function positionGuide() {
+  viewport.width = window.innerWidth; viewport.height = window.innerHeight;
+  const rect = highlighted?.getBoundingClientRect();
+  if (!rect) { Object.assign(targetBox, { top: 70, left: 20, width: Math.min(260, viewport.width - 40), height: 90 }); return; }
+  const pad = 8;
+  Object.assign(targetBox, { top: Math.max(6, rect.top - pad), left: Math.max(6, rect.left - pad), width: Math.min(viewport.width - 12, rect.width + pad * 2), height: Math.min(viewport.height - 12, rect.height + pad * 2) });
+}
+function canReceiveFocus(element) {
+  return element?.isConnected && element !== document.body && element !== document.documentElement && !element.disabled && typeof element.focus === 'function'
+    && !element.closest?.('[hidden], [inert], [aria-hidden="true"]')
+    && element.getClientRects?.().length !== 0;
+}
+function closeGuide(restore = true) {
+  ++guideEpoch;
+  welcomeFocusEpoch = null;
+  active.value = false;
+  clearHighlight();
+  window.removeEventListener('resize', positionGuide);
+  document.removeEventListener('keydown', onGuideKeydown);
+  const opener = returnFocus;
+  returnFocus = null;
+  if (restore) {
+    const target = canReceiveFocus(opener) ? opener : document.querySelector('#workspace-content');
+    if (canReceiveFocus(target)) target.focus({ preventScroll: true });
+  }
+}
+function onGuideKeydown(event) {
+  if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || !active.value) return;
+  // A control opened by a guide step owns Escape before this non-modal guide.
+  const dialogs = document.querySelectorAll('dialog[open], [role="dialog"][aria-modal="true"], [role="alertdialog"]');
+  if (Array.from(dialogs).some(canReceiveFocus)) return;
+  event.preventDefault();
+  pause();
+}
+async function showStep() {
+  const epoch = ++guideEpoch, step = current.value;
+  clearHighlight();
+  try {
+    if (step.path && router.currentRoute.value.path !== step.path) await router.push(step.path);
+    await nextTick();
+    if (!active.value || epoch !== guideEpoch) return;
+    guideTitle.value?.focus({ preventScroll: true });
+    positionTimer = setTimeout(() => {
+      if (!active.value || epoch !== guideEpoch) return;
+      highlighted = document.querySelector(step.selector) || document.querySelector('.workspace-content');
+      highlighted?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      highlighted?.classList.add('guide-target');
+      positionGuide();
+    }, 260);
+  } catch {
+    if (active.value && epoch === guideEpoch) closeGuide();
+  }
+}
+async function focusAfterWelcome() {
+  // Element Plus restores its dialog opener after emitting close-auto-focus.
+  const epoch = welcomeFocusEpoch;
+  welcomeFocusEpoch = null;
+  await nextTick();
+  if (active.value && epoch === guideEpoch) guideTitle.value?.focus({ preventScroll: true });
+}
+function start(opener = document.activeElement) {
+  if (!active.value) returnFocus = opener;
+  const closingWelcome = welcomeVisible.value;
+  const saved = Number(localStorage.getItem(storageKey.value));
+  stepIndex.value = Number.isInteger(saved) && saved >= 0 && saved < steps.value.length ? saved : 0;
+  active.value = true;
+  welcomeVisible.value = false;
+  window.addEventListener('resize', positionGuide);
+  document.addEventListener('keydown', onGuideKeydown);
+  showStep();
+  if (closingWelcome) welcomeFocusEpoch = guideEpoch;
+}
+function begin() {
+  localStorage.setItem(promptKey.value, 'seen');
+  // The welcome's Start button stays visible during leave, then disappears.
+  start(null);
+}
+function dismissWelcome() { welcomeVisible.value = false; localStorage.setItem(promptKey.value, 'seen'); }
+function pause() {
+  if (!active.value) return;
+  try { localStorage.setItem(storageKey.value, String(stepIndex.value)); }
+  finally { closeGuide(); }
+}
+function previous() { if (stepIndex.value > 0) { stepIndex.value--; showStep(); } }
+function confirmStep() {
+  if (stepIndex.value === steps.value.length - 1) {
+    try { localStorage.setItem(storageKey.value, 'complete'); }
+    finally { closeGuide(); }
+    return;
+  }
+  stepIndex.value++;
+  localStorage.setItem(storageKey.value, String(stepIndex.value));
+  showStep();
+}
+watch(() => [props.accountId, props.roleCodes.join(',')], () => {
+  if (props.accountId && !localStorage.getItem(promptKey.value) && localStorage.getItem(storageKey.value) !== 'complete') welcomeVisible.value = true;
+}, { immediate: true });
+onBeforeUnmount(() => closeGuide(false));
+defineExpose({ start });
 </script>
 <style scoped>
 .guide-welcome{display:flex;gap:16px;align-items:flex-start}.guide-welcome .el-icon{padding:12px;border-radius:14px;background:var(--care-50);color:var(--care-700)}.guide-welcome h3{margin:0 0 8px}.guide-welcome p{margin:0;color:var(--ink-500);line-height:1.7}.guide-layer{position:fixed;inset:0;z-index:4800;background:rgb(38 31 76 / 8%);pointer-events:none}.guide-anchor{position:fixed;z-index:2;width:18px;height:18px;box-sizing:border-box;margin:-9px 0 0 -9px;border:5px solid var(--care-100);border-radius:50%;background:var(--care-700);box-shadow:0 0 0 5px rgb(81 70 154 / 16%);transition:left .22s ease,top .22s ease}.guide-card{position:fixed;z-index:3;box-sizing:border-box;min-height:248px;max-height:calc(100vh - 24px);overflow:auto;padding:25px 28px 19px;border-radius:8px;background:var(--care-700);color:var(--on-accent);box-shadow:0 18px 45px rgb(41 33 91 / 30%);pointer-events:auto;transition:left .22s ease,top .22s ease}.guide-card::before{content:"";position:absolute;border:12px solid transparent}.guide-card--right::before{left:-24px;top:calc(50% - 12px);border-right-color:var(--care-700)}.guide-card--left::before{right:-24px;top:calc(50% - 12px);border-left-color:var(--care-700)}.guide-card--top::before{top:-24px;left:calc(50% - 12px);border-bottom-color:var(--care-700)}.guide-card--bottom::before{bottom:-24px;left:calc(50% - 12px);border-top-color:var(--care-700)}.guide-close{position:absolute;top:11px;right:13px;border:0;background:transparent;color:var(--on-accent);font-size:21px;line-height:1;cursor:pointer}.guide-close:hover{color:var(--on-accent)}.guide-kicker{font-size:10px;font-weight:800;letter-spacing:.13em;color:var(--care-100)}.guide-card h2{margin:12px 22px 9px 0;font-size:20px;line-height:1.35}.guide-card>p{margin:0;color:color-mix(in srgb, var(--on-accent) 88%, transparent);font-size:14px;line-height:1.55}.guide-instruction{display:grid;gap:4px;margin-top:15px;padding-top:13px;border-top:1px solid rgb(255 255 255 / 18%)}.guide-instruction strong{font-size:13px}.guide-instruction span{font-size:13px;line-height:1.45}.guide-instruction small{color:var(--on-accent);font-size:11px;line-height:1.4}.guide-card footer{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:16px}.guide-card footer button{display:grid;width:30px;height:30px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--on-accent);font-size:26px;line-height:1;place-items:center;cursor:pointer}.guide-card footer button:hover:not(:disabled){background:rgb(255 255 255 / 14%)}.guide-card footer button:disabled{opacity:.28;cursor:default}.guide-card footer span{min-width:42px;text-align:center;font-size:13px;font-weight:700}.guide-card footer button:last-child{background:rgb(255 255 255 / 12%)}@media(max-width:719px){.guide-layer{background:rgb(38 31 76 / 12%)}.guide-card{min-height:0;padding:22px 22px 16px}.guide-card h2{font-size:18px}.guide-card--bottom::before,.guide-card--top::before{left:calc(50% - 12px)}}

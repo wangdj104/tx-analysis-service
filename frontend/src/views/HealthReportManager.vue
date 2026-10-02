@@ -14,7 +14,7 @@
         </div>
 
         <div class="content-panel">
-          <el-form :model="form" label-width="110px" ref="formRef" :rules="rules">
+          <el-form :model="form" label-width="110px" ref="formRef" :rules="rules" :disabled="exporting || previewing">
             <el-row :gutter="16">
               <el-col :xs="24" :sm="8">
                 <el-form-item label="Reporttype" prop="reportType">
@@ -68,7 +68,7 @@
           <div v-if="previewHtml" style="margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
             <div style="padding: 12px 16px; background: var(--surface-subtle); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
               <span style="font-weight: 600; color: var(--ink-800);">ReportPreview</span>
-              <el-button type="primary" size="small" @click="handleExport">Download</el-button>
+              <el-button type="primary" size="small" @click="handleExport" :disabled="exporting || previewing">Download</el-button>
             </div>
             <iframe :srcdoc="previewHtml" class="report-preview-frame"></iframe>
           </div>
@@ -79,7 +79,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Download, View } from '@element-plus/icons-vue';
 import * as echarts from 'echarts/core';
@@ -99,6 +99,29 @@ const exporting = ref(false);
 const previewing = ref(false);
 const previewHtml = ref('');
 const formRef = ref(null);
+let requestEpoch = 0;
+let disposed = false;
+
+function invalidateReport() {
+  requestEpoch++;
+  previewHtml.value = '';
+  exporting.value = false;
+  previewing.value = false;
+}
+
+function captureReport(format) {
+  return {
+    patientId: currentPatientId.value,
+    reportType: form.reportType,
+    format,
+    timeType: form.timeType,
+    timeValue: form.timeValue
+  };
+}
+
+function isCurrentReport(epoch, payload) {
+  return !disposed && epoch === requestEpoch && !!payload.patientId && payload.patientId === currentPatientId.value;
+}
 
 const reportTypeOptions = computed(() => {
   const options = [];
@@ -136,6 +159,10 @@ const rules = {
   timeValue: [{ required: true, message: 'Select a time range', trigger: 'change' }]
 };
 
+watch(currentPatientId, invalidateReport, { flush: 'sync' });
+watch(form, invalidateReport, { deep: true, flush: 'sync' });
+onUnmounted(() => { disposed = true; invalidateReport(); });
+
 const commonChartConfig = {
   animation: false,
   tooltip: { trigger: 'axis', confine: true },
@@ -144,56 +171,67 @@ const commonChartConfig = {
   toolbox: { feature: { saveAsImage: {} } }
 };
 
-async function buildReportPayload(format) {
-  const payload = {
-    patientId: currentPatientId.value,
-    reportType: form.reportType,
-    format,
-    timeType: form.timeType,
-    timeValue: form.timeValue
-  };
-  if (form.reportType === 'summary' && hasMenu('/dialysis')) {
-    payload.trendChartImages = await generateTrendChartImages();
+async function buildReportPayload(format, snapshot = captureReport(format), isCurrent = () => true) {
+  const payload = { ...snapshot, format };
+  if (payload.reportType === 'summary' && hasMenu('/dialysis')) {
+    payload.trendChartImages = await generateTrendChartImages(payload, isCurrent);
   }
   return payload;
 }
 
 async function handleExport() {
+  if (exporting.value || previewing.value || disposed) return;
   if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
-  try { await formRef.value.validate(); } catch { return; }
+  if (!formRef.value) return;
+  const epoch = ++requestEpoch, snapshot = captureReport(form.format);
   exporting.value = true;
   try {
-    const blob = await generateReport(await buildReportPayload(form.format));
+    try { await formRef.value.validate(); } catch { return; }
+    if (!isCurrentReport(epoch, snapshot)) return;
+    const payload = await buildReportPayload(snapshot.format, snapshot, () => isCurrentReport(epoch, snapshot));
+    if (!isCurrentReport(epoch, snapshot)) return;
+    const blob = await generateReport(payload);
+    if (!isCurrentReport(epoch, snapshot)) return;
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const ext = form.format === 'pdf' ? 'pdf' : 'html';
-    link.download = `Health Report_${currentPatientId.value}.${ext}`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    ElMessage.success(form.format === 'pdf' ? 'PDFReportalready Download' : 'HTMLReportalready Download');
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      const ext = snapshot.format === 'pdf' ? 'pdf' : 'html';
+      link.download = `Health Report_${snapshot.patientId}.${ext}`;
+      link.click();
+    } finally { window.URL.revokeObjectURL(url); }
+    ElMessage.success(snapshot.format === 'pdf' ? 'PDFReportalready Download' : 'HTMLReportalready Download');
   } catch (e) {
-    ElMessage.error('Reportgeneratefailed');
-  } finally { exporting.value = false; }
+    if (isCurrentReport(epoch, snapshot)) ElMessage.error('Reportgeneratefailed');
+  } finally { if (isCurrentReport(epoch, snapshot)) exporting.value = false; }
 }
 
 async function handlePreview() {
+  if (exporting.value || previewing.value || disposed) return;
   if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
-  try { await formRef.value.validate(); } catch { return; }
+  if (!formRef.value) return;
+  const epoch = ++requestEpoch, snapshot = captureReport('html');
   previewing.value = true;
   try {
-    const blob = await generateReport(await buildReportPayload('html'));
-    previewHtml.value = await blob.text();
+    try { await formRef.value.validate(); } catch { return; }
+    if (!isCurrentReport(epoch, snapshot)) return;
+    const payload = await buildReportPayload('html', snapshot, () => isCurrentReport(epoch, snapshot));
+    if (!isCurrentReport(epoch, snapshot)) return;
+    const blob = await generateReport(payload);
+    if (!isCurrentReport(epoch, snapshot)) return;
+    const html = await blob.text();
+    if (isCurrentReport(epoch, snapshot)) previewHtml.value = html;
   } catch (e) {
-    ElMessage.error('PreviewFailed to load');
-  } finally { previewing.value = false; }
+    if (isCurrentReport(epoch, snapshot)) ElMessage.error('PreviewFailed to load');
+  } finally { if (isCurrentReport(epoch, snapshot)) previewing.value = false; }
 }
 
-async function generateTrendChartImages() {
+async function generateTrendChartImages(snapshot = captureReport(form.format), isCurrent = () => true) {
   const [statsRes, chartRes] = await Promise.all([
-    getStats(form.timeType, form.timeValue, currentPatientId.value),
-    getChartData(form.timeType, form.timeValue, currentPatientId.value)
+    getStats(snapshot.timeType, snapshot.timeValue, snapshot.patientId),
+    getChartData(snapshot.timeType, snapshot.timeValue, snapshot.patientId)
   ]);
+  if (!isCurrent()) return {};
   const stats = statsRes.code === 200 ? (statsRes.data || {}) : {};
   const chart = chartRes.code === 200 ? (chartRes.data || {}) : {};
   const dates = chart.dateList || [];
@@ -228,12 +266,14 @@ function renderChartImage(option, width, height) {
   el.style.height = `${height}px`;
   el.style.background = '#fff';
   document.body.appendChild(el);
-  const chart = echarts.init(el, null, { renderer: 'canvas', width, height });
-  chart.setOption(option);
-  const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
-  chart.dispose();
-  document.body.removeChild(el);
-  return url;
+  let chart;
+  try {
+    chart = echarts.init(el, null, { renderer: 'canvas', width, height });
+    chart.setOption(option);
+    return chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
+  } finally {
+    try { chart?.dispose(); } finally { document.body.removeChild(el); }
+  }
 }
 
 function buildWeightOverviewOption(chart) {

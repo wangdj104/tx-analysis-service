@@ -73,7 +73,8 @@ const currentTitle = computed(() => tabInfo[activeTab.value]?.title || '健康�
 const currentSubtitle = computed(() => tabInfo[activeTab.value]?.subtitle || '');
 
 function resolveTab(query) {
-  const q = (query || '').toLowerCase();
+  const value = Array.isArray(query) ? query[0] : query;
+  const q = typeof value === 'string' ? value.toLowerCase() : '';
   if (q === 'alert' || q === 'bp-pattern' || q === 'nutrition' || q === 'nutrition-assessment' || q === 'health-report' || q === 'data-export' || q === 'complication' || q === 'automation') return q;
   return 'complication';
 }

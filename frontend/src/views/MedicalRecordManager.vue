@@ -600,26 +600,28 @@
     </el-dialog>
 
     <!-- Editdialog -->
-    <el-dialog v-model="editDialogVisible" title="Edit medical record" width="min(900px, 95vw)" :close-on-click-modal="false" destroy-on-close>
-      <el-form :model="editForm" label-width="100px">
+    <el-dialog :model-value="editDialogVisible" :key="editDialogKey" @update:model-value="editDialogModelChange" :before-close="editDialogBeforeClose" title="Edit medical record" width="min(900px, 95vw)" :close-on-click-modal="false" destroy-on-close>
+      <p v-if="editLoading" role="status">Loading medical record…</p>
+      <p v-if="editFilesProcessing" role="status">Preparing attachments…</p>
+      <el-form :disabled="editLocked" :model="editForm" label-width="100px">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="Patient">
-              <el-select v-model="editForm.patientId" placeholder="Select a patient" filterable style="width: 100%">
+              <el-select :disabled="editLocked" v-model="editForm.patientId" placeholder="Select a patient" filterable style="width: 100%">
                 <el-option v-for="patient in patientList" :key="patient.id" :label="patient.patientName" :value="patient.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Examination Date">
-              <el-date-picker v-model="editForm.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+              <el-date-picker :disabled="editLocked" v-model="editForm.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="Examination Type">
-              <el-select v-model="editForm.recordType" placeholder="Select" style="width: 100%">
+              <el-select :disabled="editLocked" v-model="editForm.recordType" placeholder="Select" style="width: 100%">
                 <el-option label="blood test" value="BLOOD" />
                 <el-option label="urinalysis" value="URINE" />
                 <el-option label="liverfeature" value="LIVER" />
@@ -633,19 +635,19 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="Hospital">
-              <el-input v-model="editForm.hospitalName" />
+              <el-input :disabled="editLocked" v-model="editForm.hospitalName" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="Clinician">
-              <el-input v-model="editForm.doctorName" />
+              <el-input :disabled="editLocked" v-model="editForm.doctorName" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Notes">
-              <el-input v-model="editForm.remark" type="textarea" :rows="1" />
+              <el-input :disabled="editLocked" v-model="editForm.remark" type="textarea" :rows="1" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -655,33 +657,33 @@
       <div class="recognize-items-toolbar">
         <span class="recognize-items-count">total {{ editItems.length }} item</span>
         <div class="recognize-items-actions">
-          <el-button size="small" type="primary" plain @click="addEditItem">Addonerow</el-button>
+          <el-button :disabled="editLocked" size="small" type="primary" plain @click="addEditItem">Addonerow</el-button>
         </div>
       </div>
       <el-table :data="editItems" border size="small" max-height="300" class="app-data-table recognize-items-table">
         <el-table-column prop="itemName" label="Test item" min-width="140">
           <template #default="{ row }">
-            <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
+            <el-input :disabled="editLocked" v-model="row.itemName" size="small" placeholder="Test item name" />
           </template>
         </el-table-column>
         <el-table-column prop="resultValue" label="measured value" width="120">
           <template #default="{ row }">
-            <el-input v-model="row.resultValue" size="small" />
+            <el-input :disabled="editLocked" v-model="row.resultValue" size="small" />
           </template>
         </el-table-column>
         <el-table-column prop="unit" label="Unit" width="88">
           <template #default="{ row }">
-            <el-input v-model="row.unit" size="small" />
+            <el-input :disabled="editLocked" v-model="row.unit" size="small" />
           </template>
         </el-table-column>
         <el-table-column prop="referenceRange" label="Reference Range" width="120">
           <template #default="{ row }">
-            <el-input v-model="row.referenceRange" size="small" />
+            <el-input :disabled="editLocked" v-model="row.referenceRange" size="small" />
           </template>
         </el-table-column>
         <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
           <template #default="{ row }">
-            <el-select v-model="row.isAbnormal" size="small" style="width: 76px">
+            <el-select :disabled="editLocked" v-model="row.isAbnormal" size="small" style="width: 76px">
               <el-option label="Normal" :value="0" />
               <el-option label="high" :value="1" />
               <el-option label="low" :value="-1" />
@@ -690,24 +692,26 @@
         </el-table-column>
         <el-table-column label="Actions" width="72" fixed="right" align="center">
           <template #default="{ $index }">
-            <el-button link type="danger" size="small" @click="removeEditItem($index)">Delete</el-button>
+            <el-button :disabled="editLocked" link type="danger" size="small" @click="removeEditItem($index)">Delete</el-button>
           </template>
         </el-table-column>
       </el-table>
 
       <el-divider content-position="left">Attachmentimage</el-divider>
       <el-upload
+        :key="editSession"
+        :disabled="editLocked"
         ref="editAttachmentUploadRef"
         action="#"
         :auto-upload="false"
         :limit="10"
         multiple
         accept="image/*,.pdf"
-        :on-change="handleEditAttachmentChange"
+        :on-change="editAttachmentChange"
         :show-file-list="false"
         class="edit-attachment-upload"
       >
-        <el-button type="primary" plain size="small">
+        <el-button :disabled="editLocked" type="primary" plain size="small">
           <el-icon><Upload /></el-icon> UploadnewAttachment
         </el-button>
         <template #tip>
@@ -726,6 +730,7 @@
               class="attachment-image"
             />
             <el-button
+              :disabled="editLocked"
               type="danger"
               size="small"
               circle
@@ -740,7 +745,7 @@
 
       <template #footer>
         <el-button @click="editDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="saveEditRecord">Save</el-button>
+        <el-button :disabled="editLocked || editFilesProcessing" :loading="editSaving" type="primary" @click="saveEditRecord">Save</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -832,6 +837,52 @@ let resettingUpload = false;
 const uploadPreviewUrls = new Map();
 const loading = ref(false);
 const editDialogVisible = ref(false);
+const editSession = ref(0);
+const editDialogKey = ref(0);
+const editLoading = ref(false), editReady = ref(false), editSaving = ref(false);
+const editPendingAttachments = ref(0);
+const editFilesProcessing = computed(() => editPendingAttachments.value > 0);
+const editLocked = computed(() => editLoading.value || !editReady.value || editSaving.value);
+let editSaveRequest = 0, editDisposed = false;
+
+function invalidateEditDialog() {
+  editSession.value++;
+  editSaveRequest++;
+  editLoading.value = false;
+  editReady.value = false;
+  editSaving.value = false;
+  editPendingAttachments.value = 0;
+}
+
+function isCurrentEdit(session) {
+  return !editDisposed && editDialogVisible.value && session === editSession.value;
+}
+
+// Element Plus emits model=false only after its leave transition. Invalidate
+// immediately at close-start and keep an older dialog's model event from closing
+// a replacement, even before Vue has mounted that replacement's keyed instance.
+const editDialogBeforeClose = computed(() => {
+  const session = editDialogKey.value;
+  return done => {
+    if (isCurrentEdit(session)) editDialogVisible.value = false;
+    done();
+  };
+});
+const editDialogModelChange = computed(() => {
+  const key = editDialogKey.value;
+  return visible => {
+    if (!editDisposed && key === editDialogKey.value) editDialogVisible.value = visible;
+  };
+});
+
+// The keyed upload widget retains the originating callback even if Element Plus
+// delivers its queued change event after another editor has already opened.
+const editAttachmentChange = computed(() => {
+  const session = editSession.value;
+  return file => handleEditAttachmentChange(file, session);
+});
+watch(editDialogVisible, visible => { if (!visible) invalidateEditDialog(); }, { flush: 'sync' });
+onUnmounted(() => { editDisposed = true; invalidateEditDialog(); });
 const editForm = reactive({
   id: null,
   patientId: currentPatientId.value,
@@ -952,13 +1003,17 @@ function getPreviewSrcList(attachments) {
 }
 
 function removeEditAttachment(index) {
+  if (editLocked.value || !isCurrentEdit(editSession.value)) return;
   editAttachments.value.splice(index, 1);
 }
 
-async function handleEditAttachmentChange(file) {
+async function handleEditAttachmentChange(file, session = editSession.value) {
+  if (!isCurrentEdit(session) || editLocked.value || !file?.raw) return;
   const rawFile = file.raw;
+  editPendingAttachments.value++;
   try {
     const base64 = await fileToBase64(rawFile);
+    if (!isCurrentEdit(session)) return;
     editAttachments.value.push({
       fileName: rawFile.name,
       fileType: rawFile.name.toLowerCase().endsWith('.pdf') ? 'PDF' : 'IMAGE',
@@ -967,7 +1022,9 @@ async function handleEditAttachmentChange(file) {
     });
     ElMessage.success('Attachment added');
   } catch (e) {
-    ElMessage.error('Failed to process attachment: ' + e.message);
+    if (isCurrentEdit(session)) ElMessage.error('Failed to process attachment: ' + e.message);
+  } finally {
+    if (isCurrentEdit(session)) editPendingAttachments.value--;
   }
 }
 
@@ -1601,42 +1658,58 @@ async function deleteRecord(row) {
 }
 
 async function openEditDialog(row) {
+  if (!row?.id || editDisposed) return;
+  invalidateEditDialog();
+  const session = editSession.value, recordId = row.id;
+  editDialogKey.value = session;
+  Object.assign(editForm, {
+    id: null, patientId: null, patientName: '', recordDate: '', recordType: 'BLOOD',
+    hospitalName: '', doctorName: '', remark: ''
+  });
+  editItems.value = [];
+  editAttachments.value = [];
+  editDialogVisible.value = true;
+  editLoading.value = true;
   try {
-    // firstgetcompletedata (includeAttachment)
-    const res = await api.getRecord(row.id);
-    if (res.code === 200) {
-      const fullData = res.data;
-      editForm.id = fullData.id;
-      editForm.patientId = fullData.patientId || null;
-      editForm.patientName = fullData.patientName || '';
-      editForm.recordDate = fullData.recordDate || '';
-      editForm.recordType = fullData.recordType || 'BLOOD';
-      editForm.hospitalName = fullData.hospitalName || '';
-      editForm.doctorName = fullData.doctorName || '';
-      editForm.remark = fullData.remark || '';
-      editItems.value = (fullData.items || []).map(item => ({
-        id: item.id,
-        itemName: item.itemName,
-        resultValue: item.resultValue,
-        unit: item.unit,
-        referenceRange: item.referenceRange,
-        isAbnormal: item.isAbnormal
-      }));
-      editAttachments.value = (fullData.attachments || []).map(att => ({
-        id: att.id,
-        fileName: att.fileName,
-        fileType: att.fileType,
-        fileSize: att.fileSize,
-        fileContent: att.fileContent
-      }));
-      editDialogVisible.value = true;
+    const res = await api.getRecord(recordId);
+    if (!isCurrentEdit(session)) return;
+    if (res.code !== 200 || !res.data || String(res.data.id) !== String(recordId)) {
+      throw new Error(res.message || 'Medical record could not be loaded');
     }
+    const fullData = res.data;
+    editForm.id = fullData.id;
+    editForm.patientId = fullData.patientId || null;
+    editForm.patientName = fullData.patientName || '';
+    editForm.recordDate = fullData.recordDate || '';
+    editForm.recordType = fullData.recordType || 'BLOOD';
+    editForm.hospitalName = fullData.hospitalName || '';
+    editForm.doctorName = fullData.doctorName || '';
+    editForm.remark = fullData.remark || '';
+    editItems.value = (fullData.items || []).map(item => ({
+      id: item.id,
+      itemName: item.itemName,
+      resultValue: item.resultValue,
+      unit: item.unit,
+      referenceRange: item.referenceRange,
+      isAbnormal: item.isAbnormal
+    }));
+    editAttachments.value = (fullData.attachments || []).map(att => ({
+      id: att.id,
+      fileName: att.fileName,
+      fileType: att.fileType,
+      fileSize: att.fileSize,
+      fileContent: att.fileContent
+    }));
+    editReady.value = true;
   } catch (e) {
-    ElMessage.error('Failed to load form data: ' + e.message);
+    if (isCurrentEdit(session)) ElMessage.error('Failed to load form data: ' + e.message);
+  } finally {
+    if (isCurrentEdit(session)) editLoading.value = false;
   }
 }
 
 function addEditItem() {
+  if (editLocked.value || !isCurrentEdit(editSession.value)) return;
   editItems.value.push({
     itemName: '',
     resultValue: '',
@@ -1647,10 +1720,16 @@ function addEditItem() {
 }
 
 function removeEditItem(index) {
+  if (editLocked.value || !isCurrentEdit(editSession.value)) return;
   editItems.value.splice(index, 1);
 }
 
 async function saveEditRecord() {
+  const session = editSession.value;
+  if (!isCurrentEdit(session) || editLocked.value || editFilesProcessing.value) return;
+  const request = ++editSaveRequest;
+  const isCurrentSave = () => isCurrentEdit(session) && request === editSaveRequest;
+  editSaving.value = true;
   try {
     const record = {
       id: editForm.id,
@@ -1681,6 +1760,7 @@ async function saveEditRecord() {
         }))
       : [];
     const res = await api.updateRecord(record, items, attachments);
+    if (!isCurrentSave()) return;
     if (res.code === 200) {
       ElMessage.success('Saved successfully');
       editDialogVisible.value = false;
@@ -1689,7 +1769,9 @@ async function saveEditRecord() {
       ElMessage.error(res.message || 'Failed to save');
     }
   } catch (e) {
-    ElMessage.error('Failed to save: ' + e.message);
+    if (isCurrentSave()) ElMessage.error('Failed to save: ' + e.message);
+  } finally {
+    if (isCurrentSave()) editSaving.value = false;
   }
 }
 

@@ -36,47 +36,46 @@ export function compressImageFile(file, options = {}) {
   }
 
   return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let w = img.naturalWidth || img.width;
-      let h = img.naturalHeight || img.height;
-      const scale = Math.min(1, maxWidth / w, maxHeight / h);
-      w = Math.max(1, Math.round(w * scale));
-      h = Math.max(1, Math.round(h * scale));
+    let url, img, settled = false;
+    const finish = (result = file) => {
+      if (settled) return;
+      settled = true;
+      if (img) { img.onload = null; img.onerror = null; }
+      if (url) URL.revokeObjectURL(url);
+      resolve(result);
+    };
+    try {
+      url = URL.createObjectURL(file);
+      img = new Image();
+      img.onload = () => {
+        try {
+          let w = img.naturalWidth || img.width;
+          let h = img.naturalHeight || img.height;
+          const scale = Math.min(1, maxWidth / w, maxHeight / h);
+          w = Math.max(1, Math.round(w * scale));
+          h = Math.max(1, Math.round(h * scale));
 
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        resolve(file);
-        return;
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(file);
-            return;
-          }
-          const baseName = (file.name || 'image').replace(/\.[^.]+$/, '');
-          const out = new File([blob], `${baseName}.jpg`, {
-            type: 'image/jpeg',
-            lastModified: Date.now()
-          });
-          resolve(out.size < file.size ? out : file);
-        },
-        'image/jpeg',
-        quality
-      );
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(file);
-    };
-    img.src = url;
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { finish(); return; }
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob((blob) => {
+            try {
+              if (!blob) { finish(); return; }
+              const baseName = (file.name || 'image').replace(/\.[^.]+$/, '');
+              const out = new File([blob], `${baseName}.jpg`, {
+                type: 'image/jpeg', lastModified: Date.now()
+              });
+              finish(out.size < file.size ? out : file);
+            } catch { finish(); }
+          }, 'image/jpeg', quality);
+        } catch { finish(); }
+      };
+      img.onerror = () => finish();
+      img.src = url;
+    } catch { finish(); }
   });
 }
 

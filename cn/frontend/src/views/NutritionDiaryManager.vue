@@ -36,7 +36,7 @@
             </div>
           </div>
 
-          <el-form :model="form" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
+          <el-form :model="form" label-position="top" ref="formRef" :rules="formRules" class="entry-form" :disabled="saving">
             <div class="form-grid form-grid--meta">
               <el-form-item label="记录日期" prop="recordDate">
                 <el-date-picker v-model="form.recordDate" value-format="YYYY-MM-DD" :clearable="false" />
@@ -92,6 +92,7 @@
                   v-for="s in SYMPTOM_OPTIONS"
                   :key="s"
                   :checked="selectedSymptoms.includes(s)"
+                  :disabled="saving"
                   @change="toggleSymptom(s)"
                 >{{ s }}</el-check-tag>
               </div>
@@ -158,7 +159,7 @@
               <el-table-column label="操作" width="120" align="center" fixed="right">
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
+                    <el-button link type="primary" size="small" @click="handleEdit(row)" :disabled="saving">编辑</el-button>
                     <el-popconfirm title="确认删除这条记录吗？" @confirm="handleDelete(row)">
                       <template #reference>
                         <el-button link type="danger" size="small">删除</el-button>
@@ -176,7 +177,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Check, Refresh, EditPen, TrendCharts } from '@element-plus/icons-vue';
 import { listDiaries, saveDiary, updateDiary, deleteDiary } from '@/api/nutritionDiary.js';
@@ -189,6 +190,26 @@ const records = ref([]);
 const editingId = ref(null);
 const formRef = ref(null);
 const selectedSymptoms = ref([]);
+let patientEpoch = 0;
+let editorEpoch = 0;
+let listRequest = 0;
+let saveRequest = 0;
+let disposed = false;
+
+function captureContext() {
+  return { patientId: currentPatientId.value, patientEpoch, editorEpoch };
+}
+
+function isCurrentContext(context, includeEditor = true) {
+  return !disposed && !!context.patientId && context.patientId === currentPatientId.value
+    && context.patientEpoch === patientEpoch && (!includeEditor || context.editorEpoch === editorEpoch);
+}
+
+function invalidateEditor() {
+  editorEpoch++;
+  saveRequest++;
+  saving.value = false;
+}
 
 const SYMPTOM_OPTIONS = ['乏力', '水肿', '恶心', '瘙痒', '失眠', '食欲差', '腹胀', '肌肉痉挛'];
 
@@ -235,6 +256,7 @@ function mealsText(row) {
 }
 
 function toggleSymptom(name) {
+  if (saving.value) return;
   const idx = selectedSymptoms.value.indexOf(name);
   if (idx >= 0) {
     selectedSymptoms.value.splice(idx, 1);
@@ -245,6 +267,7 @@ function toggleSymptom(name) {
 }
 
 function resetForm() {
+  invalidateEditor();
   editingId.value = null;
   form.recordDate = new Date().toISOString().slice(0, 10);
   form.bodyWeight = null;
@@ -261,36 +284,50 @@ function resetForm() {
 }
 
 async function loadRecords() {
-  if (!currentPatientId.value) { records.value = []; return; }
+  const request = ++listRequest;
+  const context = captureContext();
+  if (!context.patientId || disposed) { records.value = []; loading.value = false; return; }
   loading.value = true;
   try {
-    const res = await listDiaries(currentPatientId.value);
+    const res = await listDiaries(context.patientId);
+    if (request !== listRequest || !isCurrentContext(context, false)) return;
     if (res.code === 200) records.value = res.data || [];
+    else ElMessage.error(res.msg || '加载记录失败');
   } catch (e) {
-    ElMessage.error('加载记录失败');
-  } finally { loading.value = false; }
+    if (request === listRequest && isCurrentContext(context, false)) ElMessage.error('加载记录失败');
+  } finally { if (request === listRequest && isCurrentContext(context, false)) loading.value = false; }
 }
 
 async function handleSave() {
+  if (saving.value || disposed) return;
   if (!currentPatientId.value) { ElMessage.warning('请先选择患者。'); return; }
-  try { await formRef.value.validate(); } catch { return; }
+  if (!formRef.value) return;
+  const context = captureContext();
+  const request = ++saveRequest;
+  const isEdit = !!editingId.value;
+  const data = { ...form, patientId: context.patientId, id: editingId.value || undefined };
+  const isCurrentSave = () => request === saveRequest && isCurrentContext(context);
   saving.value = true;
   try {
-    const data = { patientId: currentPatientId.value, ...form, id: editingId.value || undefined };
-    const res = editingId.value ? await updateDiary(data) : await saveDiary(data);
+    try { await formRef.value.validate(); } catch { return; }
+    if (!isCurrentSave()) return;
+    const res = isEdit ? await updateDiary(data) : await saveDiary(data);
+    if (!isCurrentSave()) return;
     if (res.code === 200) {
-      ElMessage.success(editingId.value ? '更新成功' : '保存成功');
+      ElMessage.success(isEdit ? '更新成功' : '保存成功');
       resetForm();
-      await loadRecords();
+      loadRecords();
     } else {
       ElMessage.error(res.msg || '操作失败');
     }
   } catch (e) {
-    ElMessage.error('操作失败');
-  } finally { saving.value = false; }
+    if (isCurrentSave()) ElMessage.error('操作失败');
+  } finally { if (isCurrentSave()) saving.value = false; }
 }
 
 function handleEdit(row) {
+  if (saving.value || disposed || !currentPatientId.value || row.patientId !== currentPatientId.value) return;
+  invalidateEditor();
   editingId.value = row.id;
   Object.assign(form, {
     recordDate: row.recordDate,
@@ -320,11 +357,21 @@ async function handleDelete(row) {
 }
 
 watch(currentPatientId, () => {
+  patientEpoch++;
+  listRequest++;
+  records.value = [];
+  loading.value = false;
   resetForm();
   loadRecords();
-});
+}, { flush: 'sync' });
 
 onMounted(() => { loadRecords(); });
+onUnmounted(() => {
+  disposed = true;
+  patientEpoch++;
+  listRequest++;
+  invalidateEditor();
+});
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>

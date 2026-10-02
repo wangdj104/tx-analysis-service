@@ -154,7 +154,7 @@ test('editing a historical case-insensitive mg/dL unit preserves its value and u
 test('remark-only edits of legacy records default blank units to mmol/L without changing glucose', async t => {
   for (const unit of [null, undefined, '', '  ', '\t\n']) {
     const view = manager(t)
-    const original = { id: 51, recordDate: '2026-09-22', measureType: 'BG', bloodGlucose: 6, bgUnit: unit, remark: 'Original' }
+    const original = { id: 51, patientId: 1, recordDate: '2026-09-22', measureType: 'BG', bloodGlucose: 6, bgUnit: unit, remark: 'Original' }
     view.handleEdit(original)
     view.form.remark = 'Reviewed'
     await view.handleSave()

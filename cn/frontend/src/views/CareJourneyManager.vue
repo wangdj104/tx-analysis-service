@@ -124,6 +124,34 @@ const modulesLabel=value=>!value?'全部模块':String(value).split(',').map(ite
 function syncTab(name){const query={...route.query,tab:name};if(name!=='consultation')delete query.consultationId;router.replace({query})}
 function pid(){if(!currentPatientId.value)throw new Error('请先选择患者。');return currentPatientId.value}
 async function safely(action,message='已保存'){if(busy.value)return;try{busy.value=true;await action();ElMessage.success(message)}catch(e){if(e.validation)ElMessage.warning(e.message);else if(e.message==='请先选择患者。')ElMessage.warning(e.message)}finally{busy.value=false}}
+let editorEpoch=0,editorOperation=null
+function invalidatePatientEditor(kind){
+  if(kind&&editorOperation?.kind!==kind)return
+  editorEpoch++
+  if(editorOperation){editorOperation=null;busy.value=false}
+}
+// Watch cleanup invalidates pending editors on context changes and component disposal.
+watch([currentPatientId,tab],(_value,_previous,onCleanup)=>{
+  onCleanup(invalidatePatientEditor)
+},{immediate:true,flush:'sync'})
+async function savePatientEditor(kind,readDraft,save,reset,refresh,message='已保存'){
+  if(busy.value)return
+  const epoch=editorEpoch,selected=currentPatientId.value,operation={kind}
+  const data=readDraft()
+  let draft=JSON.stringify(data)
+  const current=()=>editorOperation===operation&&epoch===editorEpoch&&selected===currentPatientId.value
+  editorOperation=operation;busy.value=true
+  try{
+    await save(data,pid())
+    if(!current()||JSON.stringify(readDraft())!==draft)return
+    reset()
+    draft=JSON.stringify(readDraft())
+    await refresh()
+    if(current()&&JSON.stringify(readDraft())===draft)ElMessage.success(message)
+  }catch(error){
+    if(current()&&JSON.stringify(readDraft())===draft&&(error.validation||error.message==='请先选择患者。'))ElMessage.warning(error.message)
+  }finally{if(editorOperation===operation){editorOperation=null;busy.value=false}}
+}
 async function loadMeasurements(){await loadPatientData('measurements',id=>api.listMeasurements({patientId:id}),response=>{measurements.value=response.data||[]})}
 async function recordMeasurement(){await safely(async()=>{validate(measurement.measuredAt && Number(measurement.valuePrimary)>0, '请填写测量时间和有效的正数指标值。');if(measurement.metricType==='BP')validate(Number(measurement.valueSecondary)>0,'请填写舒张压。');await api.saveMeasurement({...measurement,patientId:pid()});await loadMeasurements()})}
 async function annotate(row){const {value}=await ElMessageBox.prompt('为该趋势点添加医生备注','临床标注');await safely(async()=>{await api.annotateMeasurement(row.id,value);await loadMeasurements()})}
@@ -131,15 +159,35 @@ async function loadAppointments(){await loadPatientData('appointments',id=>Promi
 function changeAppointmentDoctor(){appointment.scheduleId=null;appointment.startAt='';appointment.endAt='';doctorSchedules.value=[];loadDoctorSchedules()}
 async function loadDoctorSchedules(){const doctor=appointment.doctorUserId,selected=currentPatientId.value;if(!doctor){doctorSchedules.value=[];return}try{const response=await api.listDoctorSchedules({doctorUserId:doctor});if(doctor===appointment.doctorUserId&&selected===currentPatientId.value)doctorSchedules.value=response.data||[]}catch{}}
 function selectSchedule(id){const s=doctorSchedules.value.find(x=>x.id===id);if(!s)return;appointment.startAt=`${s.work_date}T${String(s.start_time).slice(0,8)}`;const endMinutes=Number(String(s.start_time).slice(0,2))*60+Number(String(s.start_time).slice(3,5))+Number(s.slot_minutes||30);appointment.endAt=`${s.work_date}T${String(Math.floor(endMinutes/60)%24).padStart(2,'0')}:${String(endMinutes%60).padStart(2,'0')}:00`}
-async function bookAppointment(){await safely(async()=>{validate(appointment.doctorUserId && appointment.startAt && appointment.endAt && new Date(appointment.endAt)>new Date(appointment.startAt),'请选择医生，并填写结束时间晚于开始时间的预约时段。');await api.saveAppointment({...appointment,patientId:pid()});Object.assign(appointment,{id:null,startAt:'',endAt:'',reason:''});await loadAppointments()})}
-function editAppointment(row){if(row.status!=='BOOKED')return;Object.assign(appointment,{id:row.id,doctorUserId:row.doctor_user_id,scheduleId:row.schedule_id,consultationMode:row.consultation_mode,startAt:String(row.start_at).replace(' ','T'),endAt:String(row.end_at).replace(' ','T'),recurrenceDays:row.recurrence_days||0,reason:row.reason||''});loadDoctorSchedules();window.scrollTo({top:0,behavior:'smooth'})}
+async function bookAppointment(){
+  await savePatientEditor('appointment',()=>({...appointment}),async(data,patientId)=>{
+    validate(data.doctorUserId && data.startAt && data.endAt && new Date(data.endAt)>new Date(data.startAt),'请选择医生，并填写结束时间晚于开始时间的预约时段。')
+    await api.saveAppointment({...data,patientId})
+  },()=>Object.assign(appointment,{id:null,startAt:'',endAt:'',reason:''}),loadAppointments)
+}
+function editAppointment(row){if(row.status!=='BOOKED')return;invalidatePatientEditor('appointment');Object.assign(appointment,{id:row.id,doctorUserId:row.doctor_user_id,scheduleId:row.schedule_id,consultationMode:row.consultation_mode,startAt:String(row.start_at).replace(' ','T'),endAt:String(row.end_at).replace(' ','T'),recurrenceDays:row.recurrence_days||0,reason:row.reason||''});loadDoctorSchedules();window.scrollTo({top:0,behavior:'smooth'})}
 async function cancel(row){await ElMessageBox.confirm('取消该预约并通知共享照护团队？','取消预约');await safely(async()=>{await api.cancelAppointment(row.id,'用户从共享日程中取消预约');await loadAppointments()},'预约已取消')}
 async function createVisit(){await safely(async()=>{validate(visit.diagnosisSummary.trim() || visit.treatmentSummary.trim(),'请填写诊断或治疗小结。');await api.saveVisit({...visit,patientId:pid(),visitedAt:now()});await loadAppointments()})}
 async function publish(row){await safely(async()=>{await api.publishVisit(row.id);await loadAppointments()},'小结已推送')}
-async function savePrescription(){await safely(async()=>{validate(prescription.drugName.trim() && prescription.dosage.trim() && prescription.frequency.trim(),'请填写药品名称、剂量和用药频次。');await api.savePrescription({patientId:pid(),instructions:prescription.instructions,items:[{drugName:prescription.drugName,dosage:prescription.dosage,frequency:prescription.frequency,administrationRoute:prescription.administrationRoute,durationDays:prescription.durationDays}]});Object.assign(prescription,{drugName:'',dosage:'',frequency:'',administrationRoute:'',durationDays:7,instructions:''});await loadAppointments()},'处方已发布并同步')}
+async function savePrescription(){
+  await savePatientEditor('prescription',()=>({...prescription}),async(data,patientId)=>{
+    validate(data.drugName.trim() && data.dosage.trim() && data.frequency.trim(),'请填写药品名称、剂量和用药频次。')
+    await api.savePrescription({patientId,instructions:data.instructions,items:[{drugName:data.drugName,dosage:data.dosage,frequency:data.frequency,administrationRoute:data.administrationRoute,durationDays:data.durationDays}]})
+  },()=>Object.assign(prescription,{drugName:'',dosage:'',frequency:'',administrationRoute:'',durationDays:7,instructions:''}),loadAppointments,'处方已发布并同步')
+}
 async function loadRecovery(){await loadPatientData('recovery',id=>Promise.all([api.listTreatmentPlans(id),api.listRehabCheckins(id)]),responses=>{plans.value=responses[0].data||[];rehabRows.value=responses[1].data||[]})}
-async function createPlan(){await safely(async()=>{validate(plan.title.trim() && planText.value.trim(),'请填写计划标题和内容。');await api.saveTreatmentPlan({...plan,patientId:pid(),plan:{instructions:planText.value}});plan.title='';planText.value='';await loadRecovery()})}
-async function checkinRehab(){await safely(async()=>{validate(rehabText.value.trim(),'请填写本次康复或症状观察记录。');await api.saveRehabCheckin({...rehab,patientId:pid(),data:{observation:rehabText.value}});rehabText.value='';await loadRecovery()})}
+async function createPlan(){
+  await savePatientEditor('plan',()=>({...plan,plan:{instructions:planText.value}}),async(data,patientId)=>{
+    validate(data.title.trim() && data.plan.instructions.trim(),'请填写计划标题和内容。')
+    await api.saveTreatmentPlan({...data,patientId})
+  },()=>{plan.title='';planText.value=''},loadRecovery)
+}
+async function checkinRehab(){
+  await savePatientEditor('rehab',()=>({...rehab,data:{observation:rehabText.value}}),async(data,patientId)=>{
+    validate(data.data.observation.trim(),'请填写本次康复或症状观察记录。')
+    await api.saveRehabCheckin({...data,patientId})
+  },()=>{rehabText.value=''},loadRecovery)
+}
 function specialtyDetail(value){try{return (typeof value==='string'?JSON.parse(value):value)?.details||'—'}catch{return value}}
 function prettyJson(value){try{return JSON.stringify(typeof value==='string'?JSON.parse(value):value,null,2)}catch{return value}}
 async function loadEmergencyCard(){
@@ -243,7 +291,7 @@ watch(currentPatientId,()=>{
   planText.value='';rehabText.value='';maternityText.value='';mentalAnswers.value='';mentalVisible.value=false
   measurement.measuredAt=now();mentalSchedule.nextDueAt=now();growth.recordDate=today();vaccine.plannedDate=today();maternity.recordDate=today()
   loadTab()
-})
+},{flush:'sync'})
 watch(()=>route.query.tab,value=>{const next=allowedTabs.includes(value)?value:'measurements';if(tab.value!==next)tab.value=next;if(value&&value!==next){syncTab(next);return}loadTab()})
 onMounted(()=>{if(route.query.tab&&!allowedTabs.includes(route.query.tab))syncTab(tab.value);else loadTab()})
 </script>
