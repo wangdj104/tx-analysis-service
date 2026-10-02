@@ -1,0 +1,564 @@
+{
+  "schemaVersion": 1,
+  "reportDate": "2026-10-02",
+  "status": "complete",
+  "snapshotUtc": "2026-10-02T21:57:40.926Z",
+  "reports": {
+    "en": "../QUALITY_REVIEW_20261002_50_ROUNDS.md",
+    "zhHans": "../../cn/docs/QUALITY_REVIEW_20261002_50_ROUNDS.md"
+  },
+  "requestedWindow": {
+    "startUtc": "2026-10-02T13:52:00Z",
+    "endUtc": "2026-10-02T21:52:00Z",
+    "elapsedWindowCompleted": true,
+    "meaning": "Requested review window; not a claim of continuous runtime."
+  },
+  "reviewObjectives": {
+    "planned": 50,
+    "completed": 50,
+    "inProgress": [],
+    "pending": [],
+    "completedIds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50
+    ],
+    "observationCyclesAreReviewRounds": false
+  },
+  "baselineCommit": "1f0c35a6c5ca3ecdd1bebb46096c8c2c16e4222f",
+  "latestVerifiedCode": {
+    "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+    "tree": "a8844aa300ed3b4563c8e2974a03b85b71b84645"
+  },
+  "recordedReleases": [
+    {
+      "commit": "9e3a01b53840d5f5917f289ddf612eaf305ba51f",
+      "tree": "0ddf6867fa9c0ff4c9ef3f3a8052eb7b7393eb2b",
+      "commitUrl": "https://github.com/wangdj104/tx-analysis-service/commit/9e3a01b53840d5f5917f289ddf612eaf305ba51f",
+      "localVerification": {
+        "startedUtc": "2026-10-02T14:54:15.848Z",
+        "finishedUtc": "2026-10-02T14:54:43.086Z",
+        "testCases": {
+          "backendEn": 233,
+          "backendCn": 233,
+          "frontendEn": 709,
+          "frontendCn": 716,
+          "demoCombined": 115
+        },
+        "totalTestCases": 2006,
+        "allPassed": true,
+        "productionBuilds": {
+          "en": "passed",
+          "cn": "passed"
+        },
+        "sourceUnchangedDuringVerification": true
+      },
+      "workflowRuns": [
+        {
+          "name": "CI",
+          "commit": "9e3a01b53840d5f5917f289ddf612eaf305ba51f",
+          "conclusion": "success",
+          "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37024704086"
+        }
+      ]
+    },
+    {
+      "commit": "64a419d5d613b87ddd6cc651c8206e0229206863",
+      "tree": "d118ed94c8fbedda46f2addf9fe6124f264c916f",
+      "commitUrl": "https://github.com/wangdj104/tx-analysis-service/commit/64a419d5d613b87ddd6cc651c8206e0229206863",
+      "localVerification": {
+        "startedUtc": "2026-10-02T15:46:12.146Z",
+        "finishedUtc": "2026-10-02T15:46:39.478Z",
+        "testCases": {
+          "backendEn": 233,
+          "backendCn": 233,
+          "frontendEn": 817,
+          "frontendCn": 824,
+          "demoCombined": 123
+        },
+        "totalTestCases": 2230,
+        "allPassed": true,
+        "productionBuilds": {
+          "en": "passed",
+          "cn": "passed"
+        },
+        "sourceUnchangedDuringVerification": true
+      },
+      "workflowRuns": [
+        {
+          "name": "Publish static demo",
+          "commit": "64a419d5d613b87ddd6cc651c8206e0229206863",
+          "conclusion": "success",
+          "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37031331160"
+        },
+        {
+          "name": "CI",
+          "commit": "64a419d5d613b87ddd6cc651c8206e0229206863",
+          "conclusion": "success",
+          "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37031331153"
+        }
+      ]
+    },
+    {
+      "commit": "f50fd19e7956977a49350b593117c2ef4c08753b",
+      "tree": "366e7acb09a5c5f27980b400ba76e1d483e3163c",
+      "commitUrl": "https://github.com/wangdj104/tx-analysis-service/commit/f50fd19e7956977a49350b593117c2ef4c08753b",
+      "localVerification": {
+        "startedUtc": "2026-10-02T16:42:59.101Z",
+        "finishedUtc": "2026-10-02T16:43:28.428Z",
+        "testCases": {
+          "backendEn": 233,
+          "backendCn": 233,
+          "frontendEn": 891,
+          "frontendCn": 898,
+          "demoCombined": 145
+        },
+        "totalTestCases": 2400,
+        "allPassed": true,
+        "productionBuilds": {
+          "en": "passed",
+          "cn": "passed"
+        },
+        "sourceUnchangedDuringVerification": true
+      },
+      "workflowRuns": [
+        {
+          "name": "CI",
+          "commit": "f50fd19e7956977a49350b593117c2ef4c08753b",
+          "conclusion": "success",
+          "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37037548266"
+        },
+        {
+          "name": "Publish static demo",
+          "commit": "f50fd19e7956977a49350b593117c2ef4c08753b",
+          "conclusion": "success",
+          "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37037548153"
+        }
+      ]
+    },
+    {
+      "commit": "78de6e345a221f8d3a839b3a0975a7e3e608f627",
+      "tree": "c0ea003be0b97d9aefb9a77717dfe43f93b82929",
+      "commitUrl": "https://github.com/wangdj104/tx-analysis-service/commit/78de6e345a221f8d3a839b3a0975a7e3e608f627",
+      "localVerification": {
+        "startedUtc": "2026-10-02T17:31:53.208Z",
+        "finishedUtc": "2026-10-02T17:32:22.572Z",
+        "testCases": {
+          "backendEn": 233,
+          "backendCn": 233,
+          "frontendEn": 902,
+          "frontendCn": 909,
+          "demoCombined": 183
+        },
+        "totalTestCases": 2460,
+        "allPassed": true,
+        "productionBuilds": {
+          "en": "passed",
+          "cn": "passed"
+        },
+        "sourceUnchangedDuringVerification": true
+      },
+      "workflowRuns": [
+        {
+          "name": "Publish static demo",
+          "commit": "78de6e345a221f8d3a839b3a0975a7e3e608f627",
+          "conclusion": "success",
+          "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37041945300"
+        },
+        {
+          "name": "CI",
+          "commit": "78de6e345a221f8d3a839b3a0975a7e3e608f627",
+          "conclusion": "success",
+          "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37041945360"
+        }
+      ]
+    },
+    {
+      "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+      "tree": "a8844aa300ed3b4563c8e2974a03b85b71b84645",
+      "commitUrl": "https://github.com/wangdj104/tx-analysis-service/commit/2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+      "localVerification": {
+        "startedUtc": "2026-10-02T18:05:24.195Z",
+        "finishedUtc": "2026-10-02T18:05:52.705Z",
+        "testCases": {
+          "backendEn": 233,
+          "backendCn": 233,
+          "frontendEn": 902,
+          "frontendCn": 909,
+          "demoCombined": 199
+        },
+        "totalTestCases": 2476,
+        "allPassed": true,
+        "productionBuilds": {
+          "en": "passed",
+          "cn": "passed"
+        },
+        "sourceUnchangedDuringVerification": true
+      },
+      "workflowRuns": [
+        {
+          "name": "Publish static demo",
+          "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+          "conclusion": "success",
+          "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37045903175"
+        },
+        {
+          "name": "CI",
+          "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+          "conclusion": "success",
+          "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37045903409"
+        }
+      ]
+    }
+  ],
+  "latestReleaseChecks": {
+    "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+    "backendPackaging": {
+      "en": "passed",
+      "cn": "passed",
+      "deploymentClaim": false
+    },
+    "servedDemoAssets": {
+      "startedUtc": "2026-10-02T21:52:42.538308+00:00",
+      "finishedUtc": "2026-10-02T21:54:03.976928+00:00",
+      "compared": 12,
+      "http200": 12,
+      "byteMatches": 12,
+      "method": "Canonical public HTML URLs and the exact script/style URLs declared in that HTML",
+      "scope": "EN/CN public static-demo assets"
+    },
+    "existingLargeChunkWarningsRemain": true,
+    "workflowStatusRecheckedUtc": "2026-10-02T21:52:42.289Z",
+    "mainCommitReconfirmed": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+    "newCiExecutionClaim": false
+  },
+  "independentIntegrationReview": {
+    "status": "complete",
+    "scenarioGroups": 28,
+    "assertions": 490,
+    "remainingBlockingFindingsInReviewedScope": 0,
+    "scope": "Source/runtime integration with controlled API, host-tree, storage and media-query adapters; includes compiled real chart components.",
+    "scenarioAndAssertionCountsAreAdditionalSuiteTests": false
+  },
+  "actualBrowserCoverage": {
+    "scope": "Public backend-free demo using fictional data",
+    "cssViewports": [
+      {
+        "width": 502,
+        "height": 757
+      },
+      {
+        "width": 1180,
+        "height": 757
+      }
+    ],
+    "locales": [
+      "en",
+      "zh-Hans"
+    ],
+    "chartMatrix": "Both locales, both measured sizes, normal/large text; f50fd19 follow-up",
+    "guideFollowUp": {
+      "commit": "78de6e345a221f8d3a839b3a0975a7e3e608f627",
+      "observedUtc": "2026-10-02 17:39–17:47",
+      "result": "Affected flows passed"
+    },
+    "normalStorageSmoke": {
+      "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+      "observedUtc": "2026-10-02 18:15–18:19",
+      "result": "Affected normal-storage flows passed; fictional branding and fixtures restored"
+    },
+    "unavailableStorage": "Synthetic runtime checks only; not exercised in an actual browser",
+    "csvDownload": "Download-event wait timed out without a returned file path; no browser download error established; file completion and contents unverified",
+    "physicalDevicesTested": false,
+    "actual320Or390PxViewportsTested": false,
+    "authenticatedApplicationEndToEndTested": false,
+    "exhaustiveThemeViewportMatrix": false
+  },
+  "segmentedObservation": {
+    "status": "complete",
+    "scope": "EN/CN diary, report and BP-entry components with real Vue/Element Plus logic and controlled API/platform adapters; not a browser/backend soak",
+    "segments": [
+      {
+        "number": 1,
+        "status": "interrupted",
+        "startedUtc": "2026-10-02T15:05:36.800Z",
+        "lastVerifiedObservationUtc": "2026-10-02T15:20:07.000Z",
+        "measuredSeconds": 870.200235,
+        "completedCycles": 58,
+        "assertions": 3830,
+        "finalCleanupVerified": false,
+        "measuredMonotonicMs": 870200.235,
+        "heartbeatGapsOver60Seconds": 0,
+        "maximumHeartbeatGapMs": 30079.107,
+        "monitoredSourceChanges": 0
+      },
+      {
+        "number": 2,
+        "status": "complete",
+        "startedUtc": "2026-10-02T15:49:48.601Z",
+        "endedUtc": "2026-10-02T21:52:00.007Z",
+        "measuredSeconds": 21731.405358,
+        "completedCycles": 1448,
+        "assertions": 95955,
+        "finalCleanupVerified": true,
+        "measuredMonotonicMs": 21731405.358,
+        "endReason": "natural deadline",
+        "heartbeatGapsOver60Seconds": 0,
+        "maximumHeartbeatGapMs": 30074.696,
+        "monitoredSourceChanges": 0,
+        "monitoredSourceFiles": 8,
+        "sourceHashesMatchFinalRuntime": true
+      }
+    ],
+    "knownGapSeconds": 1781.601,
+    "gapIncludedInMeasuredRuntime": false,
+    "runtimeDoesNotRetrospectivelyCoverChangedCode": true,
+    "finalTotals": {
+      "status": "complete",
+      "measuredSecondsExcludingGaps": 22601.605593,
+      "measuredMonotonicMs": 22601605.593,
+      "measuredDuration": "6 h 16 m 41.606 s",
+      "longestUninterruptedDuration": "6 h 02 m 11.405 s",
+      "completedCycles": 1506,
+      "assertions": 99785,
+      "productFailures": 0,
+      "testInvariantFailures": 0,
+      "cleanupAssertionFailures": 0,
+      "recordedInterruptions": 1,
+      "additionalHeartbeatGapCount": 0,
+      "pendingWorkUnmountChecks": 296,
+      "expectedChartFailureCleanupChecks": 1002,
+      "finalTrackedResourceCounts": {
+        "scope": "segment 2 final teardown only",
+        "liveAdapterTimers": 0,
+        "activeApiOperations": 0,
+        "liveVueScopes": 0,
+        "mountedBpForms": 0,
+        "unreleasedUrls": 0,
+        "undisposedCharts": 0,
+        "unremovedChartNodes": 0,
+        "heartbeatCleared": true,
+        "createdReleased": {
+          "timers": {
+            "created": 185637,
+            "fired": 135833,
+            "canceled": 49804
+          },
+          "apiOperations": {
+            "started": 72972,
+            "completed": 72972
+          },
+          "vueScopes": {
+            "created": 292,
+            "stopped": 292
+          },
+          "bpMounts": {
+            "created": 146,
+            "stopped": 146
+          },
+          "urls": {
+            "created": 2896,
+            "released": 2896
+          },
+          "chartInstances": {
+            "created": 964,
+            "disposed": 964
+          },
+          "chartNodes": {
+            "appended": 964,
+            "removed": 964
+          }
+        }
+      },
+      "memorySamples": [
+        {
+          "segment": 1,
+          "units": "MiB",
+          "method": "process samples after explicit garbage collection",
+          "heap": {
+            "first": 25.627655029296875,
+            "last": 27.30792999267578,
+            "min": 25.627655029296875,
+            "max": 27.30792999267578
+          },
+          "rss": {
+            "last": 110.97265625,
+            "min": 106.390625,
+            "max": 111.19921875
+          }
+        },
+        {
+          "segment": 2,
+          "units": "MiB",
+          "method": "process samples after explicit garbage collection",
+          "heap": {
+            "first": 25.666793823242188,
+            "last": 25.645843505859375,
+            "min": 25.24854278564453,
+            "max": 28.321861267089844
+          },
+          "rss": {
+            "last": 113.546875,
+            "min": 106.83984375,
+            "max": 113.66796875
+          }
+        }
+      ],
+      "firstSegmentFinalCleanupVerified": false
+    },
+    "eightHoursContinuousRuntimeClaim": false,
+    "universalLeakFreedomClaim": false
+  },
+  "endOfWindow": {
+    "status": "complete",
+    "requiredBoundaryUtc": "2026-10-02T21:52:00Z",
+    "completedUtc": "2026-10-02T21:57:40.926Z",
+    "finalEvidenceCompletedUtc": "2026-10-02T21:54:03.976928+00:00",
+    "completedReviewObjectives": 50,
+    "timingNote": "Observation ended at the requested boundary; final regression, canonical asset checks and report reconciliation followed it.",
+    "finalRegression": {
+      "status": "complete",
+      "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+      "startedUtc": "2026-10-02T21:52:14.792Z",
+      "finishedUtc": "2026-10-02T21:52:44.970Z",
+      "testCases": {
+        "backendEn": 233,
+        "backendCn": 233,
+        "frontendEn": 902,
+        "frontendCn": 909,
+        "demoCombined": 199
+      },
+      "totalTestCases": 2476,
+      "allPassed": true,
+      "failures": 0,
+      "canceled": 0,
+      "skipped": 0
+    },
+    "finalBuildsAndIdentity": {
+      "status": "complete",
+      "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+      "tree": "a8844aa300ed3b4563c8e2974a03b85b71b84645",
+      "startedUtc": "2026-10-02T21:52:33.990Z",
+      "finishedUtc": "2026-10-02T21:52:44.825Z",
+      "productionBuilds": {
+        "en": "passed",
+        "cn": "passed"
+      },
+      "syntaxAndParityPassed": true,
+      "diffIntegrityPassed": true,
+      "cleanRuntimeTree": true,
+      "sourceUnchangedDuringVerification": true,
+      "fullSourceFingerprintCount": 982,
+      "sourceFingerprintsMatchPublishedReleaseSnapshot": true
+    },
+    "finalReleaseReconciliation": {
+      "status": "complete",
+      "workflowCheckedUtc": "2026-10-02T21:52:42.289Z",
+      "completedUtc": "2026-10-02T21:54:03.976928+00:00",
+      "mainCommit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+      "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+      "ci": {
+        "id": 37045903409,
+        "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37045903409",
+        "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+        "conclusion": "success",
+        "recheckedUtc": "2026-10-02T21:52:42.289Z",
+        "newExecution": false
+      },
+      "pages": {
+        "id": 37045903175,
+        "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37045903175",
+        "commit": "2fc8c21e9f74897c4139d8337a585f6e89efff4c",
+        "conclusion": "success",
+        "recheckedUtc": "2026-10-02T21:52:42.289Z",
+        "newExecution": false
+      },
+      "backendPackaging": {
+        "en": "passed",
+        "cn": "passed"
+      },
+      "servedAssetComparison": {
+        "startedUtc": "2026-10-02T21:52:42.538308+00:00",
+        "finishedUtc": "2026-10-02T21:54:03.976928+00:00",
+        "compared": 12,
+        "http200": 12,
+        "byteMatches": 12,
+        "method": "Canonical public HTML URLs and the exact script/style URLs declared in that HTML",
+        "scope": "EN/CN public static-demo assets"
+      },
+      "affectedBrowserFlows": {
+        "status": "completed earlier on published code",
+        "coverageLocation": "actualBrowserCoverage",
+        "newEndWindowBrowserPassClaim": false
+      }
+    },
+    "observationClosure": {
+      "status": "complete",
+      "endedUtc": "2026-10-02T21:52:00.007Z",
+      "endReason": "natural deadline",
+      "segment2CleanupVerified": true,
+      "segment1CleanupVerified": false
+    },
+    "delayedReleaseObservation": {
+      "status": "complete",
+      "checkedThroughUtc": "2026-10-02T21:54:03.976928+00:00",
+      "result": "Requested observation boundary reached; exact main/workflow status and all 12 canonical demo assets reconfirmed."
+    },
+    "reportReconciliationVerifiedUtc": "2026-10-02T21:57:40.926Z"
+  },
+  "limits": [
+    "No backend deployment, new backend authorization audit, security certification or clinical validation.",
+    "No real patient data; clinical thresholds, dose rules and clinical interpretation were unchanged.",
+    "Actual camera/OCR performance, notifications, screen readers, OS reduced-motion settings and paper output were not established.",
+    "Build gzip figures and synthetic list timings do not establish real-browser load time or user-visible speedup.",
+    "Already-dispatched server writes cannot be undone by client completion guards.",
+    "Observed idle/resource samples do not prove leak freedom; the interrupted first segment has no verified final cleanup."
+  ]
+}
