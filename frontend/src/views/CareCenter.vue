@@ -56,7 +56,7 @@
       </el-tab-pane>
       <el-tab-pane label="Questions" name="questions" :disabled="!patientId">
         <div class="section-head"><h2>Prepare questions before a visit and record answers afterward</h2><div><el-button @click="$router.push('/family-health')">Visit summary & print</el-button><el-button type="primary" @click="open('QUESTION')">Add question</el-button></div></div>
-        <article v-for="q in questions" :key="q.id" class="care-card"><div class="section-head"><h3>{{q.title}}</h3><el-tag>{{statusText(q.status)}}</el-tag></div><p>{{q.details.description}}</p><p v-if="q.details.appointmentId">Appointment: {{appointments.find(a=>a.id===q.details.appointmentId)?.title||'Appointment deleted'}}</p><p>Clinician's answer: {{q.details.answer||'Not asked yet'}}</p><p>Follow-up: {{q.details.followUp||'None'}}</p><el-button @click="open('QUESTION',q)">Edit question / answer</el-button><el-button v-if="q.status==='OPEN'" :disabled="busy" @click="answer(q)">Mark answered</el-button><el-button v-if="q.details.followUp" @click="open('HANDOVER',{title:q.details.followUp,details:{note:q.details.answer},kind:'HANDOVER'})">Create care task</el-button><el-popconfirm title="Delete this question?" @confirm="removeItem(q)"><template #reference><el-button link>Delete</el-button></template></el-popconfirm></article><el-empty v-if="!questions.length" description="Keep questions here whenever they come to mind"/>
+        <article v-for="q in questions" :key="q.id" class="care-card"><div class="section-head"><h3>{{q.title}}</h3><el-tag>{{statusText(q.status)}}</el-tag></div><p>{{q.details.description}}</p><p v-if="q.details.appointmentId">Appointment: {{appointmentById.get(q.details.appointmentId)?.title||'Appointment deleted'}}</p><p>Clinician's answer: {{q.details.answer||'Not asked yet'}}</p><p>Follow-up: {{q.details.followUp||'None'}}</p><el-button @click="open('QUESTION',q)">Edit question / answer</el-button><el-button v-if="q.status==='OPEN'" :disabled="busy" @click="answer(q)">Mark answered</el-button><el-button v-if="q.details.followUp" @click="open('HANDOVER',{title:q.details.followUp,details:{note:q.details.answer},kind:'HANDOVER'})">Create care task</el-button><el-popconfirm title="Delete this question?" @confirm="removeItem(q)"><template #reference><el-button link>Delete</el-button></template></el-popconfirm></article><el-empty v-if="!questions.length" description="Keep questions here whenever they come to mind"/>
       </el-tab-pane>
       <el-tab-pane label="Family collaboration" name="family" :disabled="!patientId">
         <div class="section-head"><h2>Shared caregivers</h2><el-button v-if="canManage" type="primary" @click="invite">Generate invitation code</el-button></div><p v-if="inviteCode" class="invite-code">Invitation code (valid for 7 days and one use): <strong>{{inviteCode}}</strong><el-button @click="copyInvite">Copy</el-button></p>
@@ -104,6 +104,15 @@ const selectedPatientName=computed(()=>{
 const pendingMedicationCount=computed(()=>(context.value.intakes||[]).filter(i=>['PENDING','MISSED','SNOOZED'].includes(i.status)).length)
 const items=computed(()=>context.value.items||[]),byKind=kind=>computed(()=>items.value.filter(i=>i.kind===kind))
 const appointments=byKind('APPOINTMENT'),orders=byKind('ORDER'),symptoms=byKind('SYMPTOM'),questions=byKind('QUESTION'),handovers=byKind('HANDOVER'),activities=byKind('ACTIVITY')
+const appointmentById=computed(()=>{
+  const index=new Map()
+  for(const appointment of appointments.value){
+    const id=appointment.id
+    // Keep find's first strict match; Map would otherwise also match NaN.
+    if(id===id&&!index.has(id))index.set(id,appointment)
+  }
+  return index
+})
 const activeIntakes=computed(()=>(context.value.intakes||[]).filter(i=>i.status!=='CANCELLED')),lowStocks=computed(()=>(context.value.stocks||[]).filter(s=>s.low))
 const filteredSymptoms=computed(()=>symptoms.value.filter(s=>!symptomFilter.value||s.title===symptomFilter.value))
 const dueTasks=computed(()=>items.value.filter(i=>['APPOINTMENT','HANDOVER'].includes(i.kind)&&i.status==='OPEN'&&(!i.eventAt||new Date(i.eventAt.replace(' ','T')).getTime()<Date.now()+7*86400000)))

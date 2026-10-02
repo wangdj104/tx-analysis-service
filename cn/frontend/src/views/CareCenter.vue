@@ -56,7 +56,7 @@
       </el-tab-pane>
       <el-tab-pane label="就诊问题" name="questions" :disabled="!patientId">
         <div class="section-head"><h2>就诊前准备问题，就诊后记录答案</h2><div><el-button @click="$router.push('/family-health')">就诊摘要与打印</el-button><el-button type="primary" @click="open('QUESTION')">新增问题</el-button></div></div>
-        <article v-for="q in questions" :key="q.id" class="care-card"><div class="section-head"><h3>{{q.title}}</h3><el-tag>{{statusText(q.status)}}</el-tag></div><p>{{q.details.description}}</p><p v-if="q.details.appointmentId">关联预约：{{appointments.find(a=>a.id===q.details.appointmentId)?.title||'预约已删除'}}</p><p>医生答复：{{q.details.answer||'尚未询问'}}</p><p>后续事项：{{q.details.followUp||'无'}}</p><el-button @click="open('QUESTION',q)">编辑问题 / 答案</el-button><el-button v-if="q.status==='OPEN'" :disabled="busy" @click="answer(q)">标记已答复</el-button><el-button v-if="q.details.followUp" @click="open('HANDOVER',{title:q.details.followUp,details:{note:q.details.answer},kind:'HANDOVER'})">创建照护任务</el-button><el-popconfirm title="确认删除这个问题吗？" @confirm="removeItem(q)"><template #reference><el-button link>删除</el-button></template></el-popconfirm></article><el-empty v-if="!questions.length" description="想到问题时可随时记录在这里"/>
+        <article v-for="q in questions" :key="q.id" class="care-card"><div class="section-head"><h3>{{q.title}}</h3><el-tag>{{statusText(q.status)}}</el-tag></div><p>{{q.details.description}}</p><p v-if="q.details.appointmentId">关联预约：{{appointmentById.get(q.details.appointmentId)?.title||'预约已删除'}}</p><p>医生答复：{{q.details.answer||'尚未询问'}}</p><p>后续事项：{{q.details.followUp||'无'}}</p><el-button @click="open('QUESTION',q)">编辑问题 / 答案</el-button><el-button v-if="q.status==='OPEN'" :disabled="busy" @click="answer(q)">标记已答复</el-button><el-button v-if="q.details.followUp" @click="open('HANDOVER',{title:q.details.followUp,details:{note:q.details.answer},kind:'HANDOVER'})">创建照护任务</el-button><el-popconfirm title="确认删除这个问题吗？" @confirm="removeItem(q)"><template #reference><el-button link>删除</el-button></template></el-popconfirm></article><el-empty v-if="!questions.length" description="想到问题时可随时记录在这里"/>
       </el-tab-pane>
       <el-tab-pane label="家庭协作" name="family" :disabled="!patientId">
         <div class="section-head"><h2>共享照护成员</h2><el-button v-if="canManage" type="primary" @click="invite">生成邀请码</el-button></div><p v-if="inviteCode" class="invite-code">邀请码（7 天内有效且仅可使用一次）：<strong>{{inviteCode}}</strong><el-button @click="copyInvite">复制</el-button></p>
@@ -104,6 +104,15 @@ const selectedPatientName=computed(()=>{
 const pendingMedicationCount=computed(()=>(context.value.intakes||[]).filter(i=>['PENDING','MISSED','SNOOZED'].includes(i.status)).length)
 const items=computed(()=>context.value.items||[]),byKind=kind=>computed(()=>items.value.filter(i=>i.kind===kind))
 const appointments=byKind('APPOINTMENT'),orders=byKind('ORDER'),symptoms=byKind('SYMPTOM'),questions=byKind('QUESTION'),handovers=byKind('HANDOVER'),activities=byKind('ACTIVITY')
+const appointmentById=computed(()=>{
+  const index=new Map()
+  for(const appointment of appointments.value){
+    const id=appointment.id
+    // Keep find's first strict match; Map would otherwise also match NaN.
+    if(id===id&&!index.has(id))index.set(id,appointment)
+  }
+  return index
+})
 const activeIntakes=computed(()=>(context.value.intakes||[]).filter(i=>i.status!=='CANCELLED')),lowStocks=computed(()=>(context.value.stocks||[]).filter(s=>s.low))
 const filteredSymptoms=computed(()=>symptoms.value.filter(s=>!symptomFilter.value||s.title===symptomFilter.value))
 const dueTasks=computed(()=>items.value.filter(i=>['APPOINTMENT','HANDOVER'].includes(i.kind)&&i.status==='OPEN'&&(!i.eventAt||new Date(i.eventAt.replace(' ','T')).getTime()<Date.now()+7*86400000)))
