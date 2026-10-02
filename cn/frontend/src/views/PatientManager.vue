@@ -120,7 +120,7 @@
 
     <!-- Add/EditPatient -->
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑患者' : '新增患者'" width="600px" destroy-on-close>
-      <el-form :model="form" label-width="100px" :rules="rules" ref="formRef">
+      <el-form :disabled="profileSaving" :model="form" label-width="100px" :rules="rules" ref="formRef">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="姓名" prop="name">
@@ -173,7 +173,7 @@
           <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="备注信息" />
         </el-form-item>
         <el-form-item label="专病角色">
-          <el-select v-model="form.specialtyRoleIds" multiple filterable clearable :loading="specialtyLoading" placeholder="可选择多个专病角色；留空为普通患者" style="width:100%">
+          <el-select v-model="form.specialtyRoleIds" multiple filterable clearable :loading="specialtyLoading" :disabled="profileSaving || specialtyLoading || !specialtyReady" placeholder="可选择多个专病角色；留空为普通患者" style="width:100%">
             <el-option v-for="role in specialtyRoles" :key="role.id" :label="role.roleName" :value="role.id" />
           </el-select>
         </el-form-item>
@@ -186,7 +186,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="specialtyLoading || !specialtyReady" @click="handleSave">保存</el-button>
+        <el-button type="primary" :loading="profileSaving" :disabled="profileSaving || specialtyLoading || !specialtyReady" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -224,14 +224,63 @@ const displayPatients = computed(() => showSensitive.value ? patients.value : pa
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const formRef = ref(null);
-const specialtyRoles = ref([]), specialtyLoading = ref(false), specialtyReady = ref(false);
+const specialtyRoles = ref([]);
+const catalogLoading = ref(false), catalogReady = ref(false);
+const selectedRolesLoading = ref(false), selectedRolesReady = ref(false);
+const specialtyLoading = computed(() => catalogLoading.value || selectedRolesLoading.value);
+const specialtyReady = computed(() => catalogReady.value && selectedRolesReady.value);
+const profileSaving = ref(false);
+let profileEpoch = 0, catalogRequest = 0, profileUnmounted = false;
 
-async function loadSpecialtyRoles() {
-  specialtyLoading.value = true;
-  try { const res = await getSpecialtyRoles(); if (res.code !== 200 || !Array.isArray(res.data)) throw new Error('Specialty roles unavailable'); specialtyRoles.value = res.data.map(localizeSpecialtyRole); specialtyReady.value = true; }
-  catch { specialtyReady.value = false; ElMessage.error('专病角色加载失败，请重试。'); }
-  finally { specialtyLoading.value = false; }
+function invalidateProfileDialog() {
+  profileEpoch++;
+  catalogRequest++;
+  catalogLoading.value = false;
+  selectedRolesLoading.value = false;
+  selectedRolesReady.value = false;
+  profileSaving.value = false;
 }
+
+function isCurrentProfile(epoch) {
+  return !profileUnmounted && dialogVisible.value && epoch === profileEpoch;
+}
+
+async function loadSpecialtyRoles(epoch = profileEpoch) {
+  const request = ++catalogRequest;
+  const isCurrent = () => !profileUnmounted && epoch === profileEpoch && request === catalogRequest;
+  catalogLoading.value = true;
+  catalogReady.value = false;
+  try {
+    const res = await getSpecialtyRoles();
+    if (!isCurrent()) return;
+    if (res.code !== 200 || !Array.isArray(res.data)) throw new Error('Specialty roles unavailable');
+    specialtyRoles.value = res.data.map(localizeSpecialtyRole);
+    catalogReady.value = true;
+  } catch {
+    if (isCurrent()) ElMessage.error('专病角色加载失败，请重试。');
+  } finally {
+    if (isCurrent()) catalogLoading.value = false;
+  }
+}
+
+async function loadPatientSpecialties(epoch, patientId) {
+  selectedRolesLoading.value = true;
+  selectedRolesReady.value = false;
+  try {
+    const res = await getPatientSpecialtyRoles(patientId);
+    if (!isCurrentProfile(epoch)) return;
+    if (res.code !== 200 || !Array.isArray(res.data)) throw new Error('Patient specialty roles unavailable');
+    form.specialtyRoleIds = [...res.data];
+    selectedRolesReady.value = true;
+  } catch {
+    if (isCurrentProfile(epoch)) ElMessage.error('专病角色加载失败，请重新打开患者资料。');
+  } finally {
+    if (isCurrentProfile(epoch)) selectedRolesLoading.value = false;
+  }
+}
+
+watch(dialogVisible, visible => { if (!visible) invalidateProfileDialog(); }, { flush: 'sync' });
+onUnmounted(() => { profileUnmounted = true; invalidateProfileDialog(); });
 
 const form = reactive({
   id: null, name: '', gender: '', birthDate: '', phone: '', idCard: '',
@@ -332,39 +381,45 @@ async function loadPatients() {
 }
 
 function showAddDialog() {
+  if (profileUnmounted) return;
+  invalidateProfileDialog();
   isEdit.value = false;
   Object.assign(form, {
     id: null, name: '', gender: '', birthDate: '', phone: '', idCard: '',
     address: '', emergencyContact: '', emergencyPhone: '', medicalHistory: '',
     remark: '', status: 1, specialtyRoleIds: []
   });
+  selectedRolesReady.value = true;
   dialogVisible.value = true;
-  if (!specialtyReady.value) loadSpecialtyRoles();
+  if (!catalogReady.value) loadSpecialtyRoles();
 }
 
 async function showEditDialog(row) {
+  if (!row?.id || profileUnmounted) return;
+  invalidateProfileDialog();
+  const epoch = profileEpoch, patientId = row.id;
   isEdit.value = true;
-  const source = patients.value.find(item => item.id === row.id) ?? row;
+  const source = patients.value.find(item => item.id === patientId) ?? row;
   Object.assign(form, { ...source, specialtyRoleIds: [] });
   dialogVisible.value = true;
-  specialtyLoading.value = true;
-  specialtyReady.value = false;
-  try {
-    const [roles, selected] = await Promise.all([getSpecialtyRoles(), getPatientSpecialtyRoles(row.id)]);
-    if (form.id !== row.id || !dialogVisible.value) return;
-    if (roles.code !== 200 || selected.code !== 200 || !Array.isArray(roles.data) || !Array.isArray(selected.data)) throw new Error('Specialty roles unavailable');
-    specialtyRoles.value = roles.data.map(localizeSpecialtyRole);
-    form.specialtyRoleIds = selected.data;
-    specialtyReady.value = true;
-  } catch { ElMessage.error('专病角色加载失败，请重新打开患者资料。'); }
-  finally { specialtyLoading.value = false; }
+  await Promise.all([loadSpecialtyRoles(epoch), loadPatientSpecialties(epoch, patientId)]);
 }
 
 async function handleSave() {
-  if (!specialtyReady.value || specialtyLoading.value) return;
+  const epoch = profileEpoch;
+  if (profileSaving.value || !isCurrentProfile(epoch) || !specialtyReady.value
+      || specialtyLoading.value || !formRef.value) return;
+  const save = isEdit.value ? updatePatient : savePatient;
+  const snapshot = { ...form, specialtyRoleIds: [...form.specialtyRoleIds] };
+  const validator = formRef.value;
+  profileSaving.value = true;
+  let submitted = false;
   try {
-    await formRef.value.validate();
-    const res = isEdit.value ? await updatePatient(form) : await savePatient(form);
+    const valid = await validator.validate();
+    if (valid === false || !isCurrentProfile(epoch) || !specialtyReady.value || specialtyLoading.value) return;
+    submitted = true;
+    const res = await save(snapshot);
+    if (!isCurrentProfile(epoch)) return;
     if (res.code === 200) {
       ElMessage.success(res.data || '保存成功');
       dialogVisible.value = false;
@@ -373,8 +428,10 @@ async function handleSave() {
     } else {
       ElMessage.error(res.msg || '保存失败');
     }
-  } catch (e) {
-    console.error(e);
+  } catch {
+    if (submitted && isCurrentProfile(epoch)) ElMessage.error('保存失败，请重试。');
+  } finally {
+    if (isCurrentProfile(epoch)) profileSaving.value = false;
   }
 }
 
