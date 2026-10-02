@@ -11,7 +11,7 @@ export function demo(edition) {
     if (!nodes.has(id)) {
       let html = '';
       nodes.set(id, {
-        textContent: '', style: {}, attributes: {}, handlers: {}, writes: 0,
+        textContent: '', style: {}, attributes: {}, handlers: {}, writes: 0, scrollTop: 0, scrollHeight: 0, clientHeight: 0,
         get innerHTML() { return html; },
         set innerHTML(value) { html = value; this.writes++; },
         addEventListener(type, callback) { this.handlers[type] = callback; },
