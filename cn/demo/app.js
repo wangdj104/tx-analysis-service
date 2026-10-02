@@ -275,8 +275,24 @@
     try { localStorage.setItem(appearanceKey, JSON.stringify({ version: 1, theme: appearanceTheme })); } catch { toast(tx("Theme applied for this visit. Your browser couldn't save it; reloading may restore your previous setting.", '主题已在本次访问应用，但浏览器未能保存；刷新后可能恢复原设置。')); }
   });
   $('patient').addEventListener('change',e=>selectPatient(e.target.value));
-  $('guide-start').addEventListener('click',openGuide);$('guide-previous').addEventListener('click',()=>{if($('guide-tour').hidden)return;if(guideIndex>0){guideIndex--;showGuideStep(true);}});$('guide-next').addEventListener('click',()=>{if($('guide-tour').hidden)return;if(guideIndex===currentGuide().length-1){localStorage.setItem('chengxin-demo-guide-complete','1');closeGuide();document.querySelector('.guide-target')?.classList.remove('guide-target');toast(tx('Guide completed. You can restart it at any time.','指引已完成，可随时重新开始。'));}else{guideIndex++;showGuideStep(true);}});$('guide-pause').addEventListener('click',()=>{closeGuide();document.querySelector('.guide-target')?.classList.remove('guide-target');});window.addEventListener('resize',()=>{if(!$('guide-tour').hidden)showGuideStep();});
-  $('reset').addEventListener('click',()=>{if(!$('guide-tour').hidden)closeGuide();guideIndex=0;state=M.createState();localStorage.removeItem('chengxin-demo-branding');range=7;location.hash=copy[state.role].start;toast(tx('Demo reset.','演示已重置。'));render();});
+  $('guide-start').addEventListener('click',openGuide);$('guide-previous').addEventListener('click',()=>{if($('guide-tour').hidden)return;if(guideIndex>0){guideIndex--;showGuideStep(true);}});$('guide-next').addEventListener('click',()=>{if($('guide-tour').hidden)return;if(guideIndex===currentGuide().length-1){
+    let completionSaved = true;
+    try { localStorage.setItem('chengxin-demo-guide-complete','1'); } catch { completionSaved = false; }
+    closeGuide();document.querySelector('.guide-target')?.classList.remove('guide-target');
+    toast(completionSaved
+      ? tx('Guide completed. You can restart it at any time.','指引已完成，可随时重新开始。')
+      : tx("Guide completed. Your browser couldn't save the completion status; you can restart the guide at any time.",'指引已完成，但浏览器未能保存完成状态；可随时重新开始。'));
+  }else{guideIndex++;showGuideStep(true);}});$('guide-pause').addEventListener('click',()=>{closeGuide();document.querySelector('.guide-target')?.classList.remove('guide-target');});window.addEventListener('resize',()=>{if(!$('guide-tour').hidden)showGuideStep();});
+  $('reset').addEventListener('click',()=>{
+    if(!$('guide-tour').hidden)closeGuide();guideIndex=0;state=M.createState();
+    let brandingCleared = true;
+    try { localStorage.removeItem('chengxin-demo-branding'); } catch { brandingCleared = false; }
+    range=7;location.hash=copy[state.role].start;
+    toast(brandingCleared
+      ? tx('Demo reset.','演示已重置。')
+      : tx("Demo reset for this visit. Your browser couldn't clear saved branding; reloading may restore it.",'本次访问的演示已重置，但浏览器未能清除已保存的品牌配置；刷新后可能恢复。'));
+    render();
+  });
   document.addEventListener('submit',e=>{
     if(e.target.id!=='chat-form')return;
     e.preventDefault();
@@ -305,7 +321,16 @@
     if (control.name === 'pageBackground') form.elements.backgroundText.value = control.value;
     if (control.name === 'backgroundText' && /^#[0-9a-f]{6}$/i.test(control.value)) form.elements.pageBackground.value = control.value;
   });
-  document.addEventListener('submit',e=>{if(e.target.id!=='branding-form')return;e.preventDefault();const data=new FormData(e.target),file=data.get('logoFile');const commit=logo=>{try{const value={platformName:data.get('platformName'),organizationName:data.get('organizationName'),pageBackground:data.get('backgroundText'),ownershipText:data.get('ownershipText'),logo};M.updateBranding(state,value);localStorage.setItem('chengxin-demo-branding',JSON.stringify(value));toast(tx('Platform branding saved and applied.','平台品牌已保存并应用。'));render();}catch{toast(tx('Check the branding fields and try again.','请检查品牌配置后重试。'));}};if(file&&file.size){if(file.size>1024*1024){toast(tx('Choose an image no larger than 1 MB.','请选择不超过 1 MB 的图片。'));return;}const reader=new FileReader();reader.onload=()=>commit(String(reader.result));reader.readAsDataURL(file);}else commit(state.branding.logo);});
+  document.addEventListener('submit',e=>{if(e.target.id!=='branding-form')return;e.preventDefault();const data=new FormData(e.target),file=data.get('logoFile');const commit=logo=>{
+    const value={platformName:data.get('platformName'),organizationName:data.get('organizationName'),pageBackground:data.get('backgroundText'),ownershipText:data.get('ownershipText'),logo};
+    try { M.updateBranding(state,value); } catch { toast(tx('Check the branding fields and try again.','请检查品牌配置后重试。')); return; }
+    let brandingSaved = true;
+    try { localStorage.setItem('chengxin-demo-branding',JSON.stringify(value)); } catch { brandingSaved = false; }
+    toast(brandingSaved
+      ? tx('Platform branding saved and applied.','平台品牌已保存并应用。')
+      : tx("Platform branding applied for this visit. Your browser couldn't save it; reloading may restore your previous branding.",'平台品牌已在本次访问应用，但浏览器未能保存；刷新后可能恢复原品牌配置。'));
+    render();
+  };if(file&&file.size){if(file.size>1024*1024){toast(tx('Choose an image no larger than 1 MB.','请选择不超过 1 MB 的图片。'));return;}const reader=new FileReader();reader.onload=()=>commit(String(reader.result));reader.readAsDataURL(file);}else commit(state.branding.logo);});
   $('action-form').addEventListener('submit',e=>{e.preventDefault();const data=new FormData(e.target);try{if(action==='vital')M.addVital(state,Number(data.get('systolic')),Number(data.get('diastolic')));if(action==='plan')M.addPlan(state,data.get('title'),data.get('target'));if(action==='handover')M.addHandover(state,data.get('text'));$('action-dialog').close();toast(tx('Demo entry saved.','演示记录已保存。'));render();if(action==='vital')refreshGuide();}catch{$('form-error').textContent=tx('Check the fields and try again. Systolic pressure must be higher than diastolic pressure.','请检查输入后重试，收缩压必须高于舒张压。');}});
   $('action-dialog').addEventListener('close',()=>restoreFocus(returnFocus));$('detail-dialog').addEventListener('close',()=>restoreFocus(returnFocus));
   document.querySelectorAll('[data-close]').forEach(x=>x.addEventListener('click',()=>x.closest('dialog').close())); window.addEventListener('hashchange',()=>{render();if($('guide-tour').hidden)$('content').focus({preventScroll:true});}); render();
