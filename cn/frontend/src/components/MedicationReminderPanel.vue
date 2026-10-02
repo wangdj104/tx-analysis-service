@@ -10,12 +10,12 @@
       <el-table-column prop="remindTime" label="时间" width="100" />
       <el-table-column label="重复日期" min-width="190"><template #default="{ row }">{{ daysText(row.repeatDays) }}</template></el-table-column>
       <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
-      <el-table-column label="已启用" width="90" align="center"><template #default="{ row }"><el-switch :model-value="row.enabled === 1" @change="toggle(row)" /></template></el-table-column>
-      <el-table-column label="操作" min-width="140" fixed="right"><template #default="{ row }"><div class="table-actions"><el-button link type="primary" @click="openEdit(row)">编辑</el-button><el-popconfirm title="确认删除这条用药提醒吗？" @confirm="remove(row)"><template #reference><el-button link type="danger">删除</el-button></template></el-popconfirm></div></template></el-table-column>
+      <el-table-column label="已启用" width="90" align="center"><template #default="{ row }"><el-switch :model-value="row.enabled === 1" :disabled="pendingRows.has(row.id)" @change="toggle(row)" /></template></el-table-column>
+      <el-table-column label="操作" min-width="140" fixed="right"><template #default="{ row }"><div class="table-actions"><el-button link type="primary" :disabled="pendingRows.has(row.id)" @click="openEdit(row)">编辑</el-button><el-popconfirm title="确认删除这条用药提醒吗？" @confirm="remove(row)"><template #reference><el-button link type="danger" :disabled="pendingRows.has(row.id)">删除</el-button></template></el-popconfirm></div></template></el-table-column>
     </el-table>
 
     <el-dialog v-model="visible" :title="form.id ? '编辑用药提醒' : '添加用药提醒'" width="min(560px, 94vw)" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
+      <el-form ref="formRef" :model="form" :rules="rules" :disabled="saving" label-position="top">
         <el-form-item label="药品" prop="medicationId"><el-select v-model="form.medicationId" filterable style="width:100%"><el-option v-for="item in medications.filter(m => m.isActive === 1)" :key="item.id" :label="item.drugName" :value="item.id" /></el-select></el-form-item>
         <el-form-item label="提醒时间" prop="remindTime"><el-time-picker v-model="form.remindTime" format="HH:mm" value-format="HH:mm" style="width:100%" /></el-form-item>
         <el-form-item label="重复日期" prop="repeatDays"><el-checkbox-group v-model="form.repeatDays"><el-checkbox v-for="day in weekDays" :key="day.value" :value="day.value">{{ day.label }}</el-checkbox></el-checkbox-group></el-form-item>
@@ -29,7 +29,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { deleteReminder, listReminders, saveReminder, toggleEnabled } from '@/api/medicationReminder'
@@ -39,11 +39,15 @@ const rows = ref([]), loading = ref(false), saving = ref(false), visible = ref(f
 const weekDays = [{ value: '1', label: '周一' }, { value: '2', label: '周二' }, { value: '3', label: '周三' }, { value: '4', label: '周四' }, { value: '5', label: '周五' }, { value: '6', label: '周六' }, { value: '7', label: '周日' }]
 const form = reactive({ id: null, medicationId: null, remindTime: '08:00', repeatDays: ['1', '2', '3', '4', '5', '6', '7'], dosage: '', remark: '', enabled: 1 })
 const rules = { medicationId: [{ required: true, message: '请选择药品', trigger: 'change' }], remindTime: [{ required: true, message: '请选择提醒时间', trigger: 'change' }], repeatDays: [{ type: 'array', required: true, min: 1, message: '请至少选择一天', trigger: 'change' }] }
-let version = 0
+const pendingRows = reactive(new Map())
+let version = 0, patientVersion = 0, dialogVersion = 0, disposed = false
+
+function invalidateDialog() { dialogVersion++; saving.value = false }
+function currentPatient(id, generation) { return !disposed && id === props.patientId && generation === patientVersion }
 
 async function load() {
   const id = props.patientId, v = ++version
-  if (!id) { rows.value = []; return }
+  if (!id || disposed) { rows.value = []; loading.value = false; return }
   loading.value = true
   try {
     const res = await listReminders(id)
@@ -53,15 +57,63 @@ async function load() {
   }
 }
 function reset() { Object.assign(form, { id: null, medicationId: null, remindTime: '08:00', repeatDays: ['1', '2', '3', '4', '5', '6', '7'], dosage: '', remark: '', enabled: 1 }) }
-function openCreate() { reset(); visible.value = true }
-function openEdit(row) { Object.assign(form, { id: row.id, medicationId: row.medicationId, remindTime: row.remindTime, repeatDays: (row.repeatDays || '').split(',').filter(Boolean), dosage: row.dosage || '', remark: row.remark || '', enabled: row.enabled ?? 1 }); visible.value = true }
-async function submit() { await formRef.value.validate(); saving.value = true; try { await saveReminder({ ...form, patientId: Number(props.patientId), repeatDays: form.repeatDays.join(',') }); ElMessage.success('提醒已保存'); visible.value = false; await load() } finally { saving.value = false } }
-async function toggle(row) { await toggleEnabled(row.id); await load() }
-async function remove(row) { await deleteReminder(row.id); ElMessage.success('提醒已删除'); await load() }
+function openCreate() { if (!props.patientId || disposed) return; invalidateDialog(); reset(); visible.value = true }
+function openEdit(row) { if (!props.patientId || disposed) return; invalidateDialog(); Object.assign(form, { id: row.id, medicationId: row.medicationId, remindTime: row.remindTime, repeatDays: (row.repeatDays || '').split(',').filter(Boolean), dosage: row.dosage || '', remark: row.remark || '', enabled: row.enabled ?? 1 }); visible.value = true }
+async function submit() {
+  if (saving.value || !visible.value || !props.patientId || !formRef.value || disposed) return
+  const id = props.patientId, patient = patientVersion, dialog = dialogVersion
+  const payload = { ...form, patientId: Number(id), repeatDays: form.repeatDays.join(',') }
+  const current = () => currentPatient(id, patient) && dialog === dialogVersion && visible.value
+  const unchanged = () => Object.keys(payload).every(key => key === 'patientId' ||
+    payload[key] === (key === 'repeatDays' ? form.repeatDays.join(',') : form[key]))
+  saving.value = true
+  try {
+    await formRef.value.validate()
+    if (!current() || !unchanged()) return
+    await saveReminder(payload)
+    if (!current() || !unchanged()) return
+    ElMessage.success('提醒已保存')
+    visible.value = false
+    await load()
+  } finally {
+    if (dialog === dialogVersion) saving.value = false
+  }
+}
+async function runRowAction(row, action, message) {
+  const id = row.id, patientId = props.patientId, patient = patientVersion
+  if (!patientId || disposed || pendingRows.has(id)) return
+  const token = Symbol()
+  pendingRows.set(id, token)
+  try {
+    await action(id)
+    if (!currentPatient(patientId, patient)) return
+    if (message) ElMessage.success(message)
+    await load()
+  } finally {
+    if (pendingRows.get(id) === token) pendingRows.delete(id)
+  }
+}
+async function toggle(row) { await runRowAction(row, toggleEnabled) }
+async function remove(row) { await runRowAction(row, deleteReminder, '提醒已删除') }
 function medicationName(id) { return props.medications.find(x => x.id === id)?.drugName || '未知药品' }
 function daysText(value) { const values = (value || '').split(','); if (values.length === 7) return '每天'; return weekDays.filter(x => values.includes(x.value)).map(x => x.label).join('、') || '未设置' }
 async function requestBrowserNotification() { if (!('Notification' in window)) { ElMessage.warning('当前浏览器不支持通知'); return } const permission = await Notification.requestPermission(); ElMessage[permission === 'granted' ? 'success' : 'warning'](permission === 'granted' ? '浏览器通知已启用' : '未获得浏览器通知权限') }
-watch(() => props.patientId, () => { visible.value = false; rows.value = []; load() }, { immediate: true })
+watch(visible, value => { if (!value) invalidateDialog() }, { flush: 'sync' })
+watch(() => props.patientId, () => {
+  patientVersion++
+  invalidateDialog()
+  visible.value = false
+  rows.value = []
+  load()
+}, { immediate: true, flush: 'sync' })
+onUnmounted(() => {
+  disposed = true
+  version++
+  patientVersion++
+  invalidateDialog()
+  pendingRows.clear()
+  loading.value = false
+})
 </script>
 
 <style scoped>

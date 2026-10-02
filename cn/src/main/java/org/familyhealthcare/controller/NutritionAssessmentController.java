@@ -36,6 +36,8 @@ public class NutritionAssessmentController {
             return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return Result.error(400, e.getMessage());
         }
     }
 
@@ -49,7 +51,11 @@ public class NutritionAssessmentController {
     @GetMapping("/detail/{id}")
     @ApiOperation("getNutrition AssessmentDetails")
     public Result<NutritionAssessment> detail(@PathVariable Long id) {
-        return Result.ok(nutritionAssessmentService.getById(id));
+        try {
+            return Result.ok(nutritionAssessmentService.getOwnedById(id));
+        } catch (IllegalStateException e) {
+            return Result.error(403, e.getMessage());
+        }
     }
 
     @DeleteMapping("/delete/{id}")

@@ -5,6 +5,8 @@ import org.familyhealthcare.mapper.SysMenuMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.servlet.HandlerMapping;
+import org.springframework.web.util.UrlPathHelper;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.util.*;
@@ -26,6 +28,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
         RULES.put("/api/bp-self-monitor", "bp-self-monitor:view"); RULES.put("/api/complication", "complication:view");
         RULES.put("/api/alert", "alert:view"); RULES.put("/api/bp-pattern", "bp-pattern:view");
         RULES.put("/api/nutrition-diary", "nutrition-diary:view"); RULES.put("/api/nutrition-assessment", "nutrition-assessment:view");
+        RULES.put("/api/nutrition/", "nutrition-assessment:view");
         RULES.put("/api/health-report", "health-report:view"); RULES.put("/api/data-export", "data-export:view");
         RULES.put("/api/notification-channel", "notification:manage");
         RULES.put("/api/clinical-workbench", "clinical-workbench:view"); RULES.put("/api/clinical-import", "clinical-workbench:view");
@@ -48,13 +51,21 @@ public class PermissionInterceptor implements HandlerInterceptor {
             if(path.equals("/api/patient/names") || path.startsWith("/api/family-health") || path.startsWith("/api/medication")
                 || path.startsWith("/api/bp-self-monitor") || path.startsWith("/api/medical-record") || path.startsWith("/api/notification-channel"))return true;
         }
+        // Match the route Spring actually selected, not raw URI matrix parameters.
+        Object matchedPattern=request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        String permissionPath=matchedPattern == null
+                ? UrlPathHelper.defaultInstance.getPathWithinApplication(request) : matchedPattern.toString();
         String required=null;
-        for(Map.Entry<String,String> rule:RULES.entrySet())if(request.getRequestURI().startsWith(rule.getKey())){required=rule.getValue();break;}
+        for(Map.Entry<String,String> rule:RULES.entrySet())if(matchesRoutePrefix(permissionPath,rule.getKey())){required=rule.getValue();break;}
         if(required==null)return true;
         Object raw=request.getAttribute("userId");if(raw==null)return deny(response);
         List<SysMenu> menus=menuMapper.selectMenusByUserId(Long.valueOf(raw.toString()));
         for(SysMenu menu:menus)if(hasPermission(required, menu.getPermission()))return true;
         return deny(response);
+    }
+    private boolean matchesRoutePrefix(String path, String prefix) {
+        String root = prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix;
+        return path.equals(root) || path.startsWith(root + "/");
     }
     private boolean hasPermission(String required, String granted) {
         if (required.equals(granted)) return true;

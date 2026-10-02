@@ -46,6 +46,9 @@
                   :limit="10"
                   multiple
                   accept="image/*,.pdf,.doc,.docx"
+                  :file-list="uploadFiles"
+                  :on-remove="handleFileRemove"
+                  :disabled="recognizeSaving"
                   :on-change="handleFileChange"
                   class="upload-drop"
                 >
@@ -57,8 +60,8 @@
                 </el-upload>
               </el-form-item>
               <el-form-item>
-                <el-button type="primary" :loading="recognizeLoading" @click="startRecognize">开始识别</el-button>
-                <el-button v-if="recognizeResult" type="success" @click="saveRecognizedDrug">
+                <el-button type="primary" :loading="recognizeLoading" :disabled="recognizeSaving" @click="startRecognize">开始识别</el-button>
+                <el-button v-if="recognizeResult" type="success" :loading="recognizeSaving" @click="saveRecognizedDrug">
                   {{ recognizedDrugs.length > 1 ? `将 ${recognizedDrugs.length} 种药品保存到药品库` : '保存到药品库' }}
                 </el-button>
               </el-form-item>
@@ -87,7 +90,7 @@
                   :name="String(idx)"
                 />
               </el-tabs>
-              <el-form :model="currentRecognizeDrug" label-width="100px">
+              <el-form :model="currentRecognizeDrug" :disabled="recognizeSaving" label-width="100px">
                 <el-form-item label="药品名称" required>
                   <el-input v-model="currentRecognizeDrug.drugName" />
                 </el-form-item>
@@ -280,7 +283,7 @@
 
     <!-- MedicationEditdialog -->
     <el-dialog v-model="drugDialogVisible" :title="editingDrug.id ? '编辑药品' : '新增药品'" width="600px" destroy-on-close>
-      <el-form :model="editingDrug" label-width="100px">
+      <el-form :model="editingDrug" :disabled="drugSaving" label-width="100px">
         <el-form-item label="药品名称" required>
           <el-input v-model="editingDrug.drugName" placeholder="请输入药品名称" />
         </el-form-item>
@@ -334,13 +337,13 @@
       </el-form>
       <template #footer>
         <el-button @click="drugDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveDrug">保存</el-button>
+        <el-button type="primary" :loading="drugSaving" @click="saveDrug">保存</el-button>
       </template>
     </el-dialog>
 
     <!-- medicationrecordEditdialog -->
     <el-dialog v-model="logDialogVisible" :title="editingLog.id ? '编辑用药记录' : '新增用药记录'" width="600px" destroy-on-close>
-      <el-form :model="editingLog" label-width="100px">
+      <el-form :model="editingLog" :disabled="logSaving" label-width="100px">
         <el-form-item label="患者" required>
           <el-select v-model="editingLog.patientId" placeholder="选择患者" filterable>
             <el-option v-for="patient in patientList" :key="patient.id" :label="patient.patientName" :value="patient.id" />
@@ -389,7 +392,7 @@
       </el-form>
       <template #footer>
         <el-button @click="logDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveLog">保存</el-button>
+        <el-button type="primary" :loading="logSaving" @click="saveLog">保存</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -458,7 +461,23 @@ const uploadRef = ref(null);
 const recognizeLoading = ref(false);
 const recognizeResult = ref(false);
 const recognizeWarning = ref('');
-const selectedFiles = ref([]);
+const uploadFiles = ref([]);
+const selectedFiles = computed(() => uploadFiles.value.map(file => file.raw));
+const recognizeSaving = ref(false);
+const drugSaving = ref(false);
+const logSaving = ref(false);
+let viewActive = true;
+let patientVersion = 0;
+let drugReadVersion = 0;
+let activeDrugReadVersion = 0;
+let logReadVersion = 0;
+let uploadVersion = 0;
+let recognizedVersion = null;
+let uploadSaveToken = null;
+let drugDraftVersion = 0;
+let logDraftVersion = 0;
+let drugSaveToken = null;
+let logSaveToken = null;
 const activeRecognizeTab = ref('0');
 
 const uploadForm = reactive({
@@ -588,19 +607,90 @@ const drugsByCategory = computed(() => {
   return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
 });
 
+function clearDrugDraft(patientId) {
+  Object.keys(editingDrug).forEach(key => { editingDrug[key] = key === 'isActive' ? 1 : ''; });
+  editingDrug.id = null;
+  editingDrug.patientId = patientId;
+}
+
+function clearLogDraft(patientId) {
+  Object.keys(editingLog).forEach(key => { editingLog[key] = ''; });
+  editingLog.id = null;
+  editingLog.patientId = patientId;
+  editingLog.medicationId = null;
+}
+
+function invalidateUploadResult() {
+  uploadVersion++;
+  recognizedVersion = null;
+  recognizedDrugs.value = [];
+  recognizeResult.value = false;
+  recognizeWarning.value = '';
+  recognizeLoading.value = false;
+  activeRecognizeTab.value = '0';
+}
+
+function resetUploadState() {
+  invalidateUploadResult();
+  uploadFiles.value = [];
+  uploadForm.patientName = '';
+  uploadSaveToken = null;
+  recognizeSaving.value = false;
+  uploadRef.value?.clearFiles();
+}
+
+watch(() => uploadForm.patientId, resetUploadState, { flush: 'sync' });
+watch(() => [logFilter.patientId, logFilter.patientName], () => {
+  logReadVersion++;
+  logs.value = [];
+}, { flush: 'sync' });
+watch(() => editingLog.patientId, () => {
+  if (!logDialogVisible.value) return;
+  logDraftVersion++;
+  logSaveToken = null;
+  logSaving.value = false;
+  editingLog.medicationId = null;
+  activeDrugs.value = [];
+  loadActiveDrugs();
+}, { flush: 'sync' });
+watch(logDialogVisible, visible => {
+  activeDrugReadVersion++;
+  activeDrugs.value = [];
+  if (visible) loadActiveDrugs();
+  else logDraftVersion++;
+}, { flush: 'sync' });
+watch(drugDialogVisible, visible => {
+  if (!visible) drugDraftVersion++;
+}, { flush: 'sync' });
+
 watch(currentPatientId, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    uploadForm.patientId = newVal;
-    logFilter.patientId = newVal;
-    if (activeMenu.value === 'drugs' || activeMenu.value === 'category') {
-      loadDrugs();
-      loadActiveDrugs();
-    }
-    if (activeMenu.value === 'logs') {
-      loadLogs();
-    }
-  }
-});
+  if (newVal === oldVal) return;
+  patientVersion++;
+  drugReadVersion++;
+  activeDrugReadVersion++;
+  logReadVersion++;
+  drugs.value = [];
+  activeDrugs.value = [];
+  logs.value = [];
+  drugDialogVisible.value = false;
+  logDialogVisible.value = false;
+  drugDraftVersion++;
+  logDraftVersion++;
+  drugSaveToken = null;
+  logSaveToken = null;
+  drugSaving.value = false;
+  logSaving.value = false;
+  clearDrugDraft(newVal);
+  clearLogDraft(newVal);
+  // Reset even if the upload selector already happened to point at the new patient.
+  resetUploadState();
+  uploadForm.patientId = newVal;
+  logFilter.patientId = newVal;
+  logFilter.patientName = '';
+  loadDrugs();
+  loadActiveDrugs();
+  if (activeMenu.value === 'logs') loadLogs();
+}, { flush: 'sync' });
 
 function checkMobile() {
   isMobile.value = window.innerWidth <= 768;
@@ -608,15 +698,12 @@ function checkMobile() {
 
 function handleMenuSelect(index) {
   activeMenu.value = index;
-  if (index === 'drugs' || index === 'category') {
+  if (['drugs', 'category', 'logs', 'remind'].includes(index)) {
     loadPatientList();
     loadDrugs();
     loadActiveDrugs();
   }
-  if (index === 'logs') {
-    loadPatientList();
-    loadLogs();
-  }
+  if (index === 'logs') loadLogs();
 }
 
 function getDosageFormName(code) {
@@ -640,28 +727,45 @@ function getEffectType(code) {
 }
 
 async function loadDrugs() {
+  const request = ++drugReadVersion;
+  const context = patientVersion;
+  const patientId = currentPatientId.value;
+  const isCurrent = () => viewActive && context === patientVersion && request === drugReadVersion;
+  drugs.value = [];
   try {
-    const res = await api.listMedications(currentPatientId.value);
+    const res = await api.listMedications(patientId);
+    if (!isCurrent()) return;
     if (res.code === 200) {
       drugs.value = res.data || [];
     }
   } catch (e) {
+    if (!isCurrent()) return;
     ElMessage.error('药品加载失败：' + e.message);
   }
 }
 
 async function loadActiveDrugs() {
+  const request = ++activeDrugReadVersion;
+  const context = patientVersion;
+  const patientId = logDialogVisible.value ? editingLog.patientId : currentPatientId.value;
+  const isCurrent = () => viewActive && context === patientVersion && request === activeDrugReadVersion;
+  activeDrugs.value = [];
   try {
-    const res = await api.listActiveMedications(currentPatientId.value);
+    const res = await api.listActiveMedications(patientId);
+    if (!isCurrent()) return;
     if (res.code === 200) {
       activeDrugs.value = res.data || [];
     }
   } catch (e) {
+    if (!isCurrent()) return;
     ElMessage.error('药品加载失败：' + e.message);
   }
 }
 
 function showDrugDialog(drug = null) {
+  drugDraftVersion++;
+  drugSaveToken = null;
+  drugSaving.value = false;
   if (drug) {
     Object.assign(editingDrug, drug);
   } else {
@@ -675,13 +779,22 @@ function showDrugDialog(drug = null) {
 }
 
 async function saveDrug() {
+  if (!viewActive || drugSaving.value || !drugDialogVisible.value) return;
+  const context = patientVersion;
+  const draft = drugDraftVersion;
+  const token = {};
+  const payload = { ...editingDrug };
+  const isCurrent = () => viewActive && context === patientVersion && draft === drugDraftVersion;
+  drugSaveToken = token;
+  drugSaving.value = true;
   try {
     let res;
-    if (editingDrug.id) {
-      res = await api.updateMedication(editingDrug);
+    if (payload.id) {
+      res = await api.updateMedication(payload);
     } else {
-      res = await api.saveMedication(editingDrug);
+      res = await api.saveMedication(payload);
     }
+    if (!isCurrent()) return;
     if (res.code === 200) {
       ElMessage.success('保存成功');
       drugDialogVisible.value = false;
@@ -691,7 +804,13 @@ async function saveDrug() {
       ElMessage.error(res.message || '保存失败');
     }
   } catch (e) {
+    if (!isCurrent()) return;
     ElMessage.error('保存失败：' + e.message);
+  } finally {
+    if (drugSaveToken === token) {
+      drugSaveToken = null;
+      drugSaving.value = false;
+    }
   }
 }
 
@@ -711,18 +830,38 @@ async function deleteDrug(row) {
   }
 }
 
-function handleFileChange(file) {
-  selectedFiles.value.push(file.raw);
+function handleFileChange(file, fileList) {
+  // Element Plus emits onChange on nextTick, after a patient reset may have cleared its queue.
+  if (!viewActive || recognizeSaving.value || (fileList && !fileList.some(item => item.uid === file?.uid))) return;
+  if (!file?.raw || uploadFiles.value.some(item => item.uid === file.uid)) return;
+  if (uploadFiles.value.length >= 10) {
+    ElMessage.warning('最多选择10个药品文件');
+    return;
+  }
+  uploadFiles.value.push(file);
+  invalidateUploadResult();
+}
+
+function handleFileRemove(file) {
+  uploadFiles.value = uploadFiles.value.filter(item => item.uid !== file.uid);
+  invalidateUploadResult();
 }
 
 async function startRecognize() {
+  if (!viewActive || recognizeSaving.value) return;
   if (!selectedFiles.value || selectedFiles.value.length === 0) {
     ElMessage.warning('请先上传文件');
     return;
   }
+  invalidateUploadResult();
+  const version = uploadVersion;
+  const patientId = uploadForm.patientId;
+  const files = [...selectedFiles.value];
+  const isCurrent = () => viewActive && version === uploadVersion;
   recognizeLoading.value = true;
   try {
-    const res = await api.uploadAndRecognize(selectedFiles.value, uploadForm.patientId);
+    const res = await api.uploadAndRecognize(files, patientId);
+    if (!isCurrent()) return;
     if (res.code === 200) {
       const data = res.data;
       if (data?.error) {
@@ -762,6 +901,7 @@ async function startRecognize() {
 
       activeRecognizeTab.value = '0';
       recognizeWarning.value = data.warning || '';
+      recognizedVersion = version;
       recognizeResult.value = true;
       if (data.warning) {
         ElMessage.warning(data.warning);
@@ -770,17 +910,25 @@ async function startRecognize() {
       ElMessage.error(res.msg || res.message || '识别失败');
     }
   } catch (e) {
+    if (!isCurrent()) return;
     if (e.message?.includes('timeout')) {
       ElMessage.error('识别超时：文件过大或网络较慢，请稍后重试');
     } else {
       ElMessage.error('识别失败：' + e.message);
     }
   } finally {
-    recognizeLoading.value = false;
+    if (isCurrent()) recognizeLoading.value = false;
   }
 }
 
 async function saveRecognizedDrug() {
+  if (!viewActive || recognizeSaving.value || !recognizeResult.value || recognizedVersion !== uploadVersion) return;
+  const version = uploadVersion;
+  const patientId = uploadForm.patientId;
+  const token = {};
+  const isCurrent = () => viewActive && version === uploadVersion;
+  uploadSaveToken = token;
+  recognizeSaving.value = true;
   try {
     const drugs = recognizedDrugs.value.map(d => ({
       drugName: d.drugName,
@@ -793,7 +941,7 @@ async function saveRecognizedDrug() {
       category: d.category,
       defaultDosage: d.defaultDosage,
       remark: d.remark,
-      patientId: currentPatientId.value,
+      patientId,
       isActive: 1
     }));
 
@@ -809,24 +957,31 @@ async function saveRecognizedDrug() {
       res = await saveMedicationsBatch(drugs);
     }
 
+    if (!isCurrent()) return;
     if (res.code === 200) {
       ElMessage.success('保存成功');
-      recognizeResult.value = false;
-      recognizedDrugs.value = [];
-      activeRecognizeTab.value = '0';
-      selectedFiles.value = [];
-      if (uploadRef.value) uploadRef.value.clearFiles();
+      resetUploadState();
       loadDrugs();
       loadActiveDrugs();
     } else {
       ElMessage.error(res.message || '保存失败');
     }
   } catch (e) {
+    if (!isCurrent()) return;
     ElMessage.error('保存失败：' + e.message);
+  } finally {
+    if (uploadSaveToken === token) {
+      uploadSaveToken = null;
+      recognizeSaving.value = false;
+    }
   }
 }
 
 async function loadLogs() {
+  const request = ++logReadVersion;
+  const context = patientVersion;
+  const isCurrent = () => viewActive && context === patientVersion && request === logReadVersion;
+  logs.value = [];
   try {
     const params = {};
     if (logFilter.patientId) {
@@ -835,15 +990,20 @@ async function loadLogs() {
       params.patientName = logFilter.patientName;
     }
     const res = await api.listLogs(params);
+    if (!isCurrent()) return;
     if (res.code === 200) {
       logs.value = res.data || [];
     }
   } catch (e) {
+    if (!isCurrent()) return;
     ElMessage.error('用药记录加载失败：' + e.message);
   }
 }
 
 function showLogDialog(log = null) {
+  logDraftVersion++;
+  logSaveToken = null;
+  logSaving.value = false;
   if (log) {
     Object.assign(editingLog, log);
     editingLog.administrationTime = log.administrationTime;
@@ -859,13 +1019,22 @@ function showLogDialog(log = null) {
 }
 
 async function saveLog() {
+  if (!viewActive || logSaving.value || !logDialogVisible.value) return;
+  const context = patientVersion;
+  const draft = logDraftVersion;
+  const token = {};
+  const payload = { ...editingLog };
+  const isCurrent = () => viewActive && context === patientVersion && draft === logDraftVersion;
+  logSaveToken = token;
+  logSaving.value = true;
   try {
     let res;
-    if (editingLog.id) {
-      res = await api.updateLog(editingLog);
+    if (payload.id) {
+      res = await api.updateLog(payload);
     } else {
-      res = await api.saveLog(editingLog);
+      res = await api.saveLog(payload);
     }
+    if (!isCurrent()) return;
     if (res.code === 200) {
       ElMessage.success('保存成功');
       logDialogVisible.value = false;
@@ -874,7 +1043,13 @@ async function saveLog() {
       ElMessage.error(res.message || '保存失败');
     }
   } catch (e) {
+    if (!isCurrent()) return;
     ElMessage.error('保存失败：' + e.message);
+  } finally {
+    if (logSaveToken === token) {
+      logSaveToken = null;
+      logSaving.value = false;
+    }
   }
 }
 
@@ -894,7 +1069,7 @@ async function deleteLog(row) {
 }
 
 function handlePaste(e) {
-  if (activeMenu.value !== 'upload') return;
+  if (activeMenu.value !== 'upload' || recognizeSaving.value || !viewActive) return;
   const items = e.clipboardData?.items;
   if (!items) return;
   let added = 0;
@@ -918,7 +1093,7 @@ function handlePaste(e) {
 async function loadPatientList() {
   try {
     const res = await getPatientNames();
-    if (res.code === 200) {
+    if (viewActive && res.code === 200) {
       patientList.value = res.data || [];
     }
   } catch (e) {
@@ -937,6 +1112,9 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  viewActive = false;
+  patientVersion++;
+  resetUploadState();
   window.removeEventListener('resize', checkMobile);
   window.removeEventListener('paste', handlePaste);
 });

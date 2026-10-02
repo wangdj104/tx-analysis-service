@@ -14,15 +14,15 @@
       <p>家庭成员：{{ inspection.patients?.map(p => p.name).join('、') }}</p>
       <el-table :data="Object.entries(inspection.counts || {}).map(([table, count]) => ({ table, count }))"><el-table-column prop="table" label="记录类型" /><el-table-column prop="count" label="数量" /></el-table>
       <el-alert v-for="(w, i) in inspection.warnings || []" :key="i" :title="w" type="warning" :closable="false" />
-      <el-checkbox v-model="confirmed" class="restore-confirmation">我已了解备份将恢复为独立副本。</el-checkbox>
-      <el-button type="primary" :disabled="!confirmed" :loading="busy" @click="restore">恢复为副本</el-button>
+      <el-checkbox v-model="confirmed" :disabled="busy" class="restore-confirmation">我已了解备份将恢复为独立副本。</el-checkbox>
+      <el-button type="primary" :disabled="!confirmed || busy" :loading="busy" @click="restore">恢复为副本</el-button>
     </section>
     <el-alert v-if="result" :title="result" type="success" :closable="false" />
   </section>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { downloadBackup, previewBackup, restoreBackup } from '@/api/care'
 
@@ -31,12 +31,14 @@ const busy = ref(false)
 const inspection = ref(null)
 const confirmed = ref(false)
 const result = ref('')
-let selected
+let selected = null, inspectedFile = null, disposed = false
 
 async function download() {
+  if (busy.value || disposed) return
   busy.value = true
   try {
     const blob = await downloadBackup()
+    if (disposed) return
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -50,35 +52,52 @@ async function download() {
 }
 
 async function preview(e) {
-  selected = e.target.files?.[0]
+  if (busy.value || disposed) return
+  const input = e.target, file = input.files?.[0]
+  selected = file
+  inspectedFile = null
   inspection.value = null
   confirmed.value = false
   result.value = ''
-  if (!selected) return
+  if (!file) return
   busy.value = true
   try {
-    inspection.value = (await previewBackup(selected)).data
+    const data = (await previewBackup(file)).data
+    if (disposed || selected !== file || !data || typeof data !== 'object' || Array.isArray(data)) return
+    inspection.value = data
+    inspectedFile = file
   } finally {
     busy.value = false
-    e.target.value = ''
+    input.value = ''
   }
 }
 
 async function restore() {
-  if (!selected || !confirmed.value) return
+  if (busy.value || disposed || !selected || !inspection.value || inspectedFile !== selected || !confirmed.value) return
+  const file = selected
   busy.value = true
   try {
-    const r = await restoreBackup(selected)
+    const r = await restoreBackup(file)
+    if (disposed || selected !== file || inspectedFile !== file) return
     result.value = r.data.message
     inspection.value = null
     confirmed.value = false
     selected = null
+    inspectedFile = null
     emit('restored')
     window.dispatchEvent(new Event('care-patients-changed'))
   } finally {
     busy.value = false
   }
 }
+onUnmounted(() => {
+  disposed = true
+  selected = null
+  inspectedFile = null
+  inspection.value = null
+  confirmed.value = false
+  busy.value = false
+})
 </script>
 
 <style scoped>

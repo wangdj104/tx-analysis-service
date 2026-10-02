@@ -67,7 +67,7 @@
 
     <!-- Add/Editdialog -->
     <el-dialog v-model="dialogVisible" :title="isEdit ? 'EditNutrition Assessment' : 'AddNutrition Assessment'" :width="isMobile ? '92%' : '680px'" destroy-on-close>
-      <el-form :model="form" label-width="110px" ref="formRef" :rules="rules">
+      <el-form :disabled="formSaving" :model="form" label-width="110px" ref="formRef" :rules="rules">
         <el-form-item label="assessmentDate" prop="assessmentDate">
           <el-date-picker v-model="form.assessmentDate" type="date" placeholder="selectDate" value-format="YYYY-MM-DD" style="width: 100%" />
         </el-form-item>
@@ -158,7 +158,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">Cancel</el-button>
-        <el-button type="info" @click="handlePreview" :loading="previewLoading">pre-calculate</el-button>
+        <el-button type="info" @click="handlePreview" :disabled="formSaving" :loading="previewLoading">pre-calculate</el-button>
         <el-button type="primary" @click="handleSave" :loading="saving">Save</el-button>
       </template>
     </el-dialog>
@@ -166,7 +166,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Plus, Refresh, FirstAidKit } from '@element-plus/icons-vue';
 import { listAssessments, saveAssessment, calculateNutrition, deleteAssessment } from '@/api/nutrition.js';
@@ -180,20 +180,28 @@ const loading = ref(false);
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const saving = ref(false);
+const formSaving = ref(false);
 const previewLoading = ref(false);
 const previewResult = ref(null);
 const formRef = ref(null);
 
-const form = reactive({
-  id: null, patientId: null, assessmentDate: '',
-  bodyWeight: null, height: null, bmi: null,
-  sgaScore: null, sgaGrade: null,
-  albumin: null, preAlbumin: null,
-  totalProteinIntake: null, dailyCalorieIntake: null,
-  dailyPotassiumIntake: null, dailyPhosphorusIntake: null,
-  fluidIntake: null,
-  nutritionStatus: null, supplementAdvice: null, remark: ''
-});
+let dialogEpoch = 0;
+let listRequest = 0;
+let previewRequest = 0;
+
+function emptyForm(patientId = null) {
+  return {
+    id: null, patientId, assessmentDate: '',
+    bodyWeight: null, height: null, bmi: null,
+    sgaScore: null, sgaGrade: null,
+    albumin: null, preAlbumin: null,
+    totalProteinIntake: null, dailyCalorieIntake: null,
+    dailyPotassiumIntake: null, dailyPhosphorusIntake: null,
+    fluidIntake: null,
+    nutritionStatus: null, supplementAdvice: null, remark: ''
+  };
+}
+const form = reactive(emptyForm());
 
 const rules = {
   assessmentDate: [{ required: true, message: 'SelectassessmentDate', trigger: 'change' }]
@@ -206,44 +214,65 @@ function statusLabel(v) { return STATUS_MAP[v] || v; }
 function statusTagType(v) { return { GOOD: 'success', AT_RISK: 'warning', DEFICIENT: 'danger' }[v] || 'info'; }
 function sgaTagType(v) { return { A: 'success', B: 'warning', C: 'danger' }[v] || 'info'; }
 
+function invalidateDialog() {
+  formSaving.value = false;
+  dialogEpoch++;
+  previewRequest++;
+  previewResult.value = null;
+  previewLoading.value = false;
+}
+
+function isCurrentDraft(epoch, patientId) {
+  return epoch === dialogEpoch && dialogVisible.value && !!patientId
+    && patientId === currentPatientId.value && patientId === form.patientId;
+}
+
+function matchesForm(snapshot) {
+  return Object.keys(snapshot).every(key => snapshot[key] === form[key]);
+}
+
 async function loadData() {
-  if (!currentPatientId.value) { records.value = []; return; }
+  const request = ++listRequest;
+  const patientId = currentPatientId.value;
+  if (!patientId) { records.value = []; loading.value = false; return; }
   loading.value = true;
   try {
-    const res = await listAssessments(currentPatientId.value);
+    const res = await listAssessments(patientId);
+    if (request !== listRequest || patientId !== currentPatientId.value) return;
     if (res.code === 200) records.value = res.data || [];
-  } catch (e) { console.error(e); }
-  finally { loading.value = false; }
+  } catch (e) { if (request === listRequest) console.error(e); }
+  finally { if (request === listRequest) loading.value = false; }
 }
 
 function showAddDialog() {
   if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
+  invalidateDialog();
   isEdit.value = false;
-  previewResult.value = null;
-  Object.assign(form, {
-    id: null, patientId: currentPatientId.value, assessmentDate: '',
-    bodyWeight: null, height: null, bmi: null,
-    sgaScore: null, sgaGrade: null,
-    albumin: null, preAlbumin: null,
-    totalProteinIntake: null, dailyCalorieIntake: null,
-    dailyPotassiumIntake: null, dailyPhosphorusIntake: null,
-    fluidIntake: null,
-    nutritionStatus: null, supplementAdvice: null, remark: ''
-  });
+  Object.assign(form, emptyForm(currentPatientId.value));
   dialogVisible.value = true;
 }
 
 function showEditDialog(row) {
+  if (!currentPatientId.value || row.patientId !== currentPatientId.value) {
+    ElMessage.warning('The patient changed. Select the assessment again.');
+    return;
+  }
+  invalidateDialog();
   isEdit.value = true;
-  previewResult.value = null;
-  Object.assign(form, { ...row });
+  Object.assign(form, emptyForm(), row);
   dialogVisible.value = true;
 }
 
 async function handlePreview() {
+  if (formSaving.value) return;
+  const epoch = dialogEpoch, patientId = form.patientId;
+  if (!isCurrentDraft(epoch, patientId)) return;
+  const request = ++previewRequest;
+  const snapshot = { ...form };
   previewLoading.value = true;
   try {
-    const res = await calculateNutrition({ ...form, patientId: currentPatientId.value });
+    const res = await calculateNutrition(snapshot);
+    if (!isCurrentDraft(epoch, patientId) || request !== previewRequest || !matchesForm(snapshot)) return;
     if (res.code === 200) {
       previewResult.value = res.data;
       form.bmi = res.data.bmi;
@@ -251,23 +280,35 @@ async function handlePreview() {
       form.sgaGrade = res.data.sgaGrade;
       form.supplementAdvice = res.data.supplementAdvice;
     }
-  } catch (e) { ElMessage.error('Calculation failed'); }
-  finally { previewLoading.value = false; }
+  } catch (e) {
+    if (isCurrentDraft(epoch, patientId) && request === previewRequest && matchesForm(snapshot)) ElMessage.error('Calculation failed');
+  } finally { if (request === previewRequest) previewLoading.value = false; }
 }
 
 async function handleSave() {
-  try { await formRef.value.validate(); } catch { return; }
+  const epoch = dialogEpoch, patientId = form.patientId;
+  if (saving.value || !isCurrentDraft(epoch, patientId) || !formRef.value) return;
+  const snapshot = { ...form };
   saving.value = true;
+  formSaving.value = true;
+  previewRequest++;
+  previewLoading.value = false;
   try {
-    form.patientId = currentPatientId.value;
-    const res = await saveAssessment(form);
+    try { await formRef.value.validate(); } catch { return; }
+    // Validation and network responses may finish after inputs have changed.
+    if (!isCurrentDraft(epoch, patientId) || !matchesForm(snapshot)) return;
+    const res = await saveAssessment(snapshot);
+    if (!isCurrentDraft(epoch, patientId) || !matchesForm(snapshot)) return;
     if (res.code === 200) {
       ElMessage.success('Saved successfully');
       dialogVisible.value = false;
       loadData();
     } else { ElMessage.error(res.msg || 'Failed to save'); }
-  } catch (e) { ElMessage.error('Failed to save'); }
-  finally { saving.value = false; }
+  } catch (e) { if (isCurrentDraft(epoch, patientId) && matchesForm(snapshot)) ElMessage.error('Failed to save'); }
+  finally {
+    saving.value = false;
+    if (epoch === dialogEpoch) formSaving.value = false;
+  }
 }
 
 async function handleDelete(id) {
@@ -278,8 +319,23 @@ async function handleDelete(id) {
   } catch (e) { ElMessage.error('Failed to delete'); }
 }
 
-watch(currentPatientId, () => loadData());
+watch(dialogVisible, visible => {
+  if (!visible) invalidateDialog();
+}, { flush: 'sync' });
+
+watch(currentPatientId, () => {
+  invalidateDialog();
+  dialogVisible.value = false;
+  isEdit.value = false;
+  Object.assign(form, emptyForm());
+  records.value = [];
+  loadData();
+}, { flush: 'sync' });
 onMounted(() => loadData());
+onUnmounted(() => {
+  listRequest++;
+  invalidateDialog();
+});
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>

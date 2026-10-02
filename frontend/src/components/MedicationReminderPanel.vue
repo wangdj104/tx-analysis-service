@@ -10,12 +10,12 @@
       <el-table-column prop="remindTime" label="Time" width="100" />
       <el-table-column label="Repeat days" min-width="190"><template #default="{ row }">{{ daysText(row.repeatDays) }}</template></el-table-column>
       <el-table-column prop="remark" label="Notes" min-width="160" show-overflow-tooltip />
-      <el-table-column label="Enabled" width="90" align="center"><template #default="{ row }"><el-switch :model-value="row.enabled === 1" @change="toggle(row)" /></template></el-table-column>
-      <el-table-column label="Actions" min-width="140" fixed="right"><template #default="{ row }"><div class="table-actions"><el-button link type="primary" @click="openEdit(row)">Edit</el-button><el-popconfirm title="Delete this medication reminder?" @confirm="remove(row)"><template #reference><el-button link type="danger">Delete</el-button></template></el-popconfirm></div></template></el-table-column>
+      <el-table-column label="Enabled" width="90" align="center"><template #default="{ row }"><el-switch :model-value="row.enabled === 1" :disabled="pendingRows.has(row.id)" @change="toggle(row)" /></template></el-table-column>
+      <el-table-column label="Actions" min-width="140" fixed="right"><template #default="{ row }"><div class="table-actions"><el-button link type="primary" :disabled="pendingRows.has(row.id)" @click="openEdit(row)">Edit</el-button><el-popconfirm title="Delete this medication reminder?" @confirm="remove(row)"><template #reference><el-button link type="danger" :disabled="pendingRows.has(row.id)">Delete</el-button></template></el-popconfirm></div></template></el-table-column>
     </el-table>
 
     <el-dialog v-model="visible" :title="form.id ? 'Edit medication reminder' : 'Add medication reminder'" width="min(560px, 94vw)" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
+      <el-form ref="formRef" :model="form" :rules="rules" :disabled="saving" label-position="top">
         <el-form-item label="Medication" prop="medicationId"><el-select v-model="form.medicationId" filterable style="width:100%"><el-option v-for="item in medications.filter(m => m.isActive === 1)" :key="item.id" :label="item.drugName" :value="item.id" /></el-select></el-form-item>
         <el-form-item label="Reminder time" prop="remindTime"><el-time-picker v-model="form.remindTime" format="HH:mm" value-format="HH:mm" style="width:100%" /></el-form-item>
         <el-form-item label="Repeat days" prop="repeatDays"><el-checkbox-group v-model="form.repeatDays"><el-checkbox v-for="day in weekDays" :key="day.value" :value="day.value">{{ day.label }}</el-checkbox></el-checkbox-group></el-form-item>
@@ -29,7 +29,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { deleteReminder, listReminders, saveReminder, toggleEnabled } from '@/api/medicationReminder'
@@ -39,11 +39,15 @@ const rows = ref([]), loading = ref(false), saving = ref(false), visible = ref(f
 const weekDays = [{ value: '1', label: 'Monday' }, { value: '2', label: 'Tuesday' }, { value: '3', label: 'Wednesday' }, { value: '4', label: 'Thursday' }, { value: '5', label: 'Friday' }, { value: '6', label: 'Saturday' }, { value: '7', label: 'Sunday' }]
 const form = reactive({ id: null, medicationId: null, remindTime: '08:00', repeatDays: ['1', '2', '3', '4', '5', '6', '7'], dosage: '', remark: '', enabled: 1 })
 const rules = { medicationId: [{ required: true, message: 'Select a medication', trigger: 'change' }], remindTime: [{ required: true, message: 'Select a reminder time', trigger: 'change' }], repeatDays: [{ type: 'array', required: true, min: 1, message: 'Select at least one day', trigger: 'change' }] }
-let version = 0
+const pendingRows = reactive(new Map())
+let version = 0, patientVersion = 0, dialogVersion = 0, disposed = false
+
+function invalidateDialog() { dialogVersion++; saving.value = false }
+function currentPatient(id, generation) { return !disposed && id === props.patientId && generation === patientVersion }
 
 async function load() {
   const id = props.patientId, v = ++version
-  if (!id) { rows.value = []; return }
+  if (!id || disposed) { rows.value = []; loading.value = false; return }
   loading.value = true
   try {
     const res = await listReminders(id)
@@ -53,15 +57,63 @@ async function load() {
   }
 }
 function reset() { Object.assign(form, { id: null, medicationId: null, remindTime: '08:00', repeatDays: ['1', '2', '3', '4', '5', '6', '7'], dosage: '', remark: '', enabled: 1 }) }
-function openCreate() { reset(); visible.value = true }
-function openEdit(row) { Object.assign(form, { id: row.id, medicationId: row.medicationId, remindTime: row.remindTime, repeatDays: (row.repeatDays || '').split(',').filter(Boolean), dosage: row.dosage || '', remark: row.remark || '', enabled: row.enabled ?? 1 }); visible.value = true }
-async function submit() { await formRef.value.validate(); saving.value = true; try { await saveReminder({ ...form, patientId: Number(props.patientId), repeatDays: form.repeatDays.join(',') }); ElMessage.success('Reminder saved'); visible.value = false; await load() } finally { saving.value = false } }
-async function toggle(row) { await toggleEnabled(row.id); await load() }
-async function remove(row) { await deleteReminder(row.id); ElMessage.success('Reminder deleted'); await load() }
+function openCreate() { if (!props.patientId || disposed) return; invalidateDialog(); reset(); visible.value = true }
+function openEdit(row) { if (!props.patientId || disposed) return; invalidateDialog(); Object.assign(form, { id: row.id, medicationId: row.medicationId, remindTime: row.remindTime, repeatDays: (row.repeatDays || '').split(',').filter(Boolean), dosage: row.dosage || '', remark: row.remark || '', enabled: row.enabled ?? 1 }); visible.value = true }
+async function submit() {
+  if (saving.value || !visible.value || !props.patientId || !formRef.value || disposed) return
+  const id = props.patientId, patient = patientVersion, dialog = dialogVersion
+  const payload = { ...form, patientId: Number(id), repeatDays: form.repeatDays.join(',') }
+  const current = () => currentPatient(id, patient) && dialog === dialogVersion && visible.value
+  const unchanged = () => Object.keys(payload).every(key => key === 'patientId' ||
+    payload[key] === (key === 'repeatDays' ? form.repeatDays.join(',') : form[key]))
+  saving.value = true
+  try {
+    await formRef.value.validate()
+    if (!current() || !unchanged()) return
+    await saveReminder(payload)
+    if (!current() || !unchanged()) return
+    ElMessage.success('Reminder saved')
+    visible.value = false
+    await load()
+  } finally {
+    if (dialog === dialogVersion) saving.value = false
+  }
+}
+async function runRowAction(row, action, message) {
+  const id = row.id, patientId = props.patientId, patient = patientVersion
+  if (!patientId || disposed || pendingRows.has(id)) return
+  const token = Symbol()
+  pendingRows.set(id, token)
+  try {
+    await action(id)
+    if (!currentPatient(patientId, patient)) return
+    if (message) ElMessage.success(message)
+    await load()
+  } finally {
+    if (pendingRows.get(id) === token) pendingRows.delete(id)
+  }
+}
+async function toggle(row) { await runRowAction(row, toggleEnabled) }
+async function remove(row) { await runRowAction(row, deleteReminder, 'Reminder deleted') }
 function medicationName(id) { return props.medications.find(x => x.id === id)?.drugName || 'Unknown medication' }
 function daysText(value) { const values = (value || '').split(','); if (values.length === 7) return 'Every day'; return weekDays.filter(x => values.includes(x.value)).map(x => x.label).join(', ') || 'Not set' }
 async function requestBrowserNotification() { if (!('Notification' in window)) { ElMessage.warning('This browser does not support notifications'); return } const permission = await Notification.requestPermission(); ElMessage[permission === 'granted' ? 'success' : 'warning'](permission === 'granted' ? 'Browser notifications enabled' : 'Browser notification permission was not granted') }
-watch(() => props.patientId, () => { visible.value = false; rows.value = []; load() }, { immediate: true })
+watch(visible, value => { if (!value) invalidateDialog() }, { flush: 'sync' })
+watch(() => props.patientId, () => {
+  patientVersion++
+  invalidateDialog()
+  visible.value = false
+  rows.value = []
+  load()
+}, { immediate: true, flush: 'sync' })
+onUnmounted(() => {
+  disposed = true
+  version++
+  patientVersion++
+  invalidateDialog()
+  pendingRows.clear()
+  loading.value = false
+})
 </script>
 
 <style scoped>

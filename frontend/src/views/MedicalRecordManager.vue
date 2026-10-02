@@ -26,9 +26,9 @@
         <div class="content-panel">
         <!-- Upload and Recognize -->
         <div v-show="activeMenu === 'upload'" class="upload-panel">
-          <el-form :model="uploadForm" label-width="100px" class="upload-form">
+          <el-form :disabled="uploadSaving" :model="uploadForm" label-width="100px" class="upload-form">
             <el-form-item label="Patient" required>
-              <el-select v-model="uploadForm.patientId" placeholder="Select a patient" filterable allow-create style="max-width: 320px">
+              <el-select v-model="uploadForm.patientId" placeholder="Select a patient" filterable style="max-width: 320px">
                 <el-option
                   v-for="patient in patientList"
                   :key="patient.id"
@@ -64,6 +64,9 @@
                 :limit="10"
                 multiple
                 accept="image/*,.pdf"
+                :file-list="uploadFiles"
+                :on-remove="handleFileRemove"
+                :disabled="uploadSaving"
                 :on-change="handleFileChange"
                 class="upload-drop"
               >
@@ -73,6 +76,7 @@
                   <div class="el-upload__tip">JPG, PNG, and PDF are supported. PDFs are limited to the first 30 pages. Mobile photos are compressed before upload.</div>
                 </template>
               </el-upload>
+              <p v-if="filesProcessing" role="status" aria-live="polite">Preparing photos. Please wait…</p>
               <div v-if="isMobile" class="mobile-upload-actions">
                 <el-button type="primary" plain size="small" @click="triggerCameraUpload('page')">
                   <el-icon><Camera /></el-icon> Take photo
@@ -147,9 +151,9 @@
             </template>
 
             <el-form-item>
-              <el-button v-if="uploadMode === 'recognize'" type="primary" :loading="recognizeLoading" @click="startRecognize">Start recognition</el-button>
-              <el-button v-if="uploadMode === 'archive'" type="success" :loading="archiveSaving" @click="saveArchiveRecord">Save record</el-button>
-              <el-button v-if="recognizeResult" type="success" @click="saveRecognizedRecord">
+              <el-button v-if="uploadMode === 'recognize'" type="primary" :loading="recognizeLoading" :disabled="filesProcessing || uploadSaving" @click="startRecognize">Start recognition</el-button>
+              <el-button v-if="uploadMode === 'archive'" type="success" :loading="archiveSaving" :disabled="filesProcessing" @click="saveArchiveRecord">Save record</el-button>
+              <el-button v-if="recognizeResult" type="success" :loading="recognizedSaving" :disabled="filesProcessing || archiveSaving" @click="saveRecognizedRecord">
                 {{ recognizedRecords.length > 1 ? `Save ${recognizedRecords.length} records` : 'Save record' }}
               </el-button>
             </el-form-item>
@@ -192,9 +196,9 @@
                 :name="String(idx)"
               />
             </el-tabs>
-            <el-form :model="currentRecognizeRecord" label-width="100px">
+            <el-form :disabled="uploadSaving" :model="currentRecognizeRecord" label-width="100px">
               <el-form-item v-if="recognizedRecords.length <= 1" label="Examination Type">
-                <el-select v-model="currentRecognizeRecord.recordType" style="max-width: 320px">
+                <el-select :disabled="uploadSaving" v-model="currentRecognizeRecord.recordType" style="max-width: 320px">
                   <el-option v-for="(label, val) in recordTypeMap" :key="val" :label="label" :value="val" />
                 </el-select>
               </el-form-item>
@@ -205,43 +209,43 @@
                 <el-date-picker v-model="currentRecognizeRecord.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%; max-width: 320px" />
               </el-form-item>
               <el-form-item label="Hospital">
-                <el-input v-model="currentRecognizeRecord.hospitalName" style="max-width: 400px" />
+                <el-input :disabled="uploadSaving" v-model="currentRecognizeRecord.hospitalName" style="max-width: 400px" />
               </el-form-item>
               <el-form-item label="Clinician">
-                <el-input v-model="currentRecognizeRecord.doctorName" style="max-width: 320px" />
+                <el-input :disabled="uploadSaving" v-model="currentRecognizeRecord.doctorName" style="max-width: 320px" />
               </el-form-item>
             </el-form>
             <div class="recognize-items-toolbar">
               <span class="recognize-items-count">total {{ currentRecognizeRecord.items.length }} item</span>
               <div class="recognize-items-actions">
-                <el-button size="small" @click="dedupeRecognizedItemsLocal">mergeduplicateitem</el-button>
-                <el-button size="small" type="primary" plain @click="addRecognizedItem">Addonerow</el-button>
+                <el-button :disabled="uploadSaving" size="small" @click="dedupeRecognizedItemsLocal">mergeduplicateitem</el-button>
+                <el-button :disabled="uploadSaving" size="small" type="primary" plain @click="addRecognizedItem">Addonerow</el-button>
               </div>
             </div>
             <el-table :data="currentRecognizeRecord.items" border size="small" max-height="280" class="app-data-table recognize-items-table">
               <el-table-column prop="itemName" label="Test item" min-width="140">
                 <template #default="{ row }">
-                  <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
+                  <el-input :disabled="uploadSaving" v-model="row.itemName" size="small" placeholder="Test item name" />
                 </template>
               </el-table-column>
               <el-table-column prop="resultValue" label="measured value" width="120">
                 <template #default="{ row }">
-                  <el-input v-model="row.resultValue" size="small" />
+                  <el-input :disabled="uploadSaving" v-model="row.resultValue" size="small" />
                 </template>
               </el-table-column>
               <el-table-column prop="unit" label="Unit" width="88">
                 <template #default="{ row }">
-                  <el-input v-model="row.unit" size="small" />
+                  <el-input :disabled="uploadSaving" v-model="row.unit" size="small" />
                 </template>
               </el-table-column>
               <el-table-column prop="referenceRange" label="Reference Range" width="120">
                 <template #default="{ row }">
-                  <el-input v-model="row.referenceRange" size="small" />
+                  <el-input :disabled="uploadSaving" v-model="row.referenceRange" size="small" />
                 </template>
               </el-table-column>
               <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
                 <template #default="{ row }">
-                  <el-select v-model="row.isAbnormal" size="small" style="width: 76px">
+                  <el-select :disabled="uploadSaving" v-model="row.isAbnormal" size="small" style="width: 76px">
                     <el-option label="Normal" :value="0" />
                     <el-option label="high" :value="1" />
                     <el-option label="low" :value="-1" />
@@ -250,7 +254,7 @@
               </el-table-column>
               <el-table-column label="Actions" width="72" fixed="right" align="center">
                 <template #default="{ $index }">
-                  <el-button link type="danger" size="small" @click="removeRecognizedItem($index)">Delete</el-button>
+                  <el-button :disabled="uploadSaving" link type="danger" size="small" @click="removeRecognizedItem($index)">Delete</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -426,7 +430,7 @@
 
     <!-- Upload and Recognizedialog (listpageshortcutentry)  -->
     <el-dialog v-model="uploadDialogVisible" title="Upload report" width="min(800px, 95vw)" :close-on-click-modal="false" destroy-on-close>
-      <el-form :model="uploadForm" label-width="100px">
+      <el-form :disabled="uploadSaving" :model="uploadForm" label-width="100px">
         <el-form-item label="PatientName" required>
           <el-input v-model="uploadForm.patientName" placeholder="Enter PatientName" />
         </el-form-item>
@@ -451,7 +455,10 @@
             :limit="10"
             multiple
             accept="image/*,.pdf,.doc,.docx"
-            :on-change="handleFileChange"
+            :file-list="uploadFiles"
+                :on-remove="handleFileRemove"
+                :disabled="uploadSaving"
+                :on-change="handleFileChange"
           >
             <el-icon :size="40"><UploadFilled /></el-icon>
             <div class="upload-text">Drag files here, <em>click to upload</em>, or paste images. Multiple files are supported.</div>
@@ -459,6 +466,7 @@
               <div class="el-upload__tip">JPG, PNG, and PDF are supported. PDFs are limited to the first 30 pages.</div>
             </template>
           </el-upload>
+          <p v-if="filesProcessing" role="status" aria-live="polite">Preparing photos. Please wait…</p>
           <div v-if="isMobile" class="mobile-upload-actions">
             <el-button type="primary" plain size="small" @click="triggerCameraUpload('dialog')">
               <el-icon><Camera /></el-icon> take a photoUpload
@@ -540,8 +548,8 @@
 
       <template #footer>
         <el-button @click="uploadDialogVisible = false">Cancel</el-button>
-        <el-button v-if="!recognizeResult" type="primary" :loading="recognizeLoading" @click="startRecognize">Start recognition</el-button>
-        <el-button v-else type="success" @click="saveRecognizedRecord">Save record</el-button>
+        <el-button v-if="!recognizeResult" type="primary" :loading="recognizeLoading" :disabled="filesProcessing || uploadSaving" @click="startRecognize">Start recognition</el-button>
+        <el-button v-else type="success" :loading="recognizedSaving" :disabled="filesProcessing || archiveSaving" @click="saveRecognizedRecord">Save record</el-button>
       </template>
     </el-dialog>
 
@@ -814,7 +822,14 @@ const recognizeLoading = ref(false);
 const recognizeResult = ref(false);
 const recognizeWarning = ref('');
 const archiveSaving = ref(false);
-const selectedFiles = ref([]);
+const uploadFiles = ref([]);
+const selectedFiles = computed(() => uploadFiles.value.filter(file => file.prepared).map(file => file.prepared));
+const filesProcessing = computed(() => uploadFiles.value.some(file => !file.prepared));
+const recognizedSaving = ref(false);
+const uploadSaving = computed(() => archiveSaving.value || recognizedSaving.value);
+let uploadVersion = 0;
+let resettingUpload = false;
+const uploadPreviewUrls = new Map();
 const loading = ref(false);
 const editDialogVisible = ref(false);
 const editForm = reactive({
@@ -1039,8 +1054,21 @@ async function goUpload() {
   if (!failure && route.query.tab === 'upload') resetUploadState();
 }
 
-function resetUploadState() {
-  uploadForm.patientId = null;
+function invalidateUploadResult() {
+  uploadVersion++;
+  recognizeLoading.value = false;
+  archiveSaving.value = false;
+  recognizedSaving.value = false;
+  recognizeResult.value = false;
+  recognizeWarning.value = '';
+  recognizedRecords.value = [];
+  activeRecognizeTab.value = '0';
+}
+
+function resetUploadState(patientId = currentPatientId.value) {
+  resettingUpload = true;
+  invalidateUploadResult();
+  uploadForm.patientId = patientId;
   uploadForm.patientName = '';
   uploadForm.recordType = '';
   uploadMode.value = 'recognize';
@@ -1058,7 +1086,11 @@ function resetUploadState() {
   recognizedData.remark = '';
   recognizeResult.value = false;
   recognizeWarning.value = '';
-  selectedFiles.value = [];
+  releaseUploadPreviews();
+  uploadFiles.value = [];
+  uploadRef.value?.clearFiles();
+  uploadDialogRef.value?.clearFiles();
+  resettingUpload = false;
 }
 
 function buildRecognizeRecordFromApi(rec) {
@@ -1235,29 +1267,54 @@ function showUploadDialog() {
   uploadDialogVisible.value = true;
 }
 
-async function handleFileChange(file) {
+async function handleFileChange(file, fileList) {
+  if (uploadSaving.value || (fileList && !fileList.some(item => item.uid === file?.uid))) return;
   const raw = file?.raw;
-  if (!raw) return;
+  if (!raw || uploadFiles.value.some(item => item.uid === file.uid)) return;
+  if (uploadFiles.value.length >= 10) {
+    ElMessage.warning('Choose at most 10 report files');
+    return;
+  }
+  const entry = reactive({ ...file, prepared: null });
+  uploadFiles.value.push(entry);
+  invalidateUploadResult();
+  let prepared = raw;
   try {
-    if (isImageFile(raw)) {
-      const before = raw.size;
-      const next = await compressImageFile(raw);
-      if (next.size < before) {
-        ElMessage.info(`Compressed: ${formatFileSize(before)} → ${formatFileSize(next.size)}`);
-      }
-      selectedFiles.value.push(next);
-      return;
-    }
-  } catch (_) { /* compressfailedthenuseoriginalchart */ }
-  selectedFiles.value.push(raw);
+    if (isImageFile(raw)) prepared = await compressImageFile(raw);
+  } catch (_) { /* Keep the selected original if compression is unavailable. */ }
+  // A removed file or a replaced patient draft must never be re-added by late compression.
+  if (!uploadFiles.value.includes(entry)) return;
+  entry.prepared = prepared;
+}
+
+function handleFileRemove(file) {
+  const removed = uploadFiles.value.find(item => item.uid === file.uid);
+  if (removed?.prepared) releaseUploadPreview(removed.prepared);
+  uploadFiles.value = uploadFiles.value.filter(item => item.uid !== file.uid);
+  invalidateUploadResult();
+}
+
+function uploadReady() {
+  if (filesProcessing.value) {
+    ElMessage.warning('Photos are still being prepared. Please try again when preparation finishes.');
+    return false;
+  }
+  if (!patientList.value.some(patient => Number(patient.id) === Number(uploadForm.patientId)) || !uploadForm.patientId) {
+    ElMessage.warning('Select an authorized patient');
+    return false;
+  }
+  return true;
 }
 
 function triggerCameraUpload(target) {
+  if (uploadSaving.value) return;
+  const version = uploadVersion;
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
   input.capture = 'environment';
   input.onchange = (e) => {
+    if (version !== uploadVersion || uploadSaving.value) return;
     const file = e.target.files[0];
     if (!file) return;
     const targetRef = target === 'dialog' ? uploadDialogRef : uploadRef;
@@ -1267,11 +1324,14 @@ function triggerCameraUpload(target) {
 }
 
 function triggerAlbumUpload(target) {
+  if (uploadSaving.value) return;
+  const version = uploadVersion;
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*,.pdf';
   input.multiple = true;
   input.onchange = (e) => {
+    if (version !== uploadVersion || uploadSaving.value) return;
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const targetRef = target === 'dialog' ? uploadDialogRef : uploadRef;
@@ -1281,6 +1341,7 @@ function triggerAlbumUpload(target) {
 }
 
 async function startRecognize() {
+  if (recognizeLoading.value || uploadSaving.value || !uploadReady()) return;
   if (!selectedFiles.value || selectedFiles.value.length === 0) {
     ElMessage.warning('Upload at least one report file');
     return;
@@ -1289,9 +1350,15 @@ async function startRecognize() {
     ElMessage.warning('Select a patient');
     return;
   }
+  invalidateUploadResult();
+  const version = uploadVersion;
+  const patientId = uploadForm.patientId;
+  const files = [...selectedFiles.value];
+  const recordType = uploadForm.recordType;
   recognizeLoading.value = true;
   try {
-    const res = await api.uploadAndRecognize(selectedFiles.value, uploadForm.patientId, uploadForm.recordType);
+    const res = await api.uploadAndRecognize(files, patientId, recordType);
+    if (version !== uploadVersion) return;
     if (res.code === 200) {
       const data = res.data;
       if (data?.error) {
@@ -1309,6 +1376,7 @@ async function startRecognize() {
       ElMessage.error(res.msg || res.message || 'Recognition failed');
     }
   } catch (e) {
+    if (version !== uploadVersion) return;
     const status = e.response?.status;
     if (status === 413) {
       ElMessage.error('The image was rejected because it is too large. Choose a smaller file or contact an administrator.');
@@ -1318,14 +1386,14 @@ async function startRecognize() {
       ElMessage.error('Recognition failed: ' + (e.message || 'Unknown error'));
     }
   } finally {
-    recognizeLoading.value = false;
+    if (version === uploadVersion) recognizeLoading.value = false;
   }
 }
 
-async function buildUploadAttachments() {
-  if (!selectedFiles.value?.length) return [];
+async function buildUploadAttachments(files = [...selectedFiles.value]) {
+  if (!files.length) return [];
   const attachments = [];
-  for (const file of selectedFiles.value) {
+  for (const file of files) {
     const name = file.name?.toLowerCase() || '';
     if (name.endsWith('.pdf')) {
       attachments.push({
@@ -1358,7 +1426,18 @@ function mapItemsForSave(items) {
 }
 
 function getFilePreviewUrl(file) {
-  return URL.createObjectURL(file);
+  if (!uploadPreviewUrls.has(file)) uploadPreviewUrls.set(file, URL.createObjectURL(file));
+  return uploadPreviewUrls.get(file);
+}
+
+function releaseUploadPreview(file) {
+  const url = uploadPreviewUrls.get(file);
+  if (url) URL.revokeObjectURL(url);
+  uploadPreviewUrls.delete(file);
+}
+
+function releaseUploadPreviews() {
+  for (const file of uploadPreviewUrls.keys()) releaseUploadPreview(file);
 }
 
 function addArchiveItem() {
@@ -1376,6 +1455,7 @@ function removeArchiveItem(index) {
 }
 
 async function saveArchiveRecord() {
+  if (uploadSaving.value || !uploadReady()) return;
   if (!selectedFiles.value || selectedFiles.value.length === 0) {
     ElMessage.warning('Upload at least one report file');
     return;
@@ -1384,6 +1464,8 @@ async function saveArchiveRecord() {
     ElMessage.warning('Select a patient');
     return;
   }
+  const version = uploadVersion;
+  const files = [...selectedFiles.value];
   archiveSaving.value = true;
   try {
     const patient = patientList.value.find(p => p.id === uploadForm.patientId);
@@ -1397,7 +1479,6 @@ async function saveArchiveRecord() {
       remark: archiveForm.remark || '',
       aiRawResult: null
     };
-    const attachments = await buildUploadAttachments();
     const items = archiveItems.value.map(item => ({
       itemName: item.itemName,
       resultValue: item.resultValue,
@@ -1405,7 +1486,10 @@ async function saveArchiveRecord() {
       referenceRange: item.referenceRange,
       isAbnormal: item.isAbnormal
     }));
+    const attachments = await buildUploadAttachments(files);
+    if (version !== uploadVersion) return;
     const res = await api.saveRecord(record, items, attachments);
+    if (version !== uploadVersion) return;
     if (res.code === 200) {
       ElMessage.success('Record saved successfully');
       resetUploadState();
@@ -1415,23 +1499,29 @@ async function saveArchiveRecord() {
       ElMessage.error(res.message || res.msg || 'Failed to save');
     }
   } catch (e) {
+    if (version !== uploadVersion) return;
     ElMessage.error('Failed to save: ' + e.message);
   } finally {
-    archiveSaving.value = false;
+    if (version === uploadVersion) archiveSaving.value = false;
   }
 }
 
 async function saveRecognizedRecord() {
+  if (uploadSaving.value || !uploadReady() || !recognizeResult.value || !recognizedRecords.value.length) return;
+  const version = uploadVersion;
+  const patient = patientList.value.find(item => Number(item.id) === Number(uploadForm.patientId));
+  const source = { ...uploadForm, patientName: patient?.patientName || uploadForm.patientName };
+  const list = recognizedRecords.value.map(record => ({ ...record, items: mapItemsForSave(record.items) }));
+  const files = [...selectedFiles.value];
+  recognizedSaving.value = true;
   try {
-    const list = recognizedRecords.value.length
-      ? recognizedRecords.value
-      : [currentRecognizeRecord.value];
-    const attachments = await buildUploadAttachments();
+    const attachments = await buildUploadAttachments(files);
+    if (version !== uploadVersion) return;
 
     if (list.length > 1) {
       const records = list.map(rec => ({
-        patientId: uploadForm.patientId,
-        patientName: uploadForm.patientName,
+        patientId: source.patientId,
+        patientName: source.patientName,
         recordType: rec.recordType || 'BLOOD',
         recordDate: rec.recordDate,
         hospitalName: rec.hospitalName,
@@ -1441,6 +1531,7 @@ async function saveRecognizedRecord() {
       }));
       const itemsList = list.map(rec => mapItemsForSave(rec.items));
       const res = await api.saveRecordsBatch(records, itemsList, attachments);
+      if (version !== uploadVersion) return;
       if (res.code === 200) {
         ElMessage.success(res.data || res.msg || 'Saved successfully');
         uploadDialogVisible.value = false;
@@ -1454,9 +1545,9 @@ async function saveRecognizedRecord() {
 
     const rec = list[0];
     const record = {
-      patientId: uploadForm.patientId,
-      patientName: uploadForm.patientName,
-      recordType: rec.recordType || uploadForm.recordType || 'BLOOD',
+      patientId: source.patientId,
+      patientName: source.patientName,
+      recordType: rec.recordType || source.recordType || 'BLOOD',
       recordDate: rec.recordDate,
       hospitalName: rec.hospitalName,
       doctorName: rec.doctorName,
@@ -1465,6 +1556,7 @@ async function saveRecognizedRecord() {
     };
     const items = mapItemsForSave(rec.items);
     const res = await api.saveRecord(record, items, attachments);
+    if (version !== uploadVersion) return;
     if (res.code === 200) {
       ElMessage.success('Saved successfully');
       uploadDialogVisible.value = false;
@@ -1474,7 +1566,10 @@ async function saveRecognizedRecord() {
       ElMessage.error(res.message || res.msg || 'Failed to save');
     }
   } catch (e) {
+    if (version !== uploadVersion) return;
     ElMessage.error('Failed to save: ' + e.message);
+  } finally {
+    if (version === uploadVersion) recognizedSaving.value = false;
   }
 }
 
@@ -1599,6 +1694,7 @@ async function saveEditRecord() {
 }
 
 function handlePaste(e) {
+  if (uploadSaving.value) return;
   const isUploadPage = activeMenu.value === 'upload';
   const isUploadDialog = uploadDialogVisible.value;
   if (!isUploadPage && !isUploadDialog) return;
@@ -1632,14 +1728,25 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('paste', handlePaste);
+  invalidateUploadResult();
+  releaseUploadPreviews();
+  uploadFiles.value = [];
 });
 
 // switchPatientafter againloadExaminationitemlist
+watch(() => uploadForm.patientId, (patientId, previousId) => {
+  if (!resettingUpload && patientId !== previousId) resetUploadState(patientId);
+}, { flush: 'sync' });
+watch(uploadDialogVisible, (visible, previous) => {
+  if (!visible && previous) resetUploadState();
+}, { flush: 'sync' });
 watch(currentPatientId, (newVal, oldVal) => {
   if (newVal !== oldVal) {
+    uploadDialogVisible.value = false;
+    resetUploadState(newVal);
     loadItemNames();
   }
-});
+}, { flush: 'sync' });
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>

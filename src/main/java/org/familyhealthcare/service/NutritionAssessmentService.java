@@ -9,6 +9,8 @@ public interface NutritionAssessmentService extends IService<NutritionAssessment
 
     List<NutritionAssessment> listByPatient(Long patientId);
 
+    NutritionAssessment getOwnedById(Long id);
+
     boolean saveOrUpdateAssessment(NutritionAssessment record);
 
     NutritionAssessment calculateNutritionStatus(NutritionAssessment record);

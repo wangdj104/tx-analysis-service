@@ -58,8 +58,10 @@
     </el-main>
 
     <!-- clinicalinformationdialog -->
-    <el-dialog v-model="clinicalDialogVisible" title="Patientclinicalinformation" width="640px" destroy-on-close>
-      <el-form :model="clinicalForm" label-width="120px" ref="clinicalFormRef">
+    <el-dialog v-model="clinicalDialogVisible" title="Patientclinicalinformation" width="min(640px, 94vw)" destroy-on-close>
+      <p class="clinical-patient-context">Patient: {{ clinicalPatientName || clinicalPatientId }}</p>
+      <el-alert v-if="clinicalError" :title="clinicalError" type="error" :closable="false" show-icon />
+      <el-form v-loading="clinicalLoading" :disabled="clinicalLoading || !clinicalReady || clinicalFormSaving" :model="clinicalForm" label-width="120px" ref="clinicalFormRef">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="Dialysistype">
@@ -111,7 +113,8 @@
       </el-form>
       <template #footer>
         <el-button @click="clinicalDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="handleSaveClinical">Save</el-button>
+        <el-button v-if="clinicalError" @click="showClinicalDialog({ id: clinicalPatientId, name: clinicalPatientName })">Retry</el-button>
+        <el-button type="primary" :loading="clinicalSaving" :disabled="clinicalLoading || !clinicalReady" @click="handleSaveClinical">Save</el-button>
       </template>
     </el-dialog>
 
@@ -190,7 +193,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { getPatientList, savePatient, updatePatient, deletePatient, getSpecialtyRoles, getPatientSpecialtyRoles } from '@/api/patient.js';
 import { getClinicalByPatient, saveClinical } from '@/api/patientClinical.js';
@@ -244,39 +247,80 @@ const rules = {
 const clinicalDialogVisible = ref(false);
 const clinicalFormRef = ref(null);
 const clinicalPatientId = ref(null);
+const clinicalPatientName = ref('');
+const clinicalLoading = ref(false), clinicalReady = ref(false), clinicalSaving = ref(false), clinicalFormSaving = ref(false);
+const clinicalError = ref('');
+let clinicalEpoch = 0;
 const clinicalForm = reactive({
   id: null, patientId: null, dialysisType: '', dialysisStartDate: '', vascularAccess: '',
   primaryDiagnosis: '', allergyDrugs: '', targetDryWeight: null, fluidLimitMl: null, remark: ''
 });
 
+function invalidateClinicalDialog() {
+  clinicalEpoch++;
+  clinicalLoading.value = false;
+  clinicalReady.value = false;
+  clinicalFormSaving.value = false;
+}
+
+function isCurrentClinical(epoch, patientId) {
+  return clinicalDialogVisible.value && epoch === clinicalEpoch && patientId === clinicalPatientId.value;
+}
+
 async function showClinicalDialog(row) {
-  clinicalPatientId.value = row.id;
+  if (!row?.id) return;
+  invalidateClinicalDialog();
+  const epoch = clinicalEpoch, patientId = row.id;
+  clinicalPatientId.value = patientId;
+  clinicalPatientName.value = row.name || row.patientName || '';
+  clinicalError.value = '';
   Object.assign(clinicalForm, {
-    id: null, patientId: row.id, dialysisType: '', dialysisStartDate: '', vascularAccess: '',
+    id: null, patientId, dialysisType: '', dialysisStartDate: '', vascularAccess: '',
     primaryDiagnosis: '', allergyDrugs: '', targetDryWeight: null, fluidLimitMl: null, remark: ''
   });
-  try {
-    const res = await getClinicalByPatient(row.id);
-    if (res.code === 200 && res.data) {
-      Object.assign(clinicalForm, res.data);
-    }
-  } catch (e) { console.error(e); }
   clinicalDialogVisible.value = true;
+  clinicalLoading.value = true;
+  try {
+    const res = await getClinicalByPatient(patientId);
+    if (!isCurrentClinical(epoch, patientId)) return;
+    if (res.code !== 200 || (res.data && Number(res.data.patientId) !== Number(patientId))) throw new Error('Invalid clinical context');
+    if (res.data) Object.assign(clinicalForm, res.data, { patientId });
+    clinicalReady.value = true;
+  } catch (e) {
+    if (!isCurrentClinical(epoch, patientId)) return;
+    clinicalError.value = 'Clinical information could not be loaded. Retry before saving.';
+    ElMessage.error(clinicalError.value);
+  } finally {
+    if (isCurrentClinical(epoch, patientId)) clinicalLoading.value = false;
+  }
 }
 
 async function handleSaveClinical() {
+  const epoch = clinicalEpoch, patientId = clinicalPatientId.value;
+  if (clinicalSaving.value || !clinicalReady.value || !isCurrentClinical(epoch, patientId)
+      || clinicalForm.patientId !== patientId) return;
+  const snapshot = { ...clinicalForm };
+  clinicalSaving.value = true;
+  clinicalFormSaving.value = true;
   try {
-    const res = await saveClinical(clinicalForm);
+    const res = await saveClinical(snapshot);
+    if (!isCurrentClinical(epoch, patientId)) return;
     if (res.code === 200) {
       ElMessage.success('Clinical information saved successfully');
       clinicalDialogVisible.value = false;
     } else {
-      ElMessage.error(res.msg || 'Failed to save');
+      ElMessage.error(res.msg || 'Failed to save. Please try again.');
     }
   } catch (e) {
-    ElMessage.error('Failed to save');
+    if (isCurrentClinical(epoch, patientId)) ElMessage.error('Failed to save. Please try again.');
+  } finally {
+    clinicalSaving.value = false;
+    if (epoch === clinicalEpoch) clinicalFormSaving.value = false;
   }
 }
+
+watch(clinicalDialogVisible, visible => { if (!visible) invalidateClinicalDialog(); }, { flush: 'sync' });
+onUnmounted(invalidateClinicalDialog);
 
 async function loadPatients() {
   try {

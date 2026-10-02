@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Calculates and stores nutrition assessments.
@@ -34,11 +35,31 @@ public class NutritionAssessmentServiceImpl extends ServiceImpl<NutritionAssessm
     }
 
     @Override
+    public NutritionAssessment getOwnedById(Long id) {
+        dataScopeHelper.requireUserId();
+        NutritionAssessment record = getById(id);
+        if (record != null) {
+            dataScopeHelper.requirePatientOrOwner(record.getPatientId(), record.getUserId());
+        }
+        return record;
+    }
+
+    @Override
     public boolean saveOrUpdateAssessment(NutritionAssessment record) {
         Long userId = dataScopeHelper.requireUserId();
         if (record.getPatientId() == null) throw new IllegalStateException("Select a patient");
+        if (record.getId() != null) {
+            NutritionAssessment existing = getById(record.getId());
+            if (existing == null) return false;
+            dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
+            if (!Objects.equals(existing.getPatientId(), record.getPatientId())) {
+                throw new IllegalArgumentException("An assessment cannot be moved to another patient.");
+            }
+            record.setUserId(existing.getUserId());
+        } else {
+            record.setUserId(userId);
+        }
         dataScopeHelper.requirePatient(record.getPatientId());
-        record.setUserId(userId);
 
         // AutomaticcalculateBMI
         if (record.getBodyWeight() != null && record.getHeight() != null && record.getHeight().compareTo(BigDecimal.ZERO) > 0) {
