@@ -156,17 +156,17 @@ const handleLogin = async () => {
 
 <style scoped>
 .login-page {
-  --login-green: #176b59;
-  --login-ink: #233c34;
-  --login-muted: #5f7066;
-  --login-border: #788b7e;
-  --login-danger: #b94747;
+  --login-green: var(--care-700);
+  --login-ink: var(--ink-950);
+  --login-muted: var(--ink-500);
+  --login-border: var(--ink-500);
+  --login-danger: var(--danger);
   box-sizing: border-box;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #f5f7f6;
+  background: var(--surface-subtle);
   color: var(--login-ink);
   padding: 34px max(32px, calc((100vw - 1180px) / 2));
 }
@@ -189,7 +189,7 @@ const handleLogin = async () => {
 }
 
 .intro-eyebrow { display: flex; align-items: center; gap: 9px; color: var(--login-green); font-size: 12px; font-weight: 500; letter-spacing: 1px; margin: 0 0 23px; }
-.intro-eyebrow span { width: 6px; height: 6px; border-radius: 50%; background: #609d81; }
+.intro-eyebrow span { width: 6px; height: 6px; border-radius: 50%; background: var(--care-600); }
 .login-intro h1 { margin: 0; font-size: clamp(34px, 3.5vw, 46px); line-height: 1.48; letter-spacing: -1px; font-weight: 650; }
 .intro-description { margin: 20px 0 0; font-size: 14px; line-height: 1.9; color: var(--login-muted); }
 .intro-footer { margin: 4px 0 0; color: var(--login-muted); font-size: 12px; letter-spacing: 1px; }
@@ -201,9 +201,9 @@ const handleLogin = async () => {
   width: min(100%, 440px);
   height: 280px;
   margin: 24px 0 18px;
-  border: 1px solid #e0e9df;
+  border: 1px solid var(--line);
   border-radius: 30px 30px 64px 30px;
-  background: radial-gradient(ellipse at 76% 22%, #faf5e7 0, transparent 56%), linear-gradient(140deg, #e5eee2, #f0f5eb);
+  background: radial-gradient(ellipse at 76% 22%, var(--warning-soft) 0, transparent 56%), linear-gradient(140deg, var(--care-50), var(--care-50));
   box-shadow: 0 12px 30px #44634b08;
 }
 .health-illustration img { box-sizing: border-box; display: block; width: 100%; height: 100%; padding: 4px 12px; object-fit: contain; }
@@ -214,8 +214,8 @@ const handleLogin = async () => {
   box-sizing: border-box;
   width: 100%;
   padding: 40px 36px 30px;
-  background: #fff;
-  border: 1px solid #e1e8e3;
+  background: var(--paper);
+  border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 8px 36px #273e3206;
 }
@@ -225,8 +225,8 @@ const handleLogin = async () => {
 .login-subtitle { color: var(--login-muted); font-size: 13px; line-height: 1.7; margin: 10px 0 0; }
 .login-form { margin-top: 32px; }
 .login-form :deep(.el-form-item) { margin-bottom: 24px; }
-.login-form :deep(.el-form-item__label) { padding: 0; margin-bottom: 8px; color: #344a40; font-weight: 500; font-size: 13px; line-height: 20px; }
-.login-form :deep(.el-input__wrapper) { min-height: 46px; box-sizing: border-box; padding: 0 13px; border-radius: 8px; background: #fff; box-shadow: 0 0 0 1px var(--login-border) inset; transition: box-shadow .18s ease; }
+.login-form :deep(.el-form-item__label) { padding: 0; margin-bottom: 8px; color: var(--ink-800); font-weight: 500; font-size: 13px; line-height: 20px; }
+.login-form :deep(.el-input__wrapper) { min-height: 46px; box-sizing: border-box; padding: 0 13px; border-radius: 8px; background: var(--paper); box-shadow: 0 0 0 1px var(--login-border) inset; transition: box-shadow .18s ease; }
 .login-form :deep(.el-input__wrapper:hover) { box-shadow: 0 0 0 1px var(--login-muted) inset; }
 .login-form :deep(.el-input__wrapper.is-focus) { box-shadow: 0 0 0 1px var(--login-green) inset; outline: 2px solid var(--login-green); outline-offset: 2px; }
 .login-form :deep(.el-input__inner) { font-size: 14px; color: var(--login-ink); }
@@ -238,12 +238,12 @@ const handleLogin = async () => {
 .login-form :deep(.el-form-item.is-required .el-form-item__label::before) { color: var(--login-danger); }
 
 .login-button {
-  --el-button-bg-color: #176b59;
-  --el-button-border-color: #176b59;
-  --el-button-hover-bg-color: #125a4a;
-  --el-button-hover-border-color: #125a4a;
-  --el-button-active-bg-color: #104e40;
-  --el-button-active-border-color: #104e40;
+  --el-button-bg-color: var(--care-700);
+  --el-button-border-color: var(--care-700);
+  --el-button-hover-bg-color: var(--care-800);
+  --el-button-hover-border-color: var(--care-800);
+  --el-button-active-bg-color: var(--care-800);
+  --el-button-active-border-color: var(--care-800);
   width: 100%;
   height: 46px;
   margin-top: 7px;
@@ -256,7 +256,7 @@ const handleLogin = async () => {
 .login-button:focus-visible { outline: 3px solid var(--login-green) !important; outline-offset: 3px; }
 .login-note { display: flex; justify-content: center; align-items: center; gap: 6px; margin: 23px 0 0; color: var(--login-muted); font-size: 12px; }
 .page-footer { display: flex; justify-content: center; gap: 16px; color: var(--login-muted); font-size: 12px; line-height: 1.6; }
-.page-footer span { padding-left: 16px; border-left: 1px solid #d7e0d9; }
+.page-footer span { padding-left: 16px; border-left: 1px solid var(--line); }
 
 @media (max-width: 1050px) {
   .login-layout { gap: 48px; grid-template-columns: minmax(0, 1fr) 390px; }
@@ -276,9 +276,9 @@ const handleLogin = async () => {
     height: 112px;
     margin: -36px -30px 24px;
     padding: 0 16px 0 24px;
-    border-bottom: 1px solid #e3eadf;
+    border-bottom: 1px solid var(--line);
     border-radius: 13px 13px 0 0;
-    background: radial-gradient(ellipse at 90% 12%, #faf4e5, transparent 70%), #eaf1e5;
+    background: radial-gradient(ellipse at 90% 12%, var(--warning-soft), transparent 70%), var(--care-50);
   }
   .login-welcome .welcome-label { flex-shrink: 0; margin: 0; font-size: 14px; letter-spacing: 1px; }
   .mobile-care-illustration { display: block; flex: 0 1 180px; min-width: 0; width: 180px; height: 112px; object-fit: contain; }

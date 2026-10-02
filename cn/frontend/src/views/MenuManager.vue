@@ -51,4 +51,4 @@ async function remove(row){await deleteMenu(row.id);ElMessage.success('菜单已
 onMounted(load);
 </script>
 <style scoped src="@/styles/module-layout.css"></style>
-<style scoped>.menu-manager{padding:28px}.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}.page-header h1{margin:0 0 6px}.subtitle{margin:0;color:#64748b}.content-panel{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px}</style>
+<style scoped>.menu-manager{padding:28px}.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}.page-header h1{margin:0 0 6px}.subtitle{margin:0;color:var(--ink-500)}.content-panel{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:18px}</style>

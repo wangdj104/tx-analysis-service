@@ -303,21 +303,21 @@
 @media (prefers-color-scheme: dark) {
   @media (max-width: 768px) {
     .el-message {
-      background-color: #1f2937;
-      color: #f9fafb;
+      background-color: var(--ink-950);
+      color: var(--surface-subtle);
     }
 
     .el-message-box {
-      background-color: #1f2937;
-      border-color: #374151;
+      background-color: var(--ink-950);
+      border-color: var(--ink-800);
     }
 
     .el-message-box__title {
-      color: #f9fafb;
+      color: var(--surface-subtle);
     }
 
     .el-message-box__message {
-      color: #d1d5db;
+      color: var(--line-strong);
     }
   }
 }

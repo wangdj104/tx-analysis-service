@@ -117,5 +117,5 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.reminder-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}.reminder-head h2{margin:0 0 6px}.reminder-head p,.muted{margin:0;color:#64748b;font-size:13px}.head-actions,.table-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.table-actions :deep(.el-button + .el-button){margin-left:0}@media(max-width:768px){.reminder-head{flex-direction:column}.head-actions{width:100%}.head-actions .el-button{flex:1;margin-left:0}}
+.reminder-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}.reminder-head h2{margin:0 0 6px}.reminder-head p,.muted{margin:0;color:var(--ink-500);font-size:13px}.head-actions,.table-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.table-actions :deep(.el-button + .el-button){margin-left:0}@media(max-width:768px){.reminder-head{flex-direction:column}.head-actions{width:100%}.head-actions .el-button{flex:1;margin-left:0}}
 </style>

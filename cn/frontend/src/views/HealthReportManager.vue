@@ -65,9 +65,9 @@
             </el-form-item>
           </el-form>
 
-          <div v-if="previewHtml" style="margin-top: 16px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-            <div style="padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-weight: 600; color: #334155;">报告预览</span>
+          <div v-if="previewHtml" style="margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
+            <div style="padding: 12px 16px; background: var(--surface-subtle); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-weight: 600; color: var(--ink-800);">报告预览</span>
               <el-button type="primary" size="small" @click="handleExport">下载</el-button>
             </div>
             <iframe :srcdoc="previewHtml" class="report-preview-frame"></iframe>

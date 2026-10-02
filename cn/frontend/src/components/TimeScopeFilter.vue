@@ -89,8 +89,8 @@ function onDateUpdate(val) {
   flex-wrap: wrap;
   gap: 10px;
   padding: 6px 8px 6px 6px;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, var(--surface-subtle) 0%, var(--surface-subtle) 100%);
+  border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
 }
@@ -104,9 +104,9 @@ function onDateUpdate(val) {
 .time-scope-filter__dims {
   display: inline-flex;
   padding: 3px;
-  background: #fff;
+  background: var(--paper);
   border-radius: 9px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--line);
   gap: 2px;
 }
 
@@ -118,7 +118,7 @@ function onDateUpdate(val) {
   border: none;
   border-radius: 7px;
   background: transparent;
-  color: #64748b;
+  color: var(--ink-500);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -127,12 +127,12 @@ function onDateUpdate(val) {
 }
 
 .time-scope-filter__tab:hover {
-  color: #4f6af6;
+  color: var(--care-700);
   background: rgb(79 106 246 / 6%);
 }
 
 .time-scope-filter__tab.is-active {
-  color: #4f6af6;
+  color: var(--care-700);
   background: linear-gradient(135deg, rgb(79 106 246 / 14%) 0%, rgb(99 102 241 / 10%) 100%);
   box-shadow: 0 1px 3px rgb(79 106 246 / 12%);
   font-weight: 600;
@@ -148,7 +148,7 @@ function onDateUpdate(val) {
 .time-scope-filter__picker-label {
   font-size: 12px;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--ink-500);
   white-space: nowrap;
 }
 
@@ -158,8 +158,8 @@ function onDateUpdate(val) {
 
 .time-scope-filter__date-input :deep(.el-input__wrapper) {
   border-radius: 8px;
-  box-shadow: 0 0 0 1px #e2e8f0 inset;
-  background: #fff;
+  box-shadow: 0 0 0 1px var(--line) inset;
+  background: var(--paper);
 }
 
 .time-scope-filter--stack .time-scope-filter__dims {

@@ -343,27 +343,27 @@ onUnmounted(() => {
 <style scoped>
 .preview-result {
   padding: 12px 16px;
-  background: #f8fafc;
+  background: var(--surface-subtle);
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--line);
   margin-top: 8px;
 }
 .preview-title {
   font-size: 13px;
   font-weight: 600;
-  color: #334155;
+  color: var(--ink-800);
   margin-bottom: 8px;
 }
 .preview-label {
   font-size: 13px;
-  color: #64748b;
+  color: var(--ink-500);
 }
 .preview-value {
   font-weight: 600;
 }
 .preview-advice {
   font-size: 13px;
-  color: #64748b;
+  color: var(--ink-500);
   margin-top: 8px;
 }
 @media (max-width: 768px) {

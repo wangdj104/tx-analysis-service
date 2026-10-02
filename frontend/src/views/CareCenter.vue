@@ -195,16 +195,16 @@ const daysText=s=>String(s||'').split(',').map(x=>['','Monday','Tuesday','Wednes
 .care-options[open] summary::after { content: '−'; }
 .care-options summary:hover { background: var(--care-50); }
 .care-options summary:focus-visible { outline: 2px solid var(--care-700); outline-offset: 2px; }
-.care-toolbar { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; width: max-content; max-width: min(300px, 85vw); display: grid; gap: 8px; padding: 12px; background: #fff; border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 8px 24px #20342c14; }
+.care-toolbar { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; width: max-content; max-width: min(300px, 85vw); display: grid; gap: 8px; padding: 12px; background: var(--paper); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 8px 24px #20342c14; }
 .care-toolbar :deep(.el-button) { margin: 0; }
 .family-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 12px; margin: 0 0 20px; }
-.family-cards button { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px; text-align: left; font: inherit; color: var(--ink-700); background: #fff; border: 1px solid var(--line-strong); border-radius: 12px; }
+.family-cards button { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px; text-align: left; font: inherit; color: var(--ink-700); background: var(--paper); border: 1px solid var(--line-strong); border-radius: 12px; }
 .family-cards button.selected { border-color: var(--care-700); box-shadow: inset 0 0 0 1px var(--care-700); background: var(--care-50); }
 .family-card__heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
 .family-cards strong { color: var(--ink-950); font-size: 18px; overflow-wrap: anywhere; }
 .family-card__selected { margin-left: auto; font-size: 12px; color: var(--care-700); font-weight: 700; }
 .care-center small { color: var(--ink-500); font-size: 14px; line-height: 1.55; }
-.care-tabs { min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 0 20px 20px; }
+.care-tabs { min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 0 20px 20px; }
 .care-tabs :deep(.el-tabs__header) { margin-bottom: 0; }
 .care-tabs :deep(.el-tabs__item) { height: 54px; padding-inline: 16px; font-size: 15px; }
 .care-tabs :deep(.el-tabs__nav-next), .care-tabs :deep(.el-tabs__nav-prev) { line-height: 54px; }
@@ -214,7 +214,7 @@ const daysText=s=>String(s||'').split(',').map(x=>['','Monday','Tuesday','Wednes
 .quick-actions :deep(.el-button > span) { white-space: normal; }
 .quick-actions__primary small { display: block; color: inherit; font-size: 13px; font-weight: 400; }
 .care-columns { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; align-items: start; }
-.care-card { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 16px; background: #fff; }
+.care-card { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 16px; background: var(--paper); }
 .care-card__heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .care-card h2, .care-card h3 { margin: 0; font-size: 18px; line-height: 1.4; }
 .care-count { padding: 4px 8px; border-radius: 6px; background: var(--care-50); color: var(--care-700); font-size: 13px; font-weight: 600; white-space: nowrap; }

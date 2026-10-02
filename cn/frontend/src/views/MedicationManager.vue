@@ -1128,9 +1128,9 @@ onUnmounted(() => {
   gap: 24px;
   min-height: 128px;
   padding: 14px 22px;
-  border: 1px solid #e5e7d9;
+  border: 1px solid var(--line);
   border-radius: 16px;
-  background: linear-gradient(110deg, #f7f4e9 0%, #edf5ec 100%);
+  background: linear-gradient(110deg, var(--warning-soft) 0%, var(--care-50) 100%);
 }
 
 .medication-heading .left {
@@ -1186,13 +1186,13 @@ onUnmounted(() => {
 .category-group-title {
   font-size: 15px;
   font-weight: 700;
-  color: #334155;
+  color: var(--ink-800);
 }
 
 .category-group-count {
   font-size: 12px;
-  color: #6366f1;
-  background: #eef2ff;
+  color: var(--care-700);
+  background: var(--care-50);
   padding: 2px 10px;
   border-radius: 999px;
 }
@@ -1207,13 +1207,13 @@ onUnmounted(() => {
   margin: 0 0 6px;
   font-size: 15px;
   font-weight: 600;
-  color: #334155;
+  color: var(--ink-800);
 }
 
 .remind-sub {
   margin: 0;
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 /* mobileoptimize */

@@ -117,7 +117,7 @@ const tagType=s=>({TAKEN:'success',MISSED:'danger',SKIPPED:'info',SNOOZED:'warni
 const statusText=s=>({PLANNED:'Planned',COMPLETED:'Completed',CANCELLED:'Cancelled'}[s]||s)
 const eventType=s=>({SYMPTOM:'Symptom',VISIT:'Visit',NOTE:'Note',MEASUREMENT:'Measurement',DIALYSIS:'Dialysis',INTAKE:'Medication intake',MEDICATION_LOG:'Medication record'}[s]||s)
 </script>
-<style scoped>.visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid #dde8e5;padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:#70847f}</style>
+<style scoped>.visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid var(--line);padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:var(--ink-500)}</style>
 <style scoped>
 .schedule-tip {
   margin-bottom: 16px;
@@ -179,7 +179,7 @@ const eventType=s=>({SYMPTOM:'Symptom',VISIT:'Visit',NOTE:'Note',MEASUREMENT:'Me
 .workspace {
   border: 1px solid var(--line, #dde8e5);
   border-radius: 17px;
-  background: #fff;
+  background: var(--paper);
   box-shadow: 0 1px 2px rgb(16 45 42 / 3%), 0 8px 26px rgb(16 45 42 / 4%);
 }
 
@@ -211,9 +211,9 @@ const eventType=s=>({SYMPTOM:'Symptom',VISIT:'Visit',NOTE:'Note',MEASUREMENT:'Me
 }
 
 .status-card:first-child {
-  color: #fff;
+  color: var(--on-accent);
   border-color: transparent;
-  background: linear-gradient(145deg, #1c5a52, #31877a);
+  background: linear-gradient(145deg, var(--care-800), var(--care-600));
   box-shadow: 0 16px 32px rgb(28 90 82 / 16%);
 }
 

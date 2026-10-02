@@ -330,10 +330,10 @@ onMounted(() => { loadRecords(); });
 <style scoped src="@/styles/module-layout.css"></style>
 <style scoped>
 .nutrition-diary-page {
-  --diary-accent: #059669;
-  --diary-soft: #ecfdf5;
-  --meal-accent: #2563eb;
-  --meal-soft: #eff6ff;
+  --diary-accent: var(--success);
+  --diary-soft: var(--success-soft);
+  --meal-accent: var(--info);
+  --meal-soft: var(--info-soft);
 }
 
 .nutrition-diary-page .page-inner {
@@ -343,7 +343,7 @@ onMounted(() => { loadRecords(); });
 .nutrition-hero {
   background:
     linear-gradient(135deg, rgba(5, 150, 105, 0.08), rgba(37, 99, 235, 0.06)),
-    #ffffff;
+    var(--paper);
 }
 
 .nutrition-summary {
@@ -356,21 +356,21 @@ onMounted(() => { loadRecords(); });
 .summary-item {
   min-height: 62px;
   padding: 10px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.76);
+  background: color-mix(in srgb, var(--paper) 76%, transparent);
 }
 
 .summary-label {
   display: block;
   margin-bottom: 6px;
-  color: #64748b;
+  color: var(--ink-500);
   font-size: 12px;
   font-weight: 600;
 }
 
 .summary-item strong {
-  color: #0f172a;
+  color: var(--ink-950);
   font-size: 18px;
   line-height: 1.2;
 }
@@ -388,8 +388,8 @@ onMounted(() => { loadRecords(); });
   justify-content: space-between;
   gap: 12px;
   padding: 16px 20px;
-  border-bottom: 1px solid #eef2f7;
-  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--surface-subtle);
+  background: linear-gradient(180deg, var(--surface-subtle) 0%, var(--paper) 100%);
 }
 
 .entry-form {
@@ -415,17 +415,17 @@ onMounted(() => { loadRecords(); });
 
 .metric-section {
   padding: 14px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--paper);
 }
 
 .metric-section--appetite {
-  background: linear-gradient(180deg, var(--diary-soft), #fff 54%);
+  background: linear-gradient(180deg, var(--diary-soft), var(--paper) 54%);
 }
 
 .metric-section--meals {
-  background: linear-gradient(180deg, var(--meal-soft), #fff 54%);
+  background: linear-gradient(180deg, var(--meal-soft), var(--paper) 54%);
 }
 
 .metric-title {
@@ -433,7 +433,7 @@ onMounted(() => { loadRecords(); });
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
-  color: #1e293b;
+  color: var(--ink-950);
   font-size: 14px;
   font-weight: 700;
 }
@@ -446,7 +446,7 @@ onMounted(() => { loadRecords(); });
 }
 
 .metric-dot--symptom {
-  background: #d97706;
+  background: var(--warning);
 }
 
 .metric-section--meals .metric-dot {
@@ -482,12 +482,12 @@ onMounted(() => { loadRecords(); });
 }
 
 .value-text {
-  color: #0f172a;
+  color: var(--ink-950);
   font-weight: 600;
 }
 
 .meal-text {
-  color: #334155;
+  color: var(--ink-800);
   font-weight: 500;
   font-size: 13px;
 }
@@ -516,7 +516,7 @@ onMounted(() => { loadRecords(); });
 
 :deep(.entry-form .el-form-item__label) {
   margin-bottom: 6px;
-  color: #475569;
+  color: var(--ink-700);
   font-size: 13px;
   font-weight: 700;
   line-height: 1.3;
@@ -532,7 +532,7 @@ onMounted(() => { loadRecords(); });
 
 :deep(.entry-form .el-input__wrapper),
 :deep(.entry-form .el-textarea__inner) {
-  box-shadow: 0 0 0 1px #dbe3ef inset;
+  box-shadow: 0 0 0 1px var(--line-strong) inset;
 }
 
 @media (max-width: 980px) {

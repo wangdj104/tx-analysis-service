@@ -676,7 +676,7 @@ import {
   GridComponent, TooltipComponent, LegendComponent, TitleComponent,
   ToolboxComponent, DataZoomComponent
 } from 'echarts/components';
-import VChart from 'vue-echarts';
+import VChart from '@/components/HealthChart.vue';
 import html2canvas from 'html2canvas';
 import {
   listRecords, saveRecord, updateRecord, deleteRecord, getStats, getChartData

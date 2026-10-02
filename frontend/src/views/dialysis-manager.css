@@ -6,7 +6,7 @@
 }
 
 .dialysis-manager .side-menu {
-  background: linear-gradient(180deg, #f8f9ff 0%, #f0f4ff 60%, #f5f7fb 100%);
+  background: linear-gradient(180deg, var(--care-50) 0%, var(--care-50) 60%, var(--surface-subtle) 100%);
   box-shadow: 4px 0 24px rgb(15 23 42 / 8%);
   transition: left 0.28s ease;
   overflow: hidden;
@@ -34,9 +34,9 @@
 
 .dialysis-manager .side-menu .el-menu-item.is-active {
   background: linear-gradient(90deg, rgb(79 106 246 / 15%) 0%, rgb(99 102 241 / 5%) 100%) !important;
-  color: #4f6af6 !important;
+  color: var(--care-700) !important;
   font-weight: 600;
-  box-shadow: inset 3px 0 0 0 #4f6af6;
+  box-shadow: inset 3px 0 0 0 var(--care-700);
 }
 
 .dialysis-manager .main-content {
@@ -119,12 +119,12 @@
   margin: 0;
   font-size: 1.35rem;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ink-950);
   line-height: 1.3;
 }
 
 .dialysis-manager .subtitle {
-  color: #64748b;
+  color: var(--ink-500);
   margin: 8px 0 0;
   font-size: 13px;
   line-height: 1.5;
@@ -161,8 +161,8 @@
   margin: 4px 0 0 130px;
   padding: 14px;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border: 1px solid var(--line);
+  background: var(--surface-subtle);
 }
 
 .dialysis-manager .form-preview__head {
@@ -176,7 +176,7 @@
 .dialysis-manager .form-preview__title {
   font-size: 13px;
   font-weight: 700;
-  color: #334155;
+  color: var(--ink-800);
 }
 
 .dialysis-manager .form-preview__status {
@@ -184,8 +184,8 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
-  color: #475569;
-  background: #e2e8f0;
+  color: var(--ink-700);
+  background: var(--line);
 }
 
 .dialysis-manager .form-preview__grid {
@@ -198,59 +198,59 @@
   min-width: 0;
   padding: 10px;
   border-radius: 8px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--paper);
+  border: 1px solid var(--line);
 }
 
 .dialysis-manager .form-preview__item span {
   display: block;
   font-size: 12px;
-  color: #64748b;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .form-preview__item strong {
   display: block;
   margin-top: 4px;
   font-size: 15px;
-  color: #0f172a;
+  color: var(--ink-950);
   font-variant-numeric: tabular-nums;
 }
 
 .dialysis-manager .form-preview__hint {
   margin: 10px 0 0;
   font-size: 12px;
-  color: #64748b;
+  color: var(--ink-500);
   line-height: 1.5;
 }
 
 .dialysis-manager .form-preview--ok {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
+  border-color: var(--success-soft);
+  background: var(--success-soft);
 }
 
 .dialysis-manager .form-preview--ok .form-preview__status {
-  color: #15803d;
-  background: #dcfce7;
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .dialysis-manager .form-preview--warning {
   border-color: #fde68a;
-  background: #fffbeb;
+  background: var(--warning-soft);
 }
 
 .dialysis-manager .form-preview--warning .form-preview__status {
-  color: #b45309;
-  background: #fef3c7;
+  color: var(--warning);
+  background: var(--warning-soft);
 }
 
 .dialysis-manager .form-preview--danger {
-  border-color: #fecaca;
+  border-color: var(--danger-soft);
   background: #fef2f2;
 }
 
 .dialysis-manager .form-preview--danger .form-preview__status {
-  color: #b91c1c;
-  background: #fee2e2;
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .dialysis-manager .panel-card {
@@ -269,7 +269,7 @@
   padding: 12px 16px;
   font-weight: 600;
   font-size: 14px;
-  color: #334155;
+  color: var(--ink-800);
   background: var(--app-card-tint-top);
   border-bottom: 1px solid var(--app-divider-soft);
 }
@@ -288,8 +288,8 @@
   align-items: center;
   padding: 28px 32px;
   border-radius: 20px;
-  background: linear-gradient(135deg, #4f6af6 0%, #6366f1 38%, #7c3aed 100%);
-  color: #fff;
+  background: linear-gradient(135deg, var(--care-700) 0%, var(--care-700) 38%, var(--care-700) 100%);
+  color: var(--on-accent);
   box-shadow: 0 12px 40px rgb(79 106 246 / 28%);
   position: relative;
   overflow: hidden;
@@ -387,7 +387,7 @@
 }
 
 .dialysis-manager .hero-ring {
-  --ring-active: #f59e0b;
+  --ring-active: var(--warning);
   --ring-track: rgb(255 255 255 / 35%);
   --progress: 0;
   width: 108px;
@@ -408,7 +408,7 @@
 }
 
 .dialysis-manager .hero-ring.ring-good {
-  --ring-active: #22c55e;
+  --ring-active: var(--success);
 }
 
 .dialysis-manager .hero-ring.ring-mid {
@@ -423,7 +423,7 @@
   width: 82px;
   height: 82px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--paper);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -435,12 +435,12 @@
   font-size: 1.5rem;
   font-weight: 800;
   line-height: 1.1;
-  color: #0f172a;
+  color: var(--ink-950);
   font-variant-numeric: tabular-nums;
 }
 
 .dialysis-manager .hero-ring.ring-good .ring-num {
-  color: #15803d;
+  color: var(--success);
 }
 
 .dialysis-manager .hero-ring.ring-mid .ring-num {
@@ -454,7 +454,7 @@
 .dialysis-manager .ring-label {
   font-size: 11px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--ink-500);
   margin-top: 3px;
 }
 
@@ -462,7 +462,7 @@
   margin: 10px 0 0;
   font-size: 12px;
   font-weight: 500;
-  color: #fff;
+  color: var(--on-accent);
   text-shadow: 0 1px 3px rgb(15 23 42 / 35%);
 }
 
@@ -483,7 +483,7 @@
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
-  color: #fff;
+  color: var(--on-accent);
   background: rgb(15 23 42 / 22%);
   border: 1px solid rgb(255 255 255 / 28%);
   text-shadow: 0 1px 2px rgb(15 23 42 / 25%);
@@ -510,31 +510,31 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
-  background: #fff;
+  background: var(--paper);
   border: 1px solid var(--app-border);
-  color: #475569;
+  color: var(--ink-700);
 }
 
 .dialysis-manager .insight-chip.chip-success {
-  background: #ecfdf5;
+  background: var(--success-soft);
   border-color: #a7f3d0;
   color: #047857;
 }
 
 .dialysis-manager .insight-chip.chip-warning {
-  background: #fffbeb;
+  background: var(--warning-soft);
   border-color: #fde68a;
-  color: #b45309;
+  color: var(--warning);
 }
 
 .dialysis-manager .insight-chip.chip-danger {
   background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
+  border-color: var(--danger-soft);
+  color: var(--danger);
 }
 
 .dialysis-manager .insight-chip.chip-info {
-  background: #eff6ff;
+  background: var(--info-soft);
   border-color: #bfdbfe;
   color: #1d4ed8;
 }
@@ -546,7 +546,7 @@
 }
 
 .dialysis-manager .metric-group {
-  background: #fff;
+  background: var(--paper);
   border: 1px solid var(--app-border);
   border-radius: 16px;
   padding: 16px 18px;
@@ -566,11 +566,11 @@
   margin: 0 0 14px;
   font-size: 14px;
   font-weight: 700;
-  color: #334155;
+  color: var(--ink-800);
 }
 
 .dialysis-manager .group-title .el-icon {
-  color: #6366f1;
+  color: var(--care-700);
 }
 
 .dialysis-manager .metric-grid {
@@ -582,62 +582,62 @@
 .dialysis-manager .metric-cell {
   padding: 10px 12px;
   border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #f1f5f9;
+  background: var(--surface-subtle);
+  border: 1px solid var(--surface-subtle);
 }
 
 .dialysis-manager .metric-cell.level-warn {
-  background: #fffbeb;
+  background: var(--warning-soft);
   border-color: #fde68a;
 }
 
 .dialysis-manager .metric-cell.level-danger {
   background: #fef2f2;
-  border-color: #fecaca;
+  border-color: var(--danger-soft);
 }
 
 .dialysis-manager .metric-cell.level-ok {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  background: var(--success-soft);
+  border-color: var(--success-soft);
 }
 
 .dialysis-manager .metric-cell.level-ok .cell-value {
-  color: #059669;
+  color: var(--success);
 }
 
 .dialysis-manager .cell-hint {
   display: block;
   font-size: 10px;
-  color: #cbd5e1;
+  color: var(--line-strong);
   margin-bottom: 2px;
 }
 
 .dialysis-manager .cell-label {
   display: block;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--ink-500);
   margin-bottom: 4px;
 }
 
 .dialysis-manager .cell-value {
   font-size: 1.05rem;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dialysis-manager .cell-value small {
   font-size: 11px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--ink-500);
   margin-left: 2px;
 }
 
 .dialysis-manager .metric-cell.level-warn .cell-value {
-  color: #d97706;
+  color: var(--warning);
 }
 
 .dialysis-manager .metric-cell.level-danger .cell-value {
-  color: #dc2626;
+  color: var(--danger);
 }
 
 .dialysis-manager .charts-block {
@@ -656,7 +656,7 @@
   margin: 0 0 4px;
   font-size: 1rem;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dialysis-manager .block-title-row {
@@ -678,11 +678,11 @@
 .dialysis-manager .block-hint {
   margin: 0 0 16px;
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .chart-panel {
-  background: #fff;
+  background: var(--paper);
   border: 1px solid var(--app-border);
   border-radius: 16px;
   margin-bottom: 0;
@@ -704,9 +704,9 @@
   padding: 12px 16px;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
-  border-bottom: 1px solid #f1f5f9;
-  background: linear-gradient(180deg, #fafbfd 0%, #fff 100%);
+  color: var(--ink-800);
+  border-bottom: 1px solid var(--surface-subtle);
+  background: linear-gradient(180deg, #fafbfd 0%, var(--paper) 100%);
 }
 
 .dialysis-manager .chart-panel-head .dot {
@@ -715,12 +715,12 @@
   border-radius: 50%;
 }
 
-.dialysis-manager .dot-blue { background: #6366f1; }
+.dialysis-manager .dot-blue { background: var(--care-700); }
 .dialysis-manager .dot-green { background: #10b981; }
 .dialysis-manager .dot-cyan { background: #06b6d4; }
 .dialysis-manager .dot-purple { background: #8b5cf6; }
-.dialysis-manager .dot-red { background: #ef4444; }
-.dialysis-manager .dot-amber { background: #f59e0b; }
+.dialysis-manager .dot-red { background: var(--danger); }
+.dialysis-manager .dot-amber { background: var(--warning); }
 
 .dialysis-manager .chart-body {
   padding: 8px 4px 4px;
@@ -738,15 +738,15 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: #cbd5e1;
+  color: var(--line-strong);
   font-size: 13px;
 }
 
 .dialysis-manager .analysis-empty {
   padding: 48px 20px;
-  background: #fff;
+  background: var(--paper);
   border-radius: 16px;
-  border: 1px dashed #e2e8f0;
+  border: 1px dashed var(--line);
 }
 
 .dialysis-manager .insight-bar {
@@ -763,7 +763,7 @@
   border: 1px solid var(--app-border);
   border-radius: 16px;
   overflow: visible;
-  background: #fff;
+  background: var(--paper);
   box-shadow: 0 2px 12px rgb(15 23 42 / 4%), 0 0 0 1px rgb(15 23 42 / 2%);
 }
 
@@ -776,8 +776,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  background: linear-gradient(180deg, #fafbfd 0%, #ffffff 100%);
-  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #fafbfd 0%, var(--paper) 100%);
+  border-bottom: 1px solid var(--line);
 }
 
 .dialysis-manager .list-panel-title {
@@ -786,27 +786,27 @@
   gap: 8px;
   font-size: 14px;
   font-weight: 700;
-  color: #334155;
+  color: var(--ink-800);
 }
 
 .dialysis-manager .list-panel-title .el-icon {
-  color: #6366f1;
+  color: var(--care-700);
   font-size: 18px;
 }
 
 .dialysis-manager .list-count {
   font-size: 12px;
   font-weight: 600;
-  color: #6366f1;
-  background: #eef2ff;
+  color: var(--care-700);
+  background: var(--care-50);
   padding: 2px 10px;
   border-radius: 999px;
 }
 
 .dialysis-manager .list-filter-tag {
   font-size: 12px;
-  color: #64748b;
-  background: #f1f5f9;
+  color: var(--ink-500);
+  background: var(--surface-subtle);
   padding: 2px 10px;
   border-radius: 999px;
   font-weight: 500;
@@ -821,13 +821,13 @@
   margin: 0 0 6px;
   font-size: 15px;
   font-weight: 600;
-  color: #334155;
+  color: var(--ink-800);
 }
 
 .dialysis-manager .list-empty-state .empty-hint {
   margin: 0;
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .empty-actions {
@@ -869,8 +869,8 @@
 
 .dialysis-manager :deep(.app-data-table--narrow .el-table__header .el-table__cell) {
   white-space: nowrap;
-  background: #f1f5f9 !important;
-  border-bottom: 2px solid #e2e8f0 !important;
+  background: var(--surface-subtle) !important;
+  border-bottom: 2px solid var(--line) !important;
 }
 
 .dialysis-manager .table-wrap :deep(.el-table__inner-wrapper) {
@@ -890,7 +890,7 @@
 }
 
 .dialysis-manager :deep(.app-data-table--wide .el-table__header) {
-  background: #f8fafc;
+  background: var(--surface-subtle);
 }
 
 .dialysis-manager :deep(.app-data-table--wide .el-table__header-wrapper) {
@@ -902,7 +902,7 @@
   white-space: nowrap;
   font-weight: 600;
   font-size: 13px;
-  color: #475569;
+  color: var(--ink-700);
   letter-spacing: 0.02em;
 }
 
@@ -920,8 +920,8 @@
 
 .dialysis-manager :deep(.app-data-table--wide .el-table__header .el-table__cell) {
   white-space: nowrap;
-  background: #f1f5f9 !important;
-  border-bottom: 2px solid #e2e8f0 !important;
+  background: var(--surface-subtle) !important;
+  border-bottom: 2px solid var(--line) !important;
   padding: 12px 10px !important;
 }
 
@@ -963,10 +963,10 @@
 
 /* Element Plus tablegriddeeplevelstyle */
 .dialysis-manager :deep(.app-data-table) {
-  --el-table-border-color: #f1f5f9;
-  --el-table-header-bg-color: #f8fafc;
-  --el-table-row-hover-bg-color: #f5f7ff;
-  --el-table-current-row-bg-color: #eef2ff;
+  --el-table-border-color: var(--surface-subtle);
+  --el-table-header-bg-color: var(--surface-subtle);
+  --el-table-row-hover-bg-color: var(--care-50);
+  --el-table-current-row-bg-color: var(--care-50);
   font-size: 13px;
 }
 
@@ -984,17 +984,17 @@
 
 .dialysis-manager :deep(.app-data-table .el-table__header .el-table__cell) {
   font-weight: 600;
-  color: #64748b;
+  color: var(--ink-500);
   font-size: 12px;
-  background: #f8fafc !important;
+  background: var(--surface-subtle) !important;
 }
 
 .dialysis-manager :deep(.app-data-table .el-table__body .el-table__cell) {
-  border-bottom-color: #f1f5f9;
+  border-bottom-color: var(--surface-subtle);
 }
 
 .dialysis-manager :deep(.app-data-table .el-table__body tr:hover > .el-table__cell) {
-  background: #f8faff !important;
+  background: var(--care-50) !important;
 }
 
 .dialysis-manager .cell-date {
@@ -1006,56 +1006,56 @@
 
 .dialysis-manager .date-main {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dialysis-manager .date-sub {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .num-cell {
   display: inline-block;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  color: #334155;
+  color: var(--ink-800);
   white-space: nowrap;
   line-height: 1.4;
 }
 
 .dialysis-manager .num-cell.muted {
-  color: #94a3b8;
+  color: var(--ink-500);
   font-weight: 500;
 }
 
 .dialysis-manager .num-cell.ref {
-  color: #4f46e5;
+  color: var(--care-700);
   min-width: 3.5em;
   text-align: right;
 }
 
 .dialysis-manager .num-cell.emphasis {
   font-size: 15px;
-  color: #4f46e5;
+  color: var(--care-700);
 }
 
 .dialysis-manager .num-cell .unit {
   font-size: 11px;
   font-weight: 500;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .num-cell.text-green {
-  color: #059669;
+  color: var(--success);
 }
 
 .dialysis-manager .num-cell.gain-ideal {
-  color: #059669;
+  color: var(--success);
   font-weight: 600;
 }
 
 .dialysis-manager .num-cell.gain-danger {
-  color: #dc2626;
+  color: var(--danger);
   font-weight: 700;
 }
 
@@ -1068,8 +1068,8 @@
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--surface-subtle);
+  color: var(--ink-500);
   white-space: nowrap;
 }
 
@@ -1083,7 +1083,7 @@
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  background: #f8fafc;
+  background: var(--surface-subtle);
   white-space: nowrap;
 }
 
@@ -1093,26 +1093,26 @@
 }
 
 .dialysis-manager .bp-slash {
-  color: #94a3b8;
+  color: var(--ink-500);
   margin: 0 1px;
   font-weight: 500;
 }
 
 .dialysis-manager .bp-part-ok {
-  color: #059669;
+  color: var(--success);
 }
 
 .dialysis-manager .bp-part-alert {
-  color: #dc2626;
+  color: var(--danger);
   font-weight: 700;
 }
 
 .dialysis-manager .bp-part-na {
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .bp-chip--all-ok {
-  background: #f0fdf4;
+  background: var(--success-soft);
 }
 
 .dialysis-manager .bp-chip--all-alert {
@@ -1120,8 +1120,8 @@
 }
 
 .dialysis-manager .bp-chip--partial {
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--paper);
+  border: 1px solid var(--line);
   box-shadow: 0 0 0 1px rgba(226, 232, 240, 0.5);
 }
 
@@ -1148,24 +1148,24 @@
   align-items: center;
   gap: 6px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--ink-950);
   white-space: nowrap;
 }
 
 .dialysis-manager .cell-month .el-icon {
-  color: #6366f1;
+  color: var(--care-700);
   flex-shrink: 0;
 }
 
 .dialysis-manager .cell-time {
-  color: #475569;
+  color: var(--ink-700);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .dialysis-manager .text-muted {
-  color: #475569;
+  color: var(--ink-700);
   font-size: 13px;
 }
 
@@ -1179,8 +1179,8 @@
 
 .dialysis-manager .record-card {
   position: relative;
-  background: #fff;
-  border: 1px solid #e8ecf4;
+  background: var(--paper);
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 14px 16px 12px;
   box-shadow: 0 2px 8px rgb(15 23 42 / 4%);
@@ -1214,7 +1214,7 @@
   top: 0;
   bottom: 0;
   width: 4px;
-  background: #cbd5e1;
+  background: var(--line-strong);
   border-radius: 14px 0 0 14px;
 }
 
@@ -1223,11 +1223,11 @@
 }
 
 .dialysis-manager .record-card.card-status-warn::before {
-  background: linear-gradient(180deg, #fbbf24, #f59e0b);
+  background: linear-gradient(180deg, #fbbf24, var(--warning));
 }
 
 .dialysis-manager .record-card.card-status-danger::before {
-  background: linear-gradient(180deg, #f87171, #ef4444);
+  background: linear-gradient(180deg, #f87171, var(--danger));
 }
 
 .dialysis-manager .record-card-head {
@@ -1246,13 +1246,13 @@
 
 .dialysis-manager .date-block .date {
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ink-950);
   font-size: 15px;
 }
 
 .dialysis-manager .date-block .date-week {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .record-highlight {
@@ -1261,7 +1261,7 @@
   gap: 8px;
   margin-bottom: 12px;
   padding: 10px 12px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  background: linear-gradient(135deg, var(--surface-subtle) 0%, var(--surface-subtle) 100%);
   border-radius: 10px;
 }
 
@@ -1272,33 +1272,33 @@
 .dialysis-manager .hl-label {
   display: block;
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--ink-500);
   margin-bottom: 4px;
 }
 
 .dialysis-manager .hl-value {
   font-size: 14px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ink-950);
   font-variant-numeric: tabular-nums;
 }
 
 .dialysis-manager .hl-value small {
   font-size: 10px;
   font-weight: 500;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .hl-value.text-green {
-  color: #059669;
+  color: var(--success);
 }
 
 .dialysis-manager .hl-value.gain-ideal {
-  color: #059669;
+  color: var(--success);
 }
 
 .dialysis-manager .hl-value.gain-danger {
-  color: #dc2626;
+  color: var(--danger);
   font-weight: 700;
 }
 
@@ -1313,20 +1313,20 @@
   padding: 8px 10px;
   background: #fafbfd;
   border-radius: 8px;
-  border: 1px solid #f1f5f9;
+  border: 1px solid var(--surface-subtle);
 }
 
 .dialysis-manager .record-grid .cell label {
   display: block;
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--ink-500);
   margin-bottom: 3px;
 }
 
 .dialysis-manager .record-grid .cell span {
   font-size: 13px;
   font-weight: 600;
-  color: #334155;
+  color: var(--ink-800);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1342,26 +1342,26 @@
 
 /* Dry Weightcardtablet */
 .dialysis-manager .dw-card::before {
-  background: linear-gradient(180deg, #818cf8, #6366f1);
+  background: linear-gradient(180deg, #818cf8, var(--care-700));
 }
 
 .dialysis-manager .dw-weight-badge {
   font-size: 1.25rem;
   font-weight: 800;
-  color: #4f46e5;
+  color: var(--care-700);
   font-variant-numeric: tabular-nums;
 }
 
 .dialysis-manager .dw-weight-badge small {
   font-size: 12px;
   font-weight: 500;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .dw-updated {
   margin: 0 0 12px;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .record-cards :deep(.el-empty) {
@@ -1373,12 +1373,12 @@
 }
 
 .dialysis-manager .record-grid .cell span.gain-ideal {
-  color: #059669;
+  color: var(--success);
   font-weight: 600;
 }
 
 .dialysis-manager .record-grid .cell span.gain-danger {
-  color: #dc2626;
+  color: var(--danger);
   font-weight: 700;
 }
 
@@ -1400,8 +1400,8 @@
 .dialysis-manager .ai-hero {
   padding: 24px 28px;
   border-radius: 20px;
-  background: linear-gradient(135deg, #4f6af6 0%, #6366f1 42%, #7c3aed 100%);
-  color: #fff;
+  background: linear-gradient(135deg, var(--care-700) 0%, var(--care-700) 42%, var(--care-700) 100%);
+  color: var(--on-accent);
   box-shadow: 0 12px 40px rgb(79 106 246 / 28%);
   position: relative;
   overflow: hidden;
@@ -1501,21 +1501,21 @@
 }
 
 .dialysis-manager .ai-hero-filters :deep(.time-scope-filter__tab) {
-  color: rgb(255 255 255 / 88%);
+  color: var(--on-accent);
 }
 
 .dialysis-manager .ai-hero-filters :deep(.time-scope-filter__tab.is-active) {
-  background: #fff;
-  color: #4f46e5;
+  background: var(--paper);
+  color: var(--care-700);
   box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
 }
 
 .dialysis-manager .ai-hero-filters :deep(.time-scope-filter__picker-label) {
-  color: rgb(255 255 255 / 65%);
+  color: var(--on-accent);
 }
 
 .dialysis-manager .ai-hero-filters :deep(.time-scope-filter__date-input .el-input__wrapper) {
-  background: rgb(255 255 255 / 95%);
+  background: color-mix(in srgb, var(--paper) 95%, transparent);
   box-shadow: none;
 }
 
@@ -1548,7 +1548,7 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   background: rgb(255 255 255 / 22%);
-  color: rgb(255 255 255 / 95%);
+  color: color-mix(in srgb, var(--paper) 95%, transparent);
 }
 
 .dialysis-manager .ai-workspace {
@@ -1580,12 +1580,12 @@
 .dialysis-manager .ai-toolbar-label {
   font-size: 14px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dialysis-manager .ai-toolbar-hint {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .ai-toolbar-actions {
@@ -1596,9 +1596,9 @@
 }
 
 .dialysis-manager .ai-toolbar-actions .el-button.is-active {
-  color: #4f46e5;
-  border-color: #c7d2fe;
-  background: #eef2ff;
+  color: var(--care-700);
+  border-color: var(--care-100);
+  background: var(--care-50);
 }
 
 .dialysis-manager .ai-body {
@@ -1630,7 +1630,7 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 2px dashed #c7d2fe;
+  border: 2px dashed var(--care-100);
   animation: ai-orbit-spin 24s linear infinite;
 }
 
@@ -1641,8 +1641,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 20px;
-  background: linear-gradient(145deg, #eef2ff 0%, #f5f3ff 100%);
-  color: #4f46e5;
+  background: linear-gradient(145deg, var(--care-50) 0%, var(--care-50) 100%);
+  color: var(--care-700);
   box-shadow: 0 8px 24px rgb(99 102 241 / 18%);
 }
 
@@ -1656,7 +1656,7 @@
   margin: 0 0 8px;
   font-size: 1.15rem;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dialysis-manager .ai-empty-text {
@@ -1664,7 +1664,7 @@
   max-width: 400px;
   font-size: 14px;
   line-height: 1.6;
-  color: #64748b;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .ai-empty-features {
@@ -1682,43 +1682,43 @@
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #475569;
+  color: var(--ink-700);
 }
 
 .dialysis-manager .ai-empty-features .el-icon {
-  color: #6366f1;
+  color: var(--care-700);
 }
 
 .dialysis-manager .ai-empty-title {
   margin: 0 0 4px;
   font-size: 15px;
   font-weight: 600;
-  color: #334155;
+  color: var(--ink-800);
 }
 
 .dialysis-manager .ai-empty-sub {
   margin: 0;
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .ai-content {
   line-height: 1.85;
-  color: #334155;
+  color: var(--ink-800);
   font-size: 14px;
   padding: 24px 28px 32px;
 }
 
 .dialysis-manager .ai-content :deep(strong) {
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dialysis-manager .ai-content :deep(.ai-dw-conclusion) {
   margin-top: 20px;
   padding: 16px 18px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
-  border: 1px solid #c7d2fe;
+  background: linear-gradient(135deg, var(--care-50) 0%, var(--care-50) 100%);
+  border: 1px solid var(--care-100);
   box-shadow: 0 4px 14px rgb(99 102 241 / 10%);
 }
 
@@ -1734,23 +1734,23 @@
   gap: 8px 12px;
   margin-top: 10px;
   padding: 8px 10px;
-  background: rgb(255 255 255 / 72%);
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
   border-radius: 8px;
 }
 
 .dialysis-manager .ai-content :deep(.ai-dw-key) {
   font-weight: 600;
-  color: #475569;
+  color: var(--ink-700);
   min-width: 7em;
 }
 
 .dialysis-manager .ai-content :deep(.ai-dw-val) {
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dialysis-manager .ai-content :deep(.ai-dw-val.highlight) {
-  color: #4f46e5;
+  color: var(--care-700);
   font-size: 1.05rem;
 }
 
@@ -1761,7 +1761,7 @@
 .dialysis-manager .form-tip {
   margin: 6px 0 0;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ink-500);
   line-height: 1.4;
 }
 
@@ -1781,7 +1781,7 @@
 }
 
 .dialysis-manager .ai-content :deep(strong) {
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dialysis-manager .menu-toggle {
@@ -1791,11 +1791,11 @@
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: #fff;
+  background: var(--paper);
   border: 1px solid var(--app-border);
   cursor: pointer;
   font-size: 18px;
-  color: #475569;
+  color: var(--ink-700);
   box-shadow: var(--app-shadow-xs);
 }
 
@@ -1804,7 +1804,7 @@
   right: 16px;
   font-size: 18px;
   cursor: pointer;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .menu-title {
@@ -2043,8 +2043,8 @@
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
-  background: #fff;
-  border: 1px solid #e8ecf4;
+  background: var(--paper);
+  border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 2px 8px rgb(15 23 42 / 4%);
   cursor: pointer;
@@ -2052,7 +2052,7 @@
 }
 
 .dialysis-manager .ai-history-item:hover {
-  border-color: #c7d2fe;
+  border-color: var(--care-100);
   box-shadow: 0 4px 16px rgb(99 102 241 / 10%);
   transform: translateY(-1px);
 }
@@ -2068,12 +2068,12 @@
 .dialysis-manager .ai-history-period {
   font-weight: 700;
   font-size: 15px;
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dialysis-manager .ai-history-time {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dialysis-manager .ai-history-right {

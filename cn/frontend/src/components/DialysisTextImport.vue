@@ -43,4 +43,4 @@ async function confirm(){if(busy.value||!canImport.value)return;busy.value=true;
 function isInferred(row,field){return result.value?.inferredFields?.[row.recordDate]?.includes(field)}
 function displayValue(value){return value==null?'未填写':value}
 </script>
-<style scoped>small{color:#19806d;margin-left:4px}</style>
+<style scoped>small{color:var(--care-700);margin-left:4px}</style>

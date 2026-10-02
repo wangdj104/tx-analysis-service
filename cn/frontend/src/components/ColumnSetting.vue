@@ -40,7 +40,7 @@ defineEmits(['reset']);
 .col-setting-title {
   margin: 0 0 8px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--ink-500);
 }
 
 .col-setting-group {

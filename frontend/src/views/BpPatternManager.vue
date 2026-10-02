@@ -44,7 +44,7 @@
               <el-col :xs="12" :sm="8" :md="4">
                 <el-statistic title="Systolic standard deviation" :value="currentAnalysis.stdDeviation || 0">
                   <template #suffix>
-                    <span v-if="currentAnalysis.stdDeviation > 15" style="color: #f56c6c; font-size: 12px;"> (slightlylarge)</span>
+                    <span v-if="currentAnalysis.stdDeviation > 15" style="color: var(--danger); font-size: 12px;"> (slightlylarge)</span>
                   </template>
                 </el-statistic>
               </el-col>
@@ -91,7 +91,7 @@
                 <el-tag v-if="row.lowBpCount > 0" type="warning" size="small">diastolic{{ row.lowBpCount }}times</el-tag>
                 <el-tag v-if="row.highBpCount > 0" type="danger" size="small" style="margin-left: 4px;">systolic{{ row.highBpCount }}times</el-tag>
                 <el-tag v-if="row.orthostaticCount > 0" type="info" size="small" style="margin-left: 4px;">property{{ row.orthostaticCount }}times</el-tag>
-                <span v-if="!row.lowBpCount && !row.highBpCount && !row.orthostaticCount" style="color: #67c23a;">Normal</span>
+                <span v-if="!row.lowBpCount && !row.highBpCount && !row.orthostaticCount" style="color: var(--success);">Normal</span>
               </template>
             </el-table-column>
             <el-table-column prop="analysisSummary" label="analysissummary" min-width="200" show-overflow-tooltip />
@@ -122,7 +122,7 @@
             <span :style="detailRecord.stdDeviation > 15 ? 'color: #f56c6c; font-weight: 600;' : ''">
               {{ detailRecord.stdDeviation }}
             </span>
-            <span v-if="detailRecord.stdDeviation > 15" style="color: #f56c6c; font-size: 12px;"> variabilityrelativelylarge</span>
+            <span v-if="detailRecord.stdDeviation > 15" style="color: var(--danger); font-size: 12px;"> variabilityrelativelylarge</span>
           </el-descriptions-item>
           <el-descriptions-item label="Average ultrafiltration volume">{{ detailRecord.avgUfAmount }} kg</el-descriptions-item>
           <el-descriptions-item label="Orthostatic hypotension count">
@@ -140,9 +140,9 @@
             </span>
           </el-descriptions-item>
         </el-descriptions>
-        <div v-if="detailRecord.analysisSummary" style="margin-top: 16px; padding: 12px 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-          <p style="font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">analysissummary</p>
-          <p style="font-size: 13px; color: #64748b; line-height: 1.6;">{{ detailRecord.analysisSummary }}</p>
+        <div v-if="detailRecord.analysisSummary" style="margin-top: 16px; padding: 12px 16px; background: var(--surface-subtle); border-radius: 8px; border: 1px solid var(--line);">
+          <p style="font-size: 13px; font-weight: 600; color: var(--ink-800); margin-bottom: 8px;">analysissummary</p>
+          <p style="font-size: 13px; color: var(--ink-500); line-height: 1.6;">{{ detailRecord.analysisSummary }}</p>
         </div>
       </template>
     </el-dialog>

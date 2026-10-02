@@ -1,6 +1,6 @@
 <template>
   <div class="care-workspace" :class="{ 'care-workspace--guest': route.meta.hideNav }">
-    <a v-if="route.meta.hideNav" class="workspace-language workspace-language--guest" :href="languageHref" hreflang="zh-CN">中文</a>
+    <div v-if="route.meta.hideNav" class="workspace-guest-actions"><AppearanceSelector /><a class="workspace-language" :href="languageHref" hreflang="zh-CN">中文</a></div>
     <template v-if="!route.meta.hideNav">
       <a class="skip-content" href="#workspace-content">Skip to main content</a>
       <aside v-if="!isMobile" class="workspace-sidebar">
@@ -28,6 +28,7 @@
           <strong v-if="isMobile" class="workspace-mobile-brand">{{ platformBranding.platformName }}</strong>
         </div>
         <div class="workspace-topbar__actions">
+          <AppearanceSelector />
           <span class="workspace-date">{{ todayLabel }}</span>
           <router-link v-if="userInfo.roles?.some(role => role.roleCode === 'doctor')" class="workspace-consultations" to="/care-journey?tab=consultation" aria-label="Open consultation inbox"><el-icon><ChatDotRound /></el-icon><span v-if="!isMobile">Consultations</span></router-link>
           <PatientSwitcher :model-value="currentPatientId || 0" :patients="route.path === '/care' ? patientList : appPatientList" :allow-all="route.path !== '/care'" @update:model-value="switchPatient" />
@@ -95,6 +96,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch, provide } from 
 import { useRoute, useRouter } from 'vue-router';
 import { Search, ArrowRight, Menu, Close, Guide, ChatDotRound } from '@element-plus/icons-vue';
 import WorkspaceNav from '@/components/WorkspaceNav.vue';
+import AppearanceSelector from '@/components/AppearanceSelector.vue';
 import PatientSwitcher from '@/components/PatientSwitcher.vue';
 import OnboardingGuide from '@/components/OnboardingGuide.vue';
 import { logout, getUserInfo } from '@/api/auth';

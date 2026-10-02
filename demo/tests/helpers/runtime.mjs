@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 // Execute shipped code; browser surfaces and timers are the only adapters.
-export function demo(edition) {
+export function demo(edition, { storage } = {}) {
   const base = new URL(edition === 'en' ? '../../' : '../../../cn/demo/', import.meta.url);
   const read = file => readFileSync(new URL(file, base), 'utf8');
   const nodes = new Map(), listeners = {}, timers = new Map(), classes = new Set();
@@ -24,14 +24,14 @@ export function demo(edition) {
   };
   node('guide-tour').hidden = true;
   const document = {
-    documentElement: { lang: edition === 'en' ? 'en' : 'zh-CN' },
+    documentElement: { lang: edition === 'en' ? 'en' : 'zh-CN', dataset: {} },
     body: { style: {}, classList: { toggle(name) { const on = !classes.has(name); on ? classes.add(name) : classes.delete(name); return on; } } },
     getElementById: node, querySelectorAll: () => [], querySelector: () => null,
     addEventListener(type, callback) { (listeners[type] ||= []).push(callback); }
   };
   const context = vm.createContext({
     document, location: { hash: '#consultation' }, console,
-    localStorage: { getItem() {}, removeItem() {}, setItem() {} },
+    localStorage: storage || { getItem() {}, removeItem() {}, setItem() {} },
     FormData: class { constructor(form) { this.values = form.values; } get(name) { return this.values[name] ?? null; } },
     setTimeout(callback, delay) { const id = ++nextTimer; timers.set(id, { callback, delay }); return id; },
     clearTimeout(id) { timers.delete(id); }

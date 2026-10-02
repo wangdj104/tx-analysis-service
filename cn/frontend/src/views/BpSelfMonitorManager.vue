@@ -337,10 +337,10 @@ onMounted(() => { loadRecords(); });
 <style scoped src="@/styles/module-layout.css"></style>
 <style scoped>
 .bp-monitor-page {
-  --bp-accent: #2563eb;
-  --bp-soft: #eff6ff;
-  --bg-accent: #059669;
-  --bg-soft: #ecfdf5;
+  --bp-accent: var(--info);
+  --bp-soft: var(--info-soft);
+  --bg-accent: var(--success);
+  --bg-soft: var(--success-soft);
 }
 
 .bp-monitor-page .page-inner {
@@ -350,7 +350,7 @@ onMounted(() => { loadRecords(); });
 .bp-hero {
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(5, 150, 105, 0.07)),
-    #ffffff;
+    var(--paper);
 }
 
 .bp-summary {
@@ -363,21 +363,21 @@ onMounted(() => { loadRecords(); });
 .summary-item {
   min-height: 62px;
   padding: 10px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.76);
+  background: color-mix(in srgb, var(--paper) 76%, transparent);
 }
 
 .summary-label {
   display: block;
   margin-bottom: 6px;
-  color: #64748b;
+  color: var(--ink-500);
   font-size: 12px;
   font-weight: 600;
 }
 
 .summary-item strong {
-  color: #0f172a;
+  color: var(--ink-950);
   font-size: 18px;
   line-height: 1.2;
 }
@@ -395,8 +395,8 @@ onMounted(() => { loadRecords(); });
   justify-content: space-between;
   gap: 12px;
   padding: 16px 20px;
-  border-bottom: 1px solid #eef2f7;
-  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--surface-subtle);
+  background: linear-gradient(180deg, var(--surface-subtle) 0%, var(--paper) 100%);
 }
 
 .entry-form {
@@ -426,17 +426,17 @@ onMounted(() => { loadRecords(); });
 
 .metric-section {
   padding: 14px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--paper);
 }
 
 .metric-section--bp {
-  background: linear-gradient(180deg, var(--bp-soft), #fff 54%);
+  background: linear-gradient(180deg, var(--bp-soft), var(--paper) 54%);
 }
 
 .metric-section--bg {
-  background: linear-gradient(180deg, var(--bg-soft), #fff 54%);
+  background: linear-gradient(180deg, var(--bg-soft), var(--paper) 54%);
 }
 
 .metric-title {
@@ -444,7 +444,7 @@ onMounted(() => { loadRecords(); });
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
-  color: #1e293b;
+  color: var(--ink-950);
   font-size: 14px;
   font-weight: 700;
 }
@@ -483,13 +483,13 @@ onMounted(() => { loadRecords(); });
 }
 
 .value-text {
-  color: #0f172a;
+  color: var(--ink-950);
   font-weight: 600;
 }
 
 .unit-text {
   margin-top: 4px;
-  color: #94a3b8;
+  color: var(--ink-500);
   font-size: 12px;
 }
 
@@ -499,7 +499,7 @@ onMounted(() => { loadRecords(); });
 
 :deep(.entry-form .el-form-item__label) {
   margin-bottom: 6px;
-  color: #475569;
+  color: var(--ink-700);
   font-size: 13px;
   font-weight: 700;
   line-height: 1.3;
@@ -515,7 +515,7 @@ onMounted(() => { loadRecords(); });
 
 :deep(.entry-form .el-input__wrapper),
 :deep(.entry-form .el-textarea__inner) {
-  box-shadow: 0 0 0 1px #dbe3ef inset;
+  box-shadow: 0 0 0 1px var(--line-strong) inset;
 }
 
 :deep(.measure-switch .el-radio-button__inner),

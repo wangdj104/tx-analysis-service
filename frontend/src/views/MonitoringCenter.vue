@@ -164,7 +164,7 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
-import VChart from 'vue-echarts'
+import VChart from '@/components/HealthChart.vue'
 import { getMonitoringSnapshot } from '@/api/monitoring'
 import { acknowledge, checkThresholds, resolve } from '@/api/alert'
 import { actionIntake } from '@/api/familyHealth'
@@ -424,7 +424,7 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   height: 8px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #42a491;
+  background: var(--care-600);
   box-shadow: 0 0 0 5px rgb(66 164 145 / 13%);
 }
 
@@ -452,7 +452,7 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   flex: 0 0 auto;
   border: 1px solid var(--line, #dde8e5);
   border-radius: 14px;
-  background: rgb(255 255 255 / 82%);
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
   box-shadow: 0 5px 20px rgb(16 45 42 / 4%);
 }
 
@@ -492,11 +492,11 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   align-items: center;
   gap: 22px;
   overflow: hidden;
-  border: 1px solid #cce2dd;
+  border: 1px solid var(--line-strong);
   border-radius: 22px;
   background:
     radial-gradient(circle at 84% 10%, rgb(75 157 144 / 14%), transparent 30%),
-    linear-gradient(135deg, #edf8f5 0%, #fbfdfc 70%);
+    linear-gradient(135deg, var(--care-50) 0%, var(--surface-subtle) 70%);
   box-shadow: 0 16px 38px rgb(30 91 83 / 7%);
 }
 
@@ -516,9 +516,9 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   align-items: center;
   justify-content: center;
   color: var(--care-700, #267266);
-  border: 1px solid #cae3dd;
+  border: 1px solid var(--care-100);
   border-radius: 22px;
-  background: rgb(255 255 255 / 70%);
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
   box-shadow: 0 10px 25px rgb(28 90 82 / 8%);
 }
 
@@ -578,7 +578,7 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #42a491;
+  background: var(--care-600);
   box-shadow: 0 0 0 4px rgb(66 164 145 / 12%);
 }
 
@@ -593,33 +593,33 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
 }
 
 .status-hero--warning {
-  border-color: #ead8aa;
-  background: radial-gradient(circle at 84% 10%, rgb(222 174 72 / 13%), transparent 30%), linear-gradient(135deg, #fff8e7, #fffdfa 70%);
+  border-color: var(--warning-soft);
+  background: radial-gradient(circle at 84% 10%, rgb(222 174 72 / 13%), transparent 30%), linear-gradient(135deg, var(--warning-soft), var(--warning-soft) 70%);
 }
 
 .status-hero--warning::before {
-  background: #d3a038;
+  background: var(--warning);
 }
 
 .status-hero--warning .status-orb {
-  color: #94600d;
-  border-color: #ead8aa;
-  background: #fff8e8;
+  color: var(--warning);
+  border-color: var(--warning-soft);
+  background: var(--warning-soft);
 }
 
 .status-hero--critical {
-  border-color: #edc8c4;
-  background: radial-gradient(circle at 84% 10%, rgb(216 92 85 / 12%), transparent 30%), linear-gradient(135deg, #fff0ef, #fffafa 70%);
+  border-color: var(--danger-soft);
+  background: radial-gradient(circle at 84% 10%, rgb(216 92 85 / 12%), transparent 30%), linear-gradient(135deg, var(--danger-soft), var(--danger-soft) 70%);
 }
 
 .status-hero--critical::before {
-  background: #d85c55;
+  background: var(--danger);
 }
 
 .status-hero--critical .status-orb {
-  color: #b4453f;
-  border-color: #edc8c4;
-  background: #fff2f1;
+  color: var(--danger);
+  border-color: var(--danger-soft);
+  background: var(--danger-soft);
 }
 
 .status-hero--empty {
@@ -645,13 +645,13 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   text-decoration: none;
   border: 1px solid var(--line, #dde8e5);
   border-radius: 17px;
-  background: #fff;
+  background: var(--paper);
   transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 
 .illustrated-shortcut:hover {
   transform: translateY(-2px);
-  border-color: #a9cdc5;
+  border-color: var(--line-strong);
   box-shadow: 0 10px 26px rgb(16 45 42 / 7%);
 }
 
@@ -686,7 +686,7 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   gap: 14px;
   border: 1px solid var(--line, #dde8e5);
   border-radius: 16px;
-  background: #fff;
+  background: var(--paper);
   box-shadow: 0 1px 2px rgb(16 45 42 / 3%);
 }
 
@@ -703,8 +703,8 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
 }
 
 .monitor-metric__icon--alert {
-  color: #a15b22;
-  background: #fff4e5;
+  color: var(--warning);
+  background: var(--warning-soft);
 }
 
 .monitor-metric > div {
@@ -754,7 +754,7 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   overflow: hidden;
   border: 1px solid var(--line, #dde8e5);
   border-radius: 16px;
-  background: #fff;
+  background: var(--paper);
   box-shadow: 0 1px 2px rgb(16 45 42 / 3%);
 }
 
@@ -763,7 +763,7 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   position: absolute;
   inset: 0 auto 0 0;
   width: 3px;
-  background: #9bacaa;
+  background: var(--info);
 }
 
 .signal-card header,
@@ -795,7 +795,7 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   height: 7px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #9bacaa;
+  background: var(--info);
 }
 
 .signal-value {
@@ -822,24 +822,24 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
 
 .signal-card--normal::before,
 .signal-card--normal em i {
-  background: #3d9b8c;
+  background: var(--success);
 }
 
 .signal-card--warning::before,
 .signal-card--delayed::before,
 .signal-card--warning em i,
 .signal-card--delayed em i {
-  background: #d3a038;
+  background: var(--warning);
 }
 
 .signal-card--critical::before,
 .signal-card--critical em i {
-  background: #d85c55;
+  background: var(--danger);
 }
 
 .signal-card--pending::before,
 .signal-card--pending em i {
-  background: #668ba4;
+  background: var(--info);
 }
 
 .monitoring-main-grid,
@@ -863,7 +863,7 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   overflow: visible;
   border: 1px solid var(--line, #dde8e5);
   border-radius: 18px;
-  background: #fff;
+  background: var(--paper);
   box-shadow: 0 1px 2px rgb(16 45 42 / 3%), 0 9px 28px rgb(16 45 42 / 4%);
 }
 
@@ -930,9 +930,9 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   border-radius: 2px;
 }
 
-.legend-systolic { background: #267266; }
-.legend-diastolic { background: #68a49a; }
-.legend-glucose { background: #d39a31; }
+.legend-systolic { background: var(--chart-systolic); }
+.legend-diastolic { background: var(--chart-diastolic); }
+.legend-glucose { background: var(--chart-glucose); }
 
 .monitor-chart {
   width: 100%;
@@ -961,19 +961,19 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   padding: 5px 8px;
   color: var(--ink-700, #405651);
   border-radius: 7px;
-  background: #edf3f1;
+  background: var(--surface-subtle);
   font-size: 10px;
   font-weight: 750;
 }
 
 .alert-row--critical .alert-level {
-  color: #a73f39;
-  background: #fde8e6;
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .alert-row--warning .alert-level {
-  color: #8a6110;
-  background: #fff2d2;
+  color: var(--warning);
+  background: var(--warning-soft);
 }
 
 .alert-row__body {
@@ -1026,7 +1026,7 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
 
 .safe-empty .el-icon {
   margin-bottom: 11px;
-  color: #3d9b8c;
+  color: var(--success);
 }
 
 .safe-empty strong {
@@ -1123,10 +1123,10 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
   width: 10px;
   height: 10px;
   margin-top: 4px;
-  border: 2px solid #fff;
+  border: 2px solid var(--paper);
   border-radius: 50%;
-  background: #3d9b8c;
-  box-shadow: 0 0 0 2px #cfe5df;
+  background: var(--care-600);
+  box-shadow: 0 0 0 2px var(--care-100);
 }
 
 .event-item strong {
@@ -1148,9 +1148,9 @@ function handleVisibility() { if (!document.hidden && autoRefresh.value) loadSna
 
 .care-guidance {
   padding: 20px 23px;
-  border: 1px solid #cfe4de;
+  border: 1px solid var(--line-strong);
   border-radius: 18px;
-  background: linear-gradient(135deg, #edf8f5, #fff);
+  background: linear-gradient(135deg, var(--care-50), var(--paper));
 }
 
 .care-guidance header {

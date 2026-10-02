@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
 import axios from 'axios';
+import { applyPlatformBackground } from './healthAppearance.js';
 
 export const DEFAULT_BRANDING = Object.freeze({
   platformName: '澄心健康', organizationName: '澄心健康', logo: '/logo.svg',
@@ -21,7 +22,7 @@ function localizeDefaultBranding(value = {}) {
 
 export function applyPlatformBranding(value = {}) {
   Object.assign(platformBranding, DEFAULT_BRANDING, localizeDefaultBranding(value), { loaded: true });
-  document.documentElement.style.setProperty('--app-page-bg', platformBranding.pageBackground);
+  applyPlatformBackground(platformBranding.pageBackground);
   document.title = platformBranding.platformName;
   let icon = document.querySelector("link[rel='icon']");
   if (!icon) { icon = document.createElement('link'); icon.rel = 'icon'; document.head.appendChild(icon); }

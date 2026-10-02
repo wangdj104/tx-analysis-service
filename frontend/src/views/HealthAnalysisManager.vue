@@ -98,18 +98,18 @@ watch(() => route.query.tab, (newTab) => {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: #fff;
+  background: var(--paper);
   border: 1px solid var(--app-border, #e2e8f0);
   cursor: pointer;
   flex-shrink: 0;
   font-size: 18px;
-  color: #475569;
+  color: var(--ink-700);
   box-shadow: var(--app-shadow-xs, 0 1px 2px rgb(15 23 42 / 6%));
 }
 
 /* penetrateto childcomponent HealthAnalysisModuleSidebar within sidebar */
 .health-analysis-manager :deep(.side-menu) {
-  background: linear-gradient(180deg, #f8f9ff 0%, #f0f4ff 60%, #f5f7fb 100%);
+  background: linear-gradient(180deg, var(--care-50) 0%, var(--care-50) 60%, var(--surface-subtle) 100%);
   box-shadow: 4px 0 24px rgb(15 23 42 / 8%);
   border-right: 1px solid rgb(226 232 240 / 0.8);
   transition: left 0.28s ease;
@@ -136,9 +136,9 @@ watch(() => route.query.tab, (newTab) => {
 
 .health-analysis-manager :deep(.side-menu .el-menu-item.is-active) {
   background: linear-gradient(90deg, rgb(79 106 246 / 15%) 0%, rgb(99 102 241 / 5%) 100%) !important;
-  color: #4f6af6 !important;
+  color: var(--care-700) !important;
   font-weight: 600;
-  box-shadow: inset 3px 0 0 0 #4f6af6;
+  box-shadow: inset 3px 0 0 0 var(--care-700);
 }
 
 .health-analysis-manager .sidebar-mask {

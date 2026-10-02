@@ -452,8 +452,8 @@ onUnmounted(() => {
 .dry-weight-page .dw-stat-card {
   padding: 16px 18px;
   border-radius: 12px;
-  background: linear-gradient(145deg, #f8fafc 0%, #fff 100%);
-  border: 1px solid #e2e8f0;
+  background: linear-gradient(145deg, var(--surface-subtle) 0%, var(--paper) 100%);
+  border: 1px solid var(--line);
   transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.2s ease;
   animation: card-enter 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
@@ -480,32 +480,32 @@ onUnmounted(() => {
 }
 
 .dry-weight-page .dw-stat-card.is-up {
-  border-color: #fecaca;
-  background: linear-gradient(145deg, #fff5f5 0%, #fff 100%);
+  border-color: var(--danger-soft);
+  background: linear-gradient(145deg, var(--danger-soft) 0%, var(--paper) 100%);
 }
 
 .dry-weight-page .dw-stat-card.is-down {
-  border-color: #bbf7d0;
-  background: linear-gradient(145deg, #f0fdf4 0%, #fff 100%);
+  border-color: var(--success-soft);
+  background: linear-gradient(145deg, var(--success-soft) 0%, var(--paper) 100%);
 }
 
 .dry-weight-page .dw-stat-label {
   display: block;
   font-size: 12px;
-  color: #64748b;
+  color: var(--ink-500);
   margin-bottom: 6px;
 }
 
 .dry-weight-page .dw-stat-value {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ink-950);
 }
 
 .dry-weight-page .dw-stat-value small {
   font-size: 14px;
   font-weight: 500;
-  color: #94a3b8;
+  color: var(--ink-500);
   margin-left: 2px;
 }
 
@@ -513,14 +513,14 @@ onUnmounted(() => {
   display: block;
   margin-top: 4px;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 .dry-weight-page .dw-section-title {
   margin: 0 0 10px;
   font-size: 13px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--ink-500);
 }
 
 .dry-weight-page .dw-empty-wrap {
@@ -531,7 +531,7 @@ onUnmounted(() => {
 .dry-weight-page .dw-guide-list {
   margin: 0;
   padding-left: 1.2em;
-  color: #475569;
+  color: var(--ink-700);
   font-size: 14px;
   line-height: 1.85;
 }
@@ -541,17 +541,17 @@ onUnmounted(() => {
 }
 
 .dry-weight-page .delta-up {
-  color: #dc2626;
+  color: var(--danger);
   font-weight: 600;
 }
 
 .dry-weight-page .delta-down {
-  color: #059669;
+  color: var(--success);
   font-weight: 600;
 }
 
 .dry-weight-page .text-muted {
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
 /* limittablegridwidthlevel, avoidcolumn widthpasthoursappearlargetabletnot collaborateadjustemptywhite */

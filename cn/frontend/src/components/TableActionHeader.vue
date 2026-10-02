@@ -33,6 +33,6 @@ defineEmits(['reset']);
 .table-action-header__label {
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--ink-700);
 }
 </style>

@@ -765,7 +765,7 @@ import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { LineChart as EchartsLineChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from 'echarts/components';
-import VChart from 'vue-echarts';
+import VChart from '@/components/HealthChart.vue';
 
 import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
@@ -1757,9 +1757,9 @@ watch(currentPatientId, (newVal, oldVal) => {
   gap: 24px;
   min-height: 128px;
   padding: 14px 22px;
-  border: 1px solid #dce8dc;
+  border: 1px solid var(--line);
   border-radius: 16px;
-  background: linear-gradient(110deg, #edf5ec 0%, #f9f6eb 100%);
+  background: linear-gradient(110deg, var(--care-50) 0%, var(--warning-soft) 100%);
 }
 
 .record-heading .left {
@@ -1801,11 +1801,11 @@ watch(currentPatientId, (newVal, oldVal) => {
 
 .upload-text {
   margin-top: 8px;
-  color: #606266;
+  color: var(--ink-500);
 }
 
 .upload-text em {
-  color: #409eff;
+  color: var(--care-700);
   font-style: normal;
   font-weight: 600;
 }
@@ -1816,7 +1816,7 @@ watch(currentPatientId, (newVal, oldVal) => {
   justify-content: center;
   gap: 10px;
   padding: 32px;
-  color: #6366f1;
+  color: var(--care-700);
   font-size: 14px;
 }
 
@@ -1838,7 +1838,7 @@ watch(currentPatientId, (newVal, oldVal) => {
 
 .recognize-items-count {
   font-size: 13px;
-  color: #64748b;
+  color: var(--ink-500);
 }
 
 .recognize-items-actions {
@@ -1869,9 +1869,9 @@ watch(currentPatientId, (newVal, oldVal) => {
 }
 
 .trend-chart-wrap {
-  background: #fff;
+  background: var(--paper);
   border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--line);
   padding: 16px;
   margin-bottom: 16px;
 }
@@ -1895,7 +1895,7 @@ watch(currentPatientId, (newVal, oldVal) => {
   height: 150px;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--line);
 }
 
 .attachment-image {
@@ -1915,7 +1915,7 @@ watch(currentPatientId, (newVal, oldVal) => {
   font-size: 14px;
   background: rgba(0, 0, 0, 0.6);
   border: none;
-  color: #fff;
+  color: var(--on-accent);
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -1954,20 +1954,20 @@ watch(currentPatientId, (newVal, oldVal) => {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #475569;
+  color: var(--ink-700);
   padding: 8px 12px;
-  background: #f8fafc;
+  background: var(--surface-subtle);
   border-radius: 8px;
 }
 .attachment-file-name {
   font-size: 12px;
-  color: #64748b;
+  color: var(--ink-500);
   padding: 4px 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: center;
-  background: #f8fafc;
+  background: var(--surface-subtle);
 }
 
 </style>

@@ -5,7 +5,8 @@
   <meta name="description" content="Explore Chengxin Health through a full-system interactive demo for clinicians, patients, families, and administrators.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Chengxin Health · Interactive Demo</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=20261001-1"><link rel="stylesheet" href="branding.css?v=20261001-1">
-  <script src="model.js?v=20261001-r9" defer></script><script src="app.js?v=20261002-chat1" defer></script>
+  <link rel="stylesheet" href="appearance.css?v=20261002-theme1">
+  <script src="model.js?v=20261001-r9" defer></script><script src="app.js?v=20261002-chat1-theme1" defer></script>
 </head>
 <body>
   <a class="skip" href="#content">Skip to main content</a>
@@ -15,7 +16,7 @@
     <div class="sidebar-bottom"><button class="guide-entry" id="guide-start" type="button"><b>New User Guide</b><small>Step-by-step · confirmation required</small></button><p>One record. One care team.</p><div class="demo-account"><span class="avatar" id="account-avatar">DR</span><div><b id="account-name">Dr. Sarah Chen</b><small>Demo account · fictional data</small></div></div></div>
   </aside>
   <div class="workspace">
-    <header class="topbar"><span><b id="workspace-label">Clinical workspace</b> <i>/</i> <strong id="breadcrumb">Overview</strong></span><div class="top-actions"><label class="patient-select"><span id="member-label">Patient</span><select id="patient"></select></label><button class="text-size-toggle" id="text-size" type="button" aria-pressed="false">Large text</button><a class="language-link" href="cn/">中文</a></div></header>
+    <header class="topbar"><span><b id="workspace-label">Clinical workspace</b> <i>/</i> <strong id="breadcrumb">Overview</strong></span><div class="top-actions"><label class="patient-select"><span id="member-label">Patient</span><select id="patient"></select></label><label class="appearance-select" for="health-theme"><span>Theme</span><select id="health-theme"><option value="platform">Platform default</option><option value="white">Clean white</option><option value="blue">Mist blue</option><option value="mint">Mint</option><option value="sand">Warm beige</option><option value="dark">Dark</option></select></label><button class="text-size-toggle" id="text-size" type="button" aria-pressed="false">Large text</button><a class="language-link" href="cn/">中文</a></div></header>
     <div class="demo-banner"><span><b>Full-system interactive demo</b> The workflows mirror the real platform with fictional, tab-local data. No message, upload, AI request, or notification leaves this page.</span><button class="text-button" id="reset">Reset demo</button></div>
     <main id="content" tabindex="-1"></main><footer class="footer"><strong id="ownership">© 2026 Chengxin Health. All rights reserved.</strong><span>Demo only—not medical advice. Do not enter real health information.</span></footer>
   </div>

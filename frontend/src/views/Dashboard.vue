@@ -188,7 +188,7 @@ import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { BarChart, LineChart, PieChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components';
-import VChart from 'vue-echarts';
+import VChart from '@/components/HealthChart.vue';
 import { getDashboardSummary } from '@/api/dashboard';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
 
@@ -626,8 +626,8 @@ onMounted(() => {
   margin-bottom: 22px;
   padding: 22px 26px;
   border-radius: var(--app-radius-xl, 14px);
-  background: var(--app-brand-gradient-135, linear-gradient(135deg, #4f6af6 0%, #7c3aed 100%));
-  color: #fff;
+  background: var(--app-brand-gradient-135, linear-gradient(135deg, var(--care-700) 0%, var(--care-700) 100%));
+  color: var(--on-accent);
   box-shadow: 0 10px 32px rgb(79 106 246 / 22%);
 }
 
@@ -660,7 +660,7 @@ onMounted(() => {
   padding: 20px 22px;
   border-radius: var(--app-radius-xl, 14px);
   border: 1px solid var(--app-border, #e8ecf4);
-  background: #fff;
+  background: var(--paper);
   box-shadow: var(--app-shadow-panel);
   position: relative;
   overflow: hidden;
@@ -671,15 +671,15 @@ onMounted(() => {
   position: absolute;
   inset: 0 0 auto 0;
   height: 4px;
-  background: #22c55e;
+  background: var(--success);
 }
 
 .health-hero--medium::before {
-  background: #f59e0b;
+  background: var(--warning);
 }
 
 .health-hero--high::before {
-  background: #ef4444;
+  background: var(--danger);
 }
 
 .health-hero__main {
@@ -691,7 +691,7 @@ onMounted(() => {
   margin-bottom: 8px;
   font-size: 12px;
   font-weight: 700;
-  color: #64748b;
+  color: var(--ink-500);
 }
 
 .health-hero__title-row {
@@ -705,7 +705,7 @@ onMounted(() => {
   margin: 0;
   font-size: 24px;
   line-height: 1.2;
-  color: #0f172a;
+  color: var(--ink-950);
 }
 
 .health-hero__badge {
@@ -713,23 +713,23 @@ onMounted(() => {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
-  color: #15803d;
-  background: #dcfce7;
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .health-hero--medium .health-hero__badge {
-  color: #b45309;
-  background: #fef3c7;
+  color: var(--warning);
+  background: var(--warning-soft);
 }
 
 .health-hero--high .health-hero__badge {
-  color: #b91c1c;
-  background: #fee2e2;
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .health-hero__sub {
   margin: 8px 0 0;
-  color: #64748b;
+  color: var(--ink-500);
   font-size: 13px;
 }
 
@@ -743,9 +743,9 @@ onMounted(() => {
 .health-chip {
   padding: 6px 10px;
   border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  color: #475569;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  color: var(--ink-700);
   font-size: 12px;
 }
 
@@ -762,22 +762,22 @@ onMounted(() => {
   min-height: 92px;
   padding: 12px;
   border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
   text-align: center;
 }
 
 .health-stat__value {
   font-size: 22px;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--ink-950);
   font-variant-numeric: tabular-nums;
 }
 
 .health-stat__label {
   margin-top: 5px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--ink-500);
 }
 
 .metric-grid {
@@ -836,17 +836,17 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.metric-card--indigo .metric-card__icon { background: #eef2ff; color: #4f46e5; }
-.metric-card--violet .metric-card__icon { background: #f3e8ff; color: #7c3aed; }
-.metric-card--emerald .metric-card__icon { background: #ecfdf5; color: #059669; }
-.metric-card--amber .metric-card__icon { background: #fffbeb; color: #d97706; }
-.metric-card--sky .metric-card__icon { background: #f0f9ff; color: #0284c7; }
-.metric-card--rose .metric-card__icon { background: #fff1f2; color: #e11d48; }
+.metric-card--indigo .metric-card__icon { background: var(--care-50); color: var(--care-700); }
+.metric-card--violet .metric-card__icon { background: var(--care-50); color: var(--care-700); }
+.metric-card--emerald .metric-card__icon { background: var(--success-soft); color: var(--success); }
+.metric-card--amber .metric-card__icon { background: var(--warning-soft); color: var(--warning); }
+.metric-card--sky .metric-card__icon { background: var(--info-soft); color: var(--info); }
+.metric-card--rose .metric-card__icon { background: var(--danger-soft); color: var(--danger); }
 
 .metric-card__val {
   font-size: 26px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--ink-950);
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
@@ -854,24 +854,24 @@ onMounted(() => {
 .metric-card__unit {
   font-size: 14px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--ink-500);
   margin-left: 2px;
 }
 
 .metric-card__lbl {
   font-size: 12px;
-  color: #64748b;
+  color: var(--ink-500);
   margin-top: 4px;
 }
 
 .metric-card__hint {
   font-size: 11px;
   margin-top: 6px;
-  color: #94a3b8;
+  color: var(--ink-500);
 }
 
-.metric-card__hint.is-up { color: #dc2626; }
-.metric-card__hint.is-down { color: #16a34a; }
+.metric-card__hint.is-up { color: var(--danger); }
+.metric-card__hint.is-down { color: var(--success); }
 .metric-card__hint.is-empty { visibility: hidden; }
 
 /* —— maingridgrid: leftchartrighttable —— */
@@ -909,7 +909,7 @@ onMounted(() => {
 .dash-card__head h2 {
   font-size: 15px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--ink-950);
   margin: 0;
   display: flex;
   align-items: center;
@@ -918,20 +918,20 @@ onMounted(() => {
 
 .dash-card__head p {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ink-500);
   margin: 4px 0 0;
 }
 
 .dash-card__link {
   font-size: 13px;
-  color: #6366f1;
+  color: var(--care-700);
   text-decoration: none;
   white-space: nowrap;
   padding-top: 2px;
 }
 
 .dash-card__link:hover {
-  color: #4f46e5;
+  color: var(--care-700);
 }
 
 .dash-aside {
@@ -970,7 +970,7 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #94a3b8;
+  color: var(--ink-500);
   text-align: center;
   padding: 24px;
 }
@@ -981,14 +981,14 @@ onMounted(() => {
 }
 
 .chart-placeholder__icon {
-  color: #cbd5e1;
+  color: var(--line-strong);
   margin-bottom: 12px;
 }
 
 .chart-placeholder p {
   font-size: 15px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--ink-500);
   margin: 0 0 6px;
 }
 
@@ -1008,7 +1008,7 @@ onMounted(() => {
 }
 
 .result-abnormal {
-  color: #d97706;
+  color: var(--warning);
   font-weight: 500;
 }
 
@@ -1041,7 +1041,7 @@ onMounted(() => {
 .quick-bar__label {
   font-size: 13px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--ink-500);
   flex-shrink: 0;
 }
 
@@ -1057,18 +1057,18 @@ onMounted(() => {
   gap: 6px;
   padding: 8px 14px;
   border-radius: 999px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  color: #475569;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  color: var(--ink-700);
   font-size: 13px;
   text-decoration: none;
   transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .quick-chip:hover {
-  background: #eef2ff;
-  border-color: #c7d2fe;
-  color: #4f46e5;
+  background: var(--care-50);
+  border-color: var(--care-100);
+  color: var(--care-700);
 }
 
 /* —— responseshouldstyle —— */

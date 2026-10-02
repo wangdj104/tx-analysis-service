@@ -26,7 +26,7 @@ function demo(edition) {
     return nodes.get(id);
   };
   const document = {
-    documentElement: { lang: edition === 'en' ? 'en' : 'zh-CN' },
+    documentElement: { lang: edition === 'en' ? 'en' : 'zh-CN', dataset: {} },
     body: { style: {}, classList: { toggle(name) { const on = !classes.has(name); on ? classes.add(name) : classes.delete(name); return on; } } },
     getElementById: node, querySelectorAll: () => [], querySelector: () => null,
     addEventListener(type, callback) { (listeners[type] ||= []).push(callback); }

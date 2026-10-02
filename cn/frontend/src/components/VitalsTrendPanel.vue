@@ -16,7 +16,7 @@ import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { LineChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components';
-import VChart from 'vue-echarts';
+import VChart from '@/components/HealthChart.vue';
 use([CanvasRenderer,LineChart,GridComponent,LegendComponent,MarkLineComponent,TooltipComponent]);
 const props=defineProps({records:{type:Array,default:()=>[]}});const mode=ref('both');
 const sorted=computed(()=>[...props.records].sort((a,b)=>`${a.recordDate} ${a.recordTime||''}`.localeCompare(`${b.recordDate} ${b.recordTime||''}`)));
@@ -38,4 +38,4 @@ const abnormalCount=computed(()=>sorted.value.filter(x=>bpAbnormal(x)||bgAbnorma
 const bpStreak=computed(()=>{let current=0,max=0;for(const row of sorted.value){if(!row.systolicBp)continue;if(bpAbnormal(row)){current++;max=Math.max(max,current)}else current=0}return{current,max}});
 </script>
 
-<style scoped>.trend-panel{margin-bottom:18px;padding:20px;border:1px solid #dbeafe;border-radius:16px;background:#fff}.trend-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.trend-head h2{margin:0 0 6px}.trend-head p{margin:0;color:#64748b;font-size:13px}.risk-strip{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}.risk-strip span{padding:8px 12px;border-radius:999px;background:#f8fafc;color:#475569;font-size:13px}.chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.chart-grid.single{grid-template-columns:1fr}.chart-card{border:1px solid #e2e8f0;border-radius:14px;padding:14px}.chart-card h3{margin:0 0 8px;font-size:15px}.chart{height:320px}@media(max-width:900px){.chart-grid{grid-template-columns:1fr}.trend-head{flex-direction:column}}</style>
+<style scoped>.trend-panel{margin-bottom:18px;padding:20px;border:1px solid var(--line-strong);border-radius:16px;background:var(--paper)}.trend-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.trend-head h2{margin:0 0 6px}.trend-head p{margin:0;color:var(--ink-500);font-size:13px}.risk-strip{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}.risk-strip span{padding:8px 12px;border-radius:999px;background:var(--surface-subtle);color:var(--ink-700);font-size:13px}.chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.chart-grid.single{grid-template-columns:1fr}.chart-card{border:1px solid var(--line);border-radius:14px;padding:14px}.chart-card h3{margin:0 0 8px;font-size:15px}.chart{height:320px}@media(max-width:900px){.chart-grid{grid-template-columns:1fr}.trend-head{flex-direction:column}}</style>

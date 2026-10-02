@@ -8,10 +8,12 @@ import '@/styles/app-theme.css';
 import '@/styles/mobile-optimization.css';
 import '@/styles/health-redesign.css';
 import '@/styles/care-accessibility.css';
+import '@/styles/health-appearance.css';
 import * as ElementPlusIconsVue from '@element-plus/icons-vue';
 import faviconUrl from '@/assets/logo.svg?url';
 import i18n from '@/i18n';
 import { loadPlatformBranding } from '@/utils/platformBranding';
+import { initializeAppearance } from '@/utils/healthAppearance';
 import { knownSpecialtyPath, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
 import { loadPatientSpecialtyScope } from '@/utils/patientSpecialtyScope';
 
@@ -27,6 +29,7 @@ function applyFavicon(href) {
   link.href = href;
 }
 
+initializeAppearance();
 applyFavicon(faviconUrl);
 loadPlatformBranding();
 

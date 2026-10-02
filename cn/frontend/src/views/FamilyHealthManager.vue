@@ -120,7 +120,7 @@ const tagType=s=>({TAKEN:'success',MISSED:'danger',SKIPPED:'info',SNOOZED:'warni
 const statusText=s=>({PLANNED:'已计划',COMPLETED:'已完成',CANCELLED:'已取消'}[s]||s)
 const eventType=s=>({SYMPTOM:'症状',VISIT:'就诊',NOTE:'备注',MEASUREMENT:'测量',DIALYSIS:'透析',INTAKE:'服药',MEDICATION_LOG:'用药记录'}[s]||s)
 </script>
-<style scoped>.visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid #dde8e5;padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:#70847f}</style>
+<style scoped>.visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid var(--line);padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:var(--ink-500)}</style>
 <style scoped>
 .schedule-tip {
   margin-bottom: 16px;
@@ -182,7 +182,7 @@ const eventType=s=>({SYMPTOM:'症状',VISIT:'就诊',NOTE:'备注',MEASUREMENT:'
 .workspace {
   border: 1px solid var(--line, #dde8e5);
   border-radius: 17px;
-  background: #fff;
+  background: var(--paper);
   box-shadow: 0 1px 2px rgb(16 45 42 / 3%), 0 8px 26px rgb(16 45 42 / 4%);
 }
 
@@ -214,9 +214,9 @@ const eventType=s=>({SYMPTOM:'症状',VISIT:'就诊',NOTE:'备注',MEASUREMENT:'
 }
 
 .status-card:first-child {
-  color: #fff;
+  color: var(--on-accent);
   border-color: transparent;
-  background: linear-gradient(145deg, #1c5a52, #31877a);
+  background: linear-gradient(145deg, var(--care-800), var(--care-600));
   box-shadow: 0 16px 32px rgb(28 90 82 / 16%);
 }
 
