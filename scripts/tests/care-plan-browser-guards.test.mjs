@@ -1,10 +1,37 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { validateBrowserEnvironment, staticRequestPath, createCleanFrontendBuild, safeBootDiagnostic } from '../verify-care-plan-browser.mjs'
+import * as browserRunner from '../verify-care-plan-browser.mjs'
 import { appPath } from '../../frontend/e2e/paths.mjs'
 import { mkdtemp, mkdir, writeFile, readFile, readdir, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+for(const [edition, pomPath] of [['.', '../../pom.xml'], ['cn', '../../cn/pom.xml']]) {
+  test(`${edition} production jar follows the actual Maven finalName and ignores unrelated jars`, async () => {
+    assert.equal(typeof browserRunner.resolveProductionJar,'function','Exact edition jar resolver is required')
+    const pom=await readFile(new URL(pomPath,import.meta.url),'utf8')
+    const declared=pom.match(/<finalName>([^<]+)<\/finalName>/)?.[1]
+    const finalName=declared==='${project.name}'?pom.match(/<name>([^<]+)<\/name>/)?.[1]:declared
+    assert.ok(finalName,'Actual edition Maven finalName must resolve')
+    const project=await mkdtemp(join(tmpdir(),'care-plan-jar-contract-'))
+    try {
+      await mkdir(join(project,'target'))
+      const expected=join(project,'target',finalName+'.jar')
+      await writeFile(expected,'synthetic path fixture; never executed as an application')
+      await writeFile(join(project,'target','unrelated.jar'),'decoy')
+      assert.equal(await browserRunner.resolveProductionJar(project,edition),expected)
+      await rm(expected)
+      await assert.rejects(browserRunner.resolveProductionJar(project,edition),{code:'ENOENT'})
+      await symlink(join(project,'target','unrelated.jar'),expected)
+      await assert.rejects(browserRunner.resolveProductionJar(project,edition),/regular.*jar/)
+    } finally {await rm(project,{recursive:true,force:true})}
+  })
+}
+test('production jar resolver rejects an unsupported edition before inspecting files', async () => {
+  assert.equal(typeof browserRunner.resolveProductionJar,'function','Exact edition jar resolver is required')
+  await assert.rejects(browserRunner.resolveProductionJar('/nonexistent-project','../other'),/edition/)
+})
 
 const valid = { CARE_PLAN_TEST_ONLY: 'true', CARE_PLAN_BROWSER_REQUIRED: 'true', CI: 'true', GITHUB_ACTIONS: 'true',
   CARE_PLAN_MYSQL_HOST: '127.0.0.1', CARE_PLAN_MYSQL_PORT: '13306', CARE_PLAN_MYSQL_DATABASE: 'care_plan_test_fresh',

@@ -51,6 +51,14 @@ export function safeBootDiagnostic(value) {
   if(typeof value!=='string' || value.length>2048 || !/^CARE_PLAN_BROWSER_BOOT_FAILURE (?:java|javax|org|com)\.[A-Za-z0-9_.$]+(?: > (?:java|javax|org|com)\.[A-Za-z0-9_.$]+){0,7}$/.test(value))return null
   return value
 }
+export async function resolveProductionJar(project, edition) {
+  // Exact production POM contracts: EN literal finalName; CN ${project.name}.
+  const names={'.':'tx-analysis-service',cn:'family-health-care'}
+  assert.ok(Object.hasOwn(names,edition),'Invalid production jar edition')
+  const jar=join(project,'target',names[edition]+'.jar'),metadata=await lstat(jar)
+  assert.ok(metadata.isFile() && !metadata.isSymbolicLink(),'Expected regular production jar is required')
+  return jar
+}
 async function probeVideo(video, env) {
   const child=spawn('ffprobe',['-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=codec_name,width,height,nb_read_frames','-show_entries','format=duration','-of','json',video],{cwd:root,env,stdio:['ignore','pipe','inherit']})
   let output='';child.stdout.on('data',data=>{output+=data;if(output.length>16384)child.kill('SIGTERM')})
@@ -161,7 +169,8 @@ export async function main(input=process.env) {
   await mkdir(outputs,{recursive:true})
   // Build the real application and the real edition. Never use a dev/mock frontend.
   await run('mvn',['-B','-DskipTests','package','org.apache.maven.plugins:maven-dependency-plugin:3.8.1:build-classpath','-Dmdep.includeScope=test','-Dmdep.outputFile=target/care-plan-browser-classpath.txt'],project,env)
-  const jarEntries=await capture('jar',['tf',join(project,'target/tx-analysis-service.jar')],env)
+  const productionJar=await resolveProductionJar(project,contract.project)
+  const jarEntries=await capture('jar',['tf',productionJar],env)
   assert.ok(!/CarePlanBrowserApplication|SyntheticExternalServices|care-plan-e2e-fixture\.sql/.test(jarEntries),'Test launcher/external overrides/fixture must never enter the production artifact')
   const entries=new Set(jarEntries.split(/\r?\n/)),testClasses=join(project,'target/test-classes')
   for(const file of (await artifactFiles(testClasses)).filter(file=>file.endsWith('.class'))) {
