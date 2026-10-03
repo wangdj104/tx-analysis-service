@@ -1,32 +1,37 @@
-# Pre-release Product Review
+# 产品审查：照护计划协作
 
-## Release baseline achieved
+## 已实现的能力
 
-- A unified family-care workspace connects daily tasks, medications, appointments, symptoms, questions, handovers, records, and health trends.
-- Patient switching and server-side data scopes reduce accidental cross-patient access.
-- Medication check-ins update inventory idempotently and preserve movement history.
-- Medical records support attachments, optional OCR, structured values, abnormal-result review, and trends.
-- Dialysis, dry weight, nutrition, alerts, reports, data export, backup, notifications, and audit logs form a credible specialist workflow.
-- The repository includes a full installation baseline, optional fictional demo data, CI, Docker examples, a static demo, security guidance, and user documentation.
-- The interface, API messages, baseline menu data, demo, and public documentation use English, with a localization foundation for future languages.
-- The Clinical Workbench unifies prioritized attention items, source-aware data review, medication safety screening, dialysis quality metrics, emergency handoff, and controlled FHIR/device imports.
-- Safety-critical automation is gated: alert scans deduplicate by source observation, alert transitions retain an audit trail, AI schedules create review-required drafts, imports require preview and confirmation, and recurring dialysis schedules are never inferred silently.
+原有家庭照护、临床工作台及专科模块构成基础。新增协作闭环：有效分配医生保存私密草稿并发布含 1–50 个一次性行动项的版本；记录所有者及明确获授权家属提交执行回执或求助；有效分配且另获授权的护理人员代录及记录管理跟进；医生退回补充、确认复核，并明确关闭或取消计划。
 
-## Deliberate simplifications
+已发布临床说明不可原地覆盖。修订发布生成新行动项，旧版未完成项被替代，历史回执仍归原版本。医生确认仅表示已复核记录，不表示治疗成功。旧 `workflow_version=0` 内部计划保持原行为，不自动发布。
 
-- Historical pre-release migration scripts were removed because there are no deployed legacy users. `init.sql` is the only installation baseline.
-- The static demo does not imitate authentication, OCR, AI, notification delivery, or persistent storage. It demonstrates local product interaction without misleading users.
-- No default production account is created. Bootstrap administration requires explicit configuration.
+## 权限与临床边界
 
-## Competitive roadmap
+- 临床操作要求当前有效医生角色及患者分配；管理员不是临床权限捷径
+- 家属读取需要明确 `CARE_PLAN` 授权，记录还需要 `WRITE` 或 `PROXY`；家庭邀请或旧空白／全模块授权不会新增该模块
+- 护理需要有效角色、未过期有效分配及明确模块授权；管理员分配不等于共享临床内容，记录所有者另行授权
+- 证据引用仍需原测量或病历模块权限；受限引用不泄露数值、标题或附件地址。历史及命令重放均重查当前权限
+- 本里程碑不改写处方、不实现周期临床行动、不新增回执文件上传；未验证真实通知供应商投递或临床效果
 
-- Upgrade to supported Java and Spring Boot versions and maintain dependency vulnerability scanning.
-- Move attachments to encrypted object storage with malware scanning and lifecycle controls.
-- Add Redis-backed distributed rate limits, session revocation, and task locking for multi-instance deployments.
-- Introduce Flyway or Liquibase when post-release database upgrades become necessary.
-- Add full browser end-to-end tests, automated accessibility checks, and real-device mobile regression.
-- Continue reducing large frontend chunks through route-level and component-level loading.
-- Add supported inbound WeCom integration through a custom application or long-connection bot. Current webhooks provide outbound notifications only.
-- Add additional language packs through the localization layer after the English baseline stabilizes.
-- Expand the curated medication interaction catalogue with a licensed drug knowledge base and pharmacist governance.
-- Add standards-conformance testing for additional FHIR resources and authenticated device connectors.
+## 安装、恢复与启用
+
+新库依次执行 `init.sql`、`doctor_workspace_20260921.sql`、`care_platform_upgrade_20260921.sql`、`care_plan_collaboration_20261003.sql`，仅执行基础脚本不足。已有安装先备份完整数据库及附件存储，再应用适用的增量升级，不重跑基础脚本。合成演示数据不得导入生产。
+
+`CARE_PLAN_ENABLED` 默认 `false`。安装表结构不会启用功能、分配护理账号或授予权限。停用时保留已发布历史，不能删表回滚。家庭归档版本 1 仍是限定导出，不包含协作计划、版本、行动项、回执、事件／证据、护理分配、通知发件箱或命令；恢复闭环需要完整数据库及附件备份。
+
+## 已验证范围与待验收项
+
+最终运行时 `af06584b655b875ebfd16d0482a9712a99dc6cec` 在 [CI 37137746134](https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134) 七个任务全部成功：双后端全量测试／打包、双前端测试／构建、静态演示及双真实数据库／浏览器任务。每语言两次九方法原生测试零失败／错误／跳过，每次实际 56 种 UTC 组合及完整合成恢复；十个浏览器场景全部通过，包括真实 CN Logo 解码。已验证前端全量为 EN 1143/1143／CN 1150/1150 及双构建。最终后端／静态任务不猜测无法重新提取的总数；较早隔离后端各发现 456／执行 455、可选真实数据库明确跳过 1。
+
+公开演示验证 22 个部署文件，捕获哈希另匹配最终源；四份最终 CN 角色 MP4 与四张所选 CN／EN 截图完成完整性及画面抽查，[发布证据](CARE_PLAN_COLLABORATION_RELEASE.md)明确范围，EN MP4 未单独审阅。最终运行时包含备份警告／契约及已审查 Logo／默认保存修正。证据文档提交由 Git 历史定位；仅文档的 `[skip ci]` 提交需要独立审查及不变源身份／远端核验，须保留 1,127 个运行时／测试／CI／部署条目，不能替代已测试 SHA。后端尚未生产部署或启用，真实供应商投递及临床效果未验证。[机器可读证据](../../docs/verification/care-plan-collaboration.json)记录精确身份及限制。
+
+## 后续工作
+
+- 发布证据文档时保留已验收运行时身份，并核验源清单及远端 main
+- 在明确授权的非生产目标验证外部供应商投递并完善运行监测
+- 扩展可访问性与真实移动设备覆盖
+- 升级 Java／Spring 基线并维护依赖漏洞扫描
+- 将完整家庭可携带协作记录另立版本化导出里程碑，保留格式 1 兼容
+- 完善附件加密存储、恶意文件扫描及保留政策
+- 通过独立设计和批准的临床研究评估效果

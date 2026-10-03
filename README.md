@@ -28,6 +28,7 @@ The platform is designed around **human-in-the-loop healthcare**. Automation cre
 | Doctor | Assigned patients, risk queue, clinical review, care plans, schedules, reports | Spend attention on exceptions, document decisions, and coordinate follow-up |
 | Patient | Daily plan, measurements, medication check-ins, visits, consultation, records | Know what to do next and keep a continuous personal health history |
 | Family / caregiver | Shared tasks, delegated recording, reminders, handovers, emergency card | Support care safely with explicit access boundaries |
+| Nurse | Assigned and explicitly authorized plan follow-up | Record assisted execution and help; route clinical review to doctors |
 | Administrator | Accounts, roles, menus, branding, notification channels, audit logs | Operate a configurable, traceable platform across teams |
 
 ## Product capabilities
@@ -53,6 +54,12 @@ The platform is designed around **human-in-the-loop healthcare**. Automation cre
 - **Special populations:** child growth observations, vaccination plans, maternity timelines, multiple guardians, mental-health questionnaires and private visibility controls.
 - **Governance and operations:** patient-controlled sharing, multi-clinician authorization, masked exports, operation audit, clinician scheduling, patient grouping and completion/adherence/target-rate reporting.
 
+## Collaborative care plans
+
+The application implements a doctor → patient/family → nursing follow-up → doctor review workflow, with private drafts, published versions, one-time actions, assisted-entry receipts, help requests and retained history. Nursing is a separate role with a [restricted follow-up queue](docs/USER_GUIDE.md#44-collaborative-doctor-plan-tasks); it requires both an active patient assignment and an explicit `CARE_PLAN` grant. Family membership alone does not grant plan access, and administrators do not gain clinical authority from their role.
+
+`CARE_PLAN_ENABLED` defaults to `false`. Installing the additive migration does not activate the workflow. Implementation and local regression results are recorded separately from final real MySQL/browser acceptance, public-demo verification and deployment in the [release evidence](docs/CARE_PLAN_COLLABORATION_RELEASE.md) and [machine-readable evidence](docs/verification/care-plan-collaboration.json). Final runtime `af06584b655b875ebfd16d0482a9712a99dc6cec` passed both real MySQL gates, all ten browser scenarios per language and all seven CI jobs, including backup contracts and bilingual logo/default-save corrections. The selected final role recordings/screenshots are verified. The evidence-only docs commit is identified by Git history and must preserve the tested runtime identity; the backend has not been deployed or activated in production. Provider delivery and clinical effectiveness have not been validated.
+
 ## Product principles
 
 1. **One longitudinal record:** measurements, treatment events, consultations and documents remain connected to the patient timeline.
@@ -71,7 +78,7 @@ The repository includes a backend-free, bilingual product tour with fictional da
 - Local preview: serve the `demo` directory with any static HTTP server.
 - GitHub Pages deploys both languages from `main` through the included [workflow](.github/workflows/demo-pages.yml).
 
-Switch among doctor, patient, family, and administrator roles to explore simulated examples of 40 workflows across chronic-disease monitoring, appointments, remote consultation, recovery, home care, emergency information, child and maternity care, mental health, privacy, and operations. Actions update tab-local demo state and audit events; no network request or real clinical processing occurs. Demo coverage is not evidence that every production workflow has been verified; see the [functional audit and verification boundaries](docs/FUNCTIONAL_AUDIT_20260922.md).
+Switch among doctor, patient, family, nurse, and administrator roles to explore simulated examples of 40 workflows across chronic-disease monitoring, appointments, remote consultation, recovery, home care, emergency information, child and maternity care, mental health, privacy, and operations. Actions update tab-local demo state and audit events; no network request or real clinical processing occurs. Demo coverage is not evidence that every production workflow has been verified; see the [functional audit and verification boundaries](docs/FUNCTIONAL_AUDIT_20260922.md).
 
 ## Language layout
 
@@ -195,6 +202,7 @@ Vite normally serves `http://localhost:5174` and proxies `/api` to `http://local
 | `BOOTSTRAP_ADMIN_*` | First administrator | Enable once, then disable |
 | `OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` | Optional OCR provider | Keep API keys server-side |
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_API_URL` / `DEEPSEEK_API_MODEL` | Optional AI analysis | Review privacy and retention policies first |
+| `CARE_PLAN_ENABLED` | Opt-in collaborative care plans; defaults to `false` | Activate only after migration, acceptance and an authorized deployment decision |
 | `DEV_PROXY_TARGET` | Vite development API upstream | Not used by production; production proxies `/api` |
 
 See [.env.example](.env.example) and [application.yml](src/main/resources/application.yml) for the complete list.

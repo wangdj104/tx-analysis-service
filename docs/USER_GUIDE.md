@@ -73,6 +73,22 @@ The **Health Timeline** combines measurements, dialysis, medication activity, an
 
 Use **Care Plan** for today's tasks, dialysis schedules, personal blood-pressure and weight targets, and a visit summary. Targets should come from an appropriate clinician.
 
+### 4.4 Collaborative doctor-plan tasks
+
+This opt-in workflow appears under **Family Care → Doctor plan tasks**, **Doctor Workspace** and the separate **Nursing follow-up** page. It is disabled by default (`CARE_PLAN_ENABLED=false`); see the [accepted runtime evidence](CARE_PLAN_COLLABORATION_RELEASE.md), including final EN/CN software workflow validation and its limits. The backend has not been deployed or activated in production.
+
+Assigned doctors create a private collaboration draft, add 1–50 one-time actions, select currently authorized responsible accounts and confirm deadlines with explicit UTC offsets. **Save private draft** does not share instructions. **Review and publish** shows the patient/care-partner audience; a revision also shows changed instructions and older actions that will be superseded. Published content can only change through a new version. Historical internal plans can be copied into a new draft, leaving the original unchanged.
+
+The record owner sees published plan tasks. Family caregivers need an explicit `CARE_PLAN` grant; `READ` permits viewing, while `WRITE` or `PROXY` additionally permits recording or requesting help. Family membership alone is insufficient. Plan tasks use their own authorized endpoint and remain discoverable when unrelated care modules are restricted.
+
+**Record execution** requires a 1–2000 character note and actual time, which cannot be in the future. **Ask for help** requires a 1–1000 character reason. A record can reference at most five existing measurements or medical records; no new file uploads are supported. Original-module permissions still apply, and a restricted reference reveals only that a linked record exists. Family and nurse submissions are always assisted entries. The record owner's self-entry declaration does not prove the person behind the patient record is the account holder.
+
+An administrator assigns a nurse, then the record owner separately grants `CARE_PLAN` access. Nurses need a current active role, unexpired assignment and grant. **Nursing follow-up** lists help/follow-up and waiting-for-doctor-review queues; nursing can record assisted execution and administrative follow-up but cannot publish, revise, confirm or close a plan. Administrators do not receive clinical permissions from their role.
+
+The doctor reviews each submitted receipt, either confirming it or returning it with a required explanation. A new receipt supplements returned information; older evidence remains. **Record reviewed** means the feedback was reviewed, not that treatment succeeded. Open/help-needed actions can be overdue; a submitted item waiting for review displays its separate waiting time. Revision creates new open actions and retains old receipts; cancellation requires a reason. Closing requires all current actions to be confirmed; closed/cancelled plans cannot reopen in this milestone.
+
+Use **Reload server state, keep my input** after a conflict. After an uncertain response, retry the original frozen command or inspect server history before creating another. Closing a dialog does not cancel a server request already sent. Patient switches, sign-out and revoked permissions clear plan context; historical access also depends on current authority. Time is stored in UTC and shown with the browser's local timezone.
+
 ## 5. Medications, prescriptions, reminders, and stock
 
 ### 5.1 Create the medication catalog
@@ -191,7 +207,7 @@ Open **Data Export**, select one patient and a date range, then choose the data 
 
 Open **Family Care → Backup & restore**, preview the export, review missing-attachment warnings, and download the archive. Store it in an encrypted location with appropriate access and retention.
 
-The backup covers accessible family business data. It excludes account passwords, full notification secrets, and unrelated users.
+The family archive keeps format version 1 and its existing declared table list. It covers only record types listed in the preview and excludes consultations/chat, care-journey and doctor-workspace records, collaborative care plans, revisions, actions, receipts, events/evidence, nurse assignments, notification outbox, commands, access grants and system accounts. Only database-embedded attachment content is included. Preserve collaboration history with a separate complete database and attachment-storage backup.
 
 ### 10.4 Restore as an independent copy
 
@@ -232,7 +248,7 @@ Send a channel test, verify outbound HTTPS access, webhook security settings, ch
 
 ### The database is empty after startup
 
-The application does not create tables automatically. Run `src/main/resources/sql/init.sql` against a new MySQL database and verify the configured database URL and account permissions.
+The application does not create tables automatically. On a new MySQL database run `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, then `care_plan_collaboration_20261003.sql`; verify the configured database URL and account permissions. Existing databases require a complete backup and applicable additive upgrades, without rerunning the baseline.
 
 ## 13. Suggested product tour
 

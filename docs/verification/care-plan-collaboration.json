@@ -1,0 +1,1160 @@
+{
+  "schemaVersion": 1,
+  "reportDate": "2026-10-03",
+  "status": "final_runtime_verified",
+  "applicationSource": {
+    "acceptedRuntimeCommit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+    "acceptedRuntimeTree": "f98e3ed9fe29800fabc13cae0ced4ac983761c92",
+    "localReconciledCommit": "54848b6ac7cf67387900b51688afc15d1ecf478d",
+    "localImplementationCommit": "3b0888c680a195a7b6c1c08d3339885b40d37d3d",
+    "releaseCommit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+    "releaseTree": "f98e3ed9fe29800fabc13cae0ced4ac983761c92",
+    "identityNote": "Accepted runtime includes the mirrored limited-backup warnings/contracts and reviewed logo/default-save corrections. A later evidence-only documentation commit does not become the tested runtime SHA. Runtime/test/CI/deployment files must retain the 1127-entry identity below."
+  },
+  "implemented": {
+    "doctorDraftPublicationRevisionReviewClosure": true,
+    "patientAndFamilyReceiptsHelpHistory": true,
+    "restrictedNursingFollowUp": true,
+    "authorityBoundReplayAndEvidence": true,
+    "persistentNotificationOutbox": true,
+    "featureFlag": "CARE_PLAN_ENABLED",
+    "defaultEnabled": false
+  },
+  "localTask13Verification": {
+    "status": "passed_with_explicit_native_skip",
+    "sourceBaseCommit": "43ffd4454a053cc19852a54167a8c44d75320e12",
+    "sourceBaseTree": "ca2a957d8861e4f46eb13dc98aacaec3776657df",
+    "syntheticDataOnly": true,
+    "isolatedArchive": true,
+    "verificationFinishedUtc": "2026-10-03T14:01:48Z",
+    "backend": {
+      "en": {
+        "discovered": 456,
+        "executed": 455,
+        "failures": 0,
+        "errors": 0,
+        "skips": 1,
+        "contract": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "logSha256": "63af7ecb9277fcb3a2b3a5698aa45a7c594c0d106ba8541ebe16f7aceacfc2e3",
+        "nativeSkip": "CarePlanMysqlIntegrationTest: synthetic native configuration absent",
+        "exitCode": 0
+      },
+      "cn": {
+        "discovered": 456,
+        "executed": 455,
+        "failures": 0,
+        "errors": 0,
+        "skips": 1,
+        "contract": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "logSha256": "1fc5f1f7d416ed6126dd731c5dd5a53601fac5c9ff128ae404d258952227c454",
+        "nativeSkip": "CarePlanMysqlIntegrationTest: synthetic native configuration absent",
+        "exitCode": 0
+      }
+    },
+    "verifiedCodeOverlaySha256": {
+      "src/main/java/org/familyhealthcare/service/FamilyBackupService.java": "c1fd14d54c6c52d889fd4274001e5ef18d9f8825bea61c3d0cc8ce89f2bda21f",
+      "cn/src/main/java/org/familyhealthcare/service/FamilyBackupService.java": "c1fd14d54c6c52d889fd4274001e5ef18d9f8825bea61c3d0cc8ce89f2bda21f",
+      "src/test/java/org/familyhealthcare/service/CarePlanReleaseContractTest.java": "0b99cde2433e504e03ac5a9ff88d553c562e16d46c726bbc68b545ee38cf5499",
+      "cn/src/test/java/org/familyhealthcare/service/CarePlanReleaseContractTest.java": "0b99cde2433e504e03ac5a9ff88d553c562e16d46c726bbc68b545ee38cf5499"
+    },
+    "tddRed": {
+      "en": {
+        "tests": 3,
+        "failures": 2,
+        "errors": 0,
+        "skips": 0,
+        "exitCode": 1
+      },
+      "cn": {
+        "tests": 3,
+        "failures": 2,
+        "errors": 0,
+        "skips": 0,
+        "exitCode": 1
+      },
+      "expectedFailure": "English and Chinese export warnings did not describe excluded collaborative records. Version 1 and its existing declared table list already passed."
+    },
+    "packaging": {
+      "status": "blocked_offline_plugin_unavailable",
+      "en": {
+        "exitCode": 1,
+        "logSha256": "cbe4d409b8df9c0d46192f896e897ec0e0ca21f0d66ac68423ea0f493ef2bdb7"
+      },
+      "cn": {
+        "exitCode": 1,
+        "logSha256": "6902616791f3b0a8e476c0a5174af737f61afbd470111a1d7c7993b76e988abe"
+      },
+      "reason": "maven-jar-plugin 3.2.2 is not present in the existing offline cache. No install or network retry was performed.",
+      "notReleaseAcceptance": true
+    },
+    "documentationStaticChecks": {
+      "installationFlagPermissionAndLocalLinks": true,
+      "canonicalEnCnDemoLinks": true,
+      "mirroredJavaByteParity": true,
+      "warningOnlyProductionDiffAndVerifiedOverlay": true,
+      "carePlanControllerRouteInventory": 19,
+      "pendingClaimsAndNoProductionDeployment": true
+    },
+    "gitDiffCheckExitCode": 0,
+    "archiveIdentityMetadataNote": "Initial archive identity metadata described the RED stage with two test overlays. The subsequent GREEN/full verification also overlaid the two mirrored warning files. verifiedCodeOverlaySha256 lists all four final verified Java files."
+  },
+  "earlierCandidateVerification": {
+    "commit": "288bcd06bc6282b4bdf9edcf7b5017ea96bae6ef",
+    "tree": "5936b7c754a6b09dad50c1d28123e2ac28f68f34",
+    "frontend": {
+      "en": {
+        "tests": 1092,
+        "failures": 0,
+        "skips": 0,
+        "buildExitCode": 0
+      },
+      "cn": {
+        "tests": 1099,
+        "failures": 0,
+        "skips": 0,
+        "buildExitCode": 0
+      }
+    },
+    "backendPerLocale": {
+      "discovered": 453,
+      "executed": 452,
+      "failures": 0,
+      "errors": 0,
+      "skips": 1
+    },
+    "runnerGuards": {
+      "tests": 52,
+      "failures": 0,
+      "skips": 0,
+      "meaning": "Synthetic command-boundary guards; not real MySQL/browser execution."
+    },
+    "scope": "Historical candidate results only; not final release acceptance."
+  },
+  "historicalNativeVerification": {
+    "status": "native_pass_browser_jobs_failed",
+    "notFinalAcceptance": true,
+    "entries": [
+      {
+        "commit": "8191911ca14b776017067d7e1a49a6e0a499a0a0",
+        "run": 37125346899,
+        "locale": "en",
+        "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37125346899/job/111209414591",
+        "nativePasses": 2,
+        "nativeMethodsEach": 9,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "productionUtcCombinationsEach": 56,
+        "fullSyntheticRestorePasses": 2,
+        "overallJob": "failure_after_native_browser_gate_not_passed"
+      },
+      {
+        "commit": "8191911ca14b776017067d7e1a49a6e0a499a0a0",
+        "run": 37125346899,
+        "locale": "cn",
+        "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37125346899/job/111209414594",
+        "nativePasses": 2,
+        "nativeMethodsEach": 9,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "productionUtcCombinationsEach": 56,
+        "fullSyntheticRestorePasses": 2,
+        "overallJob": "failure_after_native_browser_gate_not_passed"
+      },
+      {
+        "commit": "c8f76e64f0f7c339f002a144b6b608f4d7ce89f2",
+        "run": 37127751377,
+        "locale": "en",
+        "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37127751377/job/111216438378",
+        "nativePasses": 2,
+        "nativeMethodsEach": 9,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "productionUtcCombinationsEach": 56,
+        "fullSyntheticRestorePasses": 2,
+        "overallJob": "failure_after_native_browser_gate_not_passed"
+      },
+      {
+        "commit": "c8f76e64f0f7c339f002a144b6b608f4d7ce89f2",
+        "run": 37127751377,
+        "locale": "cn",
+        "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37127751377/job/111216438284",
+        "nativePasses": 2,
+        "nativeMethodsEach": 9,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "productionUtcCombinationsEach": 56,
+        "fullSyntheticRestorePasses": 2,
+        "overallJob": "failure_after_native_browser_gate_not_passed"
+      }
+    ]
+  },
+  "finalAcceptance": {
+    "status": "runtime_and_selected_recording_scope_passed",
+    "run": 37137746134,
+    "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134",
+    "expectedCommit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+    "requiredCi": "passed_final_runtime",
+    "realMysql": "passed_final_runtime",
+    "productionPackaging": "passed_final_runtime",
+    "browserPerLocale": {
+      "requiredScenarios": 10,
+      "requiredFailures": 0,
+      "requiredSkips": 0,
+      "status": "passed_final_runtime",
+      "boundary": "Nine real Spring/MySQL/Vue application workflows plus one static-demo browser scenario; static-demo success does not establish backend workflow acceptance.",
+      "failFast": false,
+      "retries": 0,
+      "passedPerLocale": 10,
+      "failedPerLocale": 0,
+      "skipsPerLocale": 0,
+      "notRunPerLocale": 0,
+      "logoDecode": "Real logo decode assertions passed in both locale application scenarios."
+    },
+    "independentTask13Review": "runtime_source_and_preparation_independently_reviewed",
+    "runStatus": "completed",
+    "runConclusion": "success",
+    "videoInspectionStatus": "selected_final_deliverables_verified_with_explicit_scope",
+    "candidateFix": {
+      "status": "included_in_accepted_final_runtime",
+      "sourceCommit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+      "scope": "Workspace routing, receipt Tab/return focus, synthetic two-action Today fixture, and reviewed bilingual logo/default-save corrections are included.",
+      "runtimeAcceptance": "passed",
+      "productionActivation": false
+    },
+    "historicalAttempts": [
+      {
+        "commit": "c8f76e64f0f7c339f002a144b6b608f4d7ce89f2",
+        "run": 37127751377,
+        "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37127751377",
+        "status": "completed",
+        "conclusion": "failure",
+        "nativeMysql": {
+          "status": "passed",
+          "entries": [
+            {
+              "commit": "c8f76e64f0f7c339f002a144b6b608f4d7ce89f2",
+              "run": 37127751377,
+              "locale": "en",
+              "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37127751377/job/111216438378",
+              "nativePasses": 2,
+              "nativeMethodsEach": 9,
+              "failures": 0,
+              "errors": 0,
+              "skips": 0,
+              "productionUtcCombinationsEach": 56,
+              "fullSyntheticRestorePasses": 2,
+              "overallJob": "failure_after_native_browser_gate_not_passed"
+            },
+            {
+              "commit": "c8f76e64f0f7c339f002a144b6b608f4d7ce89f2",
+              "run": 37127751377,
+              "locale": "cn",
+              "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37127751377/job/111216438284",
+              "nativePasses": 2,
+              "nativeMethodsEach": 9,
+              "failures": 0,
+              "errors": 0,
+              "skips": 0,
+              "productionUtcCombinationsEach": 56,
+              "fullSyntheticRestorePasses": 2,
+              "overallJob": "failure_after_native_browser_gate_not_passed"
+            }
+          ]
+        },
+        "browser": {
+          "status": "failed",
+          "en": {
+            "failed": 1,
+            "notRun": 9,
+            "jobUrl": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37127751377/job/111216438378"
+          },
+          "cn": {
+            "failed": 1,
+            "notRun": 9,
+            "jobUrl": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37127751377/job/111216438284"
+          },
+          "failurePoint": "After a real doctor created and published a plan, patient navigation to /care was redirected to the monitoring page by the frontend workspace route gate.",
+          "releaseAcceptance": false
+        },
+        "recordingArtifacts": {
+          "status": "packaged",
+          "filesPerLocale": 15,
+          "inspection": {
+            "status": "partial_only",
+            "locale": "cn",
+            "doctorVideoDurationSeconds": 50.16,
+            "observation": "Genuine doctor workflow before the patient-navigation failure was inspected. This is not full scenario or final release acceptance.",
+            "fullAcceptance": false
+          }
+        }
+      },
+      {
+        "commit": "8383ddabfc18ff29b60af97ce1d994997a20ac8f",
+        "sourceTree": "5a3021901a6ef25cce4f4b01d9dfd70b8b57cd16",
+        "run": 37134084424,
+        "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37134084424",
+        "status": "completed",
+        "conclusion": "failure",
+        "nativeMysql": {
+          "status": "passed",
+          "perLocale": {
+            "nativePasses": 2,
+            "nativeMethodsEach": 9,
+            "failures": 0,
+            "errors": 0,
+            "skips": 0
+          }
+        },
+        "browser": {
+          "status": "failed",
+          "perLocale": {
+            "passed": 9,
+            "failed": 1,
+            "notRun": 0
+          },
+          "failurePoint": "The remaining 390px mobile case required a second Today action after submission but its synthetic fixture provided only one action. Product Tab containment and refreshed opener-focus corrections were already applied; access/history/resilience workflows passed.",
+          "releaseAcceptance": false
+        },
+        "source": "Verified run facts supplied by the coordinating parent; whole-run failure retained."
+      }
+    ],
+    "latestAttempt": {
+      "commit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+      "tree": "f98e3ed9fe29800fabc13cae0ced4ac983761c92",
+      "localReconciledCommit": "54848b6ac7cf67387900b51688afc15d1ecf478d",
+      "run": 37137746134,
+      "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134",
+      "status": "completed",
+      "conclusion": "success",
+      "updatedUtc": "2026-10-03T16:53:48Z",
+      "includesTask13WarningTests": true,
+      "includesReviewedLogoDefaultSaveFix": true,
+      "requiredCiJobs": {
+        "total": 7,
+        "success": 7,
+        "jobs": [
+          {
+            "name": "backend (cn)",
+            "id": 111245622045,
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134/job/111245622045",
+            "backendSteps": [
+              {
+                "name": "Test backend",
+                "status": "completed",
+                "conclusion": "success"
+              },
+              {
+                "name": "Package backend",
+                "status": "completed",
+                "conclusion": "success"
+              }
+            ]
+          },
+          {
+            "name": "static-demo",
+            "id": 111245622160,
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134/job/111245622160",
+            "backendSteps": []
+          },
+          {
+            "name": "Care plan MySQL 8.0 (cn)",
+            "id": 111245622164,
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134/job/111245622164",
+            "backendSteps": []
+          },
+          {
+            "name": "backend (.)",
+            "id": 111245622172,
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134/job/111245622172",
+            "backendSteps": [
+              {
+                "name": "Test backend",
+                "status": "completed",
+                "conclusion": "success"
+              },
+              {
+                "name": "Package backend",
+                "status": "completed",
+                "conclusion": "success"
+              }
+            ]
+          },
+          {
+            "name": "frontend (frontend)",
+            "id": 111245622242,
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134/job/111245622242",
+            "backendSteps": []
+          },
+          {
+            "name": "Care plan MySQL 8.0 (en)",
+            "id": 111245622313,
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134/job/111245622313",
+            "backendSteps": []
+          },
+          {
+            "name": "frontend (cn/frontend)",
+            "id": 111245622320,
+            "status": "completed",
+            "conclusion": "success",
+            "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134/job/111245622320",
+            "backendSteps": []
+          }
+        ]
+      },
+      "locales": {
+        "en": {
+          "job": 111245622313,
+          "jobUrl": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134/job/111245622313",
+          "jobStatus": "completed",
+          "jobConclusion": "success",
+          "nativeMysql": {
+            "passes": 2,
+            "methodsPerPass": 9,
+            "failures": 0,
+            "errors": 0,
+            "skips": 0,
+            "actualProductionUtcCombinationsPerPass": 56,
+            "fullSyntheticRestorePasses": 2,
+            "restoredDefinitionsAndRelationshipsMatch": true,
+            "passTimesUtc": [
+              "2026-10-03T16:42:42.4321474Z",
+              "2026-10-03T16:42:54.3741565Z"
+            ],
+            "exactNativeTestLines": [
+              "2026-10-03T16:42:42.4321474Z [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.219 s - in org.familyhealthcare.service.CarePlanMysqlIntegrationTest",
+              "2026-10-03T16:42:54.3741565Z [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.542 s - in org.familyhealthcare.service.CarePlanMysqlIntegrationTest"
+            ],
+            "exactUtcProofLines": [
+              "2026-10-03T16:42:38.7854109Z Native production-helper UTC round-trip combinations executed: 56",
+              "2026-10-03T16:42:50.4597705Z Native production-helper UTC round-trip combinations executed: 56"
+            ],
+            "exactRestoreProofLines": [
+              "2026-10-03T16:42:42.4155639Z Native MySQL full restore verified: all tables/rows and column/key/relationship definitions match; raw dump is temporary only",
+              "2026-10-03T16:42:54.3570378Z Native MySQL full restore verified: all tables/rows and column/key/relationship definitions match; raw dump is temporary only"
+            ]
+          },
+          "browser": {
+            "passed": 10,
+            "failed": 0,
+            "skips": 0,
+            "notRun": 0,
+            "finishedUtc": "2026-10-03T16:47:53.6188014Z",
+            "exactPassedLine": "2026-10-03T16:47:53.6188014Z   10 passed (4.6m)"
+          }
+        },
+        "cn": {
+          "job": 111245622164,
+          "jobUrl": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134/job/111245622164",
+          "jobStatus": "completed",
+          "jobConclusion": "success",
+          "nativeMysql": {
+            "passes": 2,
+            "methodsPerPass": 9,
+            "failures": 0,
+            "errors": 0,
+            "skips": 0,
+            "actualProductionUtcCombinationsPerPass": 56,
+            "fullSyntheticRestorePasses": 2,
+            "restoredDefinitionsAndRelationshipsMatch": true,
+            "passTimesUtc": [
+              "2026-10-03T16:42:59.2627664Z",
+              "2026-10-03T16:43:13.7011135Z"
+            ],
+            "exactNativeTestLines": [
+              "2026-10-03T16:42:59.2627664Z [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 10.17 s - in org.familyhealthcare.service.CarePlanMysqlIntegrationTest",
+              "2026-10-03T16:43:13.7011135Z [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 9.307 s - in org.familyhealthcare.service.CarePlanMysqlIntegrationTest"
+            ],
+            "exactUtcProofLines": [
+              "2026-10-03T16:42:53.3539577Z Native production-helper UTC round-trip combinations executed: 56",
+              "2026-10-03T16:43:08.3049763Z Native production-helper UTC round-trip combinations executed: 56"
+            ],
+            "exactRestoreProofLines": [
+              "2026-10-03T16:42:59.2264419Z Native MySQL full restore verified: all tables/rows and column/key/relationship definitions match; raw dump is temporary only",
+              "2026-10-03T16:43:13.6800937Z Native MySQL full restore verified: all tables/rows and column/key/relationship definitions match; raw dump is temporary only"
+            ]
+          },
+          "browser": {
+            "passed": 10,
+            "failed": 0,
+            "skips": 0,
+            "notRun": 0,
+            "finishedUtc": "2026-10-03T16:49:57.9324750Z",
+            "exactPassedLine": "2026-10-03T16:49:57.9324750Z   10 passed (6.2m)"
+          }
+        }
+      },
+      "runtimeSourceSoftwareAcceptance": "passed",
+      "toolDerivedEvidenceSha256": "73fb3f107739766f3a3679f51809fe3cfd5dba1a3a127399e17191cf2b14060c",
+      "backendAndStaticAggregateTestCounts": "Not restated: exact job/step successes are verified; no guessed aggregate counts."
+    },
+    "finalCombinedSourceVerification": "passed_final_runtime_including_Task13_warning_tests_and_logo_default_save",
+    "task13PreparationReview": {
+      "status": "approved_for_frozen_preparation_scope",
+      "date": "2026-10-03",
+      "reviewedManifestSha256": "db75089b7870288e3e78f0311e82c7ab51730ce545918e6003f270d7917e8ca6",
+      "publicationAuthorizedByReview": false,
+      "finalReleaseAcceptance": false
+    },
+    "finalRecordingDeliverables": {
+      "run": 37137746134,
+      "commit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+      "status": "verified_selected_final_deliverables",
+      "acceptance": "passed_with_explicit_inspection_scope",
+      "publicSafeProvenanceSha256": "dac870bd1bec67c74880bb0a50b9c16297a2ac9b45622fb98432e07fe6a876e9",
+      "syntheticDataOnly": true,
+      "cnRoleVideoCount": 4,
+      "selectedScreenshotCount": 4,
+      "enRoleMp4sSeparatelyDownloadedOrInspected": false,
+      "allFullSuiteVideosWatched": false,
+      "provenance": {
+        "repository": "wangdj104/tx-analysis-service",
+        "commit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+        "run_id": 37137746134,
+        "run_url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134",
+        "acceptance": {
+          "en_browser": {
+            "passed": 10,
+            "failed": 0,
+            "skipped": 0
+          },
+          "cn_browser": {
+            "passed": 10,
+            "failed": 0,
+            "skipped": 0
+          },
+          "native_mysql_per_locale": {
+            "passes": 2,
+            "tests_per_pass": 9,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          }
+        },
+        "synthetic_data_only": true,
+        "runner_mp4s_copied_without_transcoding_or_editing": true,
+        "visual_review": "Four CN role contact sheets and four original screenshots inspected. Corrected CN product logo visibly renders in all selected desktop role samples and CN completed history. CN/EN completed-history structure matches; real 390px submitted receipt and new-account access denial are visible.",
+        "review_scope": "Actual local byte/hash/frame/pixel inspection of four CN main-role videos and four selected CN/EN PNGs; runner acceptance reports cover the complete 10-case suite per locale",
+        "files": [
+          {
+            "role": "personal",
+            "size_bytes": 2511957,
+            "sha256": "a958a535879df563e3c83854e49909a31cd217c990f0f3de5c0cce13bd413e2a",
+            "artifact_id": 11279101683,
+            "artifact_name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-main-personal",
+            "artifact_zip_sha256": "065ed11b1a41edba2f7daf808f2e89f16072894f72135b51c5c744550c7ad24c",
+            "runner_manifest_sha256_verified": true,
+            "job_id": 111245622164,
+            "duration_seconds": 63.72,
+            "frame_count": 1593,
+            "width": 1364,
+            "height": 900,
+            "frame_rate": "25/1",
+            "matches_runner_acceptance_dimensions_frames_duration": true,
+            "visual_sample_seconds": [
+              10,
+              30,
+              45,
+              63.6
+            ],
+            "filename": "患者端最终实际验收录屏-20261003-af0658.mp4",
+            "runner_artifact_relative_path": "carePlanCollaboration-real-dcac3-p-return-review-and-closure/personal-desktop-video/b550c83c9838d529215d3ab0fb0dec0e.mp4"
+          },
+          {
+            "role": "family",
+            "size_bytes": 1713902,
+            "sha256": "03d56717509687c8d8013075e3a9a17915f15a1ed6d608010fee8f287f25570c",
+            "artifact_id": 11279486215,
+            "artifact_name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-main-family",
+            "artifact_zip_sha256": "fc1fa5c878c3eb1ac805993384fbe1991b973ce5219606987649fa43b39d81c7",
+            "runner_manifest_sha256_verified": true,
+            "job_id": 111245622164,
+            "duration_seconds": 59.36,
+            "frame_count": 1484,
+            "width": 1364,
+            "height": 900,
+            "frame_rate": "25/1",
+            "matches_runner_acceptance_dimensions_frames_duration": true,
+            "visual_sample_seconds": [
+              10,
+              30,
+              45,
+              59.24
+            ],
+            "filename": "家属端最终实际验收录屏-20261003-af0658.mp4",
+            "runner_artifact_relative_path": "carePlanCollaboration-real-dcac3-p-return-review-and-closure/family-desktop-video/929a132c15934b3abe453a4ee4a5e5a6.mp4"
+          },
+          {
+            "role": "doctor",
+            "size_bytes": 2654852,
+            "sha256": "64fe08428ae5cb0c99c2303e95f7873d85a8e356cc92e1d48d64a32594138ead",
+            "artifact_id": 11280120506,
+            "artifact_name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-main-doctor",
+            "artifact_zip_sha256": "d7e606c8e8424a386eebe2db4caadd10ced7621ff2735fae1141cda574d06df1",
+            "runner_manifest_sha256_verified": true,
+            "job_id": 111245622164,
+            "duration_seconds": 62.32,
+            "frame_count": 1558,
+            "width": 1364,
+            "height": 900,
+            "frame_rate": "25/1",
+            "matches_runner_acceptance_dimensions_frames_duration": true,
+            "visual_sample_seconds": [
+              10,
+              30,
+              45,
+              62.2
+            ],
+            "filename": "医生端最终实际验收录屏-20261003-af0658.mp4",
+            "runner_artifact_relative_path": "carePlanCollaboration-real-dcac3-p-return-review-and-closure/doctor-desktop-video/9d22620e0625dd6d35c1928ef646eb2c.mp4"
+          },
+          {
+            "role": "nurse",
+            "size_bytes": 1400345,
+            "sha256": "417ebb0ff29505e3d290be722a23243834e8b8f8a22ee9be5dbdab8da5712db3",
+            "artifact_id": 11280005674,
+            "artifact_name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-main-nurse",
+            "artifact_zip_sha256": "9bb8a29b5ce001ece21f3ae78a90010ed5d60d1cfcdf15ede3fa28ff6d763078",
+            "runner_manifest_sha256_verified": true,
+            "job_id": 111245622164,
+            "duration_seconds": 56.68,
+            "frame_count": 1417,
+            "width": 1364,
+            "height": 900,
+            "frame_rate": "25/1",
+            "matches_runner_acceptance_dimensions_frames_duration": true,
+            "visual_sample_seconds": [
+              10,
+              30,
+              45,
+              56.56
+            ],
+            "filename": "护理端最终实际验收录屏-20261003-af0658.mp4",
+            "runner_artifact_relative_path": "carePlanCollaboration-real-dcac3-p-return-review-and-closure/nurse-desktop-video/605350b101de21ad532747f97cc8e73f.mp4"
+          },
+          {
+            "kind": "screenshot",
+            "language": "cn",
+            "source_name": "cn-390-real-receipt.png",
+            "size_bytes": 160004,
+            "sha256": "388b8c7d9f71e3fb0d91d2760c68d9fd60623d5773413d7294a226b6ee32b28b",
+            "width": 390,
+            "height": 1663,
+            "artifact_id": 11279785909,
+            "artifact_name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-screenshots-1",
+            "artifact_zip_sha256": "d305bcb9860615a94bcfc77f349353d366d648c372f7d80f79e6efeb52e85077",
+            "runner_manifest_sha256_verified": true,
+            "job_id": 111245622164,
+            "filename": "中文-390px真实回执-20261003-af0658.png",
+            "runner_artifact_relative_path": "carePlanCollaboration-390p-a5c58-B→A-Back-Forward-and-logout/cn-390-real-receipt.png"
+          },
+          {
+            "kind": "screenshot",
+            "language": "cn",
+            "source_name": "cn-390-logout-new-account-denied.png",
+            "size_bytes": 32524,
+            "sha256": "f3376daaa9394e52586c0d9818dc1a7b69bfa02d3c838e36d9c3ca20b876e8df",
+            "width": 390,
+            "height": 900,
+            "artifact_id": 11279785909,
+            "artifact_name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-screenshots-1",
+            "artifact_zip_sha256": "d305bcb9860615a94bcfc77f349353d366d648c372f7d80f79e6efeb52e85077",
+            "runner_manifest_sha256_verified": true,
+            "job_id": 111245622164,
+            "filename": "中文-390px退出后权限校验-20261003-af0658.png",
+            "runner_artifact_relative_path": "carePlanCollaboration-390p-a5c58-B→A-Back-Forward-and-logout/cn-390-logout-new-account-denied.png"
+          },
+          {
+            "kind": "screenshot",
+            "language": "cn",
+            "source_name": "cn-completed-history.png",
+            "size_bytes": 428614,
+            "sha256": "fd3bc4670ce805398835f82116e8dd80bca6448f24b816d480e29da509c04962",
+            "width": 1365,
+            "height": 3062,
+            "artifact_id": 11279785909,
+            "artifact_name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-screenshots-1",
+            "artifact_zip_sha256": "d305bcb9860615a94bcfc77f349353d366d648c372f7d80f79e6efeb52e85077",
+            "runner_manifest_sha256_verified": true,
+            "job_id": 111245622164,
+            "filename": "中文-完成后历史记录-20261003-af0658.png",
+            "runner_artifact_relative_path": "carePlanCollaboration-real-dcac3-p-return-review-and-closure/cn-completed-history.png"
+          },
+          {
+            "kind": "screenshot",
+            "language": "en",
+            "source_name": "en-completed-history.png",
+            "size_bytes": 415036,
+            "sha256": "dab5533b9d45fb2ee3711e9e363ff309e4b5100a9a37f75ffd3c8fa2783bd1cc",
+            "width": 1365,
+            "height": 3056,
+            "artifact_id": 11279700758,
+            "artifact_name": "care-plan-browser-en-af06584b655b875ebfd16d0482a9712a99dc6cec-screenshots-1",
+            "artifact_zip_sha256": "f4aae3045207449ca000e58728d6435af21865df6dc78d19f26fe0b8458a92ff",
+            "runner_manifest_sha256_verified": true,
+            "job_id": 111245622313,
+            "filename": "English-completed-history-20261003-af0658.png",
+            "runner_artifact_relative_path": "carePlanCollaboration-real-dcac3-p-return-review-and-closure/en-completed-history.png"
+          }
+        ],
+        "archives": [
+          {
+            "artifact_id": 11280120506,
+            "name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-main-doctor",
+            "size_bytes": 2655202,
+            "zip_sha256": "d7e606c8e8424a386eebe2db4caadd10ced7621ff2735fae1141cda574d06df1",
+            "digest_verified_against": [
+              "GitHub artifact metadata",
+              "terminal job upload log"
+            ]
+          },
+          {
+            "artifact_id": 11280005674,
+            "name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-main-nurse",
+            "size_bytes": 1400693,
+            "zip_sha256": "9bb8a29b5ce001ece21f3ae78a90010ed5d60d1cfcdf15ede3fa28ff6d763078",
+            "digest_verified_against": [
+              "GitHub artifact metadata",
+              "terminal job upload log"
+            ]
+          },
+          {
+            "artifact_id": 11279785909,
+            "name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-screenshots-1",
+            "size_bytes": 3253643,
+            "zip_sha256": "d305bcb9860615a94bcfc77f349353d366d648c372f7d80f79e6efeb52e85077",
+            "digest_verified_against": [
+              "GitHub artifact metadata",
+              "terminal job upload log"
+            ]
+          },
+          {
+            "artifact_id": 11279700758,
+            "name": "care-plan-browser-en-af06584b655b875ebfd16d0482a9712a99dc6cec-screenshots-1",
+            "size_bytes": 3236238,
+            "zip_sha256": "f4aae3045207449ca000e58728d6435af21865df6dc78d19f26fe0b8458a92ff",
+            "digest_verified_against": [
+              "GitHub artifact metadata",
+              "terminal job upload log"
+            ]
+          },
+          {
+            "artifact_id": 11279486215,
+            "name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-main-family",
+            "size_bytes": 1714252,
+            "zip_sha256": "fc1fa5c878c3eb1ac805993384fbe1991b973ce5219606987649fa43b39d81c7",
+            "digest_verified_against": [
+              "GitHub artifact metadata",
+              "terminal job upload log"
+            ]
+          },
+          {
+            "artifact_id": 11279101683,
+            "name": "care-plan-browser-cn-af06584b655b875ebfd16d0482a9712a99dc6cec-main-personal",
+            "size_bytes": 2512311,
+            "zip_sha256": "065ed11b1a41edba2f7daf808f2e89f16072894f72135b51c5c744550c7ad24c",
+            "digest_verified_against": [
+              "GitHub artifact metadata",
+              "terminal job upload log"
+            ]
+          }
+        ]
+      }
+    },
+    "previousAcceptedApplicationAttempt": {
+      "commit": "bdb75cbaea11cc525731370e731ef6118072ac35",
+      "tree": "09da45bab75c969848bda6d0195a7f33395e8a3c",
+      "run": 37135152973,
+      "url": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37135152973",
+      "status": "completed",
+      "conclusion": "success",
+      "scope": "Earlier complete application check before warning/test and logo/default-save integration; superseded by accepted final runtime."
+    },
+    "selectedRoleVideosInspected": true
+  },
+  "publicDemo": {
+    "en": "https://wangdj104.github.io/tx-analysis-service/",
+    "cn": "https://wangdj104.github.io/tx-analysis-service/cn/",
+    "data": "fictional tab-local model",
+    "lastReportedAssetKey": "careplan20261003-2",
+    "finalHtmlScriptStyleByteCheck": "passed_captured_network_check_plus_current_source_identity",
+    "backendEvidence": false,
+    "status": "captured_public_bytes_verified_current_source_match",
+    "verifiedAtUtc": "2026-10-03T14:52:22.616275+00:00",
+    "capturedSourceCommit": "3a3aaa25776fbd3ad6a7b8f3cefe84ac7a160738",
+    "reportedPagesDeploymentCommit": "b099fbc6fa7bf556779dd1f9c8b62aff3df42696",
+    "capturedBytesAlsoMatchPublishedMain": "75eea7cfadafd6366c0e2190c9df13b30a744d6d",
+    "checkedFiles": 22,
+    "htmlFiles": 2,
+    "declaredScriptStyleAndImageFiles": 20,
+    "allHttp200": true,
+    "networkRefetchedForCurrentCandidate": false,
+    "githubDeploymentMetadataReverified": false,
+    "minimalPublicBrowserAffordances": "Both editions: private draft, confirmed synthetic publication, patient receipt, separate nursing scope and doctor review controls observed. Full role closure/revision flows were not rerun in this public spot check.",
+    "resources": [
+      {
+        "edition": "en",
+        "sourcePath": "demo/index.html",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/",
+        "httpStatus": 200,
+        "bytes": 5324,
+        "sha256": "02cab5a88981fe064aded095ef38842acd7b0b36cae56c388e12c4bfb3060596"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/index.html",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/",
+        "httpStatus": 200,
+        "bytes": 5320,
+        "sha256": "a2af8c4d7479c3e813a213b9829c34676c350d67db3f99b58f539c925dafc581"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/app.js",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/app.js?v=20261002-storage1&careplan=20261003-2",
+        "httpStatus": 200,
+        "bytes": 108898,
+        "sha256": "a973a4dd686308e5b53b3b408d4661305e7765e547db4462e973a8238786e175"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/appearance.css",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/appearance.css?v=20261002-chart2",
+        "httpStatus": 200,
+        "bytes": 11671,
+        "sha256": "5bad225331ef521ba194b9d293a062ecbac43cacf5b9c55d707ac0b85ad91003"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/assets/care-moments-small.webp",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/assets/care-moments-small.webp",
+        "httpStatus": 200,
+        "bytes": 20936,
+        "sha256": "dc274e94da43cf29b2320cf2d6ccb7a66d438dcd27eac36fd1e70b23237ab6cf"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/assets/health-journal-small.webp",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/assets/health-journal-small.webp",
+        "httpStatus": 200,
+        "bytes": 17342,
+        "sha256": "7b2d57b04e6f0619f7fd34d692236673e520f0824adbe1a020b599d02621b9ae"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/assets/logo.svg",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/assets/logo.svg",
+        "httpStatus": 200,
+        "bytes": 1556,
+        "sha256": "cf3cd128b120d66683b751faea17489b7a91352677fb7433c77ea1fbee329711"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/assets/medication-care-small.webp",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/assets/medication-care-small.webp",
+        "httpStatus": 200,
+        "bytes": 17488,
+        "sha256": "b3dbe370747f5a3dc2684f593972b4ce2f38e103b9ed8372bef267787204582d"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/assets/records-care-small.webp",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/assets/records-care-small.webp",
+        "httpStatus": 200,
+        "bytes": 13704,
+        "sha256": "c27449fb68010e4eaf2a7744f06f37e41fe2a3e876859dd2d32c256597bf3779"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/branding.css",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/branding.css?v=20261001-1",
+        "httpStatus": 200,
+        "bytes": 5392,
+        "sha256": "ee7466a27367ec2671aad6c8f5028651835ad6cb9a8e1c2d8c1286d78a7cb9af"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/model.js",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/model.js?v=20261001-r9&careplan=20261003-1",
+        "httpStatus": 200,
+        "bytes": 27176,
+        "sha256": "2239ee2f1cb8e6a0a7d64dc9a6a4d7d42bed5ad96c6d8cdc0a90c7e4d79eb615"
+      },
+      {
+        "edition": "en",
+        "sourcePath": "demo/style.css",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/style.css?v=20261001-1&careplan=20261003-1",
+        "httpStatus": 200,
+        "bytes": 31491,
+        "sha256": "72795836e31897e5c965c33aeadee674a3921c798e745e16e84d04726fa21588"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/app.js",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/app.js?v=20261002-storage1&careplan=20261003-2",
+        "httpStatus": 200,
+        "bytes": 108898,
+        "sha256": "a973a4dd686308e5b53b3b408d4661305e7765e547db4462e973a8238786e175"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/appearance.css",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/appearance.css?v=20261002-chart2",
+        "httpStatus": 200,
+        "bytes": 11671,
+        "sha256": "5bad225331ef521ba194b9d293a062ecbac43cacf5b9c55d707ac0b85ad91003"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/assets/care-moments-small.webp",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/assets/care-moments-small.webp",
+        "httpStatus": 200,
+        "bytes": 20936,
+        "sha256": "dc274e94da43cf29b2320cf2d6ccb7a66d438dcd27eac36fd1e70b23237ab6cf"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/assets/health-journal-small.webp",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/assets/health-journal-small.webp",
+        "httpStatus": 200,
+        "bytes": 17342,
+        "sha256": "7b2d57b04e6f0619f7fd34d692236673e520f0824adbe1a020b599d02621b9ae"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/assets/logo.svg",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/assets/logo.svg",
+        "httpStatus": 200,
+        "bytes": 1553,
+        "sha256": "7472a7e1d8931a79127fc6643a4743ef3be2424ee38fcd4838d7211292845550"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/assets/medication-care-small.webp",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/assets/medication-care-small.webp",
+        "httpStatus": 200,
+        "bytes": 17488,
+        "sha256": "b3dbe370747f5a3dc2684f593972b4ce2f38e103b9ed8372bef267787204582d"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/assets/records-care-small.webp",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/assets/records-care-small.webp",
+        "httpStatus": 200,
+        "bytes": 13704,
+        "sha256": "c27449fb68010e4eaf2a7744f06f37e41fe2a3e876859dd2d32c256597bf3779"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/branding.css",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/branding.css?v=20261001-1",
+        "httpStatus": 200,
+        "bytes": 5367,
+        "sha256": "0dd77c1530ddbd5127dcfb32bd4000fd798a286ea964dcacd3bcfc7a37261eb1"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/model.js",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/model.js?v=20261001-r9&careplan=20261003-1",
+        "httpStatus": 200,
+        "bytes": 27176,
+        "sha256": "2239ee2f1cb8e6a0a7d64dc9a6a4d7d42bed5ad96c6d8cdc0a90c7e4d79eb615"
+      },
+      {
+        "edition": "cn",
+        "sourcePath": "cn/demo/style.css",
+        "requestedUrl": "https://wangdj104.github.io/tx-analysis-service/cn/style.css?v=20261001-1&careplan=20261003-1",
+        "httpStatus": 200,
+        "bytes": 31491,
+        "sha256": "72795836e31897e5c965c33aeadee674a3921c798e745e16e84d04726fa21588"
+      }
+    ],
+    "acceptedRuntimeLocalSourceCommit": "54848b6ac7cf67387900b51688afc15d1ecf478d",
+    "acceptedRuntimeRemoteCommit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+    "allCapturedHashesMatchAcceptedRuntimeSource": true
+  },
+  "backupContract": {
+    "format": "family-health-backup",
+    "version": 1,
+    "declaredTableListChanged": false,
+    "collaborationCovered": false,
+    "excluded": [
+      "doctor_care_plan",
+      "care_plan_revision",
+      "care_plan_action",
+      "care_plan_event",
+      "care_plan_evidence",
+      "care_nurse_assignment",
+      "care_plan_notification",
+      "care_plan_command"
+    ],
+    "receiptStorage": "Append-only receipt events and linked evidence are excluded.",
+    "recoveryRequirement": "Separate complete database and attachment-storage backup/restore; the limited family archive cannot restore this workflow."
+  },
+  "deployment": {
+    "backend": "not_deployed",
+    "productionFeatureActivated": false,
+    "productionMigrationExecuted": false,
+    "productionAuthorization": "not_granted",
+    "staticDemo": "existing_public_synthetic_demo_bytes_verified_no_backend_deployment"
+  },
+  "claims": {
+    "realProviderDeliveryValidated": false,
+    "clinicalEffectivenessValidated": false,
+    "productionReady": false,
+    "applicationWorkflowSoftwareValidated": true,
+    "validatedApplicationCommit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+    "validationScope": "Synthetic software workflow validation of the exact final runtime, including Task 13 warnings/contracts and reviewed logo/default-save fixes. Separate selected-media validation does not establish clinical effectiveness, real provider delivery or production activation.",
+    "completedScope": [
+      "Exact final runtime software workflow validation",
+      "Listed final recording/screenshot integrity and selected visual-inspection scope"
+    ]
+  },
+  "historicalRoleRecordings": {
+    "commit": "bd6074ec1c01468533e48a84c5e1ea0665189060",
+    "run": 37130528854,
+    "runUrl": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37130528854",
+    "jobUrl": "https://github.com/wangdj104/tx-analysis-service/actions/runs/37130528854/job/111224563079",
+    "locale": "cn",
+    "scope": "Passed real main-role scenario within a partial failed suite; not the current final candidate.",
+    "data": "Synthetic accounts, patients and notes only.",
+    "visualInspection": "Four role contact sheets and active application frames inspected; MP4 duration/frame counts preserved from original WebM.",
+    "fullSuiteAcceptance": false,
+    "clips": [
+      {
+        "role": "personal",
+        "durationSeconds": 64.68,
+        "mp4Sha256": "90f05dd0c804d013e977a3e9ea7104766965654df6b1d898a34f59574b4f130e",
+        "originalDurationAndFramesPreserved": true
+      },
+      {
+        "role": "family",
+        "durationSeconds": 60.56,
+        "mp4Sha256": "d4f6605e699de496f281941c31cf37d304ce9eef05355519ad55905c8467f684",
+        "originalDurationAndFramesPreserved": true
+      },
+      {
+        "role": "doctor",
+        "durationSeconds": 63.52,
+        "mp4Sha256": "48bcbc6d000ac829e25a404dd5d14eb4bac844f3ea2b51c9f5947d9dec88b951",
+        "originalDurationAndFramesPreserved": true
+      },
+      {
+        "role": "nurse",
+        "durationSeconds": 58.0,
+        "mp4Sha256": "347bc2112bc15ad9afce1ed7225f1c09e57c3e2a5edf0a8ee8536113a1a4303f",
+        "originalDurationAndFramesPreserved": true
+      }
+    ]
+  },
+  "runtimeSourceIdentity": {
+    "acceptedRuntimeCommit": "af06584b655b875ebfd16d0482a9712a99dc6cec",
+    "acceptedCompleteTree": "f98e3ed9fe29800fabc13cae0ced4ac983761c92",
+    "trackedEntriesOutsideDocumentation": 1127,
+    "manifestSha256": "f42036bca283a71faafe1397d562ba505b4f452d35feabf204b4511f047ed02c",
+    "manifestAlgorithm": "SHA-256 of ordered git ls-tree -r entries outside the 11 listed documentation paths, joined with LF and a final LF. Each entry records mode, type, blob ID and path.",
+    "excludedDocumentationPaths": [
+      "README.md",
+      "cn/README.md",
+      "cn/docs/CARE_PLAN_COLLABORATION_RELEASE.md",
+      "cn/docs/PRODUCT_REVIEW.md",
+      "cn/docs/USER_GUIDE.md",
+      "cn/docs/family-health-workflows.md",
+      "docs/CARE_PLAN_COLLABORATION_RELEASE.md",
+      "docs/PRODUCT_REVIEW.md",
+      "docs/USER_GUIDE.md",
+      "docs/family-health-workflows.md",
+      "docs/verification/care-plan-collaboration.json"
+    ],
+    "acceptedReconciledRuntimeIdentityVerified": true,
+    "postDocumentationVerificationMethod": "Compare the ordered non-documentation entries and LF-terminated manifest SHA-256 with the accepted runtime; then verify remote main and unchanged public-demo source identities."
+  },
+  "documentationPublication": {
+    "status": "evidence_only_documentation",
+    "commitIdentification": "The later evidence-only commit is identified by Git history for this file. It must not be substituted for acceptedRuntimeCommit in test claims.",
+    "skipCiMarker": "[skip ci]",
+    "markerAuthorizedForDocumentationOnly": true,
+    "condition": "The exact 1127 runtime/test/CI/deployment entries and manifest hash must remain unchanged after the documentation commit.",
+    "remoteVerificationMethod": "Resolve the evidence commit in Git history and remote main; compare all 1127 ordered non-documentation mode/type/blob/path entries and their SHA-256 against the accepted runtime manifest."
+  },
+  "historicalFrontendVerificationBeforeLogoCorrection": {
+    "en": {
+      "tests": 1129,
+      "passed": 1129,
+      "failures": 0,
+      "skips": 0,
+      "buildExitCode": 0,
+      "testLogSha256": "5c7f6b1d12c22bdf9037767a5a5ab4c21c9ffd880859fd1ed93506ef8bee050d",
+      "buildLogSha256": "8d682882da4dea0ef5affbf6cdc913d2b78f2c3d5835d69a385e6c816505578e"
+    },
+    "cn": {
+      "tests": 1136,
+      "passed": 1136,
+      "failures": 0,
+      "skips": 0,
+      "buildExitCode": 0,
+      "testLogSha256": "6421253b4e6d6eb610679c8829daa1e335172232c08bb9aaa9d370d87d345d7e",
+      "buildLogSha256": "aded951adeed283ce0d7da8ed7a9f0221646cef1ee730947890c6ae13a2b5625"
+    },
+    "scope": "Product source checks before the latest fixture-only update. Parent confirmed their scope unchanged by the synthetic Today fixture correction. Not final exact-source combined release acceptance.",
+    "focusReview": {
+      "regressionsPassed": 68,
+      "additionalProbesPassed": 12,
+      "scope": "Independent review of refreshed receipt opener restoration and non-fail-fast browser configuration; not native browser acceptance."
+    },
+    "applicationCi": {
+      "run": 37135152973,
+      "commit": "bdb75cbaea11cc525731370e731ef6118072ac35",
+      "status": "passed_both_frontend_test_build_jobs"
+    }
+  },
+  "currentFrontendVerification": {
+    "en": {
+      "tests": 1143,
+      "passed": 1143,
+      "failures": 0,
+      "skips": 0,
+      "buildExitCode": 0
+    },
+    "cn": {
+      "tests": 1150,
+      "passed": 1150,
+      "failures": 0,
+      "skips": 0,
+      "buildExitCode": 0
+    },
+    "scope": "Verified complete local frontend suites/builds for final runtime source; both corresponding frontend CI jobs succeeded on the accepted final runtime.",
+    "finalCiRun": 37137746134,
+    "finalCiCommit": "af06584b655b875ebfd16d0482a9712a99dc6cec"
+  },
+  "publicationAndDeploymentVerificationRequirements": [
+    "Evidence-only documentation changes must receive independent review before publication.",
+    "Verify the documentation commit in Git history/remote main retains the accepted 1127-entry runtime/test/CI/deployment manifest and unchanged public-demo source identity.",
+    "Production migration/deployment/activation requires a separately authorized target; real-provider delivery and clinical validation are outside the completed software scope."
+  ]
+}

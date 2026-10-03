@@ -73,6 +73,22 @@ The **Health Timeline** combines measurements, dialysis, medication activity, an
 
 Use **Care Plan** for today's tasks, dialysis schedules, personal blood-pressure and weight targets, and a visit summary. Targets should come from an appropriate clinician.
 
+### 4.4 协作医生计划事项
+
+该可选流程位于“家庭照护 → 医生计划事项”、医生工作台及独立护理跟进页，默认关闭（`CARE_PLAN_ENABLED=false`）。[已验收运行时证据](CARE_PLAN_COLLABORATION_RELEASE.md)记录双语软件流程验证与限制；后端尚未生产部署或启用。
+
+有效分配医生建立私密草稿，添加 1–50 个一次性行动项、当前有效负责人及明确 UTC 偏移的期限。“保存私密草稿”不共享医嘱，“审阅并发布”展示患者及获授权协作者范围；修订还展示说明变化及旧版被替代事项。已发布正文只能通过新版本更改。历史内部计划可复制为新草稿，原记录保留。
+
+记录所有者可查看已发布事项。家属必须获明确 `CARE_PLAN` 授权；`READ` 可查看，`WRITE` 或 `PROXY` 另可记录及求助。家庭成员身份不足以授权。计划事项使用独立接口，其他照护模块受限时仍能按权限访问。
+
+执行记录要求 1–2000 字说明及实际时间，不允许未来时间；求助原因 1–1000 字。每条最多引用 5 条已有测量／病历，不支持新上传。读取引用仍需原模块权限，受限时仅说明存在关联记录。家属与护理固定标记代录；账户所有者的本人记录声明不是患者身份验证。
+
+管理员先分配护理，记录所有者再单独授予 `CARE_PLAN`。护理需要有效角色、未过期分配及授权，护理跟进包含困难／跟进和待医生复核队列，可代录及记录管理跟进，不能发布、修订、确认或关闭计划；管理员角色也不提供临床权限。
+
+医生确认回执或填写原因退回补充，后续回执追加而不删除旧证据。“记录已复核”不表示治疗成功。未完成／求助事项的逾期与提交后待复核时长分开显示。修订生成新的待执行事项并保留旧回执；取消需原因，关闭需当前全部事项已确认。本阶段关闭／取消后不能重开。
+
+冲突后使用“重新加载服务器状态，保留我的输入”。结果不明时重试同一原命令或先核对服务器历史。关闭对话框不会取消已发出的写请求。切换患者、退出或撤权会清除上下文，历史也需当前权限。时间以 UTC 保存并注明浏览器本地时区。
+
 ## 5. Medications, prescriptions, reminders, and stock
 
 ### 5.1 Create the medication catalog
@@ -191,7 +207,7 @@ Open **Data Export**, select one patient and a date range, then choose the data 
 
 Open **Family Care → Backup & restore**, preview the export, review missing-attachment warnings, and download the archive. Store it in an encrypted location with appropriate access and retention.
 
-The backup covers accessible family business data. It excludes account passwords, full notification secrets, and unrelated users.
+家庭归档格式 1 仅包含预览列出的记录类型，表清单保持不变；不包含问诊／聊天、照护全流程、医生工作台、协作计划、版本、行动项、回执、事件／证据、护理分配、通知发件箱、命令、授权或系统账号。附件仅包含数据库内嵌内容。恢复协作历史需要另行备份完整数据库及附件存储。
 
 ### 10.4 Restore as an independent copy
 
@@ -232,7 +248,7 @@ Send a channel test, verify outbound HTTPS access, webhook security settings, ch
 
 ### The database is empty after startup
 
-The application does not create tables automatically. Run `src/main/resources/sql/init.sql` against a new MySQL database and verify the configured database URL and account permissions.
+应用不会自动创建表。新 MySQL 库依次运行 `init.sql`、`doctor_workspace_20260921.sql`、`care_platform_upgrade_20260921.sql`、`care_plan_collaboration_20261003.sql`；核对数据库连接与账号权限。已有库先完整备份，再应用适用增量脚本，不重跑基础脚本。
 
 ## 13. Suggested product tour
 

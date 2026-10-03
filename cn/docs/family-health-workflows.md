@@ -1,35 +1,46 @@
-# Everyday Family Health Workflows
+# 日常家庭健康工作流
 
-This guide describes the shortest reliable path through common daily tasks. For detailed family collaboration, see the [Family Care Guide](family-care-guide.md). A first deployment only needs `src/main/resources/sql/init.sql`.
+本文介绍常见日常任务；详细家庭协作见[家庭照护指南](family-care-guide.md)。新库须按 `init.sql` → `doctor_workspace_20260921.sql` → `care_platform_upgrade_20260921.sql` → `care_plan_collaboration_20261003.sql` 安装，详见[安装说明](../README.md)。
 
-## Daily routine
+## 每日操作
 
-1. Sign in and select the correct family member in the top bar.
-2. Open **Family Care** and review medication, appointment, handover, and low-stock tasks.
-3. Confirm doses only after they are taken. If a dose is skipped, record the reason.
-4. Record blood pressure or glucose with the correct measurement period.
-5. Add symptoms, questions, or family handovers while the context is fresh.
-6. Review the health timeline for unexpected gaps or duplicate entries.
+1. 登录并在顶部选择正确家庭成员
+2. 打开家庭照护，查看用药、预约、交接及低库存事项
+3. 实际服药后再确认；未服药应记录原因
+4. 按实际测量时段记录血压／血糖
+5. 及时记录症状、问题及交接
+6. 检查健康时间线是否遗漏或重复
 
-## Medication changes
+## 用药变更
 
-1. Add the medication to the catalog.
-2. Create a prescription version with effective dates, units, dose times, and repeat days.
-3. Configure reminders if proactive notifications are needed.
-4. Set actual stock and warning thresholds.
-5. Create a new prescription version for changes; do not overwrite historical instructions.
+先添加药品，再创建含生效日期、单位、剂量时点及重复日的处方版本；需要时配置提醒，并设置真实库存及阈值。医嘱变化必须创建新版本，保留旧指示历史。
 
-## Before and after a visit
+## 就诊前后
 
-Before the visit, create an appointment, assign a companion, add preparation notes, and collect questions. Generate a visit summary and review recent measurements, medication, unresolved alerts, symptoms, and records.
+就诊前建立预约、陪同人、准备事项与问题清单，检查近期测量、用药、未处理预警及病历。就诊后保存回答及跟进行动，关联报告，通过新版本更新处方，需要时创建下一预约。
 
-After the visit, save answers and follow-up actions, link relevant reports, update prescriptions through a new version, and create the next appointment if needed.
+## 执行已发布的医生计划
 
-## Regression checks
+1. 当前分配医生填写私密草稿，明确期限和负责人，审阅发布范围后发布
+2. 记录所有者打开“家庭照护 → 医生计划事项”。家属需明确 `CARE_PLAN` 读取授权；记录另需 `WRITE` 或 `PROXY`。无需旧聚合全档案权限即可独立加载计划事项
+3. 填写实际过去／当前执行时间及说明，或说明困难。家属／护理固定标记代录；账户所有者的本人记录声明不是患者身份验证。可引用最多 5 条已有且获授权的测量／病历
+4. 护理人员须先获管理员分配及所有者授权，再进入护理跟进，记录管理跟进或代录；回执由医生复核
+5. 医生要求补充时提交新回执；确认表示已复核记录。当前所有行动项确认后医生才能关闭计划
+6. 临床说明或期限变化走修订发布。旧版未完成事项被替代，回执保留。取消须说明原因，历史记录保留
 
-- Switching patients clears stale page data and never displays another patient's records.
-- A repeated medication confirmation does not deduct stock twice.
-- Cancelled schedules and stopped prescriptions remain visible in history.
-- CSV exports contain only the selected scope.
-- Backup restore creates a separate patient copy and preserves attachment relationships.
-- Failed restores roll back all inserted data.
+待医生复核与患者未完成逾期分开显示。请求超时可能已经提交成功，应保留原输入，重试原命令或先查看服务器历史，再发起新操作。关闭对话框不代表取消已发出的写入。撤权后当前及历史计划均不可继续访问。
+
+功能默认关闭（`CARE_PLAN_ENABLED=false`）。[最终运行时软件流程验收已通过](CARE_PLAN_COLLABORATION_RELEASE.md)，后端尚未生产部署或启用。[静态演示](https://wangdj104.github.io/tx-analysis-service/cn/)仅使用虚构的标签页内数据。
+
+## 保存记录
+
+家庭归档格式 1 与声明表清单不变，不包含协作计划、版本、行动项、回执、事件／证据、护理分配、通知发件箱或命令。恢复仅为已包含记录创建独立副本；保留协作闭环需完整数据库及附件存储的备份恢复。
+
+## 回归检查
+
+- 切换患者清除旧页面数据
+- 重复用药确认不重复扣库存
+- 已取消安排及停止处方保留历史
+- CSV 仅包含所选范围
+- 家庭归档恢复创建独立患者副本并保留已包含附件关系
+- 恢复失败应回滚全部插入
