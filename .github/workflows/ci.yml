@@ -106,6 +106,7 @@ jobs:
           bash -n scripts/verify-care-plan-mysql.sh
           node --test scripts/tests/care-plan-mysql-guards.test.mjs
           node --test scripts/tests/care-plan-browser-guards.test.mjs
+          node --test scripts/tests/care-plan-browser-artifacts.test.mjs
       - name: Install pinned official browser test dependencies
         working-directory: ${{ matrix.directory }}/frontend
         run: |
@@ -147,16 +148,107 @@ jobs:
             bash scripts/verify-care-plan-mysql.sh
             unset CARE_PLAN_MYSQL_PASSWORD CARE_PLAN_E2E_PASSWORD CARE_PLAN_BROWSER_REQUIRED
           done
-      - name: Preserve synthetic browser recordings and screenshots
+      - name: Stage bounded sanitized browser review artifacts
+        id: browser_artifacts
         if: always()
+        run: node scripts/package-care-plan-browser-artifacts.mjs '${{ matrix.directory }}' '${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}'
+      - name: Preserve browser main-personal
+        if: always() && steps.browser_artifacts.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}
-          path: |
-            ${{ matrix.directory }}/frontend/test-results/**/*.webm
-            ${{ matrix.directory }}/frontend/test-results/**/*.mp4
-            ${{ matrix.directory }}/frontend/test-results/**/*.png
-            ${{ matrix.directory }}/frontend/test-results/acceptance-evidence.json
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-main-personal
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/main-personal/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser main-family
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-main-family
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/main-family/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser main-doctor
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-main-doctor
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/main-doctor/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser main-nurse
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-main-nurse
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/main-nurse/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser main-admin
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-main-admin
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/main-admin/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser main-outsider
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-main-outsider
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/main-outsider/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser screenshots-1
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-screenshots-1
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/screenshots-1/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser screenshots-2
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-screenshots-2
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/screenshots-2/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser screenshots-3
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-screenshots-3
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/screenshots-3/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser screenshots-4
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-screenshots-4
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/screenshots-4/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder/
+          compression-level: 0
           if-no-files-found: ignore
           retention-days: 14
       # No database dump, credential file, trace/HAR or raw request/session data

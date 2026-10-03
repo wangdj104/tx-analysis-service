@@ -70,6 +70,19 @@ async function selectElementOption(page, control, name) {
   await page.keyboard.press('Escape')
 }
 
+async function nativeSelect(scope, labelText) {
+  // Playwright's label engine includes descendant option text for wrapped selects.
+  // Assert the unique label's own text before resolving its single native control.
+  const label = scope.locator('label').filter({ hasText: labelText })
+  await expect(label).toHaveCount(1)
+  await expect(label).toBeVisible()
+  expect(await label.evaluate(element => Array.from(element.childNodes).filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent || '').join('').replace(/\s+/g, ' ').trim())).toBe(labelText)
+  const select = label.locator('select')
+  await expect(select).toHaveCount(1)
+  await expect(select).toBeEnabled()
+  return select
+}
+
 async function selectPatient(page, patientId) {
   const switcher = page.locator('.patient-switcher')
   await expect(switcher.getByRole('combobox')).toBeEnabled()
@@ -184,7 +197,7 @@ async function fillDraft(editor, title, actions) {
     if (i) await editor.getByRole('button', { name: new RegExp(`^${labels.addAction}`) }).click()
     const row = editor.locator('.action-editor').nth(i)
     await row.getByLabel(labels.action, { exact: true }).fill(actions[i].instruction)
-    await row.getByLabel(labels.assignee, { exact: true }).selectOption(String(actions[i].assignee))
+    await (await nativeSelect(row, labels.assignee)).selectOption(String(actions[i].assignee))
     await row.getByLabel(labels.deadline, { exact: true }).fill(deadline)
   }
 }
@@ -260,12 +273,13 @@ async function recordThroughUi(page, view, actionId, note, entryMode = 'ASSISTED
   await page.getByTestId(`route-record-${actionId}`).click()
   const dialog = page.locator('dialog.receipt-dialog')
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByLabel(labels.entry, { exact: true })).toHaveValue('ASSISTED')
+  const entry = await nativeSelect(dialog, labels.entry)
+  await expect(entry).toHaveValue('ASSISTED')
   if (entryMode === 'SELF') {
-    await dialog.getByLabel(labels.entry, { exact: true }).selectOption('SELF')
+    await entry.selectOption('SELF')
     await expect(dialog).toContainText(labels.selfDisclaimer)
   } else {
-    const modes = await dialog.getByLabel(labels.entry, { exact: true }).locator('option').evaluateAll(options => options.map(o => o.value))
+    const modes = await entry.locator('option').evaluateAll(options => options.map(o => o.value))
     if (actorId !== ids.personal) expect(modes).toEqual(['ASSISTED'])
   }
   await dialog.getByTestId('receipt-note').fill(note)
@@ -354,7 +368,7 @@ test('real collaboration: separate assignment/grants, private draft, SELF/ASSIST
   await expect(nurse.getByTestId(`followup-${nurseAction.id}`)).toBeVisible()
   await nurse.getByTestId(`followup-${nurseAction.id}`).click()
   await nurse.getByTestId('receipt-note').fill('Synthetic nursing contact and doctor notification')
-  await nurse.getByLabel(labels.followKind, { exact: true }).selectOption('DOCTOR_NOTIFIED')
+  await (await nativeSelect(nurse.locator('dialog.receipt-dialog'), labels.followKind)).selectOption('DOCTOR_NOTIFIED')
   await observeCommand(nurse, 'POST', `/care-plans/actions/${nurseAction.id}/follow-ups`, () => nurse.getByTestId('submit-receipt').click())
   await expect(nurse.locator('dialog.receipt-dialog')).toBeHidden()
   await recordThroughUi(nurse, view, nurseAction.id, 'Synthetic ASSISTED nurse receipt')
@@ -419,7 +433,7 @@ test('revision publication replaces actions; cancellation retains receipts and h
   expect(revised.actions[0]).toMatchObject({ status: 'OPEN', instruction: 'Synthetic revised instruction' })
   expect(revised.actions[0].id).not.toBe(oldAction.id)
   await openPlan(owner, revised)
-  await owner.getByLabel(labels.history, { exact: true }).selectOption(String(initial.currentRevisionId))
+  await (await nativeSelect(planDetail(owner), labels.history)).selectOption(String(initial.currentRevisionId))
   await expect(planDetail(owner)).toContainText('Synthetic pre-revision receipt')
   await expect(owner.locator('[data-testid^="route-record-"]')).toHaveCount(0)
   const history = await api(owner, `${planPath(initial.id)}/revisions/${initial.currentRevisionId}`)
@@ -432,7 +446,7 @@ test('revision publication replaces actions; cancellation retains receipts and h
   await openPlan(owner, revised); await owner.reload()
   expect((await detail(owner, initial.id)).lifecycle).toBe('CANCELLED')
   expect((await detail(owner, initial.id)).actions[0].status).toBe('CANCELLED')
-  await owner.getByLabel(labels.history, { exact: true }).selectOption(String(initial.currentRevisionId))
+  await (await nativeSelect(planDetail(owner), labels.history)).selectOption(String(initial.currentRevisionId))
   await expect(planDetail(owner)).toContainText('Synthetic pre-revision receipt')
   await screenshot(owner, testInfo, 'cancelled-retained-version')
 })
@@ -558,7 +572,7 @@ test('390px real Vue: keyboard receipt, focus, patient A→B→A, Back/Forward a
   expect((await detail(mobile, view.id)).actions[0].events).toHaveLength(0)
   await opener.press('Enter')
   await dialog.getByTestId('receipt-note').fill('Synthetic mobile keyboard-assisted execution')
-  await expect(dialog.getByLabel(labels.entry, { exact: true })).toHaveValue('ASSISTED')
+  await expect(await nativeSelect(dialog, labels.entry)).toHaveValue('ASSISTED')
   const occurredAt = new Date(Date.now() - 60000).toISOString()
   await dialog.getByLabel(labels.occurred, { exact: true }).fill(occurredAt)
   await assertNoOverflow(mobile)
