@@ -12,6 +12,9 @@ export function canAccessWorkspace(fullPath, menuPaths = [], roleCodes = []) {
   if (path === '/doctor-workspace' && !roleCodes.includes('doctor') && !roleCodes.includes('admin')) return false;
   if (path === '/nurse-workspace') return roleCodes.includes('nurse') && fullPath === path;
   if (/^\/care-plans\/[1-9]\d*$/.test(path)) return fullPath === path;
+  // The authenticated care entry hosts independently authorized plan tasks.
+  // Patient/module access stays with the API; this does not grant another tab.
+  if (fullPath === '/care') return true;
   if (path === '/monitoring' || roleCodes.includes('admin')) return true;
   if (path === '/care-journey' && new URLSearchParams(fullPath.split('?')[1] || '').get('tab') === 'operations' && !roleCodes.includes('doctor')) return false;
   if (menuPaths.includes(fullPath)) return true;

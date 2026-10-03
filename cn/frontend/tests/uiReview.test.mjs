@@ -402,3 +402,29 @@ test('switching the care patient preserves the mounted care tab; other modules s
   assert.equal(app.currentPatientId.value, 22);
   assert.notEqual(app.routerViewKey.value, initialKey);
 });
+
+// Execute the App menu-load path that previously redirected real participants
+// away from /care even though main.js and the visible navigation admit it.
+for (const [role, menus] of [
+  ['patient', ['/monitoring', '/family-health']],
+  ['family', ['/monitoring', '/family-health']],
+  ['family', []]
+]) {
+  test(`${role} stays on care after menu refresh with ${menus.length} canonical workspace menus`, async () => {
+    sessions.saveAuthSession({ token: 'A', userId: 'A' });
+    const app = setupApp(async () => info('A', [role], menus), undefined, { path: '/care', fullPath: '/care' });
+    await app.loadUserMenus();
+    assert.deepEqual(app.redirects, [], 'App must retain the care entry when its menu is absent');
+    assert.deepEqual(app.userMenus.value, menus, 'care entry must not manufacture a menu grant');
+    assert.deepEqual(sessions.readPermissionCache().menuPaths, menus);
+    assert.equal(app.navItems.value.find(item => item.path === '/care').entryPath, '/care');
+  });
+}
+
+test('App still redirects module-only care participants away from unrelated workspaces', async () => {
+  sessions.saveAuthSession({ token: 'A', userId: 'A' });
+  const app = setupApp(async () => info('A', ['family'], []), undefined, { path: '/medical-record', fullPath: '/medical-record' });
+  await app.loadUserMenus();
+  assert.deepEqual(app.redirects, ['/monitoring']);
+  assert.deepEqual(sessions.readPermissionCache().menuPaths, []);
+});
