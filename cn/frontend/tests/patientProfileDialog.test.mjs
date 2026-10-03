@@ -26,7 +26,12 @@ function setup(t, overrides = {}) {
   const { code } = compile(template, { mode: 'function', prefixIdentifiers: true })
   const render = new Function('Vue', code)({ ...Vue, resolveComponent: name => ({ name }), withDirectives: node => node })
   const scope = Vue.effectScope(), messages = [], requests = [], events = [], mounted = [], unmounted = []
+  const storage = new Map([['token','synthetic-profile-token'],['userId','8'],['userRoleCodes','[]']])
   const bindings = {
+    captureAuthSession: () => ({ token: storage.get('token') || null, revision: 0 }),
+    isAuthSessionCurrent: session => !!session?.token && session.token === (storage.get('token') || null) && session.revision === 0,
+    getCarePlanCapabilities: async () => ({ data: { enabled: false } }),
+    localStorage: { getItem: key => storage.get(key) || null },
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted: callback => mounted.push(callback), onUnmounted: callback => unmounted.push(callback),
     useTableColumns: () => ({}), localizeSpecialtyRole: role => ({ ...role }),
     ElMessage: Object.fromEntries(['success', 'error', 'warning'].map(level => [level, message => messages.push({ level, message })])),

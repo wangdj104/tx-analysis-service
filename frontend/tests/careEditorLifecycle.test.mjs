@@ -24,7 +24,13 @@ function setup(t, name, overrides = {}) {
     ElMessage: new Proxy({}, { get: (_, kind) => message => messages.push([kind, message]) }),
     ElMessageBox: { confirm: async () => {}, prompt: async () => ({ value: 'Synthetic response' }) },
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
-    document: { body: { classList: { toggle() {} } } }, window: { scrollTo() {} }, navigator: {}, api,
+    document: { body: { classList: { toggle() {} } } }, window: Object.assign(new EventTarget(), { scrollTo() {} }), navigator: {}, api,
+    captureAuthSession: () => ({ token: storage.get('token') || null, revision: 0 }),
+    isAuthSessionCurrent: session => !!session?.token && session.token === (storage.get('token') || null) && session.revision === 0,
+    AUTH_STORAGE_KEYS: ['token','userId','username','realName'],
+    getCarePlanCapabilities: async () => ({ data: { enabled: false } }),
+    listNurseAssignments: async () => ({ data: [] }),
+    request: async () => { throw new Error('Care-plan commands are outside this legacy fixture') },
     localDateKey: () => '2026-10-02' }
   const locale = import.meta.url.includes('/cn/frontend/') ? 'cn/frontend' : 'frontend'
   const sourcePath = process.env.CARE_EDITOR_SOURCE_ROOT

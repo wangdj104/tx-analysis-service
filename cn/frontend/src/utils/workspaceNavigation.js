@@ -123,6 +123,7 @@ export function getFallbackWorkspaceMenus(menuPaths = [], roleCodes = []) {
   return normalizeWorkspaceMenus([
     { path: '/monitoring', label: '健康概览', icon: 'Monitor' },
     { path: '/clinical-workbench', label: '临床工作台', icon: 'FirstAidKit' },
+    { path: '/nurse-workspace', label: '护理跟进', icon: 'FirstAidKit' },
     { path: '/doctor-workspace', label: '医生工作台', icon: 'FirstAidKit' },
     MODULE_MENUS['/care-journey'],
     MODULE_MENUS['/dialysis'],

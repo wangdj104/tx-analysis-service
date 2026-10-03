@@ -22,7 +22,7 @@
         <el-tab-pane v-if="availableTabs.includes('timeline')" label="Health Timeline" name="timeline">
           <div class="toolbar"><el-button type="primary" @click="openEvent()">Add health event</el-button><el-date-picker v-model="eventRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="Start Date" end-placeholder="End Date" @change="reload" /></div>
           <p>Measurements, dialysis sessions, and medication records are combined automatically. Up to 200 recent events are shown; edit source records in their original module.</p>
-          <el-timeline><el-timeline-item v-for="e in events" :key="`${e.sourceType || 'MANUAL'}-${e.id}`" :timestamp="`${e.eventDate} ${e.eventTime||''}`" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">Edit</el-button><el-popconfirm title="Delete this event?" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">Delete</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="!events.length" description="No health events" />
+          <el-timeline><el-timeline-item v-for="e in events" :key="`${e.sourceType || 'MANUAL'}-${e.sourceId ?? e.id}`" :timestamp="timelineTimestamp(e)" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><router-link v-if="safePlanLink(e)" :to="safePlanLink(e)" class="care-plan-event-link">Open plan and authorized history</router-link><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">Edit</el-button><el-popconfirm title="Delete this event?" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">Delete</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="!events.length" description="No health events" />
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('schedule')" label="Dialysis Schedule" name="schedule">
           <el-alert class="schedule-tip" title="Schedules are created only from dates you add or a recurring plan you explicitly confirm in the Clinical Workbench. Entries can be edited or cancelled here." type="info" :closable="false" show-icon />
@@ -61,6 +61,7 @@ import {readPermissionCache} from '@/utils/authSession'
 import {canAccessWorkspace} from '@/utils/workspaceAccess'
 import * as api from '@/api/familyHealth'
 import {localDateKey, replaceTarget} from '@/utils/familyHealth'
+import {formatPlanTime} from '@/utils/carePlanTime'
 const {currentPatientId:patientId}=useCurrentPatient()
 const tab=ref('today'),intakes=ref([]),events=ref([]),schedules=ref([]),target=reactive({}),loading=ref(false),saving=ref(false)
 const eventVisible=ref(false),scheduleVisible=ref(false),eventForm=reactive({}),scheduleForm=reactive({}),eventRange=ref(null)
@@ -129,10 +130,17 @@ function printSummary(){if(!summaryElement.value)return;const popup=window.open(
 const intakeText=s=>({PENDING:'Due',TAKEN:'Taken',SNOOZED:'Snoozed',SKIPPED:'Skipped',MISSED:'Missed',CANCELLED:'Cancelled'}[s]||s)
 const tagType=s=>({TAKEN:'success',MISSED:'danger',SKIPPED:'info',SNOOZED:'warning',CANCELLED:'info'}[s]||'primary')
 const statusText=s=>({PLANNED:'Planned',COMPLETED:'Completed',CANCELLED:'Cancelled'}[s]||s)
+function timelineTimestamp(event){
+  if(event.sourceType!=='CARE_PLAN_EVENT')return `${event.eventDate} ${event.eventTime||''}`
+  try{return formatPlanTime(`${event.eventDate}T${event.eventTime||''}`,'en')}catch{return 'Care-plan event time is invalid or missing'}
+}
+function safePlanLink(event){return event.sourceType==='CARE_PLAN_EVENT'&&Number.isSafeInteger(event.carePlanId)&&event.carePlanId>0?`/care-plans/${event.carePlanId}`:''}
 const eventType=s=>({SYMPTOM:'Symptom',VISIT:'Visit',NOTE:'Note',MEASUREMENT:'Measurement',DIALYSIS:'Dialysis',INTAKE:'Medication intake',MEDICATION_LOG:'Medication record'}[s]||s)
 </script>
-<style scoped>.visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid var(--line);padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:var(--ink-500)}</style>
 <style scoped>
+.visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid var(--line);padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:var(--ink-500)}</style>
+<style scoped>
+.care-plan-event-link{display:inline-flex;align-items:center;min-height:44px;margin:8px;padding:0 10px;color:var(--care-700)}.care-plan-event-link:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
 .schedule-tip {
   margin-bottom: 16px;
 }

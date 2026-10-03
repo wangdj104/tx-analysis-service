@@ -20,10 +20,20 @@ public class CarePlanQueryService {
     private static final Set<String> QUEUES=new HashSet<>(Arrays.asList("TODAY","REVIEW","HELP","OVERDUE","HISTORY"));
     public CarePlanQueryService(JdbcTemplate jdbc,CarePlanAuthorizationService auth,CarePlanProperties properties){this.jdbc=jdbc;this.auth=auth;this.properties=properties;}
 
-    public Map<String,Object> list(long actorId,Long patientId,String queue,String cursor,int limit){
+    public Map<String,Object> list(long actorId,Long patientId,String queue,String cursor,int limit){return list(actorId,patientId,queue,cursor,limit,null);}
+    /** TODAY accepts the browser's next local midnight as an exclusive UTC cutoff. */
+    public Map<String,Object> list(long actorId,Long patientId,String queue,String cursor,int limit,String dueBefore){
         properties.requireEnabled();limit(limit);if(!QUEUES.contains(queue))throw CarePlanException.invalid("不支持此照护计划队列。");
+
+        if(dueBefore!=null&&!"TODAY".equals(queue))throw CarePlanException.invalid("dueBefore is only valid for TODAY.");
+        Instant cutoff=null;
+        if("TODAY".equals(queue)){
+            if(dueBefore==null)cutoff=properties.now().atOffset(ZoneOffset.UTC).toLocalDate().plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+            else{if(!dueBefore.endsWith("Z")||!dueBefore.equals(dueBefore.trim()))throw CarePlanException.invalid("dueBefore must be an explicit UTC Z instant.");cutoff=CarePlanContracts.parseOffsetInstant(dueBefore);}
+        }
+        String cursorQueue="TODAY".equals(queue)?queue+"@"+cutoff.toString():queue;
         auth.requireActiveActor(actorId);if(patientId!=null)auth.requireRead(actorId,patientId);
-        String scope=patientId==null?"ALL":patientId.toString();String[] after=cursor(cursor,"PLAN",actorId,scope,queue);
+        String scope=patientId==null?"ALL":patientId.toString();String[] after=cursor(cursor,"PLAN",actorId,scope,cursorQueue);
         List<Map<String,Object>>items=new ArrayList<>();String[] last=after;boolean exhausted=false;
         // Broad relationship candidates are only a prefilter. Central authorization decides every row.
         while(items.size()<=limit&&!exhausted){
@@ -32,8 +42,8 @@ public class CarePlanQueryService {
             if(patientId!=null){sql+=" AND p.patient_id=?";args.add(patientId);}
             else {sql+=" AND (pa.user_id=? OR EXISTS(SELECT 1 FROM doctor_patient_assignment da WHERE da.patient_id=p.patient_id AND da.doctor_user_id=?) OR EXISTS(SELECT 1 FROM care_access_grant g WHERE g.patient_id=p.patient_id AND g.grantee_user_id=?))";Collections.addAll(args,actorId,actorId,actorId);}
             String active="p.lifecycle='ACTIVE' AND a.revision_id=p.current_revision_id";
-            if("TODAY".equals(queue)){sql+=" AND (p.lifecycle='DRAFT' OR EXISTS(SELECT 1 FROM care_plan_action a WHERE a.plan_id=p.id AND "+active+" AND a.status IN ('OPEN','NEEDS_HELP') AND a.due_at<?))";args.add(properties.now().atOffset(ZoneOffset.UTC).toLocalDate().plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC));}
-            else if("HISTORY".equals(queue))sql+=" AND p.current_revision_id IS NOT NULL AND p.lifecycle IN ('ACTIVE','COMPLETED','CANCELLED')";
+            if("TODAY".equals(queue)){sql+=" AND (p.lifecycle='DRAFT' OR EXISTS(SELECT 1 FROM care_plan_action a WHERE a.plan_id=p.id AND "+active+" AND a.status IN ('OPEN','NEEDS_HELP') AND a.due_at<?))";args.add(cutoff);}
+            else if("HISTORY".equals(queue))sql+=" AND ((p.lifecycle='DRAFT' AND p.current_revision_id IS NULL) OR (p.current_revision_id IS NOT NULL AND p.lifecycle IN ('ACTIVE','COMPLETED','CANCELLED')))";
             else {String filter="REVIEW".equals(queue)?"a.status='SUBMITTED'":"HELP".equals(queue)?"a.status='NEEDS_HELP'":"a.status IN ('OPEN','NEEDS_HELP') AND a.due_at<?";
                 sql+=" AND EXISTS(SELECT 1 FROM care_plan_action a WHERE a.plan_id=p.id AND "+active+" AND "+filter+")";if("OVERDUE".equals(queue))args.add(properties.now());}
             if(last!=null){sql+=" AND (r.created_at>? OR (r.created_at=? AND p.id>?))";Instant time=CarePlanContracts.parseOffsetInstant(last[0]);Collections.addAll(args,time,time,Long.parseLong(last[1]));}
@@ -46,7 +56,7 @@ public class CarePlanQueryService {
                 if(items.size()>limit)break;
             }
         }
-        String next=null;if(items.size()>limit){items.remove(items.size()-1);String[] key=(String[])items.get(items.size()-1).get("_cursor");next=encode("PLAN",actorId,scope,queue,key[0],key[1]);}
+        String next=null;if(items.size()>limit){items.remove(items.size()-1);String[] key=(String[])items.get(items.size()-1).get("_cursor");next=encode("PLAN",actorId,scope,cursorQueue,key[0],key[1]);}
         for(Map<String,Object>item:items)item.remove("_cursor");return map("items",items,"nextCursor",next);
     }
     public Map<String,Object> detail(long actorId,long planId){
@@ -95,12 +105,44 @@ public class CarePlanQueryService {
         if(draft&&!clinical)throw CarePlanException.denied();if(!draft&&!"PUBLISHED".equals(revision.get("revisionStatus")))throw CarePlanException.denied();
         Map<String,Object>body=object((String)revision.remove("draftJson"));Map<String,Object>view=new LinkedHashMap<>(aggregate);view.putAll(revision);
         view.put("actions",draft?draftActions(actor,plan,revisionId,patient,body):publishedActions(actor,plan,revisionId,patient,body));
-        List<String>allowed=new ArrayList<>();String lifecycle=(String)view.get("lifecycle");
-        if(clinical&&Arrays.asList("DRAFT","ACTIVE").contains(lifecycle)){if(draft)allowed.add("SAVE_DRAFT");if("ACTIVE".equals(lifecycle)&&view.get("draftRevisionId")==null)allowed.add("CREATE_REVISION");}
-        view.put("allowedActions",allowed);
+        applyCapabilities(actor,patient,view,clinical);
+
         if(!clinical)view.put("draftRevisionId",null);
         else if(view.get("currentRevisionId")!=null)view.put("revisionImpact",revisionImpact(plan,(Long)view.get("currentRevisionId")));
         return view;
+    }
+    /** UI hints use the same current gates; command services independently enforce every action. */
+    @SuppressWarnings("unchecked")private void applyCapabilities(long actor,long patient,Map<String,Object>view,boolean clinical){
+        List<Map<String,Object>>actions=(List<Map<String,Object>>)view.get("actions");
+        boolean current=Objects.equals(view.get("revisionId"),view.get("currentRevisionId"));
+        boolean draft="DRAFT".equals(view.get("revisionStatus"))&&Objects.equals(view.get("revisionId"),view.get("draftRevisionId"));
+        boolean active="ACTIVE".equals(view.get("lifecycle"));List<String>allowed=new ArrayList<>();
+        if(clinical){
+            if(draft&&Arrays.asList("DRAFT","ACTIVE").contains(view.get("lifecycle"))){allowed.add("SAVE_DRAFT");allowed.add("PUBLISH_PLAN");}
+            else if(current&&active){
+                if(view.get("draftRevisionId")==null)allowed.add("CREATE_REVISION");allowed.add("CANCEL_PLAN");
+                boolean allConfirmed=!actions.isEmpty()&&actions.size()<=50;for(Map<String,Object>action:actions)allConfirmed&="CONFIRMED".equals(action.get("status"));
+                if(allConfirmed)allowed.add("CLOSE_PLAN");
+            }
+        }
+        view.put("allowedActions",allowed);
+        boolean record=false,nursing=false;
+        if(current&&active){
+            try{auth.requireRecord(actor,patient);record=true;}catch(CarePlanException denied){if(denied.getStatus()!=403)throw denied;}
+            if(!clinical)try{auth.requireNursing(actor,patient);nursing=true;}catch(CarePlanException denied){if(denied.getStatus()!=403)throw denied;}
+        }
+        boolean owner=record&&jdbc.queryForObject("SELECT COUNT(*) FROM patient WHERE id=? AND user_id=?",Integer.class,patient,actor)==1;
+        for(Map<String,Object>action:actions){
+            List<String>capabilities=new ArrayList<>();String status=(String)action.get("status");
+            if(current&&active){
+                if(record&&Arrays.asList("OPEN","NEEDS_HELP").contains(status))capabilities.add("SUBMIT_RECEIPT");
+                if(record&&"OPEN".equals(status))capabilities.add("REQUEST_HELP");
+                if((clinical||nursing)&&Arrays.asList("OPEN","NEEDS_HELP","SUBMITTED").contains(status))capabilities.add("FOLLOW_UP");
+                if(clinical&&"SUBMITTED".equals(status))capabilities.add("REVIEW_RECEIPT");
+            }
+            action.put("allowedActions",capabilities);
+            action.put("allowedEntryModes",capabilities.contains("SUBMIT_RECEIPT")?(owner?Arrays.asList("ASSISTED","SELF"):Collections.singletonList("ASSISTED")):Collections.emptyList());
+        }
     }
     /** Used by publishing to recheck precisely the same deterministic current-action digest. */
     Map<String,Object>revisionImpact(long planId,long currentRevisionId){
@@ -132,7 +174,28 @@ public class CarePlanQueryService {
             action.put("evidence",evidenceViews(actor,patient,evidence(action)));
             for(Map<String,Object>event:(List<Map<String,Object>>)action.get("events"))event.put("evidence",evidenceViews(actor,patient,evidence(event)));
         }
+        refreshCapabilities(actor,patient,view,current);
         return view;
+    }
+    /** Retain original snapshot data/version, but intersect its controls with current authority/state. */
+    @SuppressWarnings("unchecked")private void refreshCapabilities(long actor,long patient,Map<String,Object>view,Map<String,Object>current){
+        long plan=id(current.get("id")),revision=id(view.get("revisionId"));
+        List<String>statuses=jdbc.queryForList("SELECT status FROM care_plan_revision WHERE id=? AND plan_id=?",String.class,revision,plan);
+        boolean sameKind=!statuses.isEmpty()&&Objects.equals(view.get("revisionStatus"),statuses.get(0));
+        Map<String,Object>capabilities=new LinkedHashMap<>(current);capabilities.put("revisionId",revision);capabilities.put("revisionStatus",sameKind?statuses.get(0):null);
+        List<Map<String,Object>>rows=Collections.emptyList();
+        if(sameKind&&"PUBLISHED".equals(statuses.get(0)))rows=jdbc.query("SELECT id,status FROM care_plan_action WHERE plan_id=? AND revision_id=? AND patient_id=? ORDER BY ordinal",(rs,i)->map("id",rs.getLong("id"),"status",rs.getString("status")),plan,revision,patient);
+        capabilities.put("actions",rows);
+        if(sameKind)applyCapabilities(actor,patient,capabilities,true);else capabilities.put("allowedActions",Collections.emptyList());
+        view.put("allowedActions",retainedControls(view.get("allowedActions"),capabilities.get("allowedActions")));
+        for(Map<String,Object>action:(List<Map<String,Object>>)view.get("actions")){
+            Map<String,Object>now=null;for(Map<String,Object>row:rows)if(Objects.equals(action.get("id"),row.get("id"))){now=row;break;}
+            action.put("allowedActions",retainedControls(action.get("allowedActions"),now==null?null:now.get("allowedActions")));
+            action.put("allowedEntryModes",retainedControls(action.get("allowedEntryModes"),now==null?null:now.get("allowedEntryModes")));
+        }
+    }
+    private static List<String>retainedControls(Object original,Object current){
+        List<String>result=new ArrayList<>();if(original instanceof List&&current instanceof List)for(Object value:(List<?>)original)if(((List<?>)current).contains(value))result.add((String)value);return result;
     }
     private List<Map<String,Object>>evidenceViews(long actor,long patient,List<Map<String,Object>>refs){
         List<Map<String,Object>>result=new ArrayList<>();for(Map<String,Object>ref:refs){String type=(String)ref.get("sourceType");long source=id(ref.get("sourceId"));boolean readable=auth.canReadEvidence(actor,patient,type,source);Map<String,Object>view=map("sourceType",type,"sourceId",source,"restricted",!readable);

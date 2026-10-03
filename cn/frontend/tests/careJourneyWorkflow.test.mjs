@@ -13,11 +13,19 @@ function setup(t, overrides = {}, roles = [], initialTab = 'measurements') {
   }
   const content = fs.readFileSync(new URL('../src/views/CareJourneyManager.vue', import.meta.url), 'utf8')
   const source = content.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
-  const successes = []
-  const deps = { computed, reactive, ref, watch, onMounted() {}, useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }), useCurrentPatient: () => ({ currentPatientId: patient, currentPatientName: ref('Patient') }), ElMessage: { success: message => successes.push(message), warning: message => warnings.push(message) }, ElMessageBox: { confirm: async () => {} }, api, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }, navigator: { geolocation: null } }
+  const successes = [], unmounted = []
+  const deps = {
+    captureAuthSession: () => ({ token: storage.get('token') || null, revision: 0 }),
+    isAuthSessionCurrent: session => !!session?.token && session.token === (storage.get('token') || null) && session.revision === 0,
+    AUTH_STORAGE_KEYS: ['token','userId','username','realName'],
+    getCarePlanCapabilities: async () => ({ data: { enabled: false } }),
+    listNurseAssignments: async () => ({ data: [] }),
+    request: async () => { throw new Error('Care-plan commands are outside this legacy fixture') },
+    window: new EventTarget(),
+    computed, reactive, ref, watch, onMounted() {}, onUnmounted: callback => unmounted.push(callback), useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }), useCurrentPatient: () => ({ currentPatientId: patient, currentPatientName: ref('Patient') }), ElMessage: { success: message => successes.push(message), warning: message => warnings.push(message) }, ElMessageBox: { confirm: async () => {} }, api, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }, navigator: { geolocation: null } }
   const scope = effectScope(), exposed = ['loadMeasurements','measurements','measurement','recordMeasurement','loadEmergencyCard','emergencyCard','loadEmergencyEvents','emergencyEvents','openEmergency','selectedEmergency','sos','loadMental','mentalSchedules','disableMentalSchedule','mental','mentalAnswers','submitMental','mentalSchedule','scheduleMental','loadTab','busy','tab','saveSpecial','specialtyRows','schedule','createSchedule','appointmentInbox','loadAppointmentInbox','cancelInboxAppointment','completeInboxAppointment','syncTab','grant','grantModules','clinicians','createGrant']
   const view = scope.run(() => new Function(...Object.keys(deps), source + '\nreturn {' + exposed.map(name => `${name}: typeof ${name} === 'undefined' ? undefined : ${name}`).join(',') + '}')(...Object.values(deps)))
-  t.after(() => scope.stop())
+  t.after(() => { unmounted.splice(0).forEach(callback => callback()); scope.stop() })
   return { ...view, patient, route, warnings, successes, storage }
 }
 

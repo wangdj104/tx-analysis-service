@@ -2,10 +2,16 @@ package org.familyhealthcare.service;
 
 import org.springframework.stereotype.Service;
 
-/** Localizes outbound webhook notifications while retaining dynamic clinical values. */
+/** Localizes known webhook templates; care-plan events always use generic, non-clinical text. */
 @Service
 public class NotificationMessageLocalizer {
     public Message localize(String eventType, String title, String content, String language) {
+        if(eventType!=null&&eventType.startsWith("CARE_PLAN_")) {
+            boolean chinese=language!=null&&language.toLowerCase(java.util.Locale.ROOT).startsWith("zh");
+            String path=content!=null&&content.matches("/care-plans/[1-9][0-9]{0,18}")?content:"/care-plans";
+            return new Message(chinese?"照护计划更新":"Care plan update",(chinese?"请登录后打开照护计划。 ":"Open your care plan after signing in. ")+path);
+        }
+
         if (language == null || !language.toLowerCase(java.util.Locale.ROOT).startsWith("zh")) return new Message(title, clinicalTemplate(eventType,content,false));
         String type = eventType == null ? "" : eventType;
         String zhTitle = chineseTitle(type, title);

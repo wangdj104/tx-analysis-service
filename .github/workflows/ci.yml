@@ -66,7 +66,7 @@ jobs:
     # Both languages and both fresh/upgrade passes use this exact checkout.
     name: Care plan MySQL 8.0 (${{ matrix.language }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -99,10 +99,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: ${{ matrix.directory }}/frontend/package-lock.json
       - name: Check MySQL test safety guards
         run: |
           bash -n scripts/verify-care-plan-mysql.sh
           node --test scripts/tests/care-plan-mysql-guards.test.mjs
+          node --test scripts/tests/care-plan-browser-guards.test.mjs
+      - name: Install pinned official browser test dependencies
+        working-directory: ${{ matrix.directory }}/frontend
+        run: |
+          npm ci
+          npx --no-install playwright install --with-deps chromium
+          command -v ffprobe
       - name: Verify two disposable native schema and restore passes
         env:
           CARE_PLAN_TEST_ONLY: 'true'
@@ -125,8 +134,27 @@ jobs:
             echo "::add-mask::$password"
             export CARE_PLAN_MYSQL_PASSWORD="$password"
             unset password
+            if [[ "$pass" == 2 ]]; then
+              login_password=$(openssl rand -hex 24)
+              echo "::add-mask::$login_password"
+              export CARE_PLAN_E2E_PASSWORD="$login_password"
+              unset login_password
+              export CARE_PLAN_BROWSER_REQUIRED=true
+            fi
             bash scripts/verify-care-plan-mysql.sh
-            unset CARE_PLAN_MYSQL_PASSWORD
+            unset CARE_PLAN_MYSQL_PASSWORD CARE_PLAN_E2E_PASSWORD CARE_PLAN_BROWSER_REQUIRED
           done
-      # No database dump, credential file or raw patient-shaped fixture artifact
-      # is uploaded. Actions logs contain only sanitized test/service metadata.
+      - name: Preserve synthetic browser recordings and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}
+          path: |
+            ${{ matrix.directory }}/frontend/test-results/**/*.webm
+            ${{ matrix.directory }}/frontend/test-results/**/*.mp4
+            ${{ matrix.directory }}/frontend/test-results/**/*.png
+            ${{ matrix.directory }}/frontend/test-results/acceptance-evidence.json
+          if-no-files-found: ignore
+          retention-days: 14
+      # No database dump, credential file, trace/HAR or raw request/session data
+      # is uploaded. Only actual synthetic visible screenshots/videos and concise evidence.

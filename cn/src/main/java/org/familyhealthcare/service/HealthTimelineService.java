@@ -1,6 +1,9 @@
 package org.familyhealthcare.service;
 
 import org.familyhealthcare.entity.*;
+import org.familyhealthcare.service.careplan.CarePlanTimelineProjector;
+import org.familyhealthcare.service.careplan.CarePlanException;
+import org.familyhealthcare.util.CurrentUserUtil;
 import org.familyhealthcare.mapper.*;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +16,7 @@ import java.util.stream.Collectors;
 @Service
 public class HealthTimelineService {
     @Autowired private HealthEventMapper events;
+    @Autowired(required=false) private CarePlanTimelineProjector carePlans;
     @Autowired private BpSelfMonitorRecordMapper measurements;
     @Autowired private DialysisRecordMapper dialysis;
     @Autowired private MedicationIntakeMapper intakes;
@@ -29,6 +33,11 @@ public class HealthTimelineService {
     public List<HealthEvent> list(Long patientId, LocalDate from, LocalDate to, int limit) {
         if (from != null && to != null && from.isAfter(to)) throw new IllegalArgumentException("Start Datecannotlater thanEnd Date");
         List<HealthEvent> result = new ArrayList<>(events.selectList(dated(patientId, "event_date", from, to, limit)));
+        // A legacy persisted copy cannot bypass the collaboration module's current grant.
+        result.removeIf(e -> "CARE_PLAN_EVENT".equals(e.getSourceType()));
+        Long actor=CurrentUserUtil.getCurrentUserId();
+        if(carePlans!=null&&actor!=null)try{result.addAll(carePlans.list(actor,patientId,from,to,limit));}
+        catch(CarePlanException denied){if(denied.getStatus()!=403)throw denied;}
         for (BpSelfMonitorRecord r : measurements.selectList(dated(patientId, "record_date", from, to, limit))) {
             List<String> values = new ArrayList<>();
             if (r.getSystolicBp() != null || r.getDiastolicBp() != null) values.add("Blood Pressure " + text(r.getSystolicBp()) + "/" + text(r.getDiastolicBp()) + " mmHg");

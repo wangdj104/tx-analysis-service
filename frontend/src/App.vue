@@ -103,6 +103,7 @@ import { logout, getUserInfo } from '@/api/auth';
 import { normalizeWorkspaceMenus, getFallbackWorkspaceMenus, getEnglishMenuLabel } from '@/utils/workspaceNavigation';
 import { getAuthSessionKey, saveAuthSession, captureAuthSession, isAuthSessionCurrent, clearPermissionCache, savePermissionCache, readPermissionCache } from '@/utils/authSession';
 import { DEFAULT_WORKSPACE_TABS, canAccessWorkspace, resolveWorkspaceEntry } from '@/utils/workspaceAccess';
+import { getCarePlanCapabilities } from '@/api/carePlan';
 import { getPatientNames } from '@/api/patient';
 import { filterSpecialtyMenus, knownSpecialtyPath, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
 import { clearPatientSpecialtyScope, loadPatientSpecialtyScope } from '@/utils/patientSpecialtyScope';
@@ -117,10 +118,14 @@ const router = useRouter();
 const languageHref = computed(() => `/cn${route.fullPath === '/' ? '/' : route.fullPath}`);
 const { isMobile } = useMobile();
 
+const carePlanNavigationEnabled=ref(false);let carePlanNavController=null;
+async function refreshCarePlanNavigation(session,actor){carePlanNavController?.abort();const controller=new AbortController();carePlanNavController=controller;carePlanNavigationEnabled.value=false;try{const response=await getCarePlanCapabilities({expectedAuth:{...session,actorId:actor},signal:controller.signal});if(carePlanNavController===controller&&isAuthSessionCurrent(session)&&actor===localStorage.getItem('userId'))carePlanNavigationEnabled.value=response.data?.enabled===true}catch{}}
 const rawNavItems = ref([]);
 const specialtyScope = ref(null);
 const navItems = computed(() => {
-  const filtered = filterSpecialtyMenus(rawNavItems.value, specialtyScope.value);
+  const filterCollaboration=items=>(items||[]).filter(item=>item.path!=='/nurse-workspace'||carePlanNavigationEnabled.value).map(item=>({...item,children:filterCollaboration(item.children)}));
+  const filtered = filterCollaboration(filterSpecialtyMenus(rawNavItems.value, specialtyScope.value));
+  if(carePlanNavigationEnabled.value&&userInfo.value.roles?.some(role=>role.roleCode==='nurse')&&!filtered.some(item=>item.path==='/nurse-workspace'))filtered.push({path:'/nurse-workspace',entryPath:'/nurse-workspace',label:'Nursing Follow-up',icon:'FirstAidKit',children:[]});
   return [{ path: '/care', entryPath: '/care', label: 'Family Care', icon: 'House', children: [] }, ...filtered.filter(item => item.path !== '/care')];
 });
 let specialtyEpoch = 0;
@@ -167,6 +172,7 @@ function specialtyChanged() {
 }
 
 function resetNavState() {
+  carePlanNavController?.abort();carePlanNavigationEnabled.value=false;
   menuRequestEpoch++;
   patientRequestEpoch++;
   specialtyEpoch++;
@@ -273,6 +279,7 @@ onMounted(() => {
   window.addEventListener('care-patients-changed', loadPatientList);
 });
 onUnmounted(() => {
+  carePlanNavController?.abort();
   window.removeEventListener('keydown', onSearchShortcut);
   window.removeEventListener('auth-session-cleared', resetNavState);
   window.removeEventListener('patient-specialty-changed', specialtyChanged);
@@ -291,6 +298,7 @@ const loadUserMenus = async () => {
   try {
     const res = await getUserInfo();
     if (!isCurrent() || identity !== localStorage.getItem('userId')) return;
+    refreshCarePlanNavigation(session,identity);
     if (res.code === 200 && Array.isArray(res.data?.menus)) {
       menuLoadError.value = '';
       systemMenu.value = null;
@@ -621,6 +629,7 @@ async function loadPatientList() {
 function switchPatient(id) {
   id = id || null;
   if (currentPatientId.value === id) return;
+  const event=new Event('care-plan-before-context-change',{cancelable:true});window.dispatchEvent(event);if(event.defaultPrevented)return;
   currentPatientId.value = id;
   if (id) {
     const patient = appPatientList.value.find(p => p.id === id);

@@ -1,0 +1,36 @@
+import { expect } from '@playwright/test'
+import { appPath } from './paths.mjs'
+export { appPath } from './paths.mjs'
+export const ids = Object.freeze({ personal:9001, family:9002, doctor:9003, nurse:9004, admin:9005, outsider:9006, patientA:9001, patientB:9002, patientC:9003 })
+export const language = process.env.CARE_PLAN_E2E_LANGUAGE || 'en'
+export async function login(page, role) {
+  if(!Object.hasOwn(ids,role) || !process.env.CARE_PLAN_E2E_PASSWORD)throw new Error('Synthetic login configuration absent')
+  await page.goto(appPath('/login'))
+  await page.locator('input[name="username"]').fill(`care-plan-e2e-${role}`)
+  await page.locator('input[name="password"]').fill(process.env.CARE_PLAN_E2E_PASSWORD)
+  await page.locator('.login-button').click()
+  await expect(page).toHaveURL(new RegExp(`${appPath('/monitoring')}(?:[?#]|$)`))
+  // This asserts persisted session identity; the workflow must also assert visible role/workspace.
+  await expect.poll(()=>page.evaluate(()=>Number(localStorage.getItem('userId')))).toBe(ids[role])
+}
+export async function api(page, path, {method='GET',body,allowed=[200],allowedCodes=[200]}={}) {
+  if(!path.startsWith('/') || path.startsWith('//'))throw new Error('Only same-origin API paths are allowed')
+  const result=await page.evaluate(async({path,method,body})=>{
+    const response=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json',Authorization:'Bearer '+localStorage.getItem('token')},...(body===undefined?{}:{body:JSON.stringify(body)})})
+    const json=await response.json();return {status:response.status,code:json.code,data:json.data}
+  },{path,method,body})
+  if(!allowed.includes(result.status) || (result.status===200 && !allowedCodes.includes(result.code)))throw new Error(`Actual API ${method} ${path.split('?')[0]} rejected: HTTP ${result.status}, code ${result.code}`)
+  return result.status===200 && result.code===200?result.data:result
+}
+export function command(body={},version=0){return {...body,commandKey:crypto.randomUUID(),expectedVersion:version}}
+export async function assignDoctor(admin,patientId=ids.patientA){return api(admin,'/doctor-workspace/assignments',{method:'POST',body:{doctorUserId:ids.doctor,patientId}})}
+export async function assignNurse(admin,patientId=ids.patientA,extra={}){return api(admin,'/care-nurse-assignments',{method:'POST',body:{patientId,nurseUserId:ids.nurse,...extra}})}
+export async function grant(owner,role,patientId=ids.patientA,extra={}){return api(owner,'/care-journey/access-grants',{method:'POST',body:{patientId,granteeUserId:ids[role],granteeRole:role==='nurse'?'NURSE':'FAMILY',accessLevel:'WRITE',visibleModules:'CARE_PLAN',...extra}})}
+export async function draft(doctor,{patientId=ids.patientA,title='Synthetic browser collaboration',count=1,assignee=ids.personal}={}){
+  const dueAt=new Date(Date.now()+86400000).toISOString()
+  return api(doctor,'/care-plans',{method:'POST',body:command({patientId,title,instructions:'Synthetic browser clinical instructions',planType:'FOLLOW_UP',actions:Array.from({length:count},(_,i)=>({ordinal:i+1,instruction:`Synthetic browser action ${i+1}`,dueAt,assignedUserId:assignee,evidence:[]}))})})
+}
+export async function publish(doctor,view){return api(doctor,`/care-plans/${view.id}/revisions/${view.draftRevisionId}/publish`,{method:'POST',body:command({currentRevisionId:view.currentRevisionId||null,supersededActionDigest:view.revisionImpact?.digest||null},view.version)})}
+export async function detail(page,id){return api(page,`/care-plans/${id}`)}
+export async function assertNoOverflow(page){expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true)}
+export function pageErrorCounter(page){const errors=[];page.on('pageerror',error=>errors.push(error.name));return ()=>expect(errors).toEqual([])}

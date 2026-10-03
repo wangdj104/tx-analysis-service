@@ -46,7 +46,10 @@ final class CarePlanData {
         try {byte[] bytes=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));StringBuilder s=new StringBuilder();for(byte b:bytes)s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}
         catch(Exception e){throw new IllegalStateException(e);}
     }
-    static Calendar utc() {return Calendar.getInstance(TimeZone.getTimeZone("UTC"));}
+    static Calendar utc() {
+        GregorianCalendar calendar=new GregorianCalendar(TimeZone.getTimeZone("UTC"));
+        calendar.setGregorianChange(new java.util.Date(Long.MIN_VALUE));return calendar;
+    }
     static void time(PreparedStatement ps,int index,Instant value)throws SQLException {if(value==null)ps.setNull(index,Types.TIMESTAMP);else ps.setTimestamp(index,Timestamp.from(value),utc());}
     static String time(ResultSet rs,String column)throws SQLException {Timestamp value=rs.getTimestamp(column,utc());return value==null?null:value.toInstant().toString();}
     static Long nullableId(ResultSet rs,String column)throws SQLException {long value=rs.getLong(column);return rs.wasNull()?null:value;}

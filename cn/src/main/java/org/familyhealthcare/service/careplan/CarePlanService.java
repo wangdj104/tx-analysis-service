@@ -1,6 +1,7 @@
 package org.familyhealthcare.service.careplan;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -11,13 +12,21 @@ import java.time.Instant;
 import java.util.*;
 import static org.familyhealthcare.service.careplan.CarePlanData.*;
 
-/** Private draft mutations. Published bodies remain immutable; publishing is a separate operation. */
+/** Serialized collaborative aggregate mutations; published clinical bodies remain immutable. */
 @Service
 @ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CarePlanService {
     private final JdbcTemplate jdbc;private final CarePlanAuthorizationService auth;private final CarePlanProperties properties;
     private final CarePlanQueryService query;private final CarePlanCommandStore commands;private final CarePlanEventStore events;
-    public CarePlanService(JdbcTemplate jdbc,CarePlanAuthorizationService auth,CarePlanProperties properties,CarePlanQueryService query,CarePlanCommandStore commands,CarePlanEventStore events){this.jdbc=jdbc;this.auth=auth;this.properties=properties;this.query=query;this.commands=commands;this.events=events;}
+    private final CarePlanNotificationQueue notifications;
+    /** Draft-only compatibility constructor. Lifecycle writes fail closed without an outbox. */
+    public CarePlanService(JdbcTemplate jdbc,CarePlanAuthorizationService auth,CarePlanProperties properties,CarePlanQueryService query,CarePlanCommandStore commands,CarePlanEventStore events){
+        this(jdbc,auth,properties,query,commands,events,eventId->{throw new IllegalStateException("必须配置事务型照护计划通知队列。");});
+    }
+    /** Enabled Spring startup requires the Task 6 transactional implementation. */
+    @Autowired public CarePlanService(JdbcTemplate jdbc,CarePlanAuthorizationService auth,CarePlanProperties properties,CarePlanQueryService query,CarePlanCommandStore commands,CarePlanEventStore events,CarePlanNotificationQueue notifications){
+        this.jdbc=jdbc;this.auth=auth;this.properties=properties;this.query=query;this.commands=commands;this.events=events;this.notifications=Objects.requireNonNull(notifications,"notifications");
+    }
 
     @Transactional(isolation=Isolation.READ_COMMITTED) public Map<String,Object>createDraft(long actorId,Map<String,Object>body,String commandKey){
         properties.requireEnabled();mutationTransaction(jdbc);CarePlanCommandStore.validateKey(commandKey);Map<String,Object>normalized=normalize(body);long patient=id(normalized.get("patientId"));auth.requireClinical(actorId,patient);
@@ -32,7 +41,7 @@ public class CarePlanService {
             jdbc.update("UPDATE doctor_care_plan SET draft_revision_id=? WHERE id=?",revision,plan);
             events.append(patient,plan,revision,null,actorId,"DRAFT_CREATED",map("revisionNo",1));return query.detail(actorId,plan);
         });
-        return query.refreshEvidence(actorId,result);
+        return refreshDraftResult(actorId,patient,result);
     }
     @Transactional(isolation=Isolation.READ_COMMITTED) public Map<String,Object>saveDraft(long actorId,long planId,long revisionId,Map<String,Object>body,String commandKey,long expectedVersion){
         properties.requireEnabled();mutationTransaction(jdbc);version(expectedVersion);CarePlanCommandStore.validateKey(commandKey);
@@ -43,12 +52,12 @@ public class CarePlanService {
         normalized.put("legacySourceId",legacy);
         String payload=json(map("operation","SAVE_DRAFT","planId",planId,"revisionId",revisionId,"expectedVersion",expectedVersion,"body",normalized));
         Map<String,Object>result=commands.execute(actorId,commandKey,payload,planId,expectedVersion,()->{
-            auth.requireClinical(actorId,patient);requireDraft(plan,revisionId);requireVersion(plan,expectedVersion);validateReferences(actorId,patient,normalized);
+            auth.requireClinical(actorId,patient);requireVersion(plan,expectedVersion);requireDraft(plan,revisionId);validateReferences(actorId,patient,normalized);
             jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement("UPDATE care_plan_revision SET title=?,instructions=?,plan_type=?,draft_json=?,updated_at=? WHERE id=? AND plan_id=? AND status='DRAFT'");
                 ps.setString(1,(String)normalized.get("title"));ps.setString(2,(String)normalized.get("instructions"));ps.setString(3,(String)normalized.get("planType"));ps.setString(4,json(normalized));time(ps,5,properties.now());ps.setLong(6,revisionId);ps.setLong(7,planId);return ps;});
             advance(planId,expectedVersion);events.append(patient,planId,revisionId,null,actorId,"DRAFT_SAVED",map("version",expectedVersion+1));return query.revision(actorId,planId,revisionId);
         });
-        return query.refreshEvidence(actorId,result);
+        return refreshDraftResult(actorId,patient,result);
     }
     @Transactional(isolation=Isolation.READ_COMMITTED) public Map<String,Object>createRevision(long actorId,long planId,String commandKey,long expectedVersion){
         properties.requireEnabled();mutationTransaction(jdbc);version(expectedVersion);CarePlanCommandStore.validateKey(commandKey);Map<String,Object>plan=lock(actorId,planId);long patient=id(plan.get("patientId"));
@@ -63,7 +72,98 @@ public class CarePlanService {
             jdbc.update("UPDATE doctor_care_plan SET draft_revision_id=? WHERE id=?",revision,planId);advance(planId,expectedVersion);
             events.append(patient,planId,revision,null,actorId,"REVISION_CREATED",map("revisionNo",number));return query.detail(actorId,planId);
         });
-        return query.refreshEvidence(actorId,result);
+        return refreshDraftResult(actorId,patient,result);
+    }
+    @Transactional(isolation=Isolation.READ_COMMITTED) public Map<String,Object>publish(long actorId,long planId,long revisionId,Map<String,Object>confirmation,String commandKey,long expectedVersion){
+        properties.requireEnabled();mutationTransaction(jdbc);version(expectedVersion);CarePlanCommandStore.validateKey(commandKey);
+        Map<String,Object>plan=lock(actorId,planId);long patient=id(plan.get("patientId"));Map<String,Object>normalized=normalizeConfirmation(confirmation);
+        String payload=json(map("operation","PUBLISH","planId",planId,"revisionId",revisionId,"confirmation",normalized,"expectedVersion",expectedVersion));
+        Map<String,Object>result=commands.execute(actorId,commandKey,payload,planId,expectedVersion,()->{
+            auth.requireClinical(actorId,patient);requireVersion(plan,expectedVersion);requireDraft(plan,revisionId);
+            Long previous=(Long)plan.get("currentRevisionId");
+            if(previous==null){
+                if(!"DRAFT".equals(plan.get("lifecycle"))||normalized.get("currentRevisionId")!=null||normalized.get("supersededActionDigest")!=null)throw conflict();
+            }else{
+                if(!"ACTIVE".equals(plan.get("lifecycle")))throw conflict();
+                Map<String,Object>impact=query.revisionImpact(planId,previous);
+                if(!previous.equals(normalized.get("currentRevisionId"))||!impact.get("digest").equals(normalized.get("supersededActionDigest")))throw conflict();
+            }
+            Map<String,Object>body=normalize(jdbc.queryForObject("SELECT draft_json FROM care_plan_revision WHERE id=? AND plan_id=? AND status='DRAFT'",(rs,i)->object(rs.getString("draft_json")),revisionId,planId));
+            if(id(body.get("patientId"))!=patient)throw CarePlanException.denied();validateReferences(actorId,patient,body);
+            Instant now=properties.now();
+            if(previous!=null)terminateActions(planId,previous,"SUPERSEDED",now);
+            for(Map<String,Object>action:actions(body))insertAction(planId,revisionId,patient,action,now);
+            int published=jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement("UPDATE care_plan_revision SET status='PUBLISHED',published_by=?,published_at=?,updated_at=? WHERE id=? AND plan_id=? AND status='DRAFT'");ps.setLong(1,actorId);time(ps,2,now);time(ps,3,now);ps.setLong(4,revisionId);ps.setLong(5,planId);return ps;});
+            if(published!=1)throw conflict();
+            jdbc.update("UPDATE doctor_care_plan SET lifecycle='ACTIVE',current_revision_id=?,draft_revision_id=NULL WHERE id=?",revisionId,planId);advance(planId,expectedVersion);
+            int revisionNo=jdbc.queryForObject("SELECT revision_no FROM care_plan_revision WHERE id=?",Integer.class,revisionId);
+            long event=events.append(patient,planId,revisionId,null,actorId,previous==null?"PLAN_PUBLISHED":"REVISION_PUBLISHED",map("revisionNo",revisionNo,"previousRevisionId",previous,"version",expectedVersion+1));
+            notifications.enqueue(event);return commandResult(planId,event,expectedVersion+1,"ACTIVE");
+        });
+        // RC reads fresh authority even after waiting for another command's unique-key lock.
+        authorizeResult(actorId,patient);return result;
+    }
+    @Transactional(isolation=Isolation.READ_COMMITTED) public Map<String,Object>transitionPlan(long actorId,long planId,String action,String reason,String commandKey,long expectedVersion){
+        properties.requireEnabled();mutationTransaction(jdbc);version(expectedVersion);CarePlanCommandStore.validateKey(commandKey);
+        Map<String,Object>plan=lock(actorId,planId);long patient=id(plan.get("patientId"));
+        if(!Arrays.asList("CANCEL","CLOSE").contains(action))throw CarePlanException.invalid("不支持该计划状态变更。");
+        final String normalizedReason;
+        try{
+            if("CANCEL".equals(action))normalizedReason=CarePlanContracts.requireText(reason,"reason",1000);
+            else{if(reason!=null)throw CarePlanException.invalid("关闭计划不接受原因字段。");normalizedReason=null;}
+        }catch(IllegalArgumentException ex){throw CarePlanException.invalid(ex.getMessage());}
+        String payload=json(map("operation",action,"planId",planId,"reason",normalizedReason,"expectedVersion",expectedVersion));
+        Map<String,Object>result=commands.execute(actorId,commandKey,payload,planId,expectedVersion,()->{
+            auth.requireClinical(actorId,patient);requireVersion(plan,expectedVersion);
+            if(!"ACTIVE".equals(plan.get("lifecycle"))||plan.get("currentRevisionId")==null)throw conflict();
+            long revision=id(plan.get("currentRevisionId"));Instant now=properties.now();final String lifecycle;
+            if("CLOSE".equals(action)){
+                int total=jdbc.queryForObject("SELECT COUNT(*) FROM care_plan_action WHERE plan_id=? AND revision_id=?",Integer.class,planId,revision);
+                int unconfirmed=jdbc.queryForObject("SELECT COUNT(*) FROM care_plan_action WHERE plan_id=? AND revision_id=? AND status<>'CONFIRMED'",Integer.class,planId,revision);
+                if(total<1||total>50||unconfirmed!=0)throw conflict();lifecycle="COMPLETED";
+                jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement("UPDATE doctor_care_plan SET lifecycle='COMPLETED',closed_at=? WHERE id=?");time(ps,1,now);ps.setLong(2,planId);return ps;});
+            }else{
+                lifecycle="CANCELLED";terminateActions(planId,revision,"CANCELLED",now);
+                jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement("UPDATE doctor_care_plan SET lifecycle='CANCELLED',cancelled_at=?,cancel_reason=? WHERE id=?");time(ps,1,now);ps.setString(2,normalizedReason);ps.setLong(3,planId);return ps;});
+            }
+            advance(planId,expectedVersion);long event=events.append(patient,planId,revision,null,actorId,"CANCEL".equals(action)?"PLAN_CANCELLED":"PLAN_CLOSED",map("note",normalizedReason,"version",expectedVersion+1,"lifecycle",lifecycle));
+            notifications.enqueue(event);return commandResult(planId,event,expectedVersion+1,lifecycle);
+        });
+        authorizeResult(actorId,patient);return result;
+    }
+    /** Final draft results must retain current clinical authority and fail closed if a caller catches a failure. */
+    private Map<String,Object>refreshDraftResult(long actor,long patient,Map<String,Object>original){
+        try{Map<String,Object>result=query.refreshEvidence(actor,original);auth.requireClinical(actor,patient);return result;}
+        catch(RuntimeException failure){
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){
+                @Override public void beforeCommit(boolean readOnly){throw new IllegalStateException("照护计划结果投影失败时不可提交事务。");}
+            });
+            throw failure;
+        }
+    }
+    /** A caller catching fresh authorization failure must still roll back a completed command/outbox. */
+    private void authorizeResult(long actor,long patient){
+        try{auth.requireClinical(actor,patient);}
+        catch(RuntimeException denied){
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){
+                @Override public void beforeCommit(boolean readOnly){throw new IllegalStateException("照护计划结果授权失败时不可提交事务。");}
+            });
+            throw denied;
+        }
+    }
+    private void insertAction(long plan,long revision,long patient,Map<String,Object>action,Instant now){
+        jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement("INSERT INTO care_plan_action(plan_id,revision_id,patient_id,ordinal,instruction,due_at,assigned_user_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)");
+            ps.setLong(1,plan);ps.setLong(2,revision);ps.setLong(3,patient);ps.setInt(4,((Number)action.get("ordinal")).intValue());ps.setString(5,(String)action.get("instruction"));time(ps,6,Instant.parse((String)action.get("dueAt")));ps.setLong(7,id(action.get("assignedUserId")));time(ps,8,now);time(ps,9,now);return ps;});
+    }
+    private void terminateActions(long plan,long revision,String status,Instant now){
+        jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement("UPDATE care_plan_action SET status=?,lock_version=lock_version+1,updated_at=? WHERE plan_id=? AND revision_id=? AND status IN ('OPEN','NEEDS_HELP','SUBMITTED')");ps.setString(1,status);time(ps,2,now);ps.setLong(3,plan);ps.setLong(4,revision);return ps;});
+    }
+    private static Map<String,Object>commandResult(long plan,long event,long version,String lifecycle){return map("planId",plan,"actionId",null,"eventId",event,"version",version,"lifecycle",lifecycle,"actionStatus",null);}
+    private static Map<String,Object>normalizeConfirmation(Map<String,Object>confirmation){
+        if(confirmation==null)throw CarePlanException.invalid("必须提供发布确认。");
+        for(String field:confirmation.keySet())if(!Arrays.asList("currentRevisionId","supersededActionDigest").contains(field))throw CarePlanException.invalid("不支持该确认字段。");
+        try{return map("currentRevisionId",confirmation.get("currentRevisionId")==null?null:CarePlanContracts.requireId(confirmation.get("currentRevisionId"),"currentRevisionId"),"supersededActionDigest",confirmation.get("supersededActionDigest")==null?null:CarePlanContracts.requireText(confirmation.get("supersededActionDigest"),"supersededActionDigest",64));}
+        catch(IllegalArgumentException ex){throw CarePlanException.invalid(ex.getMessage());}
     }
     private Map<String,Object>lock(long actor,long plan){
         mutationTransaction(jdbc);List<Map<String,Object>>rows=jdbc.query("SELECT patient_id,lifecycle,current_revision_id,draft_revision_id,legacy_source_id,lock_version FROM doctor_care_plan WHERE id=? AND workflow_version=1 FOR UPDATE",(rs,i)->map("patientId",rs.getLong("patient_id"),"lifecycle",rs.getString("lifecycle"),"currentRevisionId",nullableId(rs,"current_revision_id"),"draftRevisionId",nullableId(rs,"draft_revision_id"),"legacySourceId",nullableId(rs,"legacy_source_id"),"version",rs.getLong("lock_version")),plan);

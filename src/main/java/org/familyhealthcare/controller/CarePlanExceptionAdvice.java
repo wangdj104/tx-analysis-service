@@ -26,7 +26,8 @@ public class CarePlanExceptionAdvice {
 
     @ExceptionHandler(CarePlanException.class)
     public ResponseEntity<Result<Map<String,String>>> carePlan(CarePlanException exception) {
-        return error(exception.getStatus(), exception.getErrorCode(), exception.getMessage());
+        int status=exception.getStatus()==503&&"FEATURE_DISABLED".equals(exception.getErrorCode())?404:exception.getStatus();
+        return error(status, exception.getErrorCode(), exception.getMessage());
     }
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Result<Map<String,String>>> invalid(IllegalArgumentException exception) {

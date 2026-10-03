@@ -24,6 +24,7 @@ function run(overrides = {}, args = ['--check-guards']) {
 for (const [label, overrides, expected] of [
   ['missing test flag', { CARE_PLAN_TEST_ONLY: undefined }, 'CARE_PLAN_TEST_ONLY'],
   ['false test flag', { CARE_PLAN_TEST_ONLY: 'false' }, 'CARE_PLAN_TEST_ONLY'],
+  ['invalid browser release flag', { CARE_PLAN_BROWSER_REQUIRED: 'false' }, 'CARE_PLAN_BROWSER_REQUIRED'],
   ['production host', { CARE_PLAN_MYSQL_HOST: 'db.example.org' }, 'host'],
   ['IPv4 host suffix', { CARE_PLAN_MYSQL_HOST: '127.0.0.1.attacker.test' }, 'host'],
   ['service host outside CI', { CARE_PLAN_MYSQL_HOST: 'mysql', CI: 'false' }, 'host'],

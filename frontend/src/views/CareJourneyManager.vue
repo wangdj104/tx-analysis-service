@@ -57,12 +57,12 @@
 
       <el-tab-pane label="Privacy & access" name="privacy">
         <el-card><template #header><b>Patient-controlled access</b></template>
-          <el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top" class="inline-form">
-            <el-form-item label="Role"><el-select v-model="grant.granteeRole" @change="grant.granteeUserId=null"><el-option label="Doctor" value="DOCTOR"/><el-option label="Family" value="FAMILY"/><el-option label="Guardian" value="GUARDIAN"/></el-select></el-form-item>
+          <el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top" class="inline-form care-plan-grant-form">
+            <el-form-item label="Role"><el-select v-model="grant.granteeRole" @change="changeGrantRole"><el-option label="Doctor" value="DOCTOR"/><el-option v-if="carePlanGrantEnabled" label="Nurse" value="NURSE"/><el-option label="Family" value="FAMILY"/><el-option label="Guardian" value="GUARDIAN"/></el-select></el-form-item>
             <el-form-item v-if="grant.granteeRole==='DOCTOR'" label="Doctor" class="grant-choice"><el-select v-model="grant.granteeUserId" filterable clearable placeholder="Search platform doctors"><el-option v-for="doctor in clinicians" :key="doctor.id" :value="doctor.id" :label="doctor.real_name && doctor.real_name!==doctor.username ? `${doctor.real_name} (${doctor.username})` : doctor.username"/></el-select></el-form-item>
-            <el-form-item v-else label="Recipient user ID"><el-input-number v-model="grant.granteeUserId"/></el-form-item>
+            <el-form-item v-else-if="grant.granteeRole==='NURSE'" label="Currently assigned nurse" class="grant-choice"><el-select v-model="grant.granteeUserId" clearable filterable><el-option v-for="nurse in nurseCandidates" :key="nurse.nurseUserId" :value="nurse.nurseUserId" :label="`${nurse.nurseName} (#${nurse.nurseUserId})`"/></el-select><p>Assignment and patient authorization are separate steps. Only active assignments for this patient are listed.</p></el-form-item><el-form-item v-else label="Recipient user ID"><el-input-number v-model="grant.granteeUserId"/></el-form-item>
             <el-form-item label="Level"><el-select v-model="grant.accessLevel"><el-option label="Read only" value="READ"/><el-option label="Can record" value="WRITE"/><el-option label="Can act for patient" value="PROXY"/></el-select></el-form-item>
-            <el-form-item label="Visible modules" class="grant-choice"><el-select v-model="grantModules" multiple collapse-tags collapse-tags-tooltip clearable placeholder="Leave empty for all modules"><el-option v-for="module in grantModuleOptions" :key="module.value" :label="module.label" :value="module.value"/></el-select></el-form-item>
+            <el-form-item label="Visible modules" class="grant-choice"><el-select v-model="grantModules" multiple collapse-tags collapse-tags-tooltip clearable placeholder="Leave empty for all modules"><el-option v-for="module in availableGrantModules" :key="module.value" :label="module.label" :value="module.value"/></el-select></el-form-item>
             <el-button type="primary" @click="createGrant">Authorize</el-button>
           </el-form>
           <el-table :data="grants"><el-table-column prop="real_name" label="Person"/><el-table-column prop="grantee_role" label="Role"/><el-table-column prop="access_level" label="Level"/><el-table-column prop="visible_modules" label="Visible modules"/><el-table-column prop="status" label="Status"/><el-table-column label=""><template #default="{row}"><el-button link type="danger" @click="revoke(row)">Revoke</el-button></template></el-table-column></el-table>
@@ -79,11 +79,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
 import * as api from '@/api/careJourney'
+import {getCarePlanCapabilities,listNurseAssignments} from '@/api/carePlan'
+import {captureAuthSession,isAuthSessionCurrent,AUTH_STORAGE_KEYS} from '@/utils/authSession'
+import request from '@/utils/request'
 import ConsultationWorkspace from '@/components/ConsultationWorkspace.vue'
 
 const route=useRoute(),router=useRouter(),{currentPatientId,currentPatientName}=useCurrentPatient()
@@ -102,11 +105,20 @@ const emergency=reactive({locationText:'',latitude:null,longitude:null})
 const growth=reactive({recordDate:today(),heightCm:null,weightKg:null,headCircumferenceCm:null,heightPercentile:null,weightPercentile:null}),vaccine=reactive({vaccineName:'',doseNo:'',plannedDate:today(),remindAt:''}),maternity=reactive({recordType:'PRENATAL',recordDate:today(),title:''}),maternityText=ref('')
 const mental=reactive({scaleCode:'PHQ9'}),mentalAnswers=ref(''),mentalVisible=ref(false),mentalSchedule=reactive({scaleCode:'PHQ9',intervalDays:14,nextDueAt:now()})
 const grant=reactive({granteeUserId:null,granteeRole:'DOCTOR',accessLevel:'READ'}),grantModules=ref([]),schedule=reactive({doctorUserId:null,workDate:today(),startTime:'09:00:00',endTime:'12:00:00',slotMinutes:30}),group=reactive({groupName:'',description:''})
-const grantModuleOptions=[{value:'MEASUREMENTS',label:'Measurements'},{value:'APPOINTMENTS',label:'Appointments'},{value:'VISITS',label:'Visit summaries'},{value:'MEDICATION',label:'Medication'},{value:'CONSULTATION',label:'Consultations'},{value:'TREATMENT',label:'Treatment plans'},{value:'REHAB',label:'Recovery'},{value:'EMERGENCY',label:'Emergency'},{value:'SPECIALTY',label:'Child and maternity'},{value:'MENTAL',label:'Mental health'},{value:'MEDICAL',label:'Medical records'},{value:'DIALYSIS',label:'Dialysis'}]
+const carePlanGrantEnabled=ref(false),nurseCandidates=ref([])
+let nurseCandidateGeneration=0,nurseController=null,grantContextEpoch=0,carePlanGrantController=null
+const availableGrantModules=computed(()=>grant.granteeRole==='NURSE'?carePlanGrantEnabled.value?[{value:'CARE_PLAN',label:'Collaboration care plans'}]:[]:grantModuleOptions.filter(m=>m.value!=='CARE_PLAN'||carePlanGrantEnabled.value))
+function changeGrantRole(){grant.granteeUserId=null;if(grant.granteeRole==='NURSE')grantModules.value=['CARE_PLAN']}
+function clearNurseCandidates(){nurseCandidateGeneration++;nurseController?.abort();nurseController=null;nurseCandidates.value=[];carePlanGrantEnabled.value=false;if(grant.granteeRole==='NURSE')grant.granteeUserId=null}
+async function loadNurseCandidates(){clearNurseCandidates();const id=currentPatientId.value;if(!id)return;const generation=nurseCandidateGeneration,auth=captureAuthSession(),actor=localStorage.getItem('userId');nurseController=new AbortController();const options={expectedAuth:{...auth,actorId:actor},signal:nurseController.signal};const owns=()=>generation===nurseCandidateGeneration&&id===currentPatientId.value&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId');try{const capability=await getCarePlanCapabilities(options);if(!owns()||capability.data?.enabled!==true)return;carePlanGrantEnabled.value=true;const result=await listNurseAssignments(id,options);if(!owns())return;nurseCandidates.value=(result.data||[]).filter(n=>n.patientId===id&&n.status==='ACTIVE'&&(!n.expiresAt||Date.parse(n.expiresAt)>Date.now()))}catch{if(owns())nurseCandidates.value=[]}}
+function invalidateCarePlanGrants(){grantContextEpoch++;carePlanGrantController?.abort();carePlanGrantController=null}
+function nurseAuthCleared(){invalidateCarePlanGrants();clearNurseCandidates()}
+function nurseStorageChanged(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))nurseAuthCleared()}
+const grantModuleOptions=[{value:'CARE_PLAN',label:'Collaboration care plans'},{value:'MEASUREMENTS',label:'Measurements'},{value:'APPOINTMENTS',label:'Appointments'},{value:'VISITS',label:'Visit summaries'},{value:'MEDICATION',label:'Medication'},{value:'CONSULTATION',label:'Consultations'},{value:'TREATMENT',label:'Treatment plans'},{value:'REHAB',label:'Recovery'},{value:'EMERGENCY',label:'Emergency'},{value:'SPECIALTY',label:'Child and maternity'},{value:'MENTAL',label:'Mental health'},{value:'MEDICAL',label:'Medical records'},{value:'DIALYSIS',label:'Dialysis'}]
 const metricOptions=[{label:'Blood pressure',value:'BP'},{label:'Blood glucose',value:'GLUCOSE'},{label:'Blood oxygen',value:'SPO2'},{label:'Weight',value:'WEIGHT'},{label:'Heart rate',value:'HEART_RATE'},{label:'Temperature',value:'TEMPERATURE'},{label:'Custom',value:'CUSTOM'}]
 function syncTab(name){const query={...route.query,tab:name};if(name!=='consultation')delete query.consultationId;router.replace({query})}
 function pid(){if(!currentPatientId.value)throw new Error('Select a patient first.');return currentPatientId.value}
-async function safely(action,message='Saved'){if(busy.value)return;try{busy.value=true;await action();ElMessage.success(message)}catch(e){if(e.validation)ElMessage.warning(e.message);else if(e.message==='Select a patient first.')ElMessage.warning(e.message)}finally{busy.value=false}}
+async function safely(action,message='Saved',isCurrent=null){if(busy.value)return;try{busy.value=true;const result=await action();if(!isCurrent||(isCurrent()&&result!==false))ElMessage.success(message)}catch(e){if(isCurrent&&!isCurrent())return;if(e.validation)ElMessage.warning(e.message);else if(e.message==='Select a patient first.')ElMessage.warning(e.message)}finally{busy.value=false}}
 let editorEpoch=0,editorOperation=null
 function invalidatePatientEditor(kind){
   if(kind&&editorOperation?.kind!==kind)return
@@ -212,9 +224,50 @@ async function loadMental(){await loadPatientData('mental',id=>Promise.allSettle
 async function submitMental(){await safely(async()=>{const values=mentalAnswers.value.split(/[,，]/).map(value=>value.trim()),count={PHQ9:9,GAD7:7,WHO5:5}[mental.scaleCode],maximum=mental.scaleCode==='WHO5'?5:3;validate(values.length===count && values.every(value=>/^\d+$/.test(value) && Number(value)<=maximum),`Enter ${count} integer scores from 0 to ${maximum}, separated by commas.`);const answers=values.map(Number);await api.saveMentalAssessment({...mental,patientId:pid(),answers,familyVisibility:mentalVisible.value?'VISIBLE':'PRIVATE'});mentalAnswers.value='';await loadMental()})}
 async function scheduleMental(){await safely(async()=>{validate(mentalSchedule.nextDueAt && Number(mentalSchedule.intervalDays)>0,'Enter the next delivery time and a positive interval.');await api.saveMentalSchedule({...mentalSchedule,scaleCode:mental.scaleCode,patientId:pid(),familyVisibility:mentalVisible.value?'VISIBLE':'PRIVATE'});await loadMental()},'Assessment scheduled')}
 async function disableMentalSchedule(row){if(!row||row.enabled!==1)return;await safely(async()=>{await api.disableMentalSchedule(row.id);await loadMental()},'Assessment schedule disabled')}
-async function loadGrants(){await loadPatientData('grants',id=>api.listAccessGrants(id),response=>{grants.value=response.data||[]})}
-async function createGrant(){await safely(async()=>{validate(Number(grant.granteeUserId)>0,'Select a recipient.');if(grant.granteeRole==='DOCTOR')validate(clinicians.value.some(doctor=>Number(doctor.id)===Number(grant.granteeUserId)),'Select a doctor from the list.');await api.saveAccessGrant({...grant,visibleModules:grantModules.value.join(','),patientId:pid()});await loadGrants()},'Access authorized')}
-async function revoke(row){await safely(async()=>{await api.revokeAccessGrant(row.id);await loadGrants()},'Access revoked')}
+async function loadGrants(){await Promise.all([loadPatientData('grants',id=>api.listAccessGrants(id),response=>{grants.value=response.data||[]}),loadNurseCandidates()])}
+async function createGrant(){
+  const patient=currentPatientId.value,epoch=grantContextEpoch,auth=captureAuthSession(),actor=localStorage.getItem('userId')
+  let guarded=false
+  const owns=()=>!guarded||(epoch===grantContextEpoch&&patient===currentPatientId.value&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId'))
+  await safely(async()=>{
+    pid()
+    const body={...grant},modules=[...grantModules.value]
+    guarded=modules.includes('CARE_PLAN')||body.granteeRole==='NURSE'
+    validate(Number(body.granteeUserId)>0,'Select a recipient.')
+    if(body.granteeRole==='DOCTOR')validate(clinicians.value.some(doctor=>Number(doctor.id)===Number(body.granteeUserId)),'Select a doctor from the list.')
+    if(body.granteeRole==='NURSE'){
+      await loadNurseCandidates()
+      if(!owns()||grant.granteeRole!==body.granteeRole||grant.accessLevel!==body.accessLevel||JSON.stringify(grantModules.value)!==JSON.stringify(modules)||(grant.granteeUserId!=null&&grant.granteeUserId!==body.granteeUserId))return false
+      grant.granteeUserId=body.granteeUserId
+      validate(carePlanGrantEnabled.value&&nurseCandidates.value.some(n=>n.nurseUserId===Number(body.granteeUserId)),'Select a currently assigned nurse for this patient.')
+      validate(modules.length===1&&modules[0]==='CARE_PLAN','Nursing authorization must explicitly select CARE_PLAN.')
+    }
+    if(!owns())return false
+    const data={...body,visibleModules:modules.join(','),patientId:patient}
+    if(guarded){
+      validate(carePlanGrantEnabled.value,'Plan collaboration is unavailable in this session.')
+      carePlanGrantController?.abort();const controller=new AbortController();carePlanGrantController=controller
+      await request({url:'/care-journey/access-grants',method:'post',data,expectedAuth:{...auth,actorId:actor},signal:controller.signal})
+    }else await api.saveAccessGrant(data)
+    if(!owns())return false
+    await loadGrants()
+    return owns()
+  },'Access authorized',owns)
+}
+async function revoke(row){
+  const modules=String(row.visible_modules??row.visibleModules??'').split(',').map(value=>value.trim())
+  if(!modules.includes('CARE_PLAN')&&row.grantee_role!=='NURSE'){await safely(async()=>{await api.revokeAccessGrant(row.id);await loadGrants()},'Access revoked');return}
+  const patient=currentPatientId.value,epoch=grantContextEpoch,auth=captureAuthSession(),actor=localStorage.getItem('userId'),id=row.id
+  const owns=()=>epoch===grantContextEpoch&&patient===currentPatientId.value&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId')
+  await safely(async()=>{
+    if(!owns()||!Number.isSafeInteger(id)||id<=0||(row.patient_id??row.patientId)!==patient||!grants.value.some(item=>item.id===id&&(item.patient_id??item.patientId)===patient))return false
+    carePlanGrantController?.abort();const controller=new AbortController();carePlanGrantController=controller
+    await request({url:`/care-journey/access-grants/${id}`,method:'delete',expectedAuth:{...auth,actorId:actor},signal:controller.signal})
+    if(!owns())return false
+    await loadGrants()
+    return owns()
+  },'Access revoked',owns)
+}
 async function createSchedule(){await safely(async()=>{validate(!roles.includes('admin') || schedule.doctorUserId,'Choose the doctor whose schedule you are creating.');validate(schedule.workDate && schedule.startTime && schedule.endTime && schedule.endTime>schedule.startTime,'Enter a date and a schedule ending after its start time.');await api.saveDoctorSchedule({...schedule})},'Availability added')}
 async function createGroup(){await safely(async()=>{validate(group.groupName.trim(),'Enter the patient group name.');await api.savePatientGroup({...group});group.groupName='';group.description='';groups.value=(await api.listPatientGroups()).data||[]})}
 async function addToGroup(row){await safely(async()=>{await api.addPatientToGroup(row.id,pid());groups.value=(await api.listPatientGroups()).data||[]},'Patient added')}
@@ -268,6 +321,7 @@ async function loadPatientData(key,fetcher,apply){
   if(currentPatientId.value===selected&&loadVersions.get(key)===version)apply(response,selected)
 }
 watch(currentPatientId,()=>{
+  invalidateCarePlanGrants();clearNurseCandidates()
   for(const [key,version]of loadVersions)loadVersions.set(key,version+1)
   measurements.value=[];appointments.value=[];visits.value=[];prescriptions.value=[];Object.keys(specialtyRows).forEach(key=>{specialtyRows[key]=[]});plans.value=[];rehabRows.value=[];emergencyCard.value=null;emergencyEvents.value=[];selectedEmergency.value=null;mentalRows.value=[];mentalSchedules.value=[];grants.value=[];doctorSchedules.value=[]
   patientForms.forEach((model,index)=>Object.assign(model,formDefaults[index]))
@@ -276,10 +330,13 @@ watch(currentPatientId,()=>{
   loadTab()
 },{flush:'sync'})
 watch(()=>route.query.tab,value=>{const next=allowedTabs.includes(value)?value:'measurements';if(tab.value!==next)tab.value=next;if(value&&value!==next){syncTab(next);return}loadTab()})
-onMounted(()=>{if(route.query.tab&&!allowedTabs.includes(route.query.tab))syncTab(tab.value);else loadTab()})
+onMounted(()=>{window.addEventListener('auth-session-cleared',nurseAuthCleared);window.addEventListener('storage',nurseStorageChanged);if(route.query.tab&&!allowedTabs.includes(route.query.tab))syncTab(tab.value);else loadTab()})
+onUnmounted(()=>{nurseAuthCleared();window.removeEventListener('auth-session-cleared',nurseAuthCleared);window.removeEventListener('storage',nurseStorageChanged)})
 </script>
 
 <style scoped>
+.care-plan-grant-form :deep(.el-select__wrapper),.care-plan-grant-form :deep(.el-button){min-height:44px}
+
 .inline-form .grant-choice{flex:1 1 260px;min-width:min(260px,100%)}
 .appointment-inbox{margin-bottom:18px;min-width:0}.inbox-description{margin:0 0 16px;color:var(--ink-500);line-height:1.7}
 .prescription-version+.prescription-version{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.prescription-version p{color:var(--ink-500);white-space:pre-wrap}.form-grid{min-width:0}.form-grid :deep(.el-form-item__content){min-width:0}.form-grid :deep(.el-date-editor){max-width:100%}.card-head{flex-wrap:wrap}

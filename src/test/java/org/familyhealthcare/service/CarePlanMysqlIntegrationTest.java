@@ -5,12 +5,16 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.familyhealthcare.service.careplan.CarePlanAuthorizationService;
+import org.familyhealthcare.service.careplan.CarePlanContracts;
 import org.familyhealthcare.service.careplan.CarePlanCommandStore;
 import org.familyhealthcare.service.careplan.CarePlanEventStore;
 import org.familyhealthcare.service.careplan.CarePlanException;
 import org.familyhealthcare.service.careplan.CarePlanProperties;
 import org.familyhealthcare.service.careplan.CarePlanQueryService;
 import org.familyhealthcare.service.careplan.CarePlanService;
+import org.familyhealthcare.service.careplan.CarePlanActionService;
+import org.familyhealthcare.service.careplan.CarePlanNotificationWorker;
+import org.familyhealthcare.service.careplan.CarePlanNotificationTransport;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -35,13 +39,17 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+import java.lang.reflect.Proxy;
+import java.lang.reflect.InvocationTargetException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Native MySQL 8.0 schema/restore and bounded actual-service replay acceptance.
- * Only the replay test creates a minimal transaction-proxy context; no Spring
- * Boot, production configuration, HTTP/UI API, or external transport is loaded.
+ * Native MySQL 8.0 schema/restore, actual lifecycle/action races and actual outbox acceptance.
+ * Minimal transaction-proxy contexts use real services and current database authority.
+ * No Spring Boot/HTTP/UI API or real external transport is loaded by this class.
  * Run through scripts/verify-care-plan-mysql.sh in its disposable service job.
  * An unconfigured ordinary local suite explicitly skips this class; the required
  * flag turns absent/partial configuration into a failure, never an H2 fallback.
@@ -197,34 +205,52 @@ class CarePlanMysqlIntegrationTest {
         }
     }
 
-    @Test @Order(3) void utcMicrosecondsRoundTripAcrossJvmAndSessionZones() throws Exception {
+    @Test @Order(3) void productionUtcMicrosecondsRoundTripAcrossJvmAndSessionZones() throws Exception {
         TimeZone previous = TimeZone.getDefault();
-        // Explicit proleptic UTC calendar supports the full documented range.
-        // This characterizes JDBC persistence, not unfinished runtime service APIs.
+        int combinations = 0;
+        // Invoke the package-private production helpers: a separate correct test calendar
+        // would hide a regression in the application's Connector/J binding/reading path.
+        Class<?> data = Class.forName("org.familyhealthcare.service.careplan.CarePlanData");
+        java.lang.reflect.Method write = data.getDeclaredMethod("time", PreparedStatement.class, int.class, Instant.class);
+        java.lang.reflect.Method read = data.getDeclaredMethod("time", ResultSet.class, String.class);
+        write.setAccessible(true); read.setAccessible(true);
         String[][] cases = {{"1000-01-01T00:00:00Z", "1000-01-01 00:00:00.000000"},
-                {"2026-11-01T05:30:00.123456Z", "2026-11-01 05:30:00.123456"},
-                {"2026-11-01T06:30:00.123456Z", "2026-11-01 06:30:00.123456"},
-                {"9999-12-31T23:59:59.499999Z", "9999-12-31 23:59:59.499999"}};
+                {"1000-01-01T05:45:00+05:45", "1000-01-01 00:00:00.000000"},
+                {"1500-01-01T00:00:00.123456Z", "1500-01-01 00:00:00.123456"},
+                {"2026-11-01T01:30:00.123456-04:00", "2026-11-01 05:30:00.123456"},
+                {"2026-11-01T01:30:00.123456-05:00", "2026-11-01 06:30:00.123456"},
+                {"9999-12-31T23:59:59.499999Z", "9999-12-31 23:59:59.499999"},
+                {"9999-12-31T16:59:59.499999-07:00", "9999-12-31 23:59:59.499999"}};
         try {
             for (String jvmZone : Arrays.asList("Pacific/Honolulu", "Asia/Kathmandu")) {
                 TimeZone.setDefault(TimeZone.getTimeZone(jvmZone));
                 for (String sessionZone : Arrays.asList("-07:00", "+05:45")) {
-                    try (Connection c = connect(upgrade)) {
-                        execute(c, "SET SESSION time_zone='" + sessionZone + "'");
-                        for (String[] value : cases) {
-                            Instant expected = Instant.parse(value[0]);
-                            try (PreparedStatement ps = c.prepareStatement("UPDATE care_plan_action SET due_at=? WHERE id=7301")) {
-                                ps.setTimestamp(1, Timestamp.from(expected), utc()); ps.executeUpdate();
-                            }
-                            assertEquals(value[1], scalar(c, "SELECT DATE_FORMAT(due_at,'%Y-%m-%d %H:%i:%s.%f') FROM care_plan_action WHERE id=7301"));
-                            try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery("SELECT due_at FROM care_plan_action WHERE id=7301")) {
-                                assertTrue(rs.next()); assertEquals(expected, rs.getTimestamp(1, utc()).toInstant());
+                    for (boolean serverPrepared : new boolean[]{false, true}) {
+                        try (Connection c = connect(upgrade, serverPrepared)) {
+                            execute(c, "SET SESSION time_zone='" + sessionZone + "'");
+                            for (String[] value : cases) {
+                                Instant expected = CarePlanContracts.parseOffsetInstant(value[0]);
+                                String context = value[0] + " jvm=" + jvmZone + " session=" + sessionZone + " serverPrepared=" + serverPrepared;
+                                try (PreparedStatement ps = c.prepareStatement("UPDATE care_plan_action SET due_at=? WHERE id=7301")) {
+                                    assertEquals(serverPrepared, ps.getClass().getName().contains("ServerPreparedStatement"), context);
+                                    write.invoke(null, ps, 1, expected); assertEquals(1, ps.executeUpdate(), context);
+                                }
+                                assertEquals(value[1], scalar(c, "SELECT DATE_FORMAT(due_at,'%Y-%m-%d %H:%i:%s.%f') FROM care_plan_action WHERE id=7301"), context);
+                                try (PreparedStatement ps = c.prepareStatement("SELECT due_at FROM care_plan_action WHERE id=7301")) {
+                                    assertEquals(serverPrepared, ps.getClass().getName().contains("ServerPreparedStatement"), context);
+                                    try (ResultSet rs = ps.executeQuery()) {
+                                        assertTrue(rs.next(), context); assertEquals(expected.toString(), read.invoke(null, rs, "due_at"), context);
+                                    }
+                                }
+                                combinations++;
                             }
                         }
                     }
                 }
             }
         } finally { TimeZone.setDefault(previous); }
+        assertEquals(56, combinations, "Every production-helper boundary/offset/zone/prepared-mode combination must execute");
+        System.out.println("Native production-helper UTC round-trip combinations executed: " + combinations);
     }
 
     @Test @Order(4) void mysqlConcurrentCommandsAreIdempotent() throws Exception {
@@ -371,7 +397,139 @@ class CarePlanMysqlIntegrationTest {
         }
     }
 
-    @Test @Order(6) void restorePreservesAllPlanRelationships() throws Exception {
+    @Test @Order(6) void actualLifecyclePublicationAndAggregateVersionRaces() throws Exception {
+        try (NativeServices h = nativeServices()) {
+            Map<String,Object> draft=h.plans.createDraft(7003, nativeBody(2), key());
+            long plan=number(draft.get("id")),revision=number(draft.get("draftRevisionId"));
+            String publicationKey=key();
+            List<Object> duplicate=race(()->h.plans.publish(7003,plan,revision,map(),publicationKey,0),
+                    ()->h.plans.publish(7003,plan,revision,map(),publicationKey,0));
+            assertEquals(duplicate.get(0),duplicate.get(1),"Actual concurrent publish replay returns the same committed result");
+            assertEquals(1,h.count("SELECT COUNT(*) FROM care_plan_revision WHERE plan_id=? AND status='PUBLISHED'",plan));
+            assertEquals(2,h.count("SELECT COUNT(*) FROM care_plan_action WHERE plan_id=?",plan));
+            assertEquals(1,h.count("SELECT COUNT(*) FROM care_plan_event WHERE plan_id=? AND event_type='PLAN_PUBLISHED'",plan));
+            assertEquals(1,h.count("SELECT COUNT(*) FROM care_plan_command WHERE actor_id=7003 AND command_key=?",publicationKey));
+            List<Long> actions=h.jdbc.queryForList("SELECT id FROM care_plan_action WHERE plan_id=? ORDER BY ordinal",Long.class,plan);
+            List<Object> versions=race(()->h.actions.submit(7001,actions.get(0),receipt("SELF"),key(),1),
+                    ()->h.actions.help(7001,actions.get(1),map("note","Synthetic version race"),key(),1));
+            assertOneConflict(versions);
+            assertEquals(2L,h.jdbc.queryForObject("SELECT lock_version FROM doctor_care_plan WHERE id=?",Long.class,plan));
+            assertEquals(1,h.count("SELECT COUNT(*) FROM care_plan_event WHERE plan_id=? AND event_type IN ('RECEIPT_SUBMITTED','HELP_REQUESTED')",plan));
+            assertTrue(h.transactionConnections.entrySet().stream().filter(e->e.getKey().startsWith("pool-")).count()>=2,"Both actual competing service threads must execute native transaction SQL");
+            Set<String> competingConnections=new HashSet<>();h.transactionConnections.forEach((thread,ids)->{if(thread.startsWith("pool-"))competingConnections.addAll(ids);});
+            assertTrue(competingConnections.size()>=2,"Competing actual services must use distinct native transaction connections");
+            assertEquals(Integer.valueOf(403),status(()->h.queries.detail(7002,plan)),"No grant means no published clinical content");
+            System.out.println("Native actual lifecycle duplicate publication and same-aggregate action version race verified");
+        }
+    }
+
+    @Test @Order(7) void actualReceiptVersusCancellationRevisionAndCurrentAuthority() throws Exception {
+        try (NativeServices h=nativeServices()) {
+            for(String transition:Arrays.asList("CANCEL","REVISION")) {
+                Map<String,Object> draft=h.plans.createDraft(7003,nativeBody(1),key());long plan=number(draft.get("id"));
+                h.plans.publish(7003,plan,number(draft.get("draftRevisionId")),map(),key(),0);
+                long action=h.jdbc.queryForObject("SELECT id FROM care_plan_action WHERE plan_id=?",Long.class,plan);
+                long version=1;Map<String,Object> impact=null;long revised=0;
+                if("REVISION".equals(transition)) {
+                    Map<String,Object> next=h.plans.createRevision(7003,plan,key(),1);version=2;revised=number(next.get("draftRevisionId"));
+                    @SuppressWarnings("unchecked") Map<String,Object> revisionImpact=(Map<String,Object>)next.get("revisionImpact");
+                    impact=map("currentRevisionId",revisionImpact.get("currentRevisionId"),"supersededActionDigest",revisionImpact.get("digest"));
+                }
+                final long expected=version,newRevision=revised;final Map<String,Object> confirmation=impact;
+                List<Object> results=race(()->h.actions.submit(7001,action,receipt("SELF"),key(),expected),
+                        ()->"CANCEL".equals(transition)?h.plans.transitionPlan(7003,plan,"CANCEL","Synthetic native cancellation",key(),expected):h.plans.publish(7003,plan,newRevision,confirmation,key(),expected));
+                assertOneConflict(results);
+                assertEquals(expected+1,h.jdbc.queryForObject("SELECT lock_version FROM doctor_care_plan WHERE id=?",Long.class,plan));
+                String actionStatus=h.jdbc.queryForObject("SELECT status FROM care_plan_action WHERE id=?",String.class,action);
+                int receipts=h.count("SELECT COUNT(*) FROM care_plan_event WHERE action_id=? AND event_type='RECEIPT_SUBMITTED'",action);
+                if(receipts==1)assertEquals("SUBMITTED",actionStatus);else assertEquals("CANCEL".equals(transition)?"CANCELLED":"SUPERSEDED",actionStatus);
+            }
+            h.grantFamily(true);
+            Map<String,Object> draft=h.plans.createDraft(7003,nativeBody(1),key());long plan=number(draft.get("id"));
+            h.plans.publish(7003,plan,number(draft.get("draftRevisionId")),map(),key(),0);
+            long action=h.jdbc.queryForObject("SELECT id FROM care_plan_action WHERE plan_id=?",Long.class,plan);String receiptKey=key();
+            Map<String,Object> result=h.actions.submit(7002,action,receipt("ASSISTED"),receiptKey,1);
+            h.grantFamily(false);
+            assertEquals(Integer.valueOf(403),status(()->h.actions.submit(7002,action,receipt("ASSISTED"),receiptKey,1)),"Revocation must reject cached successful receipt replay");
+            assertEquals(1,h.count("SELECT COUNT(*) FROM care_plan_event WHERE action_id=? AND event_type='RECEIPT_SUBMITTED'",action));
+            assertEquals(2L,result.get("version"));
+            assertEquals(Integer.valueOf(403),status(()->h.queries.detail(7002,plan)),"Current authority also guards old published snapshots");
+            System.out.println("Native actual receipt/cancel/revision races and revoked successful receipt replay verified");
+        }
+    }
+
+    @Test @Order(8) void actualNotificationWorkerSkipLockedConcurrencyRecoveryAndDedup() throws Exception {
+        try(NativeServices h=nativeServices()) {
+            h.jdbc.update("INSERT INTO notification_channel(id,user_id,channel_type,webhook_url,enabled) VALUES(8801,7001,'WEBHOOK','http://127.0.0.1:9/synthetic-disabled',1)");
+            Map<String,Object> draft=h.plans.createDraft(7003,nativeBody(1),key());long plan=number(draft.get("id"));
+            Map<String,Object> published=h.plans.publish(7003,plan,number(draft.get("draftRevisionId")),map(),key(),0);long event=number(published.get("eventId"));
+            long job=h.jdbc.queryForObject("SELECT id FROM care_plan_notification WHERE event_id=? AND channel_id=8801",Long.class,event);
+            try(Connection lock=connect(upgrade)) {
+                lock.setAutoCommit(false);execute(lock,"SELECT id FROM care_plan_notification WHERE id="+job+" FOR UPDATE");
+                long start=System.nanoTime();h.worker.tick(h.now.get());
+                assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<3000,"Production SKIP LOCKED must avoid waiting on another instance's claim");
+                assertEquals(0,h.transport.calls.size());lock.rollback();
+            }
+            assertTrue(h.sql.stream().anyMatch(sql->sql.contains("FOR UPDATE SKIP LOCKED")),"Actual MySQL claim SQL must execute; H2 fallback is not native proof");
+            CountDownLatch sending=new CountDownLatch(1),release=new CountDownLatch(1);
+            h.transport.beforeSend=()->{sending.countDown();await(release);};
+            ExecutorService pool=Executors.newFixedThreadPool(2);
+            try {
+                Future<?> first=pool.submit(()->h.worker.tick(h.now.get()));assertTrue(sending.await(20,TimeUnit.SECONDS));
+                Future<?> second=pool.submit(()->new CarePlanNotificationWorker(h.jdbc,h.auth,h.properties,h.transport).tick(h.now.get()));
+                second.get(20,TimeUnit.SECONDS);assertEquals(1,h.transport.calls.size(),"Two worker instances must not dispatch one claimed job twice");
+                release.countDown();first.get(20,TimeUnit.SECONDS);
+            } finally {release.countDown();pool.shutdownNow();assertTrue(pool.awaitTermination(20,TimeUnit.SECONDS));h.transport.beforeSend=()->{};}
+            assertEquals("DELIVERED",h.state(job));
+            h.transaction(()->{h.worker.enqueue(event);h.worker.enqueue(event);return null;});
+            assertEquals(1,h.count("SELECT COUNT(*) FROM care_plan_notification WHERE event_id=? AND channel_id=8801",event));
+            h.worker.tick(h.now.get());assertEquals(1,h.transport.calls.size(),"Committed delivery and enqueue replay are deduplicated");
+
+            long unattempted=h.newJob();h.jdbc.update("UPDATE care_plan_notification SET status='CLAIMED',claimed_at='2026-10-03 05:00:00',claim_token='synthetic-unattempted',last_result='CLAIMED_UNATTEMPTED' WHERE id=?",unattempted);
+            new CarePlanNotificationWorker(h.jdbc,h.auth,h.properties,h.transport).tick(h.now.get());assertEquals("DELIVERED",h.state(unattempted));
+            long uncertain=h.newJob();int sends=h.transport.calls.size();
+            h.jdbc.update("UPDATE care_plan_notification SET status='CLAIMED',attempt_count=1,claimed_at='2026-10-03 05:00:00',claim_token='synthetic-attempted',request_id='synthetic-request:1791007800123',last_result='ATTEMPT_STARTED' WHERE id=?",uncertain);
+            new CarePlanNotificationWorker(h.jdbc,h.auth,h.properties,h.transport).tick(h.now.get());
+            assertEquals("UNKNOWN",h.state(uncertain));assertEquals(sends,h.transport.calls.size(),"Restart after an attempted send must not resend");
+            h.now.set(h.now.get().plusSeconds(3600));h.worker.tick(h.now.get());assertEquals(sends,h.transport.calls.size());
+            assertEquals(Integer.valueOf(400),status(()->h.worker.retry(7005,uncertain,false)),"UNKNOWN manual retry needs explicit duplicate-risk acknowledgement");
+            h.worker.retry(7005,uncertain,true);h.worker.tick(h.now.get());assertEquals("DELIVERED",h.state(uncertain));
+            h.transport.outcome=new CarePlanNotificationTransport.DeliveryAttempt(CarePlanNotificationTransport.DeliveryOutcome.UNKNOWN,false);
+            long unknownResult=h.newJob();h.worker.tick(h.now.get());int unknownSends=h.transport.calls.size();assertEquals("UNKNOWN",h.state(unknownResult));
+            h.now.set(h.now.get().plusSeconds(3600));h.worker.tick(h.now.get());assertEquals(unknownSends,h.transport.calls.size(),"An actual UNKNOWN transport outcome must never auto resend");
+            h.transport.outcome=new CarePlanNotificationTransport.DeliveryAttempt(CarePlanNotificationTransport.DeliveryOutcome.DELIVERED,false);
+
+            h.grantFamily(true);h.jdbc.update("INSERT INTO notification_channel(id,user_id,channel_type,webhook_url,enabled) VALUES(8802,7002,'WEBHOOK','http://127.0.0.1:9/synthetic-disabled',1)");
+            Map<String,Object> familyBody=nativeBody(1);nativeActions(familyBody).get(0).put("assignedUserId",7002L);
+            Map<String,Object> familyDraft=h.plans.createDraft(7003,familyBody,key());long familyPlan=number(familyDraft.get("id"));
+            Map<String,Object> familyPublished=h.plans.publish(7003,familyPlan,number(familyDraft.get("draftRevisionId")),map(),key(),0);
+            long familyEvent=number(familyPublished.get("eventId")),familyJob=h.jdbc.queryForObject("SELECT id FROM care_plan_notification WHERE event_id=? AND recipient_user_id=7002",Long.class,familyEvent);
+            h.grantFamily(false);h.worker.tick(h.now.get());assertEquals("SUPPRESSED",h.state(familyJob));
+            assertFalse(h.transport.calls.stream().anyMatch(call->call.channel==8802),"A queued recipient whose authority was revoked must not be contacted");
+
+            h.transport.outcome=new CarePlanNotificationTransport.DeliveryAttempt(CarePlanNotificationTransport.DeliveryOutcome.FAILED,false);
+            long permanent=h.newJob();h.worker.tick(h.now.get());int permanentSends=h.transport.calls.size();
+            assertEquals("FAILED_MANUAL_RETRY_REQUIRED",h.jdbc.queryForObject("SELECT last_result FROM care_plan_notification WHERE id=?",String.class,permanent));
+            h.now.set(h.now.get().plusSeconds(3600));h.worker.tick(h.now.get());assertEquals(permanentSends,h.transport.calls.size());
+            h.transport.outcome=new CarePlanNotificationTransport.DeliveryAttempt(CarePlanNotificationTransport.DeliveryOutcome.FAILED,true);
+            long retryable=h.newJob();Instant firstTime=h.now.get();h.worker.tick(firstTime);
+            assertEquals(1,h.attempts(retryable));h.now.set(firstTime.plusSeconds(59));h.worker.tick(h.now.get());assertEquals(1,h.attempts(retryable));
+            h.now.set(firstTime.plusSeconds(60));h.worker.tick(h.now.get());assertEquals(2,h.attempts(retryable));
+            h.now.set(firstTime.plusSeconds(299));h.worker.tick(h.now.get());assertEquals(2,h.attempts(retryable));
+            h.now.set(firstTime.plusSeconds(300));h.worker.tick(h.now.get());assertEquals(3,h.attempts(retryable));
+            h.now.set(firstTime.plusSeconds(7200));h.worker.tick(h.now.get());assertEquals(3,h.attempts(retryable));
+            h.transport.outcome=new CarePlanNotificationTransport.DeliveryAttempt(CarePlanNotificationTransport.DeliveryOutcome.FAILED,false);
+            long clockFirst=h.newJob(),clockSecond=h.newJob();Instant batchStart=h.now.get();AtomicBoolean slowFirst=new AtomicBoolean(true);
+            h.transport.beforeSend=()->{if(slowFirst.compareAndSet(true,false))h.now.set(batchStart.plusSeconds(120));};
+            h.worker.tick(batchStart);h.transport.beforeSend=()->{};
+            assertTrue(h.jdbc.queryForObject("SELECT request_id FROM care_plan_notification WHERE id=?",String.class,clockFirst).endsWith(":"+batchStart.toEpochMilli()));
+            assertTrue(h.jdbc.queryForObject("SELECT request_id FROM care_plan_notification WHERE id=?",String.class,clockSecond).endsWith(":"+batchStart.plusSeconds(120).toEpochMilli()),"A later job's first-send clock must be captured after the earlier transport finishes");
+            for(TransportCall call:h.transport.calls){assertEquals("Care plan update",call.title);assertTrue(call.path.matches("/care-plans/[1-9][0-9]*"));}
+            System.out.println("Native actual worker SKIP LOCKED/concurrent claim/current authority/restart recovery/dedup/UNKNOWN/explicit retry budget and generic provider body verified; all external sends synthetic");
+        }
+    }
+
+    @Test @Order(9) void restorePreservesAllPlanRelationships() throws Exception {
         Map<String, List<String>> beforeRestore;
         try (Connection c = connect(upgrade)) { assertRelationships(c); beforeRestore = comparisonSnapshot(snapshot(c), true); }
         Path directory = Files.createTempDirectory("care-plan-mysql-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
@@ -399,6 +557,79 @@ class CarePlanMysqlIntegrationTest {
 
     @TestConfiguration @EnableTransactionManagement
     public static class MysqlReplayTransactionConfiguration { }
+
+    private NativeServices nativeServices() throws Exception { return new NativeServices(); }
+    private final class NativeServices implements AutoCloseable {
+        final AnnotationConfigApplicationContext context=new AnnotationConfigApplicationContext();
+        final List<String> sql=new CopyOnWriteArrayList<>();
+        final Map<String,Set<String>> transactionConnections=new ConcurrentHashMap<>();
+        final AtomicReference<Instant> now=new AtomicReference<>(Instant.parse("2026-10-03T06:10:00.123456Z"));
+        final SyntheticTransport transport=new SyntheticTransport();
+        final JdbcTemplate jdbc;final CarePlanProperties properties;final CarePlanAuthorizationService auth;
+        final CarePlanQueryService queries;final CarePlanService plans;final CarePlanActionService actions;final CarePlanNotificationWorker worker;
+        NativeServices() throws Exception {
+            DataSource source=new AbstractDataSource(){
+                @Override public Connection getConnection()throws SQLException {
+                    Connection c=connect(upgrade);c.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+                    String physicalId=scalar(c,"SELECT CONNECTION_ID()");
+                    return (Connection)Proxy.newProxyInstance(Connection.class.getClassLoader(),new Class[]{Connection.class},(proxy,method,args)->{
+                        if(method.getName().equals("prepareStatement")&&args!=null&&args[0] instanceof String){
+                            sql.add((String)args[0]);
+                            if(TransactionSynchronizationManager.isActualTransactionActive())transactionConnections.computeIfAbsent(Thread.currentThread().getName(),ignored->ConcurrentHashMap.newKeySet()).add(physicalId);
+                        }
+                        try{return method.invoke(c,args);}catch(InvocationTargetException failure){throw failure.getCause();}
+                    });
+                }
+                @Override public Connection getConnection(String ignoredUser,String ignoredPassword)throws SQLException {throw new SQLFeatureNotSupportedException("Explicit guarded native identity only");}
+            };
+            jdbc=new JdbcTemplate(source);
+            for(Object[] binding:new Object[][]{{7002L,"family"},{7004L,"nurse"},{7005L,"admin"}})
+                jdbc.update("INSERT INTO sys_user_role(user_id,role_id) SELECT ?,id FROM sys_role WHERE role_code=? ON DUPLICATE KEY UPDATE role_id=VALUES(role_id)",binding);
+            properties=new CarePlanProperties(true,new Clock(){public java.time.ZoneId getZone(){return ZoneOffset.UTC;}public Clock withZone(java.time.ZoneId zone){return this;}public Instant instant(){return now.get();}});
+            auth=new CarePlanAuthorizationService(jdbc,properties);queries=new CarePlanQueryService(jdbc,auth,properties);
+            CarePlanCommandStore commands=new CarePlanCommandStore(jdbc,properties);CarePlanEventStore events=new CarePlanEventStore(jdbc,auth,properties);
+            worker=new CarePlanNotificationWorker(jdbc,auth,properties,transport);
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("native-services",Collections.<String,Object>singletonMap("care-plan.enabled",true)));
+            context.registerBean("transactionManager",PlatformTransactionManager.class,()->new DataSourceTransactionManager(source));
+            context.registerBean(CarePlanService.class,()->new CarePlanService(jdbc,auth,properties,queries,commands,events,worker));
+            context.registerBean(CarePlanActionService.class,()->new CarePlanActionService(jdbc,auth,properties,commands,events,worker));
+            context.register(MysqlReplayTransactionConfiguration.class);context.refresh();
+            plans=context.getBean(CarePlanService.class);actions=context.getBean(CarePlanActionService.class);
+            assertTrue(AopUtils.isAopProxy(plans));assertTrue(AopUtils.isAopProxy(actions));
+        }
+        int count(String sql,Object...params){return jdbc.queryForObject(sql,Integer.class,params);}
+        String state(long job){return jdbc.queryForObject("SELECT status FROM care_plan_notification WHERE id=?",String.class,job);}
+        int attempts(long job){return jdbc.queryForObject("SELECT attempt_count FROM care_plan_notification WHERE id=?",Integer.class,job);}
+        <T>T transaction(Supplier<T> body){org.springframework.transaction.support.TransactionTemplate tx=new org.springframework.transaction.support.TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));tx.setIsolationLevel(Connection.TRANSACTION_READ_COMMITTED);return tx.execute(s->body.get());}
+        void grantFamily(boolean active){jdbc.update("INSERT INTO care_access_grant(patient_id,grantee_user_id,grantee_role,access_level,visible_modules,status,granted_by) VALUES(7001,7002,'FAMILY','WRITE','CARE_PLAN',?,7001) ON DUPLICATE KEY UPDATE status=VALUES(status),expires_at=NULL",active?"ACTIVE":"REVOKED");}
+        long newJob(){Map<String,Object>d=plans.createDraft(7003,nativeBody(1),key());Map<String,Object>p=plans.publish(7003,number(d.get("id")),number(d.get("draftRevisionId")),map(),key(),0);return jdbc.queryForObject("SELECT id FROM care_plan_notification WHERE event_id=? AND channel_id=8801",Long.class,p.get("eventId"));}
+        @Override public void close(){context.close();}
+    }
+    private static final class TransportCall {final long channel;final String event,title,path;TransportCall(long channel,String event,String title,String path){this.channel=channel;this.event=event;this.title=title;this.path=path;}}
+    private static final class SyntheticTransport implements CarePlanNotificationTransport {
+        final List<TransportCall> calls=new CopyOnWriteArrayList<>();volatile Runnable beforeSend=()->{};
+        volatile DeliveryAttempt outcome=new DeliveryAttempt(DeliveryOutcome.DELIVERED,false);
+        public DeliveryOutcome send(long channel,String event,String title,String path){return attempt(channel,event,title,path).getOutcome();}
+        @Override public DeliveryAttempt attempt(long channel,String event,String title,String path){
+            assertFalse(TransactionSynchronizationManager.isActualTransactionActive(),"Synthetic transport must still run outside native DB transactions");
+            calls.add(new TransportCall(channel,event,title,path));beforeSend.run();return outcome;
+        }
+    }
+    private static List<Object> race(Supplier<Map<String,Object>> first,Supplier<Map<String,Object>> second)throws Exception {
+        CyclicBarrier start=new CyclicBarrier(2);ExecutorService pool=Executors.newFixedThreadPool(2);
+        try {List<Future<Object>> futures=new ArrayList<>();for(Supplier<Map<String,Object>> call:Arrays.asList(first,second))futures.add(pool.submit(()->{start.await(20,TimeUnit.SECONDS);try{return call.get();}catch(CarePlanException rejected){return rejected.getStatus();}}));
+            return Arrays.asList(futures.get(0).get(30,TimeUnit.SECONDS),futures.get(1).get(30,TimeUnit.SECONDS));
+        }finally{pool.shutdownNow();assertTrue(pool.awaitTermination(20,TimeUnit.SECONDS));}
+    }
+    private static void assertOneConflict(List<Object> results){assertEquals(1,results.stream().filter(Map.class::isInstance).count(),"Exactly one actual command commits");assertEquals(1,results.stream().filter(Integer.valueOf(409)::equals).count(),"The stale competing command must reject as conflict");}
+    private static Integer status(Supplier<?> call){try{call.get();return 200;}catch(CarePlanException rejected){return rejected.getStatus();}}
+    private static void await(CountDownLatch latch){try{assertTrue(latch.await(20,TimeUnit.SECONDS));}catch(InterruptedException e){Thread.currentThread().interrupt();throw new AssertionError(e);}}
+    private static String key(){return UUID.randomUUID().toString();}
+    private static long number(Object value){return ((Number)value).longValue();}
+    private static Map<String,Object> map(Object...values){Map<String,Object> result=new LinkedHashMap<>();for(int i=0;i<values.length;i+=2)result.put((String)values[i],values[i+1]);return result;}
+    private static Map<String,Object> receipt(String mode){return map("note","Synthetic native actual receipt","occurredAt","2026-10-03T06:00:00.123456Z","entryMode",mode,"evidence",Collections.emptyList());}
+    private static Map<String,Object> nativeBody(int count){List<Map<String,Object>> actions=new ArrayList<>();for(int i=1;i<=count;i++)actions.add(map("ordinal",i,"instruction","Synthetic native actual action "+i,"dueAt","2026-11-01T05:30:00.654321Z","assignedUserId",7001L,"evidence",Collections.emptyList()));return map("patientId",7001L,"title","Synthetic native lifecycle "+key(),"instructions","Synthetic actual service instructions","planType","FOLLOW_UP","actions",actions);}
+    @SuppressWarnings("unchecked") private static List<Map<String,Object>> nativeActions(Map<String,Object> body){return (List<Map<String,Object>>)body.get("actions");}
 
     private static final class ReplayCheckpoint {
         final ThreadLocal<String> role = new ThreadLocal<>();
@@ -605,10 +836,11 @@ class CarePlanMysqlIntegrationTest {
     private String scalar(Connection c, String sql) throws SQLException { try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery(sql)) { assertTrue(rs.next()); return rs.getString(1); } }
     private String database(String value) { assertTrue(value.matches("care_plan_test_[a-z0-9_]+") && value.length() <= 64, "Only explicit synthetic schema identifiers are allowed"); return value; }
     private Calendar utc() { GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC")); calendar.setGregorianChange(new java.util.Date(Long.MIN_VALUE)); return calendar; }
-    private Connection connect(String database) throws SQLException {
+    private Connection connect(String database) throws SQLException { return connect(database, false); }
+    private Connection connect(String database, boolean serverPrepared) throws SQLException {
         String address = "::1".equals(host) ? "[::1]" : host;
         String url = "jdbc:mysql://" + address + ":" + port + "/" + database(database)
-                + "?useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&preserveInstants=true&characterEncoding=UTF-8&connectTimeout=10000&socketTimeout=20000";
+                + "?useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&preserveInstants=true&characterEncoding=UTF-8&connectTimeout=10000&socketTimeout=20000&useServerPrepStmts=" + serverPrepared;
         Properties credentials = new Properties(); credentials.setProperty("user", user); credentials.setProperty("password", password);
         Connection connection = DriverManager.getConnection(url, credentials);
         try (Statement statement = connection.createStatement()) {

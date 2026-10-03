@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.*; import com.fasterxml.jackson.annot
 public class HealthEvent {
  @TableId(type=IdType.AUTO) private Long id; private Long userId; private Long patientId;
  @JsonFormat(pattern="yyyy-MM-dd") private LocalDate eventDate; private String eventTime; private String eventType; private String title;
+ @TableField(exist=false) private Long carePlanId;
  private String summary; private String sourceType; private Long sourceId; private String status; private String remark;
  private LocalDateTime createdAt; private LocalDateTime updatedAt;
 }

@@ -329,6 +329,10 @@ class CarePlanDraftTest {
         context.registerBean(DataSource.class,()->dataSource);context.registerBean(JdbcTemplate.class,()->new JdbcTemplate(dataSource));
         context.registerBean("transactionManager",PlatformTransactionManager.class,()->new DataSourceTransactionManager(dataSource));
         context.registerBean(CarePlanProperties.class,()->new CarePlanProperties(true,clock));
+        context.registerBean(CarePlanNotificationQueue.class,()->eventId->{
+            JdbcTemplate outbox=new JdbcTemplate(dataSource);
+            outbox.update("INSERT INTO care_plan_notification(event_id,patient_id,recipient_user_id,dispatch_key,status,created_at,updated_at) SELECT id,patient_id,7,?,'QUEUED',?,? FROM care_plan_event WHERE id=?","synthetic-"+eventId,Timestamp.from(f.now()),Timestamp.from(f.now()),eventId);
+        });
         context.register(TransactionConfiguration.class,CarePlanAuthorizationService.class,CarePlanQueryService.class,CarePlanCommandStore.class,CarePlanEventStore.class,CarePlanService.class);
         context.refresh();return context;
     }

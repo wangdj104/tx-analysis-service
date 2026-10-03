@@ -1,6 +1,8 @@
 package org.familyhealthcare.interceptor;
 
 import org.familyhealthcare.entity.SysMenu;
+import org.familyhealthcare.service.careplan.CarePlanProperties;
+import org.familyhealthcare.service.careplan.CarePlanException;
 import org.familyhealthcare.mapper.SysMenuMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -14,6 +16,7 @@ import java.util.*;
 @Component
 public class PermissionInterceptor implements HandlerInterceptor {
     @Autowired private SysMenuMapper menuMapper;
+    @Autowired(required=false) private CarePlanProperties carePlanProperties=new CarePlanProperties();
     private static final LinkedHashMap<String,String> RULES = new LinkedHashMap<>();
     private static final Set<String> ADMIN_ONLY = new LinkedHashSet<>(Arrays.asList(
             "/api/menu", "/api/role", "/api/user", "/api/audit-log", "/api/platform-branding"
@@ -37,6 +40,10 @@ public class PermissionInterceptor implements HandlerInterceptor {
     }
     @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler)throws Exception{
         if("OPTIONS".equalsIgnoreCase(request.getMethod()) || request.getRequestURI().equals("/api/platform-branding/public"))return true;
+        String normalized=UrlPathHelper.defaultInstance.getPathWithinApplication(request);
+        if((matchesRoutePrefix(normalized,"/api/care-plans")||matchesRoutePrefix(normalized,"/api/care-nurse-assignments"))
+                &&!("GET".equalsIgnoreCase(request.getMethod())&&normalized.equals("/api/care-plans/capabilities"))
+                &&!carePlanProperties.isEnabled())return careError(response,404,"FEATURE_DISABLED","照护计划协作未启用。");
         Object roles=request.getAttribute("roleCodes");
         if(roles instanceof List && ((List<?>)roles).contains("admin"))return true;
         String path=request.getRequestURI();
@@ -51,7 +58,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
                 : request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE).toString();
         if(matchesRoutePrefix(selected,"/api/care-nurse-assignments")) {
             if(request.getAttribute("userId")!=null && "GET".equalsIgnoreCase(request.getMethod()))return true;
-            return deny(response);
+            return careError(response,403,"ACCESS_DENIED",CarePlanException.denied().getMessage());
         }
         for(String prefix:ADMIN_ONLY)if(path.startsWith(prefix))return deny(response);
         // Daily family-care pages are available to every signed-in account; each record still checks the selected patient's membership.
@@ -78,6 +85,10 @@ public class PermissionInterceptor implements HandlerInterceptor {
     private boolean hasPermission(String required, String granted) {
         if (required.equals(granted)) return true;
         return "monitoring:view".equals(required) && "health-monitoring:view".equals(granted);
+    }
+    private boolean careError(HttpServletResponse response,int status,String code,String message)throws Exception{
+        Map<String,Object> error=new LinkedHashMap<>();error.put("code",status);error.put("msg",message);error.put("data",Collections.singletonMap("errorCode",code));
+        response.setStatus(status);response.setContentType("application/json;charset=UTF-8");response.getWriter().write(com.alibaba.fastjson2.JSON.toJSONString(error));return false;
     }
     private boolean deny(HttpServletResponse response)throws Exception{response.setStatus(403);response.setContentType("application/json;charset=UTF-8");response.getWriter().write("{\"code\":403,\"msg\":\"Access denied\",\"data\":null}");return false;}
 }

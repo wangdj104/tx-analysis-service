@@ -26,7 +26,9 @@ public class CarePlanExceptionAdvice {
 
     @ExceptionHandler(CarePlanException.class)
     public ResponseEntity<Result<Map<String,String>>> carePlan(CarePlanException exception) {
-        return error(exception.getStatus(), exception.getErrorCode(), exception.getMessage());
+        int status=exception.getStatus()==503&&"FEATURE_DISABLED".equals(exception.getErrorCode())?404:exception.getStatus();
+        String message=status==400?"请求参数无效，请检查字段、编号及带时区偏移的时间。":status==403?CarePlanException.denied().getMessage():status==409?"照护计划或通知状态已变更，请刷新后重试。":status==404?"照护计划协作未启用。":exception.getMessage();
+        return error(status, exception.getErrorCode(), message);
     }
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Result<Map<String,String>>> invalid(IllegalArgumentException exception) {

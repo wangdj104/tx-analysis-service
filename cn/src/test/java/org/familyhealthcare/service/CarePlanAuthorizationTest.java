@@ -278,6 +278,7 @@ class CarePlanAuthorizationTest {
 
     @Test void permissionInterceptorRestrictsAssignmentWritesAndAllowsScopedReadEntry() throws Exception {
         PermissionInterceptor interceptor=new PermissionInterceptor();
+        ReflectionTestUtils.setField(interceptor,"carePlanProperties",properties);
         MockHttpServletRequest request=new MockHttpServletRequest("POST","/api/care-nurse-assignments");
         request.setAttribute("userId",FAMILY); request.setAttribute("roleCodes",Collections.singletonList("family"));
         MockHttpServletResponse response=new MockHttpServletResponse();

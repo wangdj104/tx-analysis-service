@@ -15,7 +15,22 @@ const request = axios.create({
 // requestinterceptor
 request.interceptors.request.use(
   (config) => {
-    config.authSession = captureAuthSession();
+    const expected = config.expectedAuth;
+    config.authSession = expected || captureAuthSession();
+    if (expected) {
+      // Keep the captured account in a closure. Recheck after all interceptors/transforms,
+      // immediately before the actual adapter can transmit headers or clinical data.
+      const snapshot = { token: expected.token, revision: expected.revision, actorId: expected.actorId };
+      const adapter = config.adapter || request.defaults.adapter;
+      config.adapter = dispatchConfig => {
+        const authorization = dispatchConfig.headers?.get?.('Authorization') ?? dispatchConfig.headers?.Authorization;
+        if (dispatchConfig.signal?.aborted || !isAuthSessionCurrent(snapshot) || snapshot.actorId !== localStorage.getItem('userId') ||
+            authorization !== `Bearer ${snapshot.token}`) {
+          throw Object.assign(new axios.CanceledError('EXPECTED_AUTH_CHANGED', dispatchConfig), { notDispatched: true });
+        }
+        return axios.getAdapter(adapter, dispatchConfig)(dispatchConfig);
+      };
+    }
     const token = config.authSession.token;
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
@@ -60,6 +75,8 @@ request.interceptors.response.use(
     return res;
   },
   async (error) => {
+    // Opt-in obsolete/cancelled care requests are silent; legacy error behavior is unchanged.
+    if (error.config?.expectedAuth && axios.isCancel(error)) return Promise.reject(error);
     console.error('responseshoulderror:', error);
 
     if (error.response?.data instanceof Blob && /json/i.test(error.response.data.type || '')) {

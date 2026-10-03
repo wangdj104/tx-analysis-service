@@ -23,7 +23,7 @@
       </div>
     </div>
     <section v-if="mode==='FAMILY'" class="family-cards" aria-label="家庭成员">
-      <button v-for="p in home" :key="p.patient.id" type="button" :class="{selected:p.patient.id===patientId}" :aria-pressed="p.patient.id===patientId" @click="patientId=p.patient.id">
+      <button v-for="p in home" :key="p.patient.id" type="button" :class="{selected:p.patient.id===patientId}" :aria-pressed="p.patient.id===patientId" @click="selectCarePatient(p.patient.id)">
         <span class="family-card__heading"><strong>{{p.patient.name}}</strong><span v-if="p.patient.id===patientId" class="family-card__selected">当前</span></span>
         <span>{{pendingCount(p)}} 项需要关注</span><small>{{nextAppointment(p)}}</small>
       </button>
@@ -31,45 +31,49 @@
     <el-alert v-if="!patientId" title="请选择家庭成员，或使用邀请码加入共享照护。" :closable="false" type="info"/>
     <el-tabs v-model="tab" class="care-tabs">
       <el-tab-pane label="今日" name="today" :disabled="!patientId">
+        <PlanTaskList :patient-id="patientId" :mode="mode" />
+        <p v-if="legacyError" data-testid="legacy-care-restricted" role="status">{{legacyError}}</p>
+        <template v-if="legacyAvailable">
         <section class="quick-actions" aria-label="记录健康"><el-button class="quick-actions__primary" type="primary" @click="quickVisible=true"><span>记录健康<small>血压 / 血糖</small></span></el-button><el-button @click="open('SYMPTOM')">记录症状</el-button><el-button @click="open('QUESTION')">添加就诊问题</el-button><el-button v-if="mode==='FAMILY'" @click="open('HANDOVER')">添加家庭交接</el-button></section>
         <div class="care-columns"><section class="care-card"><div class="care-card__heading"><h2>今日用药</h2><span class="care-count">{{pendingMedicationCount}} 项待办</span></div><el-empty v-if="!activeIntakes.length" description="今天没有用药任务"/><article v-for="i in activeIntakes" :key="i.id" class="care-task"><div><strong>{{i.scheduledAt?.slice(11,16)}} {{i.drugName}}</strong><p>{{i.dosage}}</p><small v-if="lastActor(i.id)">{{lastActor(i.id)}}</small><small v-if="i.status==='SNOOZED'">将在 {{i.snoozeUntil}} 再次提醒</small></div><el-tag>{{statusText(i.status)}}</el-tag><div v-if="['PENDING','MISSED','SNOOZED'].includes(i.status)" class="task-actions"><el-button type="success" :disabled="busy" @click="openIntake(i)">{{mode==='FAMILY'?'代记已服':'我已服药'}}</el-button><el-button :disabled="busy" @click="intakeAction(i,'SNOOZED')">15 分钟后提醒</el-button><el-button :disabled="busy" @click="skipIntake(i)">跳过</el-button></div></article></section>
           <section class="care-card"><div class="care-card__heading"><h2>预约与照护任务</h2><span class="care-count">{{dueTasks.length}} 项待办</span></div><el-empty v-if="!dueTasks.length" description="近期没有待处理事项"/><article v-for="item in dueTasks" :key="item.id" class="care-task"><div><strong>{{item.title}}</strong><p>{{item.eventAt || '未设置时间'}}</p><small>负责人：{{memberName(item.assignedUserId)}} · 记录人：{{item.actorName||'家庭成员'}}</small><p>{{item.details?.note || item.details?.preparation}}</p></div><div class="task-actions"><el-button :disabled="busy" type="primary" @click="action(item,'DONE')">完成</el-button><el-button @click="open(item.kind,item)">查看</el-button></div></article></section></div>
         <el-alert v-for="s in lowStocks" :key="s.id" :title="s.drugName + ' 剩余 ' + s.quantity + ' ' + s.unit + (s.estimatedDays != null ? '（约 ' + s.estimatedDays + ' 天），请安排补充。' : '，请检查库存。')" type="warning" :closable="false"/>
+      </template>
       </el-tab-pane>
-      <el-tab-pane label="预约" name="appointments" :disabled="!patientId">
+      <el-tab-pane label="预约" name="appointments" :disabled="!patientId || !legacyAvailable">
         <div class="section-head"><h2>预约、复诊与陪诊</h2><el-button type="primary" @click="open('APPOINTMENT')">新增预约</el-button></div>
         <el-calendar v-model="calendarDate"><template #date-cell="{data}"><div class="calendar-cell"><span>{{data.day.slice(8)}}</span><button v-for="a in appointments.filter(x=>x.eventAt?.startsWith(data.day)&&x.status!=='CANCELLED')" :key="a.id" @click.stop="open('APPOINTMENT',a)">{{a.title}}</button></div></template></el-calendar>
         <el-table :data="appointments"><el-table-column label="时间" prop="eventAt" min-width="165"/><el-table-column label="预约事项" prop="title" min-width="150"/><el-table-column label="医院 / 科室" min-width="150"><template #default="{row}">{{row.details.hospital}} {{row.details.department}}</template></el-table-column><el-table-column label="陪诊人"><template #default="{row}">{{memberName(row.assignedUserId)}}</template></el-table-column><el-table-column label="状态"><template #default="{row}">{{statusText(row.status)}}</template></el-table-column><el-table-column label="操作" min-width="190"><template #default="{row}"><el-button link @click="open('APPOINTMENT',row)">编辑 / 关联报告</el-button><el-button v-if="row.status==='OPEN'" link type="success" :disabled="busy" @click="action(row,'DONE')">完成</el-button><el-button v-if="row.status!=='CANCELLED'" link :disabled="busy" @click="action(row,'CANCELLED')">取消</el-button></template></el-table-column></el-table>
       </el-tab-pane>
-      <el-tab-pane label="用药医嘱" name="orders" :disabled="!patientId">
+      <el-tab-pane label="用药医嘱" name="orders" :disabled="!patientId || !legacyAvailable">
         <div class="section-head"><div><h2>遵循当前医嘱并保留每次变更</h2><p>请先添加药品，再录入医生用药指示和生效日期。</p></div><div><el-button @click="$router.push('/medication')">药品列表</el-button><el-button type="primary" @click="open('ORDER')">新增医嘱</el-button></div></div>
         <el-empty v-if="!orders.length" description="暂无医嘱版本"/>
         <article v-for="order in orders" :key="order.id" class="care-card order-card"><div class="section-head"><h3>{{order.title}}</h3><el-tag>{{statusText(order.status)}}</el-tag></div><p>{{drugName(order.details.medicationId)}} · {{order.details.startDate}} 起{{order.details.endDate?'，至 '+order.details.endDate:''}} · 医生：{{order.details.doctor||'未填写'}}</p><p v-if="order.details.action!=='STOP'">{{order.details.doses?.map(d=>d.time+' '+d.quantity+order.details.unit).join('; ')}} · {{daysText(order.details.repeatDays)}}</p><p v-else>该药品已停用。</p><p>{{order.details.instructions}}</p><div class="attachment-links"><a v-for="(a,i) in order.details.attachments||[]" :key="i" :href="a.dataUrl" :download="a.name">{{a.name}}</a></div><small>记录人：{{order.actorName}} · 版本 #{{order.id}}</small><div class="task-actions"><el-button @click="changeOrder(order,'CHANGE')">新增调整版本</el-button><el-button v-if="order.status==='ACTIVE'" @click="changeOrder(order,'STOP')">记录停药医嘱</el-button><el-button v-if="order.status==='SCHEDULED'" :disabled="busy" @click="action(order,'CANCELLED')">取消计划版本</el-button></div></article>
       </el-tab-pane>
-      <el-tab-pane label="药品库存" name="stock" :disabled="!patientId">
+      <el-tab-pane label="药品库存" name="stock" :disabled="!patientId || !legacyAvailable">
         <div class="section-head"><h2>剩余药品</h2><el-button type="primary" @click="openStock()">设置或修正库存</el-button></div><p>单位需与医嘱一致。服药打卡会扣减医嘱中的数值剂量；确认时也可录入临时剂量。</p>
         <el-table :data="context.stocks||[]"><el-table-column prop="drugName" label="药品" min-width="150"/><el-table-column label="剩余数量"><template #default="{row}">{{row.quantity}} {{row.unit}} <el-tag v-if="row.low" type="warning">库存不足</el-tag></template></el-table-column><el-table-column label="预计可用天数"><template #default="{row}">{{row.estimatedDays==null?'医嘱无数值剂量':row.estimatedDays+' 天'}}</template></el-table-column><el-table-column label="操作" min-width="180"><template #default="{row}"><el-button link @click="purchase(row)">补充库存</el-button><el-button link @click="openStock(row)">修正</el-button><el-button link @click="showStockHistory(row)">历史</el-button></template></el-table-column></el-table>
       </el-tab-pane>
-      <el-tab-pane label="症状" name="symptoms" :disabled="!patientId">
+      <el-tab-pane label="症状" name="symptoms" :disabled="!patientId || !legacyAvailable">
         <div class="section-head"><h2>跟踪症状出现时间与变化</h2><el-button type="primary" @click="open('SYMPTOM')">记录症状</el-button></div><el-select v-model="symptomFilter" clearable placeholder="选择症状查看历史"><el-option v-for="name in [...new Set(symptoms.map(s=>s.title))]" :key="name" :value="name"/></el-select>
         <article v-for="s in filteredSymptoms" :key="s.id" class="care-card"><div class="section-head"><h3>{{s.title}}</h3><span>{{s.eventAt}} · {{s.actorName}}</span></div><el-progress :percentage="Number(s.details.severity)*10" :format="()=>s.details.severity+'/10'"/><p>持续时间：{{s.details.duration||'未填写'}}；{{progressText(s.details.progress)}}；{{symptomChange(s)}}</p><p>{{s.details.context}}</p><p>{{s.details.response}}</p><el-button link @click="open('SYMPTOM',s)">编辑</el-button><el-button link @click="open('SYMPTOM',{...s,id:null,eventAt:null})">再次记录</el-button><el-popconfirm title="确认删除这条症状记录吗？" @confirm="removeItem(s)"><template #reference><el-button link type="danger">删除</el-button></template></el-popconfirm></article><el-empty v-if="!filteredSymptoms.length" description="暂无症状记录"/>
       </el-tab-pane>
-      <el-tab-pane label="就诊问题" name="questions" :disabled="!patientId">
+      <el-tab-pane label="就诊问题" name="questions" :disabled="!patientId || !legacyAvailable">
         <div class="section-head"><h2>就诊前准备问题，就诊后记录答案</h2><div><el-button @click="$router.push('/family-health')">就诊摘要与打印</el-button><el-button type="primary" @click="open('QUESTION')">新增问题</el-button></div></div>
         <article v-for="q in questions" :key="q.id" class="care-card"><div class="section-head"><h3>{{q.title}}</h3><el-tag>{{statusText(q.status)}}</el-tag></div><p>{{q.details.description}}</p><p v-if="q.details.appointmentId">关联预约：{{appointmentById.get(q.details.appointmentId)?.title||'预约已删除'}}</p><p>医生答复：{{q.details.answer||'尚未询问'}}</p><p>后续事项：{{q.details.followUp||'无'}}</p><el-button @click="open('QUESTION',q)">编辑问题 / 答案</el-button><el-button v-if="q.status==='OPEN'" :disabled="busy" @click="answer(q)">标记已答复</el-button><el-button v-if="q.details.followUp" @click="open('HANDOVER',{title:q.details.followUp,details:{note:q.details.answer},kind:'HANDOVER'})">创建照护任务</el-button><el-popconfirm title="确认删除这个问题吗？" @confirm="removeItem(q)"><template #reference><el-button link>删除</el-button></template></el-popconfirm></article><el-empty v-if="!questions.length" description="想到问题时可随时记录在这里"/>
       </el-tab-pane>
-      <el-tab-pane label="家庭协作" name="family" :disabled="!patientId">
+      <el-tab-pane label="家庭协作" name="family" :disabled="!patientId || !legacyAvailable">
         <div class="section-head"><h2>共享照护成员</h2><el-button v-if="canManage" type="primary" @click="invite">生成邀请码</el-button></div><p v-if="inviteCode" class="invite-code">邀请码（7 天内有效且仅可使用一次）：<strong>{{inviteCode}}</strong><el-button @click="copyInvite">复制</el-button></p>
         <el-table :data="context.members||[]"><el-table-column prop="name" label="姓名"/><el-table-column prop="username" label="账号"/><el-table-column prop="relationName" label="与患者关系"/><el-table-column label="操作"><template #default="{row}"><el-popconfirm v-if="canManage&&row.userId!==context.patient?.userId" title="确认将该账号移出共享照护吗？" @confirm="removeMember(row)"><template #reference><el-button link type="danger">移除</el-button></template></el-popconfirm></template></el-table-column></el-table>
         <div class="section-head"><h2>照护交接</h2><el-button @click="open('HANDOVER')">新增交接</el-button></div><article v-for="h in handovers" :key="h.id" class="care-card"><strong>{{h.title}}</strong><p>{{h.details.note}}</p><small>{{h.actorName}} 指派给 {{memberName(h.assignedUserId)}} · {{h.eventAt||'未设置截止时间'}} · {{statusText(h.status)}}</small><div class="task-actions"><el-button @click="open('HANDOVER',h)">编辑</el-button><el-button v-if="h.status==='OPEN'" :disabled="busy" @click="action(h,'DONE')">完成</el-button></div></article>
         <h2>近期动态</h2><el-table :data="activities.slice(0,50)"><el-table-column prop="eventAt" label="时间"/><el-table-column prop="actorName" label="记录人"/><el-table-column prop="title" label="操作"/></el-table>
       </el-tab-pane>
-      <el-tab-pane label="照护设置" name="settings" :disabled="!patientId">
+      <el-tab-pane label="照护设置" name="settings" :disabled="!patientId || !legacyAvailable">
         <el-form label-position="top" style="max-width:650px"><h2>{{context.patient?.name}}的照护设置</h2><el-form-item label="逾期任务通知照护者"><el-select v-model="profile.escalationUserId" clearable placeholder="不发送额外跟进通知"><el-option v-for="m in context.members||[]" :key="m.userId" :value="m.userId" :label="m.name"/></el-select></el-form-item><el-form-item label="逾期多少分钟后通知照护者"><el-input-number v-model="profile.escalationMinutes" :min="15" :step="15"/></el-form-item><el-button type="primary" :loading="busy" @click="saveProfile">保存设置</el-button><el-button @click="$router.push('/settings/notifications')">通知渠道</el-button></el-form>
       </el-tab-pane>
       <el-tab-pane label="备份与恢复" name="backup"><FamilyBackupPanel @restored="reload"/></el-tab-pane>
     </el-tabs>
-    <CareEntryDialog v-model="entryVisible" :kind="entryKind" :row="entryRow" :patient-id="patientId" :members="context.members" :medications="context.medications" :reports="context.reports" :appointments="appointments" @saved="reload"/>
+    <CareEntryDialog v-if="legacyAvailable" v-model="entryVisible" :kind="entryKind" :row="entryRow" :patient-id="patientId" :members="context.members" :medications="context.medications" :reports="context.reports" :appointments="appointments" @saved="reload"/>
     <el-dialog v-model="quickVisible" title="记录血压 / 血糖" width="min(460px,94vw)"><el-form label-position="top"><el-form-item label="收缩压 / 舒张压（mmHg）"><el-input-number v-model="quick.systolicBp" :min="1"/> / <el-input-number v-model="quick.diastolicBp" :min="1"/></el-form-item><el-form-item label="血糖（mmol/L，可选）"><el-input-number v-model="quick.bloodGlucose" :min="0.1" :precision="1"/></el-form-item><el-form-item label="测量时段"><el-select v-model="quick.measurePeriod"><el-option label="空腹" value="Fasting"/><el-option label="餐后" value="After Meal"/><el-option label="随机" value="Random"/></el-select></el-form-item><el-form-item label="备注"><el-input v-model="quick.remark"/></el-form-item></el-form><template #footer><el-button :loading="busy" type="primary" @click="submitQuick">保存读数</el-button></template></el-dialog>
     <el-dialog v-model="intakeVisible" :title="mode==='FAMILY'?'为家庭成员记录服药':'确认本次服药'" width="min(460px,94vw)"><p>{{selectedIntake?.drugName}} · {{selectedIntake?.dosage}}</p><el-form label-position="top"><el-form-item label="实际用量（可选，使用库存单位）"><el-input-number v-model="intakeQuantity" :min="0.001" :precision="3"/></el-form-item><p>留空时，仅在医嘱剂量单位与库存单位一致时自动扣减库存。</p></el-form><template #footer><el-button :loading="busy" type="success" @click="confirmIntake">确认已服</el-button></template></el-dialog>
     <el-dialog v-model="stockVisible" title="设置或修正库存" width="min(480px,94vw)"><el-form label-position="top"><el-form-item label="药品"><el-select v-model="stockForm.medicationId" :disabled="!!stockForm.id"><el-option v-for="m in context.medications||[]" :key="m.id" :value="m.id" :label="m.drugName"/></el-select></el-form-item><el-form-item label="实际剩余数量"><el-input-number v-model="stockForm.quantity" :min="0" :precision="3"/></el-form-item><el-form-item label="单位（需与医嘱一致）"><el-input v-model="stockForm.unit"/></el-form-item><el-form-item label="剩余天数低于此值时提醒"><el-input-number v-model="stockForm.warningDays" :min="0"/></el-form-item><el-form-item label="或数量低于此值时提醒"><el-input-number v-model="stockForm.warningQuantity" :min="0"/></el-form-item></el-form><template #footer><el-button :loading="busy" type="primary" @click="submitStock">保存</el-button></template></el-dialog>
@@ -84,6 +88,7 @@ import {useCurrentPatient} from '@/composables/useCurrentPatient'
 import * as api from '@/api/care'
 import CareEntryDialog from '@/components/CareEntryDialog.vue'
 import FamilyBackupPanel from '@/components/FamilyBackupPanel.vue'
+import PlanTaskList from '@/components/care-plan/PlanTaskList.vue'
 import {localDateKey} from '@/utils/familyHealth'
 import careMoments from '@/assets/illustrations/care-moments.webp'
 import careMomentsSmall from '@/assets/illustrations/care-moments-small.webp'
@@ -91,7 +96,7 @@ const {currentPatientId:patientId,setPatientList}=useCurrentPatient()
 function readCarePreference(key, fallback = '') {
   try { return localStorage.getItem(key) || fallback } catch { return fallback }
 }
-const mode=ref(readCarePreference('care-mode','PATIENT')),senior=ref(readCarePreference('care-senior')==='true'),tab=ref('today'),home=ref([]),context=ref({}),loading=ref(false),busy=ref(false)
+const mode=ref(readCarePreference('care-mode','PATIENT')),senior=ref(readCarePreference('care-senior')==='true'),tab=ref('today'),home=ref([]),context=ref({}),legacyAvailable=ref(false),legacyError=ref(''),loading=ref(false),busy=ref(false)
 const entryVisible=ref(false),entryKind=ref('APPOINTMENT'),entryRow=ref(null),calendarDate=ref(new Date()),symptomFilter=ref('')
 const quickVisible=ref(false),quick=reactive({systolicBp:undefined,diastolicBp:undefined,bloodGlucose:undefined,measurePeriod:readCarePreference('care-measure-period','Fasting'),remark:''})
 const intakeVisible=ref(false),selectedIntake=ref(null),intakeQuantity=ref(undefined),stockVisible=ref(false),stockForm=reactive({}),historyVisible=ref(false),stockHistory=ref([])
@@ -131,22 +136,28 @@ function invalidateEditor(kind) {
 }
 watch(quickVisible,()=>invalidateEditor('quick'),{flush:'sync'})
 watch(stockVisible,()=>invalidateEditor('stock'),{flush:'sync'})
-async function reload(){const v=++generation;loading.value=true;try{const r=await api.getCareHome();if(v!==generation)return;home.value=r.data||[];setPatientList(home.value.map(x=>({id:x.patient.id,patientName:x.patient.name})));if(!patientId.value&&home.value.length){patientId.value=home.value[0].patient.id;return}if(patientId.value){const id=patientId.value,c=await api.getCareContext(id);if(v!==generation||id!==patientId.value)return;context.value=c.data||{};const p=items.value.find(x=>x.kind==='PROFILE');Object.assign(profile,{escalationUserId:null,escalationMinutes:60},p?.details||{});}}finally{if(v===generation)loading.value=false}}
+async function reload(){const v=++generation;loading.value=true;legacyError.value='';try{
+  try{const r=await api.getCareHome();if(v!==generation)return;home.value=r.data||[];if(home.value.length)setPatientList(home.value.map(x=>({id:x.patient.id,patientName:x.patient.name})));if(!patientId.value&&home.value.length){patientId.value=home.value[0].patient.id;return}}catch(error){if(v!==generation)return;home.value=[]}
+  if(patientId.value){const id=patientId.value;try{const c=await api.getCareContext(id);if(v!==generation||id!==patientId.value)return;context.value=c.data||{};legacyAvailable.value=true;const p=items.value.find(x=>x.kind==='PROFILE');Object.assign(profile,{escalationUserId:null,escalationMinutes:60},p?.details||{})}catch(error){if(v!==generation||id!==patientId.value)return;context.value={};legacyAvailable.value=false;legacyError.value=Number(error?.response?.status||error?.code)===403?'其他照护模块受限；医生计划事项仍可独立使用。':'其他照护模块暂时无法加载；医生计划事项独立加载。'}}
+}finally{if(v===generation)loading.value=false}}
+
+function selectCarePatient(id){const event=new Event('care-plan-before-context-change',{cancelable:true});window.dispatchEvent(event);if(!event.defaultPrevented)patientId.value=id}
 function resetQuick() {
   Object.assign(quick, { systolicBp: undefined, diastolicBp: undefined, bloodGlucose: undefined, remark: '' })
 }
 watch(patientId, () => {
   generation++; patientEpoch++; historyRequest++; inviteRequest++
   invalidateEditor('quick'); invalidateEditor('stock')
-  context.value = {}; entryRow.value = null; selectedIntake.value = null
+  context.value = {}; legacyAvailable.value=false;legacyError.value=''; entryRow.value = null; selectedIntake.value = null
   entryVisible.value = false; quickVisible.value = false; intakeVisible.value = false; stockVisible.value = false
   historyVisible.value = false; stockHistory.value = []; inviteCode.value = ''; symptomFilter.value = ''
   Object.assign(profile, { escalationUserId: null, escalationMinutes: 60 })
   resetQuick()
   reload()
 }, { flush: 'sync' })
-onMounted(()=>{reload();timer=setInterval(()=>{if(!busy.value&&!entryVisible.value&&!stockVisible.value&&!quickVisible.value&&!intakeVisible.value&&tab.value==='today')reload()},60000)})
-onUnmounted(()=>{disposed=true;generation++;patientEpoch++;historyRequest++;inviteRequest++;invalidateEditor('quick');invalidateEditor('stock');clearInterval(timer)})
+function clearLegacy(){generation++;home.value=[];context.value={};legacyAvailable.value=false;legacyError.value='';loading.value=false}
+onMounted(()=>{window.addEventListener('auth-session-cleared',clearLegacy);reload();timer=setInterval(()=>{if(!busy.value&&!entryVisible.value&&!stockVisible.value&&!quickVisible.value&&!intakeVisible.value&&tab.value==='today')reload()},60000)})
+onUnmounted(()=>{window.removeEventListener('auth-session-cleared',clearLegacy);disposed=true;generation++;patientEpoch++;historyRequest++;inviteRequest++;invalidateEditor('quick');invalidateEditor('stock');clearInterval(timer)})
 async function perform(operation){if(busy.value)return;busy.value=true;try{await operation();ElMessage.success('保存成功。');await reload()}finally{busy.value=false}}
 function open(kind,row){if(!patientId.value)return;entryKind.value=kind;entryRow.value=row||null;entryVisible.value=true}
 function changeOrder(row,action){const data=JSON.parse(JSON.stringify(row));delete data.id;data.details.action=action;data.details.startDate=localDateKey();data.details.endDate=null;data.title=`${drugName(data.details.medicationId)}${action==='STOP'?'停药':'用药调整'}`;open('ORDER',data)}

@@ -45,6 +45,7 @@
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="showEditDialog(row)">编辑</el-button>
                 <el-button link type="success" size="small" @click="showClinicalDialog(row)">临床信息</el-button>
+                <el-button v-if="nurseAssignmentEnabled" class="nurse-assignment-entry" link type="primary" size="small" @click="nurseAssignmentPatient=row">分配护理人员</el-button>
                 <el-popconfirm title="确认删除吗？" @confirm="handleDelete(row.id)">
                   <template #reference>
                     <el-button link type="danger" size="small">删除</el-button>
@@ -57,6 +58,7 @@
       </div>
     </el-main>
 
+    <el-dialog :model-value="!!nurseAssignmentPatient" @update:model-value="value=>{if(!value)nurseAssignmentPatient=null}" title="护理团队分配" width="min(640px,94vw)" destroy-on-close><NurseAssignments v-if="nurseAssignmentPatient" :patient-id="nurseAssignmentPatient.id" /></el-dialog>
     <!-- clinicalinformationdialog -->
     <el-dialog v-model="clinicalDialogVisible" title="患者临床信息" width="min(640px, 94vw)" destroy-on-close>
       <p class="clinical-patient-context">当前患者: {{ clinicalPatientName || clinicalPatientId }}</p>
@@ -199,6 +201,9 @@ import { getPatientList, savePatient, updatePatient, deletePatient, getSpecialty
 import { getClinicalByPatient, saveClinical } from '@/api/patientClinical.js';
 import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
+import NurseAssignments from '@/components/care-plan/NurseAssignments.vue';
+import { getCarePlanCapabilities } from '@/api/carePlan';
+import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession';
 import { localizeSpecialtyRole } from '@/utils/specialtyRoleLabels';
 
 const PATIENT_COLUMN_DEFS = [
@@ -213,6 +218,8 @@ const PATIENT_COLUMN_DEFS = [
 const { visibleKeys: patientVisibleCols, isVisible: patientColVisible, resetColumns: resetPatientColumns } =
   useTableColumns('patient-list', PATIENT_COLUMN_DEFS);
 
+const nurseAssignmentPatient=ref(null),nurseAssignmentEnabled=ref(false);
+onMounted(async()=>{const auth=captureAuthSession(),actor=localStorage.getItem('userId');try{const roles=JSON.parse(localStorage.getItem('userRoleCodes')||'[]');if(!roles.includes('admin'))return;const result=await getCarePlanCapabilities({expectedAuth:{...auth,actorId:actor}});if(isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId'))nurseAssignmentEnabled.value=result.data?.enabled===true}catch{nurseAssignmentEnabled.value=false}});
 const patients = ref([]);
 const showSensitive = ref(false);
 const displayPatients = computed(() => showSensitive.value ? patients.value : patients.value.map(item => ({
@@ -452,3 +459,8 @@ onMounted(() => {
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>
+
+<style scoped>
+.nurse-assignment-entry{min-height:44px;min-width:44px}
+.nurse-assignment-entry:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
+</style>

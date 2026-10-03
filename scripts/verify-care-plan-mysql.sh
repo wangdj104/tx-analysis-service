@@ -7,6 +7,7 @@ refuse() { printf 'care-plan MySQL guard: %s\n' "$1" >&2; exit 64; }
 [[ $# -le 1 ]] || refuse 'unsupported arguments'
 [[ $# -eq 0 || "$1" == '--check-guards' ]] || refuse 'unsupported argument'
 [[ ${CARE_PLAN_TEST_ONLY:-} == true ]] || refuse 'CARE_PLAN_TEST_ONLY=true is required'
+[[ -z ${CARE_PLAN_BROWSER_REQUIRED:-} || ${CARE_PLAN_BROWSER_REQUIRED:-} == true ]] || refuse 'CARE_PLAN_BROWSER_REQUIRED must be true when set'
 case ${CARE_PLAN_MYSQL_HOST:-} in
   127.0.0.1|localhost|::1) ;;
   mysql) [[ ${CI:-} == true && ${GITHUB_ACTIONS:-} == true ]] || refuse 'service host requires isolated CI' ;;
@@ -103,3 +104,6 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd -- "$root/$project"
 mvn -B -Dtest=CarePlanMysqlIntegrationTest -DcarePlanMysqlRequired=true -DskipTests=false test
 printf 'Native MySQL schema, upgrade, constraint, UTC, row-lock and full restore assertions passed\n'
+if [[ ${CARE_PLAN_BROWSER_REQUIRED:-} == true ]]; then
+  node "$root/scripts/verify-care-plan-browser.mjs"
+fi

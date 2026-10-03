@@ -71,6 +71,7 @@ const MODULE_MENUS = {
 const ENGLISH_MENU_LABELS = {
   '/monitoring': 'Health Overview',
   '/clinical-workbench': 'Clinical Workbench',
+  '/nurse-workspace': 'Nursing Follow-up',
   '/doctor-workspace': 'Doctor Workspace',
   '/care-journey': 'Care Journey',
   '/dialysis': 'Dialysis Management',
@@ -199,6 +200,7 @@ export function getFallbackWorkspaceMenus(menuPaths = [], roleCodes = []) {
   return normalizeWorkspaceMenus([
     { path: '/monitoring', label: 'Health Overview', icon: 'Monitor' },
     { path: '/clinical-workbench', label: 'Clinical Workbench', icon: 'FirstAidKit' },
+    { path: '/nurse-workspace', label: 'Nursing Follow-up', icon: 'FirstAidKit' },
     { path: '/doctor-workspace', label: 'Doctor Workspace', icon: 'FirstAidKit' },
     MODULE_MENUS['/care-journey'],
     MODULE_MENUS['/dialysis'],

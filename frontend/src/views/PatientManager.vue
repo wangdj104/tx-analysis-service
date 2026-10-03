@@ -45,6 +45,7 @@
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="showEditDialog(row)">Edit</el-button>
                 <el-button link type="success" size="small" @click="showClinicalDialog(row)">clinical</el-button>
+                <el-button v-if="nurseAssignmentEnabled" class="nurse-assignment-entry" link type="primary" size="small" @click="nurseAssignmentPatient=row">Assign nursing team</el-button>
                 <el-popconfirm title="Confirm deletion?" @confirm="handleDelete(row.id)">
                   <template #reference>
                     <el-button link type="danger" size="small">Delete</el-button>
@@ -57,6 +58,7 @@
       </div>
     </el-main>
 
+    <el-dialog :model-value="!!nurseAssignmentPatient" @update:model-value="value=>{if(!value)nurseAssignmentPatient=null}" title="Nursing team assignments" width="min(640px,94vw)" destroy-on-close><NurseAssignments v-if="nurseAssignmentPatient" :patient-id="nurseAssignmentPatient.id" /></el-dialog>
     <!-- clinicalinformationdialog -->
     <el-dialog v-model="clinicalDialogVisible" title="Patientclinicalinformation" width="min(640px, 94vw)" destroy-on-close>
       <p class="clinical-patient-context">Patient: {{ clinicalPatientName || clinicalPatientId }}</p>
@@ -199,6 +201,9 @@ import { getPatientList, savePatient, updatePatient, deletePatient, getSpecialty
 import { getClinicalByPatient, saveClinical } from '@/api/patientClinical.js';
 import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
+import NurseAssignments from '@/components/care-plan/NurseAssignments.vue';
+import { getCarePlanCapabilities } from '@/api/carePlan';
+import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession';
 import { localizeSpecialtyRole } from '@/utils/specialtyRoleLabels';
 
 const PATIENT_COLUMN_DEFS = [
@@ -213,6 +218,8 @@ const PATIENT_COLUMN_DEFS = [
 const { visibleKeys: patientVisibleCols, isVisible: patientColVisible, resetColumns: resetPatientColumns } =
   useTableColumns('patient-list', PATIENT_COLUMN_DEFS);
 
+const nurseAssignmentPatient=ref(null),nurseAssignmentEnabled=ref(false);
+onMounted(async()=>{const auth=captureAuthSession(),actor=localStorage.getItem('userId');try{const roles=JSON.parse(localStorage.getItem('userRoleCodes')||'[]');if(!roles.includes('admin'))return;const result=await getCarePlanCapabilities({expectedAuth:{...auth,actorId:actor}});if(isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId'))nurseAssignmentEnabled.value=result.data?.enabled===true}catch{nurseAssignmentEnabled.value=false}});
 const patients = ref([]);
 const showSensitive = ref(false);
 const displayPatients = computed(() => showSensitive.value ? patients.value : patients.value.map(item => ({
@@ -452,3 +459,8 @@ onMounted(() => {
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>
+
+<style scoped>
+.nurse-assignment-entry{min-height:44px;min-width:44px}
+.nurse-assignment-entry:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
+</style>

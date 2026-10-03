@@ -1,6 +1,8 @@
 package org.familyhealthcare.service;
 
 import org.familyhealthcare.entity.NotificationChannel;
+import org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryOutcome;
+import org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryAttempt;
 import org.familyhealthcare.mapper.NotificationChannelMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.alibaba.fastjson2.JSON;
@@ -29,27 +31,32 @@ public class NotificationDeliveryService {
     }
 
     public void send(NotificationChannel channel, String title, String content) {
+        send(channel,title,content,true);
+    }
+
+    /** Care-plan messages must not acquire arbitrary provider configuration text after localization. */
+    private void send(NotificationChannel channel,String title,String content,boolean prefixRobotKeyword) {
         URI uri;
         try { uri = URI.create(channel.getWebhookUrl()); }
-        catch (Exception e) { throw new IllegalArgumentException("Configure a valid webhook URL."); }
+        catch (Exception e) { throw new InvalidNotificationConfiguration("Configure a valid webhook URL."); }
         if (uri.getHost() == null || !("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme())))
-            throw new IllegalArgumentException("The webhook URL must begin with http:// or https://.");
+            throw new InvalidNotificationConfiguration("The webhook URL must begin with http:// or https://.");
         boolean ding="DINGTALK_WEBHOOK".equals(channel.getChannelType());
-        if(ding){if(channel.getId()!=null)robots.load(channel);uri=dingTalkUri(uri,channel.getRobotSecret(),System.currentTimeMillis());}
+        if(ding){if(channel.getId()!=null)robots.load(channel);try{uri=dingTalkUri(uri,channel.getRobotSecret(),System.currentTimeMillis());}catch(IllegalArgumentException invalid){throw new InvalidNotificationConfiguration("Invalid notification signing configuration.");}}
         Map<String, Object> body = new LinkedHashMap<>();
         if (ding || "WECHAT_WEBHOOK".equals(channel.getChannelType())) {
             body.put("msgtype", "text");
-            body.put("text", Collections.singletonMap("content", (ding&&channel.getRobotKeyword()!=null&&!channel.getRobotKeyword().isEmpty()?channel.getRobotKeyword()+"\n":"") + title + "\n" + content));
+            body.put("text", Collections.singletonMap("content", (prefixRobotKeyword&&ding&&channel.getRobotKeyword()!=null&&!channel.getRobotKeyword().isEmpty()?channel.getRobotKeyword()+"\n":"") + title + "\n" + content));
         } else if ("WEBHOOK".equals(channel.getChannelType())) {
             body.put("title", title); body.put("content", content);
-        } else throw new IllegalArgumentException("Unsupported notification channel type.");
+        } else throw new InvalidNotificationConfiguration("Unsupported notification channel type.");
         HttpHeaders headers = new HttpHeaders(); headers.setContentType(MediaType.APPLICATION_JSON);
         ResponseEntity<String> response = client.postForEntity(uri, new HttpEntity<>(body, headers), String.class);
         if (!response.getStatusCode().is2xxSuccessful()) throw new IllegalStateException("Notification delivery failed: HTTP " + response.getStatusCodeValue());
         if (ding || "WECHAT_WEBHOOK".equals(channel.getChannelType())) {
             JSONObject result = JSON.parseObject(response.getBody());
-            if (result == null || !Integer.valueOf(0).equals(result.getInteger("errcode")))
-                throw new IllegalStateException("The bot rejected the message. Check the webhook URL, keyword, and signature settings.");
+            if(result==null||result.getInteger("errcode")==null)throw new IllegalStateException("Notification acknowledgement was unavailable.");
+            if(!Integer.valueOf(0).equals(result.getInteger("errcode")))throw new KnownProviderRejection("The bot rejected the message. Check the webhook URL, keyword, and signature settings.");
         }
     }
 
@@ -88,6 +95,41 @@ public class NotificationDeliveryService {
             }
         }
         return success;
+    }
+
+    /** Compatibility API preserves the four outcome values; retryability is an independent fact. */
+    public DeliveryOutcome deliverCarePlan(long channelId,String eventKey,String title,String relativePath) {
+        return deliverCarePlanAttempt(channelId,eventKey,title,relativePath).getOutcome();
+    }
+
+    /** Only an explicit rate-limit rejection without unsupported server timing permits automatic retry. */
+    public DeliveryAttempt deliverCarePlanAttempt(long channelId,String eventKey,String title,String relativePath) {
+        try {
+            NotificationChannel channel=mapper.selectById(channelId);
+            if(channel==null||!Integer.valueOf(1).equals(channel.getEnabled()))return new DeliveryAttempt(DeliveryOutcome.NO_CHANNEL,false);
+            if(eventKey==null||!eventKey.startsWith("CARE_PLAN_"))return new DeliveryAttempt(DeliveryOutcome.FAILED,false);
+            String language=languagePreference==null?"en-US":languagePreference.get(channel.getUserId());
+            NotificationMessageLocalizer.Message message=(localizer==null?new NotificationMessageLocalizer():localizer).localize(eventKey,title,relativePath,language);
+            send(channel,message.getTitle(),message.getContent(),false);
+            return new DeliveryAttempt(DeliveryOutcome.DELIVERED,false);
+        } catch(org.springframework.web.client.ResourceAccessException ambiguous) {
+            return new DeliveryAttempt(DeliveryOutcome.UNKNOWN,false);
+        } catch(org.springframework.web.client.RestClientResponseException response) {
+            int status=response.getRawStatusCode();
+            if(status==408||status>=500||status<400)return new DeliveryAttempt(DeliveryOutcome.UNKNOWN,false);
+            boolean retryable=status==429&&(response.getResponseHeaders()==null||!response.getResponseHeaders().containsKey("Retry-After"));
+            return new DeliveryAttempt(DeliveryOutcome.FAILED,retryable);
+        } catch(InvalidNotificationConfiguration|KnownProviderRejection definitive) {
+            return new DeliveryAttempt(DeliveryOutcome.FAILED,false);
+        } catch(RuntimeException ambiguous) {
+            return new DeliveryAttempt(DeliveryOutcome.UNKNOWN,false);
+        }
+    }
+    private static final class InvalidNotificationConfiguration extends IllegalArgumentException {
+        InvalidNotificationConfiguration(String message){super(message);}
+    }
+    private static final class KnownProviderRejection extends IllegalStateException {
+        KnownProviderRejection(String message){super(message);}
     }
 
     public void sendForUser(Long userId, NotificationChannel channel, String eventType, String title, String content) {

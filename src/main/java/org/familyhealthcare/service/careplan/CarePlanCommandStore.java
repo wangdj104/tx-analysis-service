@@ -11,7 +11,8 @@ import java.sql.PreparedStatement;
 import java.util.*;
 import java.util.function.Supplier;
 
-/** Atomic actor/key reservation. Call only after fresh authorization, in the aggregate transaction. */
+/** Atomic actor/key reservation in a caller-owned READ_COMMITTED aggregate transaction.
+ * Callers authorize before lookup and again after a replay or uniqueness-lock wait. */
 @Service
 @ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CarePlanCommandStore {
@@ -30,7 +31,7 @@ public class CarePlanCommandStore {
         try {jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement("INSERT INTO care_plan_command(actor_id,command_key,plan_id,expected_version,payload_hash,created_at) VALUES(?,?,?,?,?,?)");
             ps.setLong(1,actor);ps.setString(2,normalized);if(plan==null)ps.setNull(3,java.sql.Types.BIGINT);else ps.setLong(3,plan);ps.setLong(4,version);ps.setString(5,hash);CarePlanData.time(ps,6,properties.now());return ps;});}
         catch(DuplicateKeyException duplicate){
-            // A locking read sees the winning committed command even under MySQL REPEATABLE READ.
+            // The locking read sees the winning committed command after the unique-key wait.
             List<Map<String,Object>>rows=jdbc.query("SELECT plan_id,expected_version,payload_hash,result_json FROM care_plan_command WHERE actor_id=? AND command_key=? FOR UPDATE",(rs,i)->CarePlanData.map("planId",CarePlanData.nullableId(rs,"plan_id"),"version",rs.getLong("expected_version"),"hash",rs.getString("payload_hash"),"result",rs.getString("result_json")),actor,normalized);
             if(rows.isEmpty())throw new IllegalStateException("Command reservation was not found",duplicate);
             Map<String,Object>row=rows.get(0);

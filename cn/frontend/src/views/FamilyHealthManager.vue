@@ -22,7 +22,7 @@
         <el-tab-pane v-if="availableTabs.includes('timeline')" label="健康时间线" name="timeline">
           <div class="toolbar"><el-button type="primary" @click="openEvent()">新增健康事件</el-button><el-date-picker v-model="eventRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" @change="reload" /></div>
           <p>系统会自动汇总测量、透析和用药记录，最多展示最近 200 条事件；如需修改，请前往对应功能模块。</p>
-          <el-timeline><el-timeline-item v-for="e in localizedEvents" :key="`${e.sourceType || 'MANUAL'}-${e.id}`" :timestamp="`${e.eventDate} ${e.eventTime||''}`" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">编辑</el-button><el-popconfirm title="确认删除该事件吗？" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">删除</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="!events.length" description="暂无健康事件" />
+          <el-timeline><el-timeline-item v-for="e in localizedEvents" :key="`${e.sourceType || 'MANUAL'}-${e.sourceId ?? e.id}`" :timestamp="timelineTimestamp(e)" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><router-link v-if="safePlanLink(e)" :to="safePlanLink(e)" class="care-plan-event-link">查看计划和受控历史</router-link><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">编辑</el-button><el-popconfirm title="确认删除该事件吗？" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">删除</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="!events.length" description="暂无健康事件" />
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('schedule')" label="透析排班" name="schedule">
           <el-alert class="schedule-tip" title="排班仅来自手动添加的日期，或在临床工作台中明确确认的周期计划；你可以在这里编辑或取消。" type="info" :closable="false" show-icon />
@@ -61,6 +61,7 @@ import {readPermissionCache} from '@/utils/authSession'
 import {canAccessWorkspace} from '@/utils/workspaceAccess'
 import * as api from '@/api/familyHealth'
 import {localDateKey, replaceTarget} from '@/utils/familyHealth'
+import {formatPlanTime} from '@/utils/carePlanTime'
 import {localizeHealthTimelineEntry} from '@/utils/timelineText'
 const {currentPatientId:patientId}=useCurrentPatient()
 const tab=ref('today'),intakes=ref([]),events=ref([]),schedules=ref([]),target=reactive({}),loading=ref(false),saving=ref(false)
@@ -132,10 +133,17 @@ function printSummary(){if(!summaryElement.value)return;const popup=window.open(
 const intakeText=s=>({PENDING:'待服用',TAKEN:'已服用',SNOOZED:'已延后',SKIPPED:'已跳过',MISSED:'已漏服',CANCELLED:'已取消'}[s]||s)
 const tagType=s=>({TAKEN:'success',MISSED:'danger',SKIPPED:'info',SNOOZED:'warning',CANCELLED:'info'}[s]||'primary')
 const statusText=s=>({PLANNED:'已计划',COMPLETED:'已完成',CANCELLED:'已取消'}[s]||s)
+function timelineTimestamp(event){
+  if(event.sourceType!=='CARE_PLAN_EVENT')return `${event.eventDate} ${event.eventTime||''}`
+  try{return formatPlanTime(`${event.eventDate}T${event.eventTime||''}`,'zh-CN')}catch{return '照护计划事件时间无效或缺失'}
+}
+function safePlanLink(event){return event.sourceType==='CARE_PLAN_EVENT'&&Number.isSafeInteger(event.carePlanId)&&event.carePlanId>0?`/care-plans/${event.carePlanId}`:''}
 const eventType=s=>({SYMPTOM:'症状',VISIT:'就诊',NOTE:'备注',MEASUREMENT:'测量',DIALYSIS:'透析',INTAKE:'服药',MEDICATION_LOG:'用药记录'}[s]||s)
 </script>
-<style scoped>.visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid var(--line);padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:var(--ink-500)}</style>
 <style scoped>
+.visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid var(--line);padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:var(--ink-500)}</style>
+<style scoped>
+.care-plan-event-link{display:inline-flex;align-items:center;min-height:44px;margin:8px;padding:0 10px;color:var(--care-700)}.care-plan-event-link:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
 .schedule-tip {
   margin-bottom: 16px;
 }

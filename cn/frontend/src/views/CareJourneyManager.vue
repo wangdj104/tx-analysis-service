@@ -57,12 +57,12 @@
 
       <el-tab-pane label="隐私与授权" name="privacy">
         <el-card><template #header><b>患者自主授权</b></template>
-          <el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top" class="inline-form">
-            <el-form-item label="角色"><el-select v-model="grant.granteeRole" @change="grant.granteeUserId=null"><el-option label="医生" value="DOCTOR"/><el-option label="家属" value="FAMILY"/><el-option label="监护人" value="GUARDIAN"/></el-select></el-form-item>
+          <el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top" class="inline-form care-plan-grant-form">
+            <el-form-item label="角色"><el-select v-model="grant.granteeRole" @change="changeGrantRole"><el-option label="医生" value="DOCTOR"/><el-option v-if="carePlanGrantEnabled" label="护理人员" value="NURSE"/><el-option label="家属" value="FAMILY"/><el-option label="监护人" value="GUARDIAN"/></el-select></el-form-item>
             <el-form-item v-if="grant.granteeRole==='DOCTOR'" label="授权医生" class="grant-choice"><el-select v-model="grant.granteeUserId" filterable clearable placeholder="搜索并选择平台医生"><el-option v-for="doctor in clinicians" :key="doctor.id" :value="doctor.id" :label="doctor.real_name && doctor.real_name!==doctor.username ? `${doctor.real_name}（${doctor.username}）` : doctor.username"/></el-select></el-form-item>
-            <el-form-item v-else label="授权对象用户编号"><el-input-number v-model="grant.granteeUserId"/></el-form-item>
+            <el-form-item v-else-if="grant.granteeRole==='NURSE'" label="当前有效分配的护理人员" class="grant-choice"><el-select v-model="grant.granteeUserId" clearable filterable><el-option v-for="nurse in nurseCandidates" :key="nurse.nurseUserId" :value="nurse.nurseUserId" :label="`${nurse.nurseName} (#${nurse.nurseUserId})`"/></el-select><p>分配与患者授权是两个独立步骤。这里只列出当前患者有效分配的账号。</p></el-form-item><el-form-item v-else label="授权对象用户编号"><el-input-number v-model="grant.granteeUserId"/></el-form-item>
             <el-form-item label="权限级别"><el-select v-model="grant.accessLevel"><el-option label="只读" value="READ"/><el-option label="可录入" value="WRITE"/><el-option label="可代办" value="PROXY"/></el-select></el-form-item>
-            <el-form-item label="可见模块" class="grant-choice"><el-select v-model="grantModules" multiple collapse-tags collapse-tags-tooltip clearable placeholder="不选择表示全部模块"><el-option v-for="module in grantModuleOptions" :key="module.value" :label="module.label" :value="module.value"/></el-select></el-form-item>
+            <el-form-item label="可见模块" class="grant-choice"><el-select v-model="grantModules" multiple collapse-tags collapse-tags-tooltip clearable placeholder="不选择表示全部模块"><el-option v-for="module in availableGrantModules" :key="module.value" :label="module.label" :value="module.value"/></el-select></el-form-item>
             <el-button type="primary" @click="createGrant">授权</el-button>
           </el-form>
           <el-table :data="grants"><el-table-column prop="real_name" label="人员"/><el-table-column prop="grantee_role" label="角色"><template #default="{row}">{{ roleLabel(row.grantee_role) }}</template></el-table-column><el-table-column prop="access_level" label="权限级别"><template #default="{row}">{{ accessLabel(row.access_level) }}</template></el-table-column><el-table-column prop="visible_modules" label="可见模块"><template #default="{row}">{{ modulesLabel(row.visible_modules) }}</template></el-table-column><el-table-column prop="status" label="状态"><template #default="{row}">{{ statusLabel(row.status) }}</template></el-table-column><el-table-column label=""><template #default="{row}"><el-button link type="danger" @click="revoke(row)">撤销</el-button></template></el-table-column></el-table>
@@ -79,11 +79,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
 import * as api from '@/api/careJourney'
+import {getCarePlanCapabilities,listNurseAssignments} from '@/api/carePlan'
+import {captureAuthSession,isAuthSessionCurrent,AUTH_STORAGE_KEYS} from '@/utils/authSession'
+import request from '@/utils/request'
 import ConsultationWorkspace from '@/components/ConsultationWorkspace.vue'
 
 const route=useRoute(),router=useRouter(),{currentPatientId,currentPatientName}=useCurrentPatient()
@@ -107,10 +110,19 @@ const planTypes=[{value:'INPATIENT',label:'住院治疗'},{value:'SURGERY',label
 const rehabTypes=[{value:'EXERCISE',label:'康复训练'},{value:'WOUND',label:'伤口记录'},{value:'DRAIN',label:'引流记录'},{value:'SYMPTOM',label:'异常症状'}]
 const statusLabels={NORMAL:'正常',ABNORMAL:'异常',OPEN:'进行中',CLOSED:'已结束',BOOKED:'已预约',CANCELLED:'已取消',PUBLISHED:'已发布',DRAFT:'草稿',ACTIVE:'生效中',INACTIVE:'未启用',REVOKED:'已撤销',COMPLETED:'已完成',PLANNED:'已计划',PENDING:'待处理',APPROVED:'已通过',REJECTED:'已驳回'}
 const modeLabels={IN_PERSON:'线下面诊',TEXT:'图文',VOICE:'语音',VIDEO:'视频'}
-const roleLabels={DOCTOR:'医生',FAMILY:'家属',GUARDIAN:'监护人',PATIENT:'患者'}
+const roleLabels={NURSE:'护理人员',DOCTOR:'医生',FAMILY:'家属',GUARDIAN:'监护人',PATIENT:'患者'}
 const accessLabels={READ:'只读',WRITE:'可录入',PROXY:'可代办'}
 const severityLabels={NONE:'无明显风险',NORMAL:'正常',MILD:'轻度',MODERATE:'中度',SEVERE:'重度',LOW:'低风险',MEDIUM:'中风险',HIGH:'高风险',CRITICAL:'危急'}
-const grantModuleOptions=[{value:'MEASUREMENTS',label:'健康指标'},{value:'APPOINTMENTS',label:'预约复诊'},{value:'VISITS',label:'诊后小结'},{value:'MEDICATION',label:'用药管理'},{value:'CONSULTATION',label:'远程问诊'},{value:'TREATMENT',label:'治疗计划'},{value:'REHAB',label:'住院与康复'},{value:'EMERGENCY',label:'急诊与呼救'},{value:'SPECIALTY',label:'儿童与孕产'},{value:'MENTAL',label:'心理健康'},{value:'MEDICAL',label:'医疗记录'},{value:'DIALYSIS',label:'透析管理'}]
+const carePlanGrantEnabled=ref(false),nurseCandidates=ref([])
+let nurseCandidateGeneration=0,nurseController=null,grantContextEpoch=0,carePlanGrantController=null
+const availableGrantModules=computed(()=>grant.granteeRole==='NURSE'?carePlanGrantEnabled.value?[{value:'CARE_PLAN',label:'协作照护计划'}]:[]:grantModuleOptions.filter(m=>m.value!=='CARE_PLAN'||carePlanGrantEnabled.value))
+function changeGrantRole(){grant.granteeUserId=null;if(grant.granteeRole==='NURSE')grantModules.value=['CARE_PLAN']}
+function clearNurseCandidates(){nurseCandidateGeneration++;nurseController?.abort();nurseController=null;nurseCandidates.value=[];carePlanGrantEnabled.value=false;if(grant.granteeRole==='NURSE')grant.granteeUserId=null}
+async function loadNurseCandidates(){clearNurseCandidates();const id=currentPatientId.value;if(!id)return;const generation=nurseCandidateGeneration,auth=captureAuthSession(),actor=localStorage.getItem('userId');nurseController=new AbortController();const options={expectedAuth:{...auth,actorId:actor},signal:nurseController.signal};const owns=()=>generation===nurseCandidateGeneration&&id===currentPatientId.value&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId');try{const capability=await getCarePlanCapabilities(options);if(!owns()||capability.data?.enabled!==true)return;carePlanGrantEnabled.value=true;const result=await listNurseAssignments(id,options);if(!owns())return;nurseCandidates.value=(result.data||[]).filter(n=>n.patientId===id&&n.status==='ACTIVE'&&(!n.expiresAt||Date.parse(n.expiresAt)>Date.now()))}catch{if(owns())nurseCandidates.value=[]}}
+function invalidateCarePlanGrants(){grantContextEpoch++;carePlanGrantController?.abort();carePlanGrantController=null}
+function nurseAuthCleared(){invalidateCarePlanGrants();clearNurseCandidates()}
+function nurseStorageChanged(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))nurseAuthCleared()}
+const grantModuleOptions=[{value:'CARE_PLAN',label:'协作照护计划'},{value:'MEASUREMENTS',label:'健康指标'},{value:'APPOINTMENTS',label:'预约复诊'},{value:'VISITS',label:'诊后小结'},{value:'MEDICATION',label:'用药管理'},{value:'CONSULTATION',label:'远程问诊'},{value:'TREATMENT',label:'治疗计划'},{value:'REHAB',label:'住院与康复'},{value:'EMERGENCY',label:'急诊与呼救'},{value:'SPECIALTY',label:'儿童与孕产'},{value:'MENTAL',label:'心理健康'},{value:'MEDICAL',label:'医疗记录'},{value:'DIALYSIS',label:'透析管理'}]
 const moduleLabels=Object.fromEntries(grantModuleOptions.map(item=>[item.value,item.label]))
 const statusLabel=value=>statusLabels[value]||value||'—'
 const modeLabel=value=>modeLabels[value]||value||'—'
@@ -123,7 +135,7 @@ const severityLabel=value=>severityLabels[value]||value||'—'
 const modulesLabel=value=>!value?'全部模块':String(value).split(',').map(item=>moduleLabels[item.trim()]||item.trim()).join('、')
 function syncTab(name){const query={...route.query,tab:name};if(name!=='consultation')delete query.consultationId;router.replace({query})}
 function pid(){if(!currentPatientId.value)throw new Error('请先选择患者。');return currentPatientId.value}
-async function safely(action,message='已保存'){if(busy.value)return;try{busy.value=true;await action();ElMessage.success(message)}catch(e){if(e.validation)ElMessage.warning(e.message);else if(e.message==='请先选择患者。')ElMessage.warning(e.message)}finally{busy.value=false}}
+async function safely(action,message='已保存',isCurrent=null){if(busy.value)return;try{busy.value=true;const result=await action();if(!isCurrent||(isCurrent()&&result!==false))ElMessage.success(message)}catch(e){if(isCurrent&&!isCurrent())return;if(e.validation)ElMessage.warning(e.message);else if(e.message==='请先选择患者。')ElMessage.warning(e.message)}finally{busy.value=false}}
 let editorEpoch=0,editorOperation=null
 function invalidatePatientEditor(kind){
   if(kind&&editorOperation?.kind!==kind)return
@@ -229,9 +241,50 @@ async function loadMental(){await loadPatientData('mental',id=>Promise.allSettle
 async function submitMental(){await safely(async()=>{const values=mentalAnswers.value.split(/[,，]/).map(value=>value.trim()),count={PHQ9:9,GAD7:7,WHO5:5}[mental.scaleCode],maximum=mental.scaleCode==='WHO5'?5:3;validate(values.length===count && values.every(value=>/^\d+$/.test(value) && Number(value)<=maximum),`请按题目顺序填写 ${count} 个 0～${maximum} 的整数得分，用逗号分隔。`);const answers=values.map(Number);await api.saveMentalAssessment({...mental,patientId:pid(),answers,familyVisibility:mentalVisible.value?'VISIBLE':'PRIVATE'});mentalAnswers.value='';await loadMental()})}
 async function scheduleMental(){await safely(async()=>{validate(mentalSchedule.nextDueAt && Number(mentalSchedule.intervalDays)>0,'请填写下次推送时间和有效间隔天数。');await api.saveMentalSchedule({...mentalSchedule,scaleCode:mental.scaleCode,patientId:pid(),familyVisibility:mentalVisible.value?'VISIBLE':'PRIVATE'});await loadMental()},'量表推送计划已设置')}
 async function disableMentalSchedule(row){if(!row||row.enabled!==1)return;await safely(async()=>{await api.disableMentalSchedule(row.id);await loadMental()},'量表推送计划已停用')}
-async function loadGrants(){await loadPatientData('grants',id=>api.listAccessGrants(id),response=>{grants.value=response.data||[]})}
-async function createGrant(){await safely(async()=>{validate(Number(grant.granteeUserId)>0,'请选择授权对象。');if(grant.granteeRole==='DOCTOR')validate(clinicians.value.some(doctor=>Number(doctor.id)===Number(grant.granteeUserId)),'请从医生列表中选择授权对象。');await api.saveAccessGrant({...grant,visibleModules:grantModules.value.join(','),patientId:pid()});await loadGrants()},'授权已生效')}
-async function revoke(row){await safely(async()=>{await api.revokeAccessGrant(row.id);await loadGrants()},'授权已撤销')}
+async function loadGrants(){await Promise.all([loadPatientData('grants',id=>api.listAccessGrants(id),response=>{grants.value=response.data||[]}),loadNurseCandidates()])}
+async function createGrant(){
+  const patient=currentPatientId.value,epoch=grantContextEpoch,auth=captureAuthSession(),actor=localStorage.getItem('userId')
+  let guarded=false
+  const owns=()=>!guarded||(epoch===grantContextEpoch&&patient===currentPatientId.value&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId'))
+  await safely(async()=>{
+    pid()
+    const body={...grant},modules=[...grantModules.value]
+    guarded=modules.includes('CARE_PLAN')||body.granteeRole==='NURSE'
+    validate(Number(body.granteeUserId)>0,'请选择授权对象。')
+    if(body.granteeRole==='DOCTOR')validate(clinicians.value.some(doctor=>Number(doctor.id)===Number(body.granteeUserId)),'请选择列表中的医生。')
+    if(body.granteeRole==='NURSE'){
+      await loadNurseCandidates()
+      if(!owns()||grant.granteeRole!==body.granteeRole||grant.accessLevel!==body.accessLevel||JSON.stringify(grantModules.value)!==JSON.stringify(modules)||(grant.granteeUserId!=null&&grant.granteeUserId!==body.granteeUserId))return false
+      grant.granteeUserId=body.granteeUserId
+      validate(carePlanGrantEnabled.value&&nurseCandidates.value.some(n=>n.nurseUserId===Number(body.granteeUserId)),'请选择当前患者有效分配的护理人员。')
+      validate(modules.length===1&&modules[0]==='CARE_PLAN','护理授权请明确选择 CARE_PLAN。')
+    }
+    if(!owns())return false
+    const data={...body,visibleModules:modules.join(','),patientId:patient}
+    if(guarded){
+      validate(carePlanGrantEnabled.value,'当前会话无法使用计划协作。')
+      carePlanGrantController?.abort();const controller=new AbortController();carePlanGrantController=controller
+      await request({url:'/care-journey/access-grants',method:'post',data,expectedAuth:{...auth,actorId:actor},signal:controller.signal})
+    }else await api.saveAccessGrant(data)
+    if(!owns())return false
+    await loadGrants()
+    return owns()
+  },'已授权',owns)
+}
+async function revoke(row){
+  const modules=String(row.visible_modules??row.visibleModules??'').split(',').map(value=>value.trim())
+  if(!modules.includes('CARE_PLAN')&&row.grantee_role!=='NURSE'){await safely(async()=>{await api.revokeAccessGrant(row.id);await loadGrants()},'已撤销授权');return}
+  const patient=currentPatientId.value,epoch=grantContextEpoch,auth=captureAuthSession(),actor=localStorage.getItem('userId'),id=row.id
+  const owns=()=>epoch===grantContextEpoch&&patient===currentPatientId.value&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId')
+  await safely(async()=>{
+    if(!owns()||!Number.isSafeInteger(id)||id<=0||(row.patient_id??row.patientId)!==patient||!grants.value.some(item=>item.id===id&&(item.patient_id??item.patientId)===patient))return false
+    carePlanGrantController?.abort();const controller=new AbortController();carePlanGrantController=controller
+    await request({url:`/care-journey/access-grants/${id}`,method:'delete',expectedAuth:{...auth,actorId:actor},signal:controller.signal})
+    if(!owns())return false
+    await loadGrants()
+    return owns()
+  },'已撤销授权',owns)
+}
 async function createSchedule(){await safely(async()=>{validate(!roles.includes('admin') || schedule.doctorUserId,'请选择需要排班的医生。');validate(schedule.workDate && schedule.startTime && schedule.endTime && schedule.endTime>schedule.startTime,'请填写排班日期，且结束时间应晚于开始时间。');await api.saveDoctorSchedule({...schedule})},'可预约时段已添加')}
 async function createGroup(){await safely(async()=>{validate(group.groupName.trim(),'请填写患者分组名称。');await api.savePatientGroup({...group});group.groupName='';group.description='';groups.value=(await api.listPatientGroups()).data||[]})}
 async function addToGroup(row){await safely(async()=>{await api.addPatientToGroup(row.id,pid());groups.value=(await api.listPatientGroups()).data||[]},'患者已加入分组')}
@@ -285,6 +338,7 @@ async function loadPatientData(key,fetcher,apply){
   if(currentPatientId.value===selected&&loadVersions.get(key)===version)apply(response,selected)
 }
 watch(currentPatientId,()=>{
+  invalidateCarePlanGrants();clearNurseCandidates()
   for(const [key,version]of loadVersions)loadVersions.set(key,version+1)
   measurements.value=[];appointments.value=[];visits.value=[];prescriptions.value=[];Object.keys(specialtyRows).forEach(key=>{specialtyRows[key]=[]});plans.value=[];rehabRows.value=[];emergencyCard.value=null;emergencyEvents.value=[];selectedEmergency.value=null;mentalRows.value=[];mentalSchedules.value=[];grants.value=[];doctorSchedules.value=[]
   patientForms.forEach((model,index)=>Object.assign(model,formDefaults[index]))
@@ -293,10 +347,13 @@ watch(currentPatientId,()=>{
   loadTab()
 },{flush:'sync'})
 watch(()=>route.query.tab,value=>{const next=allowedTabs.includes(value)?value:'measurements';if(tab.value!==next)tab.value=next;if(value&&value!==next){syncTab(next);return}loadTab()})
-onMounted(()=>{if(route.query.tab&&!allowedTabs.includes(route.query.tab))syncTab(tab.value);else loadTab()})
+onMounted(()=>{window.addEventListener('auth-session-cleared',nurseAuthCleared);window.addEventListener('storage',nurseStorageChanged);if(route.query.tab&&!allowedTabs.includes(route.query.tab))syncTab(tab.value);else loadTab()})
+onUnmounted(()=>{nurseAuthCleared();window.removeEventListener('auth-session-cleared',nurseAuthCleared);window.removeEventListener('storage',nurseStorageChanged)})
 </script>
 
 <style scoped>
+.care-plan-grant-form :deep(.el-select__wrapper),.care-plan-grant-form :deep(.el-button){min-height:44px}
+
 .inline-form .grant-choice{flex:1 1 260px;min-width:min(260px,100%)}
 .appointment-inbox{margin-bottom:18px;min-width:0}.inbox-description{margin:0 0 16px;color:var(--ink-500);line-height:1.7}
 .prescription-version+.prescription-version{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.prescription-version p{color:var(--ink-500);white-space:pre-wrap}.form-grid{min-width:0}.form-grid :deep(.el-form-item__content){min-width:0}.form-grid :deep(.el-date-editor){max-width:100%}.card-head{flex-wrap:wrap}
