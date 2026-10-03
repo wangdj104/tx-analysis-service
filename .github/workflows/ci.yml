@@ -109,8 +109,11 @@ jobs:
       - name: Install pinned official browser test dependencies
         working-directory: ${{ matrix.directory }}/frontend
         run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
           npm ci
           npx --no-install playwright install --with-deps chromium
+          command -v ffmpeg
           command -v ffprobe
       - name: Verify two disposable native schema and restore passes
         env:
