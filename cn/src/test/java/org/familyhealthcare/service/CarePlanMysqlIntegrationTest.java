@@ -4,6 +4,24 @@ import org.junit.jupiter.api.*;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.familyhealthcare.service.careplan.CarePlanAuthorizationService;
+import org.familyhealthcare.service.careplan.CarePlanCommandStore;
+import org.familyhealthcare.service.careplan.CarePlanEventStore;
+import org.familyhealthcare.service.careplan.CarePlanException;
+import org.familyhealthcare.service.careplan.CarePlanProperties;
+import org.familyhealthcare.service.careplan.CarePlanQueryService;
+import org.familyhealthcare.service.careplan.CarePlanService;
+import org.springframework.aop.support.AopUtils;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.AbstractDataSource;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import javax.sql.DataSource;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -11,14 +29,19 @@ import java.nio.file.*;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.sql.*;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Native MySQL 8.0 schema/restore acceptance only. No Spring context, production
- * configuration, external transport, or future CarePlanService API is loaded.
+ * Native MySQL 8.0 schema/restore and bounded actual-service replay acceptance.
+ * Only the replay test creates a minimal transaction-proxy context; no Spring
+ * Boot, production configuration, HTTP/UI API, or external transport is loaded.
  * Run through scripts/verify-care-plan-mysql.sh in its disposable service job.
  * An unconfigured ordinary local suite explicitly skips this class; the required
  * flag turns absent/partial configuration into a failure, never an H2 fallback.
@@ -239,7 +262,113 @@ class CarePlanMysqlIntegrationTest {
         } finally { releaseFirst.countDown(); pool.shutdownNow(); assertTrue(pool.awaitTermination(15, TimeUnit.SECONDS)); }
     }
 
-    @Test @Order(5) void restorePreservesAllPlanRelationships() throws Exception {
+    @Test @Order(5) void actualServiceDuplicateCreateReplaysAfterOlderAuthorizationRead() throws Exception {
+        // This supplements the SQL primitive harness with the actual service,
+        // command/query/event stores and real current database authorization.
+        // The loser performs its ordinary authorization SELECTs before the
+        // winner commits. Under an old RR snapshot the later replay refresh
+        // cannot see the winning aggregate; the actual proxy must select RC.
+        try (Connection connection = connect(upgrade)) {
+            execute(connection, "INSERT INTO sys_user_role(user_id,role_id) SELECT 7001,id FROM sys_role WHERE role_code='patient' ON DUPLICATE KEY UPDATE role_id=VALUES(role_id)");
+            execute(connection, "INSERT INTO sys_user_role(user_id,role_id) SELECT 7003,id FROM sys_role WHERE role_code='doctor' ON DUPLICATE KEY UPDATE role_id=VALUES(role_id)");
+            execute(connection, "INSERT INTO doctor_patient_assignment(doctor_user_id,patient_id,assigned_by,status) VALUES(7003,7001,7005,'ACTIVE') ON DUPLICATE KEY UPDATE status='ACTIVE'");
+        }
+        Map<String, Long> before = replayRowCounts();
+        String key = "00000000-0000-0000-0000-000000008101";
+        Map<String, Object> body = replayDraftBody();
+        ReplayCheckpoint checkpoint = new ReplayCheckpoint();
+        DataSource dataSource = new AbstractDataSource() {
+            @Override public Connection getConnection() throws SQLException {
+                Connection connection = connect(upgrade);
+                connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+                return connection;
+            }
+            @Override public Connection getConnection(String ignoredUser, String ignoredPassword) throws SQLException {
+                throw new SQLFeatureNotSupportedException("Only the explicit disposable test datasource is permitted");
+            }
+        };
+        try (Connection baseline = dataSource.getConnection()) {
+            assertEquals(Connection.TRANSACTION_REPEATABLE_READ, baseline.getTransactionIsolation(), "The native datasource default must be RR");
+            assertEquals("REPEATABLE-READ", scalar(baseline, "SELECT @@SESSION.transaction_isolation"));
+        }
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        CarePlanProperties properties = new CarePlanProperties(true,
+                Clock.fixed(Instant.parse("2026-10-03T06:10:00.123456Z"), ZoneOffset.UTC));
+        CarePlanAuthorizationService auth = new CarePlanAuthorizationService(jdbc, properties) {
+            @Override public void requireClinical(long actor, long patient) {
+                super.requireClinical(actor, patient); // Real auth completes BEFORE any checkpoint.
+                checkpoint.afterCurrentClinicalRead(jdbc);
+            }
+        };
+        CarePlanQueryService queries = new CarePlanQueryService(jdbc, auth, properties);
+        CarePlanCommandStore commands = new CarePlanCommandStore(jdbc, properties);
+        CarePlanEventStore events = new CarePlanEventStore(jdbc, auth, properties);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("care-plan-mysql-replay-only",
+                    Collections.<String, Object>singletonMap("care-plan.enabled", true)));
+            context.registerBean("transactionManager", PlatformTransactionManager.class, () -> new DataSourceTransactionManager(dataSource));
+            // The retained six-argument constructor runs draft-only work without
+            // installing any notification transport, Spring Boot or web server.
+            context.registerBean(CarePlanService.class, () -> new CarePlanService(jdbc, auth, properties, queries, commands, events));
+            context.register(MysqlReplayTransactionConfiguration.class);
+            context.refresh();
+            CarePlanService proxied = context.getBean(CarePlanService.class);
+            assertTrue(AopUtils.isAopProxy(proxied), "Use actual Spring transaction annotations, not a manually invoked service");
+            Future<Map<String, Object>> loser = pool.submit(() -> checkpoint.create(proxied, "loser", body, key));
+            if (!checkpoint.loserAuthorized.await(20, TimeUnit.SECONDS)) {
+                if (loser.isDone()) loser.get(1, TimeUnit.SECONDS); // Surface the actual service/authorization failure.
+                fail("The loser must finish actual auth reads before the winner starts");
+            }
+            assertFalse(loser.isDone(), "The loser is paused after its real pre-winner authorization snapshot");
+            Future<Map<String, Object>> winner = pool.submit(() -> checkpoint.create(proxied, "winner", body, key));
+            Map<String, Object> winnerResult = winner.get(20, TimeUnit.SECONDS); // Proxy return occurs after COMMIT.
+            long planId = ((Number) winnerResult.get("id")).longValue();
+            long revisionId = ((Number) winnerResult.get("draftRevisionId")).longValue();
+            try (Connection observer = connect(upgrade)) {
+                assertEquals("1", scalar(observer, "SELECT COUNT(*) FROM care_plan_command WHERE actor_id=7003 AND command_key='" + key + "' AND plan_id=" + planId + " AND result_json IS NOT NULL"), "The winner must be independently visible as committed while the loser remains paused");
+            }
+            assertFalse(loser.isDone());
+            checkpoint.winnerCommitted.set(true);
+            checkpoint.allowLoser.countDown();
+            Map<String, Object> loserResult = loser.get(20, TimeUnit.SECONDS);
+            assertEquals(winnerResult, loserResult, "Both actual service calls must return the same successful aggregate");
+            assertEquals("DRAFT", loserResult.get("lifecycle"));
+            assertEquals("DRAFT", loserResult.get("revisionStatus"));
+            assertEquals("Synthetic native service replay", loserResult.get("title"));
+            assertEquals(2, checkpoint.connectionIds.size());
+            assertNotEquals(checkpoint.connectionIds.get("winner"), checkpoint.connectionIds.get("loser"), "Actual service calls must use distinct native connections");
+            assertTrue(checkpoint.loserClinicalReadsAfterCommit.get() > 0, "Replay must recheck current clinical authority after the winner commit");
+            assertReplayRowCounts(before, 1);
+            try (Connection connection = connect(upgrade)) {
+                assertEquals("1", scalar(connection, "SELECT COUNT(*) FROM doctor_care_plan WHERE id=" + planId + " AND workflow_version=1 AND lifecycle='DRAFT'"));
+                assertEquals("1", scalar(connection, "SELECT COUNT(*) FROM care_plan_revision WHERE id=" + revisionId + " AND plan_id=" + planId + " AND revision_no=1"));
+                assertEquals("1", scalar(connection, "SELECT COUNT(*) FROM care_plan_event WHERE plan_id=" + planId + " AND revision_id=" + revisionId + " AND event_type='DRAFT_CREATED'"));
+                assertEquals("1", scalar(connection, "SELECT COUNT(*) FROM care_plan_command WHERE actor_id=7003 AND command_key='" + key + "'"));
+                // A cached command result never retains authority after revocation.
+                execute(connection, "UPDATE doctor_patient_assignment SET status='REVOKED' WHERE doctor_user_id=7003 AND patient_id=7001");
+            }
+            try {
+                CarePlanException denied = assertThrows(CarePlanException.class, () -> proxied.createDraft(7003L, body, key));
+                assertEquals(403, denied.getStatus());
+                assertEquals("ACCESS_DENIED", denied.getErrorCode());
+                assertReplayRowCounts(before, 1);
+            } finally {
+                try (Connection connection = connect(upgrade)) {
+                    execute(connection, "UPDATE doctor_patient_assignment SET status='ACTIVE' WHERE doctor_user_id=7003 AND patient_id=7001");
+                }
+            }
+            try (Connection baseline = dataSource.getConnection()) {
+                assertEquals(Connection.TRANSACTION_REPEATABLE_READ, baseline.getTransactionIsolation(), "The proxy must not change the datasource's subsequent default");
+            }
+            System.out.println("Native actual-service duplicate-create replay verified after pre-winner auth reads; one aggregate/revision/event/command and current-authority denial retained");
+        } finally {
+            checkpoint.allowLoser.countDown();
+            pool.shutdownNow(); assertTrue(pool.awaitTermination(20, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test @Order(6) void restorePreservesAllPlanRelationships() throws Exception {
         Map<String, List<String>> beforeRestore;
         try (Connection c = connect(upgrade)) { assertRelationships(c); beforeRestore = comparisonSnapshot(snapshot(c), true); }
         Path directory = Files.createTempDirectory("care-plan-mysql-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
@@ -263,6 +392,64 @@ class CarePlanMysqlIntegrationTest {
             }
             System.out.println("Native MySQL full restore verified: all tables/rows and column/key/relationship definitions match; raw dump is temporary only");
         } finally { Files.deleteIfExists(dump); Files.deleteIfExists(directory); }
+    }
+
+    @TestConfiguration @EnableTransactionManagement
+    public static class MysqlReplayTransactionConfiguration { }
+
+    private static final class ReplayCheckpoint {
+        final ThreadLocal<String> role = new ThreadLocal<>();
+        final CountDownLatch loserAuthorized = new CountDownLatch(1), allowLoser = new CountDownLatch(1);
+        final AtomicBoolean loserFirstRead = new AtomicBoolean(true), winnerCommitted = new AtomicBoolean(false);
+        final AtomicInteger loserClinicalReadsAfterCommit = new AtomicInteger();
+        final Map<String, String> connectionIds = new ConcurrentHashMap<>();
+
+        void afterCurrentClinicalRead(JdbcTemplate jdbc) {
+            String current = role.get();
+            if (current == null) return;
+            assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
+            assertEquals(Integer.valueOf(Connection.TRANSACTION_READ_COMMITTED),
+                    TransactionSynchronizationManager.getCurrentTransactionIsolationLevel(), "The actual @Transactional service must declare RC");
+            assertEquals("READ-COMMITTED", jdbc.queryForObject("SELECT @@SESSION.transaction_isolation", String.class), "Native effective isolation must be RC despite the RR datasource default");
+            String id = jdbc.queryForObject("SELECT CONNECTION_ID()", String.class);
+            String previous = connectionIds.putIfAbsent(current, id);
+            if (previous != null) assertEquals(previous, id, "Each command must stay on its own transaction-bound physical connection");
+            if ("loser".equals(current) && loserFirstRead.compareAndSet(true, false)) {
+                assertFalse(winnerCommitted.get());
+                loserAuthorized.countDown();
+                try { assertTrue(allowLoser.await(30, TimeUnit.SECONDS), "Winner must commit before the loser resumes"); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
+                assertTrue(winnerCommitted.get());
+            } else if ("loser".equals(current) && winnerCommitted.get()) loserClinicalReadsAfterCommit.incrementAndGet();
+        }
+        Map<String, Object> create(CarePlanService service, String label, Map<String, Object> body, String key) {
+            role.set(label);
+            try { return service.createDraft(7003L, body, key); }
+            finally { role.remove(); }
+        }
+    }
+
+    private Map<String, Long> replayRowCounts() throws SQLException {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        try (Connection connection = connect(upgrade)) {
+            for (String table : Arrays.asList("doctor_care_plan", "care_plan_revision", "care_plan_event", "care_plan_command", "care_plan_action", "care_plan_notification"))
+                counts.put(table, Long.parseLong(scalar(connection, "SELECT COUNT(*) FROM `" + table + "`")));
+        }
+        return counts;
+    }
+    private void assertReplayRowCounts(Map<String, Long> before, long extraAggregates) throws SQLException {
+        Map<String, Long> expected = new LinkedHashMap<>(before);
+        for (String table : Arrays.asList("doctor_care_plan", "care_plan_revision", "care_plan_event", "care_plan_command")) expected.put(table, before.get(table) + extraAggregates);
+        assertEquals(expected, replayRowCounts(), "Exactly one real service aggregate/revision/event/command and no actions/notifications may be created");
+    }
+    private Map<String, Object> replayDraftBody() {
+        Map<String, Object> action = new LinkedHashMap<>();
+        action.put("ordinal", 1); action.put("instruction", "Synthetic native replay action");
+        action.put("dueAt", "2026-11-01T05:30:00.654321Z"); action.put("assignedUserId", 7001L);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("patientId", 7001L); body.put("title", "Synthetic native service replay");
+        body.put("instructions", "Synthetic exact-key replay under current authorization"); body.put("planType", "FOLLOW_UP");
+        body.put("actions", Collections.singletonList(action)); return body;
     }
 
     private Long sqlPublishWithPlanLock(CountDownLatch locked, CountDownLatch release, CountDownLatch attempting) throws Exception {
@@ -396,9 +583,11 @@ class CarePlanMysqlIntegrationTest {
     }
 
     private String identifiers(List<String> values) { List<String> quoted = new ArrayList<>(); for (String value : values) quoted.add("`" + value + "`"); return String.join(",", quoted); }
-    private void expectMysqlError(Connection c, int code, String sql) { SQLException failure = assertThrows(SQLException.class, () -> execute(c, sql)); assertEquals(code, failure.getErrorCode(), "Unexpected MySQL error for synthetic constraint assertion"); }
+    private void expectMysqlError(Connection c, int code, String sql) { SQLException failure = assertThrows(SQLException.class, () -> execute(c, sql)); assertEquals(code, failure.getErrorCode(), "Unexpected native error: class=" + failure.getClass().getSimpleName() + ", SQLState=" + failure.getSQLState() + ", message=" + failure.getMessage()); }
     private void apply(Connection c, String path) { ScriptUtils.executeSqlScript(c, new ClassPathResource(path)); }
-    private void execute(Connection c, String sql) throws SQLException { try (Statement s = c.createStatement()) { s.executeUpdate(sql); } }
+    // executeUpdate rejects SELECT client-side (01S03/code0), before MySQL can
+    // enforce the read-denial probe. Generic execute preserves real vendor errors.
+    static void execute(Connection c, String sql) throws SQLException { try (Statement s = c.createStatement()) { s.execute(sql); } }
     private String scalar(Connection c, String sql) throws SQLException { try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery(sql)) { assertTrue(rs.next()); return rs.getString(1); } }
     private String database(String value) { assertTrue(value.matches("care_plan_test_[a-z0-9_]+") && value.length() <= 64, "Only explicit synthetic schema identifiers are allowed"); return value; }
     private Calendar utc() { GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC")); calendar.setGregorianChange(new java.util.Date(Long.MIN_VALUE)); return calendar; }

@@ -231,7 +231,7 @@ for (const edition of ['en','zh']) {
     role(app, 'doctor');click(app, 'cp-create');app.node('action-fields').innerHTML += 'PRIVATE INPUT PROBE';
     app.select(2);assert.equal(app.node('action-fields').innerHTML, '');
     click(app, 'cp-create');app.node('action-fields').innerHTML += 'PRIVATE INPUT PROBE';
-    app.node('action-dialog').handlers.close();assert.equal(app.node('action-fields').innerHTML, '');
+    app.node('action-dialog').close();app.node('action-dialog').handlers.close();assert.equal(app.node('action-fields').innerHTML, '');
   });
 }
 
@@ -381,3 +381,44 @@ for(const edition of ['en','zh']) {
     assert.equal(app.state.carePlanRevisions.length,2);
   });
 }
+
+for(const edition of ['en','zh']) {
+  test(`${edition}: actual route hash events discard care modal input across Back and Forward`,()=>{
+    const app=demo(edition);
+    app.navigate('#overview');app.navigate('#plans');click(app,'cp-create');
+    const sentinel=edition==='en'?'UNSAVED_BACK_FORWARD_SENTINEL':'往返导航未保存标记';
+    app.node('action-fields').innerHTML+=sentinel;
+    assert.equal(app.node('action-dialog').open,true);
+    app.view.render();
+    assert.ok(app.node('action-fields').innerHTML.includes(sentinel),'ordinary rendering must not discard an open form');
+    app.navigate('#overview');
+    assert.equal(app.node('action-dialog').open,false,'Back route event must dismiss care dialog');
+    assert.equal(app.node('action-fields').innerHTML,'');
+    assert.match(app.node('content').innerHTML,edition==='en'?/Start with what needs clinical attention/:/先处理真正需要临床关注的事项/);
+    app.navigate('#plans');
+    assert.equal(app.node('action-dialog').open,false,'Forward must not reopen stale care dialog');
+    assert.equal(app.node('action-fields').innerHTML,'');
+    assert.equal(app.state.carePlans.length,0);
+    click(app,'cp-create');
+    assert.equal(app.node('action-dialog').open,true);
+    assert.ok(!app.node('action-fields').innerHTML.includes(sentinel),'reopening starts with a fresh fictional draft');
+  });
+
+  test(`${edition}: care history localizes role display while keeping snapshot enums unchanged`,()=>{
+    const app=demo(edition),roles=['patient','doctor','family','nurse','admin'];
+    const labels=edition==='en'?['Patient','Doctor','Family','Nurse','Administrator']:['患者','医生','家属','护理','管理员'];
+    const events=roles.map((actorRole,index)=>({id:index+1,actorRole,actorName:{en:`Actor ${index}`,zh:`演示成员 ${index}`},eventType:'SUBMITTED',recordedAt:'2026-10-03T08:00:00Z',entryMode:'ASSISTED',evidence:[]}));
+    const before=JSON.stringify(events),html=app.view.careEvents(events);
+    for(const label of labels)assert.ok(html.includes(` · ${label} · SUBMITTED`),`${label} must be the rendered human-readable role`);
+    for(const rawRole of roles)assert.ok(!html.includes(` · ${rawRole} · `),`${rawRole} is a protocol role, not a display label`);
+    assert.equal(JSON.stringify(events),before);
+    assert.equal(events[0].eventType,'SUBMITTED');assert.equal(events[0].entryMode,'ASSISTED');
+  });
+}
+
+test('subsequent care app deployment changes the cache key without renaming existing resource aliases',()=>{
+  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  assert.match(html,/<script src="app\.js\?v=20261002-storage1&amp;careplan=20261003-2"/);
+  assert.match(html,/<script src="model\.js\?v=20261001-r9&amp;careplan=20261003-1"/);
+  assert.match(html,/style\.css\?v=20261001-1&amp;careplan=20261003-1/);
+});

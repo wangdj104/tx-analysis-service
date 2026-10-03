@@ -5,7 +5,7 @@ import vm from 'node:vm';
 export function demo(edition, { storage } = {}) {
   const base = new URL(edition === 'en' ? '../../' : '../../../cn/demo/', import.meta.url);
   const read = file => readFileSync(new URL(file, base), 'utf8');
-  const nodes = new Map(), listeners = {}, timers = new Map(), classes = new Set();
+  const nodes = new Map(), listeners = {}, windowListeners = {}, timers = new Map(), classes = new Set();
   let nextTimer = 0;
   const node = id => {
     if (!nodes.has(id)) {
@@ -17,7 +17,7 @@ export function demo(edition, { storage } = {}) {
         addEventListener(type, callback) { this.handlers[type] = callback; },
         setAttribute(name, value) { this.attributes[name] = value; },
         removeAttribute(name) { delete this.attributes[name]; },
-        showModal() {}, close() {}, focus() { document.activeElement = this; }, isConnected: true
+        showModal() { this.open = true; }, close() { this.open = false; }, focus() { document.activeElement = this; }, isConnected: true
       });
     }
     return nodes.get(id);
@@ -37,14 +37,15 @@ export function demo(edition, { storage } = {}) {
     clearTimeout(id) { timers.delete(id); }
   });
   context.window = context;
-  context.addEventListener = () => {};
+  context.addEventListener = (type,callback) => { (windowListeners[type] ||= []).push(callback); };
   vm.runInContext(read('model.js'), context);
-  vm.runInContext(read('app.js').replace(/\}\)\(\);\s*$/, 'globalThis.view = { consultation, stats, doctorOverview, appointments, chart, currentGuide, copy, render, openGuide, closeGuide, get state() { return state; } };})();'), context);
+  vm.runInContext(read('app.js').replace(/\}\)\(\);\s*$/, 'globalThis.view = { consultation, stats, doctorOverview, appointments, chart, currentGuide, copy, careEvents, render, openGuide, closeGuide, get state() { return state; } };})();'), context);
   return {
-    model: context.HealthDemo, node, context, listeners, timers,
+    model: context.HealthDemo, node, context, listeners, windowListeners, timers,
     view: context.view,
     get state() { return context.view.state; },
     consultation: () => context.view.consultation(),
+    navigate(hash) { const oldURL=context.location.hash; context.location.hash=hash; for(const callback of windowListeners.hashchange||[]) callback({type:'hashchange',oldURL,newURL:hash}); },
     select(patientId) { node('patient').handlers.change({ target: { value: String(patientId) } }); },
     reset() { node('reset').handlers.click(); },
     submit(message) {
