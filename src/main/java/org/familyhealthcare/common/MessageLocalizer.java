@@ -11,6 +11,9 @@ final class MessageLocalizer {
     private static final Map<String, String> ZH = new LinkedHashMap<>();
 
     static {
+        ZH.put("Invalid nurse grant fields.", "护理授权字段无效。");
+        ZH.put("A nurse grant must explicitly include CARE_PLAN.", "护理授权必须明确包含 CARE_PLAN。");
+        ZH.put("Access denied to this care-plan grant.", "无权管理该照护计划授权。");
         ZH.put("success", "成功");
         ZH.put("Saved successfully", "保存成功");
         ZH.put("Failed to save", "保存失败");

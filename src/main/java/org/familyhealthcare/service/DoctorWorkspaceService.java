@@ -1,6 +1,8 @@
 package org.familyhealthcare.service;
 
 import org.familyhealthcare.util.CurrentUserUtil;
+import org.familyhealthcare.service.careplan.CarePlanProperties;
+import org.familyhealthcare.service.careplan.CarePlanQueryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,8 @@ import java.util.Map;
 @Service
 public class DoctorWorkspaceService {
     @Autowired private JdbcTemplate jdbc;
+    @Autowired(required=false) private CarePlanProperties carePlanProperties;
+    @Autowired(required=false) private CarePlanQueryService carePlanQuery;
 
     public Map<String, Object> summary() {
         requireDoctor();
@@ -26,6 +30,7 @@ public class DoctorWorkspaceService {
         result.put("pendingReviews", reviewRows.size());
         result.put("criticalPatients", critical);
         result.put("activePlans", countScoped("doctor_care_plan", "status='ACTIVE'"));
+        if (collaborationEnabled()) result.putAll(carePlanQuery.clinicalCounts(currentUserId()));
         result.put("patients", patientRows);
         result.put("reviewQueue", reviewRows.size() > 6 ? reviewRows.subList(0, 6) : reviewRows);
         return result;
@@ -68,8 +73,10 @@ public class DoctorWorkspaceService {
 
     public List<Map<String, Object>> plans(Long patientId) {
         requireAssigned(patientId);
-        return jdbc.queryForList("SELECT id,patient_id AS patientId,title,plan_type AS planType,instructions,target_date AS targetDate,status,created_at AS createdAt " +
-                "FROM doctor_care_plan WHERE patient_id=? ORDER BY created_at DESC", patientId);
+        String marker=collaborationEnabled()?",workflow_version AS workflowVersion":"";
+        String scope=collaborationEnabled()?" AND workflow_version=0":"";
+        return jdbc.queryForList("SELECT id,patient_id AS patientId,title,plan_type AS planType,instructions,target_date AS targetDate,status,created_at AS createdAt" + marker +
+                " FROM doctor_care_plan WHERE patient_id=? AND (status IS NULL OR status<>'COLLABORATION')"+scope+" ORDER BY created_at DESC", patientId);
     }
 
     @Transactional
@@ -88,9 +95,11 @@ public class DoctorWorkspaceService {
     public void savePlan(Map<String, Object> body) {
         Long patientId = requiredLong(body, "patientId");
         requireAssigned(patientId);
+        String status=text(body,"status","ACTIVE");
+        if ("COLLABORATION".equalsIgnoreCase(status)) throw new IllegalArgumentException("This status is reserved for collaborative care plans.");
         jdbc.update("INSERT INTO doctor_care_plan(doctor_user_id,patient_id,title,plan_type,instructions,target_date,status) VALUES(?,?,?,?,?,?,?)",
                 currentUserId(), patientId, requiredText(body, "title", 160), text(body, "planType", "FOLLOW_UP"),
-                requiredText(body, "instructions", 4000), date(body.get("targetDate")), text(body, "status", "ACTIVE"));
+                requiredText(body, "instructions", 4000), date(body.get("targetDate")), status);
     }
 
     @Transactional
@@ -128,6 +137,8 @@ public class DoctorWorkspaceService {
                         "ON DUPLICATE KEY UPDATE assigned_by=VALUES(assigned_by),status='ACTIVE',care_team_role=VALUES(care_team_role),assigned_at=NOW()",
                 doctorId, patientId, currentUserId(), text(body, "careTeamRole", "ATTENDING"));
     }
+
+    private boolean collaborationEnabled() { return carePlanProperties != null && carePlanProperties.isEnabled(); }
 
     private void requireDoctor() {
         if (!CurrentUserUtil.isAdmin() && !CurrentUserUtil.hasRole("doctor")) throw new IllegalStateException("Doctor access is required.");

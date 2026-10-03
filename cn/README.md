@@ -94,7 +94,7 @@ docker compose up --build
 
 将服务暴露到任何网络前，请更换全部密钥。Docker 演示仅用于评估，不应用于生产环境。
 
-空 MySQL 数据卷会按顺序执行 `init.sql`、`doctor_workspace_20260921.sql`、`care_platform_upgrade_20260921.sql`、`demo-data.sql`。已有数据卷不会再次初始化，应先备份再手动应用升级脚本，切勿删除有数据的卷来强制初始化。`cn/docker-compose.yml` 仅供独立中文版使用，双语部署请使用根目录编排。
+空 MySQL 数据卷会按顺序执行 `init.sql`、`doctor_workspace_20260921.sql`、`care_platform_upgrade_20260921.sql`、`care_plan_collaboration_20261003.sql`、`demo-data.sql`。已有数据卷不会再次初始化，应先备份再手动应用升级脚本，切勿删除有数据的卷来强制初始化。`cn/docker-compose.yml` 仅供独立中文版使用，双语部署请使用根目录编排。
 
 ## 中英文生产部署
 
@@ -133,9 +133,12 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 mysql -u root -p family_health < src/main/resources/sql/init.sql
 mysql -u root -p family_health < src/main/resources/sql/doctor_workspace_20260921.sql
 mysql -u root -p family_health < src/main/resources/sql/care_platform_upgrade_20260921.sql
+mysql -u root -p family_health < src/main/resources/sql/care_plan_collaboration_20261003.sql
 ```
 
-新库必须依次执行[基础表](src/main/resources/sql/init.sql)、[医生工作台](src/main/resources/sql/doctor_workspace_20260921.sql)、[照护平台](src/main/resources/sql/care_platform_upgrade_20260921.sql)三个脚本，不能仅执行 `init.sql`。已有库先备份，再应用适用的幂等升级脚本，不要把基础脚本当作重置工具。[demo-data.sql](src/main/resources/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
+新库必须依次执行[基础表](src/main/resources/sql/init.sql)、[医生工作台](src/main/resources/sql/doctor_workspace_20260921.sql)、[照护平台](src/main/resources/sql/care_platform_upgrade_20260921.sql)、[照护计划协作](src/main/resources/sql/care_plan_collaboration_20261003.sql)四个脚本，不能仅执行 `init.sql`。已有库先备份，再应用适用的幂等升级脚本，不要把基础脚本当作重置工具。[demo-data.sql](src/main/resources/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
+
+照护计划协作增量升级保留旧 `ACTIVE` 计划为内部 `workflow_version=0` 记录，不自动发布、不创建行动项或通知、不为账号分配护理角色、不授予 `CARE_PLAN` 权限。已有库升级前应备份完整数据库和附件存储，仅执行该增量脚本，不重跑 `init.sql`。新协作时间采用 UTC `DATETIME(6)`，由应用显式转换。仅安装表结构不会启用协作功能。H2 测试仅验证兼容层；发布验收仍须在 MySQL 8.0 执行原始脚本，并用合成数据演练完整备份恢复。停用子系统时保留已发布历史，不能通过删表回滚。
 
 ### 2. 配置环境变量
 
@@ -191,7 +194,7 @@ Vite 通常监听 `http://localhost:5174`，将 `/api` 代理到 `http://localho
 
 平台可通过企业微信或钉钉机器人 Webhook 及浏览器通知主动发送消息。Webhook 地址和机器人密钥属于敏感信息，API 返回时会脱敏，严禁提交到版本库。
 
-新安装必须按顺序执行基础表、医生工作台和照护平台脚本（目前合计 70 张业务表）；`demo-data.sql` 只用于本地演示。应用启动时不会静默创建或修改生产表。对已有数据库执行人工操作前必须备份数据；后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
+新安装必须按顺序执行基础表、医生工作台、照护平台和照护计划协作脚本；`demo-data.sql` 只用于本地演示。应用启动时不会静默创建或修改生产表。对已有数据库执行人工操作前必须备份数据；后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
 
 ## 测试与构建
 
@@ -214,7 +217,7 @@ node --test demo/tests/*.test.mjs
 - 首次初始化后关闭初始管理员创建功能。
 - 启用 HTTPS、精确 CORS 来源、安全反向代理头和请求大小限制。
 - 制定 MySQL 备份策略并定期验证恢复流程。
-- 应用内家庭记录备份不是全平台灾备：仅覆盖预览列出的记录类型，不包含问诊聊天、照护全流程和医生工作台记录、授权及系统账号；附件仅包含数据库内嵌内容。恢复创建独立副本，并关闭用药提醒与自动分析；通知渠道和照护成员需重新配置。数据库与附件存储仍需单独备份。
+- 应用内家庭记录备份不是全平台灾备：仅覆盖预览列出的记录类型，不包含问诊聊天、照护全流程和医生工作台记录、协作计划/版本/行动项/回执/事件/证据、护理分配、命令与通知历史、授权及系统账号；附件仅包含数据库内嵌内容。恢复创建独立副本，并关闭用药提醒与自动分析；通知渠道和照护成员需重新配置。数据库与附件存储仍需单独备份。
 - 大型附件应存放在带访问控制、恶意软件扫描和生命周期策略的对象存储中。
 - 上线前审查 [安全策略](SECURITY.md)、[开源发布检查表](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md) 和 [产品评审](docs/PRODUCT_REVIEW.md)。
 - Java 8 / Spring Boot 2.5 基线以兼容性为主；长期生产部署前应升级到受支持的运行时和框架。

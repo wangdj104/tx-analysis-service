@@ -19,6 +19,9 @@
     }));
     return {
       role: 'doctor', patientId: 1, patients,
+      carePlanSequence: 1000, carePlans: [], carePlanRevisions: [], carePlanActions: [], carePlanEvents: [],
+      nurseAssignments: [{ patientId: 1, nurseUserId: 4, assignedBy: 5, startsAt: `${now.toISOString().slice(0,10)}T00:00:00Z`, expiresAt: null, status: 'ACTIVE' }],
+      carePlanGrants: [{ patientId: 1, role: 'family', permission: 'PROXY', status: 'ACTIVE', expiresAt: null }, { patientId: 1, role: 'nurse', permission: 'WRITE', status: 'ACTIVE', expiresAt: null }],
       branding: { platformName: bi('Chengxin Health', '澄心健康'), organizationName: bi('Chengxin Health', '澄心健康'), logo: 'assets/logo.svg', pageBackground: '#f7faf8', ownershipText: bi('© 2026 Chengxin Health. All rights reserved.', '© 2026 澄心健康 版权所有') },
       reviews: [
         { id: 101, patientId: 1, kind: 'record', title: bi('Imported metabolic panel', '导入的生化检验报告'), date: day(now), confidence: 96, status: 'pending' },
@@ -46,14 +49,15 @@
       users: [
         { id: 1, name: bi('Dr. Sarah Chen', '陈医生'), role: bi('Doctor', '医生'), active: true },
         { id: 2, name: bi('Aihua Zhang', '张爱华'), role: bi('Patient', '患者'), active: true },
-        { id: 3, name: bi('Wei Zhang', '张伟'), role: bi('Family caregiver', '家属照护者'), active: true }
+        { id: 3, name: bi('Wei Zhang', '张伟'), role: bi('Family caregiver', '家属照护者'), active: true },
+        { id: 4, name: bi('Nurse Lin', '林护士'), role: bi('Nurse', '护理人员'), active: true }
       ]
     };
   }
   const current = state => state.patients.find(item => item.id === Number(state.patientId));
   function recordAudit(state, action, targetType, targetId, patientId=state.patientId, now=new Date()) {
     const patient = state.patients.find(item => item.id === Number(patientId));
-    const actors = { doctor: bi('Dr. Sarah Chen','陈医生'), patient: current(state).name, family: bi('Wei Zhang','张伟'), admin: bi('Platform administrator','平台管理员') };
+    const actors = { doctor: bi('Dr. Sarah Chen','陈医生'), patient: current(state).name, family: bi('Wei Zhang','张伟'), nurse: bi('Nurse Lin','林护士'), admin: bi('Platform administrator','平台管理员') };
     state.audit.unshift({ time: clock(now), actor: actors[state.role],
       action: bi(`${action.en}${patient ? ' · '+patient.name.en : ''}`, `${action.zh}${patient ? ' · '+patient.name.zh : ''}`),
       patientId: Number(patientId), targetType, targetId, result: 'success' });
@@ -70,5 +74,151 @@
   function sendChatMessage(state, text, role = state.role, now = new Date()) { const chat=currentConsultation(state); if(!chat)throw new Error('no-consultation'); const clean=String(text||'').trim(); if(!clean)throw new Error('empty-message'); const names={doctor:bi('Dr. Sarah Chen','陈医生'),patient:current(state).name,family:bi('Wei Zhang','张伟'),admin:bi('Platform administrator','平台管理员')}; chat.messages.push({id:Date.now(),sender:role,name:names[role]||names.patient,text:bi(clean,clean),time:clock(now)}); state.audit.unshift({time:clock(now),actor:names[role]||names.patient,action:bi('Sent consultation message','发送问诊消息'),result:'success'}); return chat.messages.at(-1); }
   function addDemoReply(state, language = 'en', now = new Date(), patientId = state.patientId) { const chat=currentConsultation(state,patientId); if(!chat)throw new Error('no-consultation'); const text=language==='zh'?'已收到这条演示消息。请继续观察症状；如明显加重，请立即联系急救服务。':'I received this demo message. Keep observing the symptom; if it becomes severe, contact emergency services immediately.'; chat.messages.push({id:Date.now()+1,sender:'doctor',name:bi('Dr. Sarah Chen','陈医生'),text:bi(text,text),time:clock(now)}); return chat.messages.at(-1); }
   function csv(state, language = 'en') { const zh = language === 'zh'; const head = zh ? '日期,时间,收缩压 (mmHg),舒张压 (mmHg),数据来源' : 'Date,Time,Systolic (mmHg),Diastolic (mmHg),Data source'; const source = zh ? '虚构演示数据' : 'Fictional demo data'; return '\uFEFF' + head + '\r\n' + current(state).records.map(r => `${r.date},${r.time},${r.systolic},${r.diastolic},${source}`).join('\r\n'); }
-  globalThis.HealthDemo = { createState, current, complete, addVital, review, addPlan, addHandover, runFeature, toggleUser, updateBranding, currentConsultation, sendChatMessage, addDemoReply, csv };
+  // Synthetic collaboration only. Role switching illustrates permissions; it is not authentication.
+  const careActor = state => ({ id: { doctor: 1, patient: 2, family: 3, nurse: 4, admin: 5 }[state.role], role: state.role,
+    name: { doctor: bi('Dr. Sarah Chen','陈医生'), patient: current(state).name, family: bi('Wei Zhang','张伟'), nurse: bi('Nurse Lin','林护士'), admin: bi('Platform administrator','平台管理员') }[state.role] });
+  const nextCareId = state => ++state.carePlanSequence;
+  const textWithin = (value, max) => typeof value === 'string' && [...value.trim()].length > 0 && [...value.trim()].length <= max;
+  function careInstant(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+    const [year,month,date,hour,minute,second] = value.match(/\d+/g).slice(0,6).map(Number);
+    const calendar = new Date(Date.UTC(year,month-1,date));
+    if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month-1 || calendar.getUTCDate() !== date || hour > 23 || minute > 59 || second > 59) return null;
+    const parsed = new Date(value); return Number.isFinite(parsed.getTime()) && parsed.getUTCFullYear() >= 1000 && parsed.getUTCFullYear() <= 9999 ? parsed.toISOString() : null;
+  }
+  function careAccess(state, patientId, write = false, now = new Date()) {
+    if (Number(patientId) !== state.patientId || !current(state) || !state.users.find(item => item.id === careActor(state).id)?.active) return false;
+    if (state.role === 'doctor' || state.role === 'patient') return true;
+    if (!['family','nurse'].includes(state.role)) return false;
+    const valid = item => item.patientId === Number(patientId) && item.status === 'ACTIVE' && (!item.startsAt || new Date(item.startsAt) <= now) && (!item.expiresAt || new Date(item.expiresAt) > now);
+    const grant = state.carePlanGrants.find(item => item.role === state.role && valid(item));
+    if (!grant || (write && !['WRITE','PROXY'].includes(grant.permission))) return false;
+    return state.role !== 'nurse' || state.nurseAssignments.some(item => item.nurseUserId === 4 && valid(item));
+  }
+  function requireCarePlan(state, planId, clinical = false, write = false, now = new Date()) {
+    const plan = state.carePlans.find(item => item.id === Number(planId));
+    if (!plan || !careAccess(state, plan.patientId, write, now) || (clinical && state.role !== 'doctor') || (plan.lifecycle === 'DRAFT' && state.role !== 'doctor')) throw new Error('care-plan-access');
+    return plan;
+  }
+  function requireCareAction(state, actionId, clinical, write, now) {
+    const action = state.carePlanActions.find(item => item.id === Number(actionId));
+    if (!action) throw new Error('care-plan-access');
+    const plan = requireCarePlan(state, action.planId, clinical, write, now);
+    if (plan.lifecycle !== 'ACTIVE' || action.revisionId !== plan.currentRevisionId) throw new Error('care-plan-state');
+    return { action, plan };
+  }
+  function careEvent(state, plan, eventType, action, payload = {}, now = new Date(), revisionId = plan.currentRevisionId || plan.draftRevisionId) {
+    const actor = careActor(state);
+    const event = { id: nextCareId(state), planId: plan.id, patientId: plan.patientId, revisionId, actionId: action?.id || null,
+      actorId: actor.id, actorName: { ...actor.name }, actorRole: actor.role, eventType, recordedAt: now.toISOString(), entryMode: '', evidence: [], ...payload };
+    state.carePlanEvents.push(event); plan.version++;
+    recordAudit(state, bi(`Care plan demo · ${eventType}`, `照护计划演示 · ${eventType}`), 'care-plan', plan.id, plan.patientId, now);
+    return event;
+  }
+  function validateCareDraft(state, input, now) {
+    if (!input || !textWithin(input.title,160) || !textWithin(input.instructions,4000) || !['FOLLOW_UP','MEDICATION','DIALYSIS','NUTRITION'].includes(input.planType) || !Array.isArray(input.actions) || input.actions.length < 1 || input.actions.length > 50) throw new Error('invalid-care-plan');
+    const actions = input.actions.map((item,index) => {
+      const dueAt = careInstant(item.dueAt);
+      if ((item.evidence && item.evidence.length) || item.ordinal !== index+1 || !textWithin(item.instruction,2000) || !dueAt || ![2,3,4].includes(item.assignedUserId)) throw new Error('invalid-care-plan');
+      if (item.assignedUserId !== 2) {
+        const role = item.assignedUserId === 3 ? 'family' : 'nurse';
+        if (!careAccess({ ...state, role }, state.patientId, true, now)) throw new Error('invalid-care-plan');
+      }
+      return { ordinal: index+1, instruction: bi(item.instruction.trim(),item.instruction.trim()), dueAt, assignedUserId: item.assignedUserId, evidence: [] };
+    });
+    return { title: bi(input.title.trim(),input.title.trim()), instructions: bi(input.instructions.trim(),input.instructions.trim()), planType: input.planType, actions };
+  }
+  function createCarePlanDraft(state, input, now = new Date()) {
+    if (state.role !== 'doctor' || !careAccess(state,state.patientId,false,now)) throw new Error('care-plan-access');
+    const content = validateCareDraft(state,input,now), plan = { id: nextCareId(state), patientId: state.patientId, workflowVersion: 1, lifecycle: 'DRAFT', currentRevisionId: null, draftRevisionId: nextCareId(state), version: 0 };
+    const revision = { id: plan.draftRevisionId, planId: plan.id, revisionNo: 1, status: 'DRAFT', ...content };
+    state.carePlans.unshift(plan); state.carePlanRevisions.push(revision);
+    careEvent(state,plan,'DRAFT_SAVED',null,{},now); return plan;
+  }
+  function saveCarePlanDraft(state, planId, input, now = new Date()) {
+    const plan = requireCarePlan(state,planId,true,false,now);
+    if (!plan.draftRevisionId || !['DRAFT','ACTIVE'].includes(plan.lifecycle)) throw new Error('care-plan-state');
+    const content = validateCareDraft(state,input,now), revision = state.carePlanRevisions.find(item => item.id === plan.draftRevisionId);
+    Object.assign(revision,content); careEvent(state,plan,'DRAFT_SAVED',null,{},now,revision.id); return plan;
+  }
+  function createCarePlanRevision(state, planId, now = new Date()) {
+    const plan = requireCarePlan(state,planId,true,false,now);
+    if (plan.lifecycle !== 'ACTIVE' || plan.draftRevisionId) throw new Error('care-plan-state');
+    const previous = state.carePlanRevisions.find(item => item.id === plan.currentRevisionId);
+    const revision = JSON.parse(JSON.stringify(previous)); revision.id = nextCareId(state); revision.revisionNo++; revision.status = 'DRAFT'; delete revision.publishedAt;
+    plan.draftRevisionId = revision.id; state.carePlanRevisions.push(revision);
+    careEvent(state,plan,'REVISION_DRAFTED',null,{},now,revision.id); return revision;
+  }
+  function publishCarePlan(state, planId, confirmation, now = new Date()) {
+    const plan = requireCarePlan(state,planId,true,false,now);
+    if (!plan.draftRevisionId || !['DRAFT','ACTIVE'].includes(plan.lifecycle)) throw new Error('care-plan-state');
+    const revision = state.carePlanRevisions.find(item => item.id === plan.draftRevisionId);
+    validateCareDraft(state, { ...revision, title: revision.title.en, instructions: revision.instructions.en, actions: revision.actions.map(item => ({ ...item, instruction: item.instruction.en })) }, now);
+    const prior = state.carePlanActions.filter(item => item.planId === plan.id && item.revisionId === plan.currentRevisionId && ['OPEN','NEEDS_HELP','SUBMITTED'].includes(item.status));
+    if (plan.currentRevisionId && (!confirmation || confirmation.currentRevisionId !== plan.currentRevisionId || JSON.stringify([...confirmation.supersededActionIds || []].sort()) !== JSON.stringify(prior.map(item => item.id).sort()))) throw new Error('revision-confirmation');
+    prior.forEach(item => { item.status = 'SUPERSEDED'; item.version++; });
+    revision.status = 'PUBLISHED'; revision.publishedAt = now.toISOString();
+    const revising = Boolean(plan.currentRevisionId); plan.currentRevisionId = revision.id; plan.draftRevisionId = null; plan.lifecycle = 'ACTIVE';
+    revision.actions.forEach(item => state.carePlanActions.push({ ...JSON.parse(JSON.stringify(item)), id: nextCareId(state), planId: plan.id, revisionId: revision.id, patientId: plan.patientId, version: 0, status: 'OPEN', firstSubmittedAt: null, latestSubmittedAt: null, reviewWaitingSince: null }));
+    return careEvent(state,plan,revising ? 'REVISED' : 'PUBLISHED',null,{ notificationResult: 'DEMO_ONLY' },now);
+  }
+  function submitCarePlanAction(state, actionId, input, now = new Date()) {
+    const { action,plan } = requireCareAction(state,actionId,false,true,now);
+    if (!['patient','family','nurse'].includes(state.role)) throw new Error('care-plan-access');
+    if (!['OPEN','NEEDS_HELP'].includes(action.status)) throw new Error('care-plan-state');
+    const occurredAt = careInstant(input?.occurredAt);
+    if (!textWithin(input?.note,2000) || !occurredAt || new Date(occurredAt) > now || (input.evidence && input.evidence.length) || !['SELF','ASSISTED'].includes(input.entryMode || 'ASSISTED')) throw new Error('invalid-receipt');
+    action.status = 'SUBMITTED'; action.version++; action.firstSubmittedAt ||= now.toISOString(); action.latestSubmittedAt = now.toISOString(); action.reviewWaitingSince = now.toISOString();
+    return careEvent(state,plan,'SUBMITTED',action,{ note: input.note.trim(), occurredAt, entryMode: state.role === 'patient' ? (input.entryMode || 'ASSISTED') : 'ASSISTED' },now);
+  }
+  function helpCarePlanAction(state, actionId, note, now = new Date()) {
+    const { action,plan } = requireCareAction(state,actionId,false,true,now);
+    if (!['patient','family','nurse'].includes(state.role)) throw new Error('care-plan-access');
+    if (!['OPEN','NEEDS_HELP'].includes(action.status)) throw new Error('care-plan-state');
+    if (!textWithin(note,1000)) throw new Error('invalid-care-note');
+    action.status = 'NEEDS_HELP'; action.version++; return careEvent(state,plan,'NEEDS_HELP',action,{ note: note.trim() },now);
+  }
+  function followUpCarePlanAction(state, actionId, input, now = new Date()) {
+    const { action,plan } = requireCareAction(state,actionId,false,true,now);
+    if (!['doctor','nurse'].includes(state.role)) throw new Error('care-plan-access');
+    if (!['OPEN','NEEDS_HELP','SUBMITTED'].includes(action.status)) throw new Error('care-plan-state');
+    if (!['CONTACTED','AWAITING_INFORMATION','DOCTOR_NOTIFIED'].includes(input?.kind) || !textWithin(input.note,1000)) throw new Error('invalid-care-note');
+    return careEvent(state,plan,'FOLLOW_UP',action,{ kind: input.kind, note: input.note.trim() },now);
+  }
+  function reviewCarePlanAction(state, actionId, input, now = new Date()) {
+    const { action,plan } = requireCareAction(state,actionId,true,false,now);
+    if (action.status !== 'SUBMITTED') throw new Error('care-plan-state');
+    if (!['CONFIRM','RETURN'].includes(input?.decision) || (input.decision === 'RETURN' && !textWithin(input.note,1000)) || (input.note && !textWithin(input.note,1000))) throw new Error('invalid-care-note');
+    action.status = input.decision === 'CONFIRM' ? 'CONFIRMED' : 'OPEN'; action.version++; action.reviewWaitingSince = null;
+    return careEvent(state,plan,input.decision === 'CONFIRM' ? 'CONFIRMED' : 'RETURNED',action,{ note: input.note?.trim() || '' },now);
+  }
+  function closeCarePlan(state, planId, now = new Date()) {
+    const plan = requireCarePlan(state,planId,true,false,now);
+    if (plan.lifecycle !== 'ACTIVE') throw new Error('care-plan-state');
+    const actions = state.carePlanActions.filter(item => item.revisionId === plan.currentRevisionId);
+    if (!actions.length || actions.some(item => item.status !== 'CONFIRMED')) throw new Error('unconfirmed-care-plan');
+    if (plan.draftRevisionId) throw new Error('care-plan-state');
+    plan.lifecycle = 'COMPLETED'; return careEvent(state,plan,'CLOSED',null,{},now);
+  }
+  function cancelCarePlan(state, planId, note, now = new Date()) {
+    const plan = requireCarePlan(state,planId,true,false,now);
+    if (!['DRAFT','ACTIVE'].includes(plan.lifecycle) || !textWithin(note,1000)) throw new Error('invalid-care-note');
+    plan.lifecycle = 'CANCELLED';
+    state.carePlanActions.filter(item => item.planId === plan.id && ['OPEN','NEEDS_HELP','SUBMITTED'].includes(item.status)).forEach(item => { item.status = 'CANCELLED'; item.version++; });
+    return careEvent(state,plan,'CANCELLED',null,{ note: note.trim() },now);
+  }
+  function visibleCarePlans(state, now = new Date()) {
+    if (!careAccess(state,state.patientId,false,now)) return [];
+    return state.carePlans.filter(plan => plan.patientId === state.patientId && (state.role === 'doctor' || plan.currentRevisionId)).map(plan => {
+      const revisions = state.carePlanRevisions.filter(item => item.planId === plan.id && (state.role === 'doctor' || item.status === 'PUBLISHED'));
+      const revision = revisions.find(item => item.id === plan.currentRevisionId) || revisions.find(item => item.id === plan.draftRevisionId);
+      const events = state.carePlanEvents.filter(item => item.planId === plan.id && revisions.some(rev => rev.id === item.revisionId));
+      const actions = state.carePlanActions.filter(item => item.planId === plan.id).map(item => ({ ...item, overdue: new Date(item.dueAt) < now && ['OPEN','NEEDS_HELP'].includes(item.status), events: events.filter(event => event.actionId === item.id) }));
+      const view = { ...plan, ...revision, id: plan.id, currentRevisionId: plan.currentRevisionId, title: revision.title, revisions, actions, events, canRecord: careAccess(state,plan.patientId,true,now) };
+      if (state.role !== 'doctor') delete view.draftRevisionId;
+      return JSON.parse(JSON.stringify(view));
+    });
+  }
+
+  globalThis.HealthDemo = { createState, current, complete, addVital, review, addPlan, addHandover, runFeature, toggleUser, updateBranding, currentConsultation, sendChatMessage, addDemoReply, csv, careAccess, createCarePlanDraft, saveCarePlanDraft, createCarePlanRevision, publishCarePlan, submitCarePlanAction, helpCarePlanAction, followUpCarePlanAction, reviewCarePlanAction, closeCarePlan, cancelCarePlan, visibleCarePlans };
 })();

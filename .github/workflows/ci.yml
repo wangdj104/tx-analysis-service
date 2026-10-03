@@ -60,3 +60,73 @@ jobs:
       - run: |
           node --test demo/tests/*.test.mjs
           node --test cn/demo/tests/*.test.mjs
+
+  care-plan-mysql:
+    # Release gate: required native acceptance, never an H2/optional fallback.
+    # Both languages and both fresh/upgrade passes use this exact checkout.
+    name: Care plan MySQL 8.0 (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - directory: '.'
+            language: en
+          - directory: cn
+            language: cn
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_ROOT_HOST: 'localhost'
+          # The official entrypoint otherwise defaults to a wildcard root host.
+        ports:
+          - '127.0.0.1:13306:3306'
+        options: >-
+          --health-cmd="mysqladmin ping --protocol=socket --user=root --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check MySQL test safety guards
+        run: |
+          bash -n scripts/verify-care-plan-mysql.sh
+          node --test scripts/tests/care-plan-mysql-guards.test.mjs
+      - name: Verify two disposable native schema and restore passes
+        env:
+          CARE_PLAN_TEST_ONLY: 'true'
+          CARE_PLAN_MYSQL_HOST: '127.0.0.1'
+          CARE_PLAN_MYSQL_PORT: '13306'
+          CARE_PLAN_MYSQL_PROJECT: ${{ matrix.directory }}
+          CARE_PLAN_MYSQL_CONTAINER_ID: ${{ job.services.mysql.id }}
+        run: |
+          set -euo pipefail
+          set +x
+          printf 'Native acceptance checkout: '
+          git rev-parse HEAD
+          for pass in 1 2; do
+            prefix="care_plan_test_${{ matrix.language }}_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_${pass}"
+            export CARE_PLAN_MYSQL_DATABASE="${prefix}_fresh"
+            export CARE_PLAN_MYSQL_UPGRADE_DATABASE="${prefix}_upgrade"
+            export CARE_PLAN_MYSQL_RESTORE_DATABASE="${prefix}_restore"
+            export CARE_PLAN_MYSQL_USER="care_plan_test_${{ matrix.language }}_${pass}"
+            password=$(openssl rand -hex 24)
+            echo "::add-mask::$password"
+            export CARE_PLAN_MYSQL_PASSWORD="$password"
+            unset password
+            bash scripts/verify-care-plan-mysql.sh
+            unset CARE_PLAN_MYSQL_PASSWORD
+          done
+      # No database dump, credential file or raw patient-shaped fixture artifact
+      # is uploaded. Actions logs contain only sanitized test/service metadata.

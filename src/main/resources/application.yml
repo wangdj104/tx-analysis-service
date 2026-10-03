@@ -21,3 +21,6 @@ app:
 springfox:
   documentation:
     enabled: ${API_DOCS_ENABLED:false}
+
+care-plan:
+  enabled: ${CARE_PLAN_ENABLED:false}

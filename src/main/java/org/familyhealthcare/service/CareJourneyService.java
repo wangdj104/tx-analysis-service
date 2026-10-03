@@ -31,6 +31,7 @@ public class CareJourneyService {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DataScopeHelper scope;
     @Autowired private NotificationAudienceService audience;
+    @Autowired private org.familyhealthcare.service.careplan.CarePlanAuthorizationService carePlanAuthorization;
 
     private static final Set<String> METRICS = new HashSet<>(Arrays.asList("BP","GLUCOSE","SPO2","WEIGHT","HEART_RATE","TEMPERATURE","CUSTOM"));
     private static final Set<String> ACCESS_LEVELS = new HashSet<>(Arrays.asList("READ","WRITE","PROXY"));
@@ -88,11 +89,37 @@ public class CareJourneyService {
     public Map<String,Object> saveGrant(Map<String,Object> body) {
         Long patientId=requiredLong(body,"patientId"), grantee=requiredLong(body,"granteeUserId"); requireOwner(patientId);
         String role=required(body,"granteeRole").toUpperCase(), level=required(body,"accessLevel").toUpperCase();
-        if(!Arrays.asList("DOCTOR","FAMILY","GUARDIAN").contains(role) || !ACCESS_LEVELS.contains(level)) throw new IllegalArgumentException("Invalid access grant.");
+        if(!Arrays.asList("DOCTOR","FAMILY","GUARDIAN","NURSE").contains(role) || !ACCESS_LEVELS.contains(level)) throw new IllegalArgumentException("Invalid access grant.");
         if(Objects.equals(grantee,userId())) throw new IllegalArgumentException("The record owner already has full access.");
         Integer enabled=jdbc.queryForObject("SELECT COUNT(*) FROM sys_user WHERE id=? AND status=1 AND COALESCE(deleted,0)=0",Integer.class,grantee);
         if(enabled==null||enabled==0)throw new IllegalArgumentException("The selected user does not exist or is disabled.");
         if("DOCTOR".equals(role))requireActiveDoctor(grantee);
+        String carePlanModules=text(body,"visibleModules",null);
+        boolean carePlanGrant=carePlanModules!=null&&Arrays.stream(carePlanModules.split(",")).anyMatch(m->"CARE_PLAN".equalsIgnoreCase(m.trim()));
+        if(carePlanGrant||"NURSE".equals(role)) {
+            org.familyhealthcare.service.careplan.CarePlanContracts.requireId(body.get("patientId"),"patientId");
+            org.familyhealthcare.service.careplan.CarePlanContracts.requireId(body.get("granteeUserId"),"granteeUserId");
+            if(!new HashSet<>(Arrays.asList("patientId","granteeUserId","granteeRole","accessLevel","visibleModules","expiresAt")).containsAll(body.keySet())
+                    || !(body.get("visibleModules") instanceof String))
+                throw new IllegalArgumentException("NURSE".equals(role)?"Invalid nurse grant fields.":"Invalid access grant.");
+        }
+        if(carePlanGrant) {
+            try { carePlanAuthorization.requireCarePlanGrant(userId(),patientId); }
+            catch(org.familyhealthcare.service.careplan.CarePlanException denied) {
+                if(denied.getStatus()==403)throw new IllegalStateException("Access denied to this care-plan grant.");
+                throw new IllegalArgumentException(denied.getMessage());
+            }
+        }
+        if("NURSE".equals(role)) {
+            if(!carePlanGrant)
+                throw new IllegalArgumentException("A nurse grant must explicitly include CARE_PLAN.");
+            try { carePlanAuthorization.requireNurseGrant(userId(),patientId,grantee); }
+            catch(org.familyhealthcare.service.careplan.CarePlanException denied) {
+                if(denied.getStatus()==403)throw new IllegalStateException("Access denied to this care-plan grant.");
+                throw new IllegalArgumentException(denied.getMessage());
+            }
+        }
+        // This shared legacy table/API retains its local-time expiry semantics for every role.
         LocalDateTime expires=dateTime(body.get("expiresAt"),null);
         if(expires!=null&&!expires.isAfter(LocalDateTime.now()))throw new IllegalArgumentException("Access expiry must be in the future.");
         jdbc.update("INSERT INTO care_access_grant(patient_id,grantee_user_id,grantee_role,access_level,visible_modules,status,granted_by,expires_at) VALUES(?,?,?,?,?,'ACTIVE',?,?) ON DUPLICATE KEY UPDATE access_level=VALUES(access_level),visible_modules=VALUES(visible_modules),status='ACTIVE',granted_by=VALUES(granted_by),expires_at=VALUES(expires_at)",patientId,grantee,role,level,text(body,"visibleModules",null),userId(),expires);

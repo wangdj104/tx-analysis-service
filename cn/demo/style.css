@@ -160,3 +160,33 @@ body.large-text .care-primary { grid-column: 1 / -1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* One collaboration flow inside the existing role workspaces. */
+.cp-boundary p:last-child { margin-bottom: 0; }
+.cp-plan, .cp-action, .cp-history, .cp-events li { overflow-wrap: anywhere; }
+.cp-plan > .actions { margin: 18px 0; }
+.cp-draft { padding: 18px; border: 1px dashed var(--control-border); border-radius: 12px; margin: 18px 0; background: var(--health-soft, var(--soft)); }
+.cp-draft p:last-child { margin-bottom: 0; }
+.cp-action { padding: 20px 0; border-top: 1px solid var(--line); }
+.cp-action h3 { margin-top: 12px; }
+.cp-action time, .cp-events time { font-variant-numeric: tabular-nums; }
+.cp-history { margin-top: 20px; }
+.cp-plan summary { min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--ink); font-weight: 600; }
+.cp-plan details > section { padding-top: 18px; }
+.cp-events { padding-left: 24px; margin: 12px 0; }
+.cp-events li { margin-bottom: 14px; padding-left: 4px; }
+.cp-events b, .cp-events time, .cp-events span { display: block; }
+.cp-events time, .cp-events span { color: var(--muted); font-size: 13px; }
+.cp-events p { white-space: pre-wrap; margin: 8px 0 0; }
+.cp-editor-action { min-width: 0; border: 1px solid var(--control-border); border-radius: 10px; padding: 14px; display: grid; gap: 12px; }
+.cp-editor-action legend { color: var(--ink); padding: 0 5px; font-weight: 600; }
+.form-grid select { display: block; margin-top: 8px; width: 100%; min-height: 44px; border-color: var(--control-border); white-space: normal; }
+.form-grid .cp-consent { display: flex; align-items: flex-start; gap: 10px; }
+.form-grid .cp-consent input { width: 22px; height: 22px; min-height: 22px; flex: 0 0 22px; margin-top: 0; }
+.role-switch { flex-wrap: wrap; }
+.role-switch button { min-height: 44px; }
+@media (max-width:720px) {
+  .cp-plan .actions { display: grid; grid-template-columns: 1fr; }
+  .cp-plan .button { width: 100%; }
+  .cp-editor-action { padding: 12px; }
+}

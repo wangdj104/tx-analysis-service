@@ -13,6 +13,9 @@ final class ChineseMessageLocalizer {
     private static final Map<String, String> EXACT = new LinkedHashMap<>();
 
     static {
+        EXACT.put("Invalid nurse grant fields.", "护理授权字段无效。");
+        EXACT.put("A nurse grant must explicitly include CARE_PLAN.", "护理授权必须明确包含 CARE_PLAN。");
+        EXACT.put("Access denied to this care-plan grant.", "无权管理该照护计划授权。");
         EXACT.put("success", "成功");
         EXACT.put("Saved successfully", "保存成功");
         EXACT.put("Failed to save", "保存失败");

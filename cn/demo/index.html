@@ -2,22 +2,22 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="澄心健康全功能交互式演示：面向医生、患者、家属和管理员的连续健康管理平台。">
+  <meta name="description" content="澄心健康全功能交互式演示：面向医生、患者、家属、护理人员和管理员的连续健康管理平台。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>澄心健康 · 交互演示</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=20261001-1"><link rel="stylesheet" href="branding.css?v=20261001-1">
+  <title>澄心健康 · 交互演示</title><link rel="icon" href="assets/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=20261001-1&amp;careplan=20261003-1"><link rel="stylesheet" href="branding.css?v=20261001-1">
   <link rel="stylesheet" href="appearance.css?v=20261002-chart2">
-  <script src="model.js?v=20261001-r9" defer></script><script src="app.js?v=20261002-storage1" defer></script>
+  <script src="model.js?v=20261001-r9&amp;careplan=20261003-1" defer></script><script src="app.js?v=20261002-storage1&amp;careplan=20261003-1" defer></script>
 </head>
 <body>
   <a class="skip" href="#content">跳到主要内容</a>
   <aside class="sidebar" aria-label="工作台导航">
     <a class="brand" href="#overview"><img id="brand-logo" src="assets/logo.svg" width="38" height="38" alt=""><span><strong id="brand-name">澄心健康</strong><small id="brand-organization">澄心健康</small></span></a>
-    <span class="nav-caption" id="role-caption">医生工作台</span><div class="role-switch" id="role-switch" aria-label="演示身份"></div><nav id="nav"></nav>
+    <span class="nav-caption" id="role-caption">医生工作台</span><div class="role-switch" id="role-switch" aria-label="演示身份切换（非安全登录）"></div><nav id="nav"></nav>
     <div class="sidebar-bottom"><button class="guide-entry" id="guide-start" type="button"><b>新手指引</b><small>逐步讲解 · 每步需要确认</small></button><p>一份档案，一个照护团队</p><div class="demo-account"><span class="avatar" id="account-avatar">医</span><div><b id="account-name">陈医生</b><small>演示账号 · 虚构数据</small></div></div></div>
   </aside>
   <div class="workspace">
     <header class="topbar"><span><b id="workspace-label">医生工作台</b> <i>/</i> <strong id="breadcrumb">工作概览</strong></span><div class="top-actions"><label class="patient-select"><span id="member-label">患者</span><select id="patient"></select></label><label class="appearance-select" for="health-theme"><span>主题</span><select id="health-theme"><option value="platform">平台默认</option><option value="white">纯净白</option><option value="blue">雾蓝</option><option value="mint">薄荷绿</option><option value="sand">暖米色</option><option value="dark">深色</option></select></label><button class="text-size-toggle" id="text-size" type="button" aria-pressed="false">大字模式</button><a class="language-link" href="../">English</a></div></header>
-    <div class="demo-banner"><span><b>全功能交互演示</b> 流程与真实平台对应，使用虚构且仅保留在当前标签页的数据；不会上传文件、调用 AI 或发送任何消息。</span><button class="text-button" id="reset">重置演示</button></div>
+    <div class="demo-banner"><span><b>全功能交互演示</b> 流程与真实平台对应，使用虚构且仅保留在当前标签页的数据；不会上传文件、调用 AI 或发送任何消息、通知。</span><button class="text-button" id="reset">重置演示</button></div>
     <main id="content" tabindex="-1"></main><footer class="footer"><strong id="ownership">© 2026 澄心健康 版权所有</strong><span>仅供产品演示，不构成医疗建议，请勿输入真实健康信息。</span></footer>
   </div>
   <dialog id="action-dialog" aria-labelledby="action-title"><form id="action-form"><div class="dialog-header"><div><span class="eyebrow" id="action-kicker">演示操作</span><h2 id="action-title">新增记录</h2></div><button type="button" class="close-button" data-close aria-label="关闭">×</button></div><p class="muted" id="action-help"></p><div id="action-fields" class="form-grid"></div><p id="form-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" class="button secondary" data-close>取消</button><button class="button" type="submit" id="action-submit">保存</button></div></form></dialog>

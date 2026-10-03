@@ -96,7 +96,7 @@ Password: Demo@123456
 
 Change all secrets before exposing a deployment to any network. The Docker demo is intended for evaluation, not production.
 
-On an empty MySQL volume, Compose runs `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, then `demo-data.sql`. Existing volumes are not reinitialized; apply required upgrades manually after a backup. Do not delete a volume containing records to force initialization.
+On an empty MySQL volume, Compose runs `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, `care_plan_collaboration_20261003.sql`, then `demo-data.sql`. Existing volumes are not reinitialized; apply required upgrades manually after a backup. Do not delete a volume containing records to force initialization.
 
 ## Bilingual production deployment
 
@@ -140,11 +140,14 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 mysql -u root -p family_health < src/main/resources/sql/init.sql
 mysql -u root -p family_health < src/main/resources/sql/doctor_workspace_20260921.sql
 mysql -u root -p family_health < src/main/resources/sql/care_platform_upgrade_20260921.sql
+mysql -u root -p family_health < src/main/resources/sql/care_plan_collaboration_20261003.sql
 ```
 
-New databases require all three scripts in this order: [base schema](src/main/resources/sql/init.sql), [doctor workspace](src/main/resources/sql/doctor_workspace_20260921.sql), then [care platform](src/main/resources/sql/care_platform_upgrade_20260921.sql). `init.sql` alone does not contain the care-journey tables. Existing installations apply only the applicable idempotent upgrade scripts after backing up data; do not rerun the baseline as a reset. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
+New databases require all four scripts in this order: [base schema](src/main/resources/sql/init.sql), [doctor workspace](src/main/resources/sql/doctor_workspace_20260921.sql), [care platform](src/main/resources/sql/care_platform_upgrade_20260921.sql), then [care-plan collaboration](src/main/resources/sql/care_plan_collaboration_20261003.sql). `init.sql` alone does not contain the care-journey tables. Existing installations apply only the applicable idempotent upgrade scripts after backing up data; do not rerun the baseline as a reset. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
 
 The additive [patient specialty role upgrade](src/main/resources/sql/patient_specialty_roles_20260923.sql) runs on MySQL/MariaDB application startup. Back up the database before deploying this release; the database account needs `CREATE` and `INSERT` permissions. Existing patients are not assigned a specialty role automatically. Assign the dialysis specialty role in the patient editor to enable dialysis navigation for an individual patient.
+
+The additive care-plan collaboration migration retains legacy `ACTIVE` plans as internal `workflow_version=0` records. It does not publish them, create tasks or notifications, assign nurse roles to accounts, or grant `CARE_PLAN` access. Back up the complete database and attachment storage before applying it to an existing installation; apply this script without rerunning `init.sql`. New collaboration timestamps use UTC `DATETIME(6)` with explicit application conversion. Schema installation alone does not enable the collaboration workflow. H2 tests are compatibility checks; release acceptance still requires the original migration on MySQL 8.0 and a complete synthetic backup/restore drill. Retain published history when disabling this subsystem; do not drop its tables as a rollback.
 
 ### 2. Configure environment variables
 
@@ -206,7 +209,7 @@ Webhook URLs and bot secrets are sensitive. They are masked in API responses and
 
 ## Database policy
 
-- New installations run the base schema, doctor-workspace migration and care-platform migration in the documented order (currently 70 application tables across the scripts).
+- New installations run the base schema, doctor-workspace, care-platform and care-plan collaboration migrations in the documented order.
 - `demo-data.sql` is strictly optional and must never be used in production.
 - The application does not silently create or alter production tables at startup.
 - `init.sql` is not an upgrade or reset tool for a populated database. Back up data before any manual database operation.
@@ -236,7 +239,7 @@ make build
 - Disable bootstrap administrator creation after initial setup.
 - Use HTTPS, exact CORS origins, secure reverse-proxy headers, and request-size limits.
 - Use a managed MySQL backup policy and test restore procedures.
-- The in-app family archive is a scoped export, not disaster recovery: it covers the record types listed in its preview, excludes consultations/chat, care-journey and doctor-workspace records, access grants and system accounts, and includes only database-embedded attachments. Restore creates independent copies with medication reminders and automated analysis disabled; notification channels and caregivers must be configured again. Back up the database and attachment storage separately.
+- The in-app family archive is a scoped export, not disaster recovery: it covers the record types listed in its preview, excludes consultations/chat, care-journey and doctor-workspace records, collaboration plans/revisions/actions/receipts/events/evidence, nurse assignments, command and notification history, access grants and system accounts, and includes only database-embedded attachments. Restore creates independent copies with medication reminders and automated analysis disabled; notification channels and caregivers must be configured again. Back up the database and attachment storage separately.
 - Store large attachments in access-controlled object storage with malware scanning and lifecycle rules.
 - Review the [security policy](SECURITY.md), [release checklist](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md), and [product review](docs/PRODUCT_REVIEW.md).
 - This Java 8 / Spring Boot 2.5 baseline favors compatibility. Upgrade to a supported runtime and framework before a long-lived public production deployment.

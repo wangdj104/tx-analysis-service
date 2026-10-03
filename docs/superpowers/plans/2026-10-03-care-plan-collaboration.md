@@ -18,6 +18,7 @@
 - 护理人员只处理同时满足“有效分配 + 有效模块授权”的患者；未满足时不返回患者正文或任务标题
 - 查看旧快照也要求当前权限；历史作者身份不是永久访问权
 - 新流程使用带偏移的 ISO 8601 输入和 UTC 持久化，显示浏览器本地时间并注明时区
+- 兼容说明：上述UTC约定用于新增照护计划/护理分配表；既有 care_access_grant.expires_at 保持原有本地 LocalDateTime API与存储，所有角色统一以数据库 CURRENT_TIMESTAMP 检查有效期，不将部分旧表行单独解释成UTC
 - 外部消息只包含通用通知文字及受登录保护的相对页面定位，不含患者姓名、诊断、任务正文或指标
 - 对明确可重试失败最多总计 3 次，首次后约 1 分钟和 5 分钟重试；每次重新校验权限。UNKNOWN 不自动重试，人工操作需提示可能重复
 - 所有示例与测试使用合成数据，不向真实患者发送测试通知
@@ -60,28 +61,28 @@
 | --- | --- |
 | CommandMeta | commandKey:String(UUID), expectedVersion:Long(非负) |
 | DraftBody | patientId:Long, title:String(1–160), instructions:String(1–4000), planType:String(FOLLOW_UP/MEDICATION/DIALYSIS/NUTRITION), actions:List<ActionInput>, legacySourceId:Long? |
-| ActionInput | ordinal:Integer(从1连续), instruction:String(1–2000), dueAt:String(ISO带偏移), assignedUserId:Long |
+| ActionInput | ordinal:Integer(从1连续), instruction:String(1–2000), dueAt:String(ISO带偏移), assignedUserId:Long, evidence:List<EvidenceRef>?(最多5条) |
 | ReceiptBody | note:String, occurredAt:String(ISO带偏移), entryMode:String(SELF/ASSISTED), evidence:List<EvidenceRef> |
 | EvidenceRef | sourceType:String(MEASUREMENT/MEDICAL_RECORD), sourceId:Long |
 | NurseAssignmentBody | patientId,nurseUserId:Long, expiresAt:String?(ISO带偏移)；创建为ACTIVE，撤销单独动作 |
 | ReviewBody | decision:String(CONFIRM/RETURN), note:String?，RETURN 必填 |
 | FollowUpBody | kind:String(CONTACTED/AWAITING_INFORMATION/DOCTOR_NOTIFIED), note:String(1–1000) |
-| PlanView | id,patientId:Long; workflowVersion:Integer; lifecycle,title,instructions,planType:String; currentRevisionId,draftRevisionId:Long?; version:Long; actions:List<ActionView>; allowedActions:List<String> |
-| ActionView | id,planId,revisionId,patientId,assignedUserId:Long; version:Long; instruction,status,dueAt:String; overdue:Boolean; firstSubmittedAt:String?; latestSubmittedAt:String?; reviewWaitingSince:String?; events:List<EventView> |
+| PlanView | id,patientId:Long; workflowVersion:Integer; lifecycle,title,instructions,planType:String; revisionId:Long; revisionNo:Integer; revisionStatus:String; currentRevisionId,draftRevisionId:Long?; version:Long; actions:List<ActionView>; allowedActions:List<String> |
+| ActionView | id:Long?(草稿为null); planId,revisionId,patientId,assignedUserId:Long; ordinal:Integer; version:Long; instruction,status,dueAt:String; overdue:Boolean; firstSubmittedAt:String?; latestSubmittedAt:String?; reviewWaitingSince:String?; events:List<EventView>; evidence:List<EvidenceView> |
 | EventView | id,actorId:Long; actorName,actorRole,entryMode,eventType,recordedAt:String; occurredAt,note:String?; evidence:List<EvidenceView> |
 | EvidenceView | sourceType:String,sourceId:Long,restricted:Boolean；仅有原模块读权限时增加受控 title/detailLink |
 | CommandResult | planId:Long,actionId:Long?,eventId:Long,version:Long,lifecycle:String,actionStatus:String? |
 | PageView | items:List<Map<String,Object>>, nextCursor:String?；默认50，最大100 |
 
-所有时间返回 UTC `Z`；前端展示当地时间与偏移。长度按 Unicode code point 计数，去首尾空白后验证；拒绝未知状态/类型、空白文本、非整数 ID、负版本与非有限数字。SELF 只表示账号所有者声明本人录入，不视为患者身份认证；默认选择 ASSISTED，账号管理其他成员时显示代录并要求明确选择，不从 owner ID 推断自然人同一性。
+所有时间返回 UTC `Z`；前端展示当地时间与偏移。输入转换到 UTC 后须落在 `1000-01-01T00:00:00Z` 至 `9999-12-31T23:59:59.499999Z`（含端点），且纳秒值能被 1000 整除；拒绝越界或亚微秒值，不静默舍入/截断。这是 [MySQL 8.0 DATETIME(6) 文档](https://dev.mysql.com/doc/refman/8.0/en/date-and-time-type-syntax.html) 的保守存储合同，Task 12 仍验证原生 UTC 往返。长度按 Unicode code point 计数，去首尾空白后验证；拒绝未知状态/类型、空白文本、非整数 ID、负版本与非有限数字。SELF 只表示账号所有者声明本人录入，不视为患者身份认证；默认选择 ASSISTED，账号管理其他成员时显示代录并要求明确选择，不从 owner ID 推断自然人同一性。
 
-证据 MEASUREMENT 首期仅映射 `health_measurement`，MEDICAL_RECORD 映射 `medical_record`；不把多套测量表的同号 ID 混在一个 sourceType。只存原 ID，不复制临床正文。未授权引用不泄露额外标题。
+证据 MEASUREMENT 首期仅映射 `health_measurement`，MEDICAL_RECORD 映射 `medical_record`；不把多套测量表的同号 ID 混在一个 sourceType。只存原 ID，不复制临床正文。未授权引用不泄露额外标题。行动项的可选 evidence 与回执使用同一引用合同：同一列表内拒绝重复 sourceType+sourceId，不同 sourceType 的同号 ID 允许；行动引用随 ordinal 保存在 revision draft_json 并在发布时冻结，后续保存/发布/读取服务分别验证当前患者归属及原模块权限。
 
 ### 公共 Java 接口（由所属任务创建）
 
 - `CarePlanAuthorizationService.requireRead(long actorId,long patientId)`、`requireClinical(long actorId,long patientId)`、`requireRecord(long actorId,long patientId)`、`requireNursing(long actorId,long patientId)` → void
 - `CarePlanAuthorizationService.canReadEvidence(long actorId,long patientId,String sourceType,long sourceId)` → boolean
-- `CarePlanQueryService.list(long actorId,Long patientId,String queue,String cursor,int limit)` → PageView map；`detail(long actorId,long planId)` → PlanView map
+- `CarePlanQueryService.list(long actorId,Long patientId,String queue,String cursor,int limit)` → PageView map；`detail(long actorId,long planId)` → PlanView map；`listRevisions(long actorId,long planId,String cursor,int limit)` → PageView map（仅版本元数据）；`revision(long actorId,long planId,long revisionId)` → PlanView map（指定版本）
 - `CarePlanService.createDraft(long actorId,Map<String,Object> body,String commandKey)` → PlanView map
 - `CarePlanService.saveDraft(long actorId,long planId,long revisionId,Map<String,Object> body,String commandKey,long expectedVersion)` → PlanView map
 - `CarePlanService.createRevision(long actorId,long planId,String commandKey,long expectedVersion)` → PlanView map
@@ -93,7 +94,11 @@
 - `CarePlanNotificationWorker.enqueue(long eventId)` → void(同业务事务)；`tick(Instant now)` → void
 - `CarePlanTimelineProjector.list(long actorId,long patientId,LocalDate from,LocalDate to,int limit)` → List<HealthEvent>
 
-发布 confirmation={currentRevisionId:Long?,supersededActionDigest:String?}；首次发布二者为空，修订时二者必填。详情另返回 revisionImpact={currentRevisionId,actionIds,digest}，服务端生成确定性摘要供发布重验。负责人候选由 `CarePlanQueryService.assignees(long actorId,long patientId):List<Map>` 提供，仅返回具备录入权限的 userId/displayName/role；GET `/care-plans/assignees?patientId=` 与 `listAssignees(patientId)` 为对应API。
+发布 confirmation={currentRevisionId:Long?,supersededActionDigest:String?}；首次发布二者为空，修订时二者必填。详情默认选择当前已发布版本；尚未发布的初始草稿仅当前分配医生可见。医生通过 revision() 明确读取草稿。非临床用户的 draftRevisionId 为 null，不返回 revisionImpact，版本列表只包含已发布版本。版本元数据字段为 id/planId:Long、revisionNo:Integer、status/createdAt/publishedAt:String?；按 createdAt+id 稳定分页。草稿行动没有持久 action 行：id=null、status=DRAFT、version=0，引用按 ordinal 从 draft_json 投影，逐次检查原模块权限。
+
+仅临床医生的详情另返回 revisionImpact={currentRevisionId,actionIds,digest}，服务端生成确定性摘要供发布重验。负责人候选由 `CarePlanQueryService.assignees(long actorId,long patientId):List<Map>` 提供，仅返回具备录入权限的 userId/displayName/role；GET `/care-plans/assignees?patientId=` 与 `listAssignees(patientId)` 为对应API。
+
+新协作计划聚合的所有变更事务必须显式使用 READ_COMMITTED，不修改全局数据源设置。服务在授权查询及变更前检查同数据源连接的实际事务隔离级别；若已经加入 DEFAULT→实际 REPEATABLE_READ 或显式 REPEATABLE_READ 等不兼容外层事务，必须在变更前拒绝，不因 Spring 事务注解加入已有事务而静默继承快照。命令/事件存储使用同一守卫；等待幂等命令后仍重新授权并逐次投影证据权限。Task4/5/6 的后续计划写入和事务测试须沿用此合同。
 
 actorId 均来自服务端认证或通知队列内部上下文；HTTP body 中的 actorId 一律拒绝，不能覆盖会话。`help` body={note}；`followUp`=FollowUpBody；`review`=ReviewBody。
 
@@ -120,7 +125,7 @@ actorId 均来自服务端认证或通知队列内部上下文；HTTP body 中�
 - [ ] 写 `nurseNeedsRoleAssignmentAndGrant`、`adminAloneCannotReadClinicalPlan`、`revocationDoesNotFallBackToMembership`、`crossPatientEvidenceAndDisabledActorDenied`：三条件逐一缺失均 `assertThrows(CarePlanException.class,...)`；只读仅读；WRITE/PROXY 可录不可临床；有效医生分配才可发布。额外断言家属持有不含 CARE_PLAN 的限定授权不可访问新模块。
 - [ ] 测试核心断言：`assertThrows(CarePlanException.class, () -> auth.requireClinical(nurseId, patientId));`；授予READ后 `auth.requireRead(familyId, patientId);` 成功而 `auth.requireRecord(familyId, patientId)`抛403。
 - [ ] 运行 `mvn -B -Dtest=CarePlanAuthorizationTest -DskipTests=false test` 确认缺失服务导致红灯。
-- [ ] 实现显式 role/module/assignment 查询，不调用会给 admin 自动全通的 shortcut。有显式 grant 时按现有覆盖旧 membership 的规则；非owner的 nurse 分支优先，不能靠同时持有 family 身份绕过护理分配。患者 owner 可访问自己发布记录，但不可假冒医生。
+- [ ] 实现显式 role/module/assignment 查询，不调用会给 admin 自动全通的 shortcut。新CARE_PLAN家属/护理访问仅接受当前有效care_access_grant显式包含CARE_PLAN；空白“全部模块”的旧grant或care_member不会自动扩展到新模块，care_member仅用于关系显示。有显式 grant 时按现有覆盖旧 membership 的规则；非owner的 nurse 分支优先，不能靠同时持有 family 身份绕过护理分配。患者 owner 可访问自己发布记录，但不可假冒医生。
 - [ ] 在 saveGrant 允许 NURSE 角色但验证有效 nurse；未分配到患者的护士不能接受此模块的新授权。护理分配管理员写入、患者/医生只读最小必要信息。暴露 `/care-nurse-assignments` GET/POST 与 `/{id}/revoke` POST；新正文服务再次授权，不仅 menu 检查。
 - [ ] 测试同账号多角色、到期边界、停用、撤销、跨患者 ID 全部通过；运行原 `NotificationAudienceScopeTest,PlatformPermissionRegressionTest` 无回归；提交 `feat: scope nurse and care plan permissions`。
 
@@ -134,7 +139,7 @@ actorId 均来自服务端认证或通知队列内部上下文；HTTP body 中�
 - [ ] 测试核心断言：`assertEquals("DRAFT", draft.get("lifecycle"));`；`assertTrue(((List<?>) query.list(patientIdOwner, patientId, "TODAY", null, 50).get("items")).isEmpty());`。
 - [ ] 运行 `mvn -B -Dtest=CarePlanDraftTest -DskipTests=false test`，记录预期红灯。
 - [ ] 实现 map 合同、授权最小投影、草稿JSON验证、legacySourceId 同患者约束；旧 ACTIVE 只能显式复制成新草稿。创建命令先按 actor+key 原子占位，避免尚无 planId 时并发重复 INSERT；保存/修订按已有计划锁顺序。
-- [ ] 新增 `care-plan.enabled` 默认false，在application.yml中显式配置；关闭时新service/worker不查询新表，新入口通过登录后capabilities结果隐藏，已有功能继续可用。合成测试明确启用，上线顺序为迁移验证后启用。修改旧医生列表在新功能启用时增加兼容标记但保留原内部可见范围；新列表不计 legacy，旧POST不自动发布。查询有稳定分页和同患者约束，详情不连带全档案、家属或药物列表。
+- [ ] 新增 `care-plan.enabled` 默认false，在application.yml中显式配置；关闭时新service/worker不查询新表，新入口通过登录后capabilities结果隐藏，已有功能继续可用。合成测试明确启用，上线顺序为迁移验证后启用。修改旧医生列表在新功能启用时增加兼容标记但保留原内部可见范围；新列表不计 legacy，旧POST不自动发布。新聚合的旧字段仅保存本地化通用标记与空说明，旧 status 永久为保留值 COLLABORATION；真实临床正文仅在版本表。旧列表始终用既有 status 列排除保留值，即使功能关闭且未迁移也可运行；旧 POST 拒绝该保留值。启用时旧列表增加 workflowVersion=0，旧 ACTIVE 统计保持不变；新增 draftPlans/activeCollaborativePlans 只按当前临床授权计数，不复用管理员全局范围。查询有稳定分页和同患者约束，详情不连带全档案、家属或药物列表。
 - [ ] 双后端定向测试及旧 CarePlanWorkflowTest 通过；提交 `feat: add private care plan drafts and queries`。
 
 ## Task 4: 发布、修订、取消和关闭的事务语义
