@@ -118,7 +118,10 @@ class CarePlanMysqlIntegrationTest {
             try (Connection connection = connect(db)) {
                 // Executes original scripts, including MySQL information_schema,
                 // session @ddl and PREPARE/EXECUTE. No H2 translation or rewritten DDL.
-                for (String script : LEGACY_CHAIN) apply(connection, script);
+                for (String script : LEGACY_CHAIN) {
+                    apply(connection, script);
+                    if ("sql/init.sql".equals(script)) assertInitializationPrimaryKeys(connection);
+                }
                 List<String> legacyFields = columns(connection, "doctor_care_plan");
                 if (db.equals(upgrade)) {
                     BCryptPasswordEncoder bcrypt = new BCryptPasswordEncoder();
@@ -489,6 +492,17 @@ class CarePlanMysqlIntegrationTest {
 
     private String commandInsert(String key) {
         return "INSERT INTO care_plan_command(actor_id,command_key,plan_id,expected_version,payload_hash,result_json,created_at) VALUES(7003,'" + key + "',8000,0,'synthetic-sql-only','{\"revisionId\":8001}','2026-10-03 06:00:00.123456')";
+    }
+
+    private void assertInitializationPrimaryKeys(Connection c) throws SQLException {
+        // Regression for original initialization DDL: preserve generated BIGINT
+        // identities and require the actual native primary key, not just text.
+        for (String table : Arrays.asList("patient_health_target", "medication_intake", "health_event", "dialysis_schedule")) {
+            assertEquals("id", scalar(c, "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='" + table + "' AND INDEX_NAME='PRIMARY'"),
+                    "Original initialization must create exactly PRIMARY KEY(id) for " + table);
+            assertEquals("1", scalar(c, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='" + table + "' AND column_name='id' AND data_type='bigint' AND extra='auto_increment' AND is_nullable='NO' AND column_key='PRI'"),
+                    "Generated non-null BIGINT identity must remain unchanged for " + table);
+        }
     }
 
     private void assertNativeSchema(Connection c) throws SQLException {

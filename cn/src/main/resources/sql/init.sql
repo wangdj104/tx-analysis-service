@@ -624,6 +624,7 @@ CREATE TABLE IF NOT EXISTS `patient_health_target` (
   `doctor_name` VARCHAR(50) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
   UNIQUE KEY `uk_health_target_patient` (`patient_id`),
   KEY `idx_health_target_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patienthealthtarget';
@@ -642,6 +643,7 @@ CREATE TABLE IF NOT EXISTS `medication_intake` (
   `reason` VARCHAR(255) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
   UNIQUE KEY `uk_intake_schedule` (`reminder_id`,`scheduled_at`),
   KEY `idx_intake_patient_schedule` (`patient_id`,`scheduled_at`,`status`),
   KEY `idx_intake_status` (`status`)
@@ -662,6 +664,7 @@ CREATE TABLE IF NOT EXISTS `health_event` (
   `remark` VARCHAR(500) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
   KEY `idx_event_patient_date` (`patient_id`,`event_date`,`event_time`),
   KEY `idx_event_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Health Timelineevent';
@@ -677,6 +680,7 @@ CREATE TABLE IF NOT EXISTS `dialysis_schedule` (
   `remark` VARCHAR(255) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
   UNIQUE KEY `uk_dialysis_schedule` (`patient_id`,`schedule_date`),
   KEY `idx_schedule_patient_date` (`patient_id`,`schedule_date`,`status`),
   KEY `idx_schedule_user` (`user_id`)

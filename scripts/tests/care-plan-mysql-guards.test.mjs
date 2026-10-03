@@ -182,3 +182,77 @@ test('escaped grants deny a sibling matched by the original underscore wildcard'
     assert.deepEqual(state, { databases: ['care_plan_test_en_123xfresh'], users: [], grants: [] })
   }, { deniedDb: 'care_plan_test_en_123xfresh' })
 })
+
+import { readdirSync } from 'node:fs'
+// Source-only guard for the InnoDB AUTO_INCREMENT first-index rule. This scans
+// original checked-in DDL, never rewrites it, and is not native execution proof.
+function unindexedAutoColumns(sql) {
+  const missing = []
+  let checked = 0
+  const tables = [...sql.matchAll(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?`?(\w+)`?\s*\(([\s\S]*?)\)\s*ENGINE\s*=\s*InnoDB\b[^;]*;/gi)]
+  for (const [, table, body] of tables) {
+    // Split only top-level definitions; decimal widths/index lists and quoted
+    // comments containing commas must not create spurious column definitions.
+    const definitions = []
+    let start = 0, depth = 0, quote = ''
+    for (let i = 0; i < body.length; i++) {
+      const ch = body[i]
+      if (quote) {
+        if (ch === '\\') i++
+        else if (ch === quote) {
+          if (body[i + 1] === quote) i++
+          else quote = ''
+        }
+      } else if ("'\"`".includes(ch)) quote = ch
+      else if (ch === '(') depth++
+      else if (ch === ')') depth--
+      else if (ch === ',' && depth === 0) {
+        definitions.push(body.slice(start, i).trim()); start = i + 1
+      }
+    }
+    definitions.push(body.slice(start).trim())
+    const syntax = definitions.map(definition => definition.replace(/'(?:[^'\\]|\\[\s\S]|'')*'|"(?:[^"\\]|\\[\s\S]|"")*"/g, ' '))
+    const auto = syntax.map(definition => {
+      const column = /^`?(\w+)`?\s+(?:BIGINT|INT|INTEGER|SMALLINT|MEDIUMINT|TINYINT)\b/i.exec(definition)
+      return column && /\bAUTO_INCREMENT\b/i.test(definition) ? { name: column[1], definition } : null
+    }).filter(Boolean)
+    checked += auto.length
+    const firstKeyColumns = syntax.map(definition => {
+      const key = /^(?:PRIMARY\s+KEY|(?:UNIQUE\s+)?(?:KEY|INDEX)(?:\s+`?\w+`?)?)\s*\(\s*`?(\w+)`?(?=\s*[,\)])/i.exec(definition)
+      return key?.[1]
+    }).filter(Boolean)
+    for (const column of auto) {
+      if (!/\b(?:PRIMARY\s+KEY|UNIQUE)\b/i.test(column.definition) && !firstKeyColumns.includes(column.name)) {
+        missing.push(`${table}.${column.name}`)
+      }
+    }
+  }
+  return { missing, checked }
+}
+for (const directory of ['.', 'cn']) {
+  test(`original ${directory} InnoDB AUTO_INCREMENT columns begin an index`, () => {
+    const sqlDirectory = path.resolve(path.dirname(script), '..', directory, 'src/main/resources/sql')
+    const missing = []
+    let checked = 0
+    for (const filename of readdirSync(sqlDirectory).filter(name => name.endsWith('.sql')).sort()) {
+      const result = unindexedAutoColumns(readFileSync(path.join(sqlDirectory, filename), 'utf8'))
+      checked += result.checked
+      missing.push(...result.missing.map(column => `${filename}:${column}`))
+    }
+    assert.ok(checked >= 80, `Expected all original native auto-column definitions, inspected ${checked}`)
+    assert.deepEqual(missing, [], 'Every original InnoDB AUTO_INCREMENT column must begin an index')
+  })
+}
+test('AUTO_INCREMENT structural scan rejects missing and non-leading keys', () => {
+  const result = unindexedAutoColumns(`
+    CREATE TABLE missing_key (id BIGINT AUTO_INCREMENT, note VARCHAR(50) COMMENT 'comma, ignored', KEY by_note(note)) ENGINE=InnoDB;
+    CREATE TABLE wrong_order (id BIGINT AUTO_INCREMENT, owner BIGINT, KEY by_owner(owner,id)) ENGINE=InnoDB;
+    CREATE TABLE comment_key (id BIGINT AUTO_INCREMENT COMMENT 'PRIMARY KEY') ENGINE=InnoDB;
+    CREATE TABLE comment_auto (id BIGINT COMMENT 'AUTO_INCREMENT') ENGINE=InnoDB;
+    CREATE TABLE inline_key (id BIGINT AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB;
+    CREATE TABLE table_key (id BIGINT AUTO_INCREMENT, PRIMARY KEY(id)) ENGINE=InnoDB;
+    CREATE TABLE named_key (id BIGINT AUTO_INCREMENT, amount DECIMAL(5,2), KEY by_id(id,amount)) ENGINE=InnoDB;
+  `)
+  assert.equal(result.checked, 6)
+  assert.deepEqual(result.missing, ['missing_key.id', 'wrong_order.id', 'comment_key.id'])
+})
