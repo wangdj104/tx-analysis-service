@@ -60,7 +60,12 @@ async function observeDeniedCommand(page, pathname, perform) {
 }
 
 async function selectElementOption(page, control, name) {
-  await control.click()
+  // Element Plus overlays readonly inputs with the selected-label placeholder.
+  // Its combobox key handler supports ArrowDown for both plain/filterable selects.
+  await expect(control).toBeVisible()
+  await expect(control).toBeEnabled()
+  await control.press('ArrowDown')
+  await expect(control).toHaveAttribute('aria-expanded', 'true')
   await page.getByRole('option', { name, exact: typeof name === 'string' }).click()
   await page.keyboard.press('Escape')
 }
