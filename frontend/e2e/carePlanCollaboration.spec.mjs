@@ -322,6 +322,11 @@ test('real collaboration: separate assignment/grants, private draft, SELF/ASSIST
   test.setTimeout(240000)
   const { owner, admin, open } = sessions
   const doctor = await open('doctor'), family = await open('family'), nurse = await open('nurse')
+  const logo = doctor.locator('.workspace-brand__mark img')
+  await expect(logo).toHaveAttribute('src', cn ? '/cn/logo.svg' : '/logo.svg')
+  await expect.poll(() => logo.evaluate(image => image.complete && image.naturalWidth > 0), {
+    message: 'The built-in workspace logo must decode at the deployed edition base',
+  }).toBe(true)
   await deny(family, `/care-plans?patientId=${ids.patientA}&queue=HISTORY`)
   await deny(nurse, `/care-plans?patientId=${ids.patientA}&queue=HISTORY`)
   await assignNurseThroughUi(admin, ids.patientA)

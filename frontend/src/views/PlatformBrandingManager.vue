@@ -23,12 +23,12 @@
 <script setup>
 import { computed, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
-import { platformBranding, applyPlatformBranding } from '@/utils/platformBranding';
+import { DEFAULT_BRANDING, platformBranding, applyPlatformBranding, resolvePlatformLogo } from '@/utils/platformBranding';
 import { savePlatformBranding } from '@/api/platformBranding';
-const form = reactive({ platformName: platformBranding.platformName, organizationName: platformBranding.organizationName, logo: platformBranding.logo, pageBackground: platformBranding.pageBackground, ownershipText: platformBranding.ownershipText });
+const form = reactive({ platformName: platformBranding.platformName, organizationName: platformBranding.organizationName, logo: platformBranding.configuredLogo, pageBackground: platformBranding.pageBackground, ownershipText: platformBranding.ownershipText });
 const saving = ref(false);
 const validColor = computed(() => /^#[0-9a-f]{6}$/i.test(form.pageBackground) ? form.pageBackground : '#f5f7fb');
-const safeLogo = computed(() => /^(\/|https:\/\/|data:image\/(png|jpeg|webp|svg\+xml);base64,)/i.test(form.logo || '') ? form.logo : '/logo.svg');
+const safeLogo = computed(() => /^(\/|https:\/\/|data:image\/(png|jpeg|webp|svg\+xml);base64,)/i.test(form.logo || '') ? resolvePlatformLogo(form.logo) : DEFAULT_BRANDING.logo);
 function selectLogo(file) { if (!file.raw || file.size > 1024 * 1024) { ElMessage.error('Choose an image no larger than 1 MB.'); return; } const reader = new FileReader(); reader.onload = () => { form.logo = String(reader.result); }; reader.readAsDataURL(file.raw); }
 async function save() { if (!form.platformName.trim() || !form.ownershipText.trim() || !/^#[0-9a-f]{6}$/i.test(form.pageBackground)) { ElMessage.error('Complete the required fields and use a six-digit hex background color.'); return; } saving.value = true; try { const result = await savePlatformBranding(form); applyPlatformBranding(result.data); ElMessage.success('Platform branding saved and applied.'); } finally { saving.value = false; } }
 </script>

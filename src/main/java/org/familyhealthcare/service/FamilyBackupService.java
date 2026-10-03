@@ -32,8 +32,8 @@ public class FamilyBackupService {
         JSONObject root=new JSONObject();root.put("format","family-health-backup");root.put("version",1);root.put("createdAt",LocalDateTime.now().toString());
         JSONObject tables=new JSONObject();root.put("tables",tables);List<String>warnings=new ArrayList<>();root.put("warnings",warnings);
         root.put("includedTables",TABLES);
-        warnings.add(text("This is a limited family-record archive, not a full platform backup. Consultations, care-journey records, doctor workspaces, access grants and system accounts are not included. Only database-stored attachment content is included.",
-                "此文件仅备份列明的家庭记录，并非全平台备份。不包含远程问诊、照护全流程、医生工作台、授权和系统账号；附件仅包含已存入数据库的内容。"));
+        warnings.add(text("This is a limited version-1 family-record archive, not a full platform backup. Consultations, care-journey records, doctor workspaces, collaborative care plans, revisions, actions, receipts, events, evidence, nurse assignments, notification outbox, commands, access grants and system accounts are not included. Only database-stored attachment content is included. Back up the complete database and attachment storage separately to preserve and restore collaboration history.",
+                "此文件为版本1限定家庭记录归档，并非全平台备份。不包含远程问诊、照护全流程、医生工作台、协作计划、版本、行动项、回执、事件、证据、护理分配、通知发件箱、命令、授权和系统账号；附件仅包含已存入数据库的内容。保留及恢复协作历史需另行备份完整数据库和附件存储。"));
         Set<String>present=presentTables();List<Object> recordIds=new ArrayList<>();
         for(String table:TABLES){if(!present.contains(table))continue;List<Map<String,Object>>rows;
             if(table.equals("medical_record_item")||table.equals("medical_record_attachment"))rows=selectIn(table,"record_id",recordIds);
