@@ -1,5 +1,5 @@
 <template>
-  <dialog ref="dialog" class="receipt-dialog" aria-labelledby="receipt-heading" @cancel.prevent="requestClose">
+  <dialog ref="dialog" class="receipt-dialog" aria-labelledby="receipt-heading" @cancel.prevent="requestClose" @keydown="containFocus">
     <h2 id="receipt-heading">{{ commandLabel }}</h2>
     <template v-if="state.editor && visibleAction">
       <p>{{ visibleAction.instruction }}</p><p>Recording account: {{ actorName }} (#{{ actorId }}). Account identity does not verify patient identity.</p>
@@ -57,6 +57,20 @@ async function confirmAbandon(){if(busy.value)return;abandonIntent.value=false;a
 function guardLeave(){if(!unresolved.value&&!busy.value)return true;return window.confirm('The submission may already exist. Leaving loses its retry key and does not cancel the server command. Reload server state before submitting again. Leave anyway?')}
 function contextChange(event){if(!guardLeave())event.preventDefault()}
 function beforeUnload(event){if(unresolved.value||busy.value){event.preventDefault();event.returnValue=''}}
+function containFocus(event){
+  if(event.key!=='Tab'||event.defaultPrevented||event.altKey||event.ctrlKey||event.metaKey)return
+  const root=dialog.value
+  if(!root?.open)return
+  // Recompute after every state change: retry/leave controls and disabled fieldsets
+  // change the available boundary while a command is pending or unresolved.
+  const controls=Array.from(root.querySelectorAll('button,input,select,textarea,a[href],[tabindex]')).filter(node=>node.tabIndex>=0&&!node.matches(':disabled')&&!node.closest('[hidden],[inert]')&&node.getClientRects().length>0&&window.getComputedStyle(node).visibility==='visible')
+  const first=controls[0],last=controls[controls.length-1],active=document.activeElement
+  if(!controls.length){event.preventDefault();root.focus();return}
+  if(!controls.includes(active)||(event.shiftKey?active===first:active===last)){
+    event.preventDefault()
+    ;(event.shiftKey?last:first).focus()
+  }
+}
 onMounted(async()=>{opener=document.activeElement;await nextTick();dialog.value?.showModal?.();window.addEventListener('beforeunload',beforeUnload);window.addEventListener('care-plan-before-context-change',contextChange)})
 onUnmounted(()=>{generation++;window.removeEventListener('beforeunload',beforeUnload);window.removeEventListener('care-plan-before-context-change',contextChange);dialog.value?.close?.();opener?.focus?.()})
 defineExpose({guardLeave,requestClose})
