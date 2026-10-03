@@ -1,6 +1,6 @@
 import { test as base, expect } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
-import { ids, language, appPath, login, api, command, assignNurse, grant, draft, publish, detail, assertNoOverflow, pageErrorCounter } from './helpers.mjs'
+import { ids, language, appPath, login, api, assertAccessDenied, command, assignNurse, grant, draft, publish, detail, assertNoOverflow, pageErrorCounter } from './helpers.mjs'
 
 // Each edition runs the same contract against its built Vue app and real Spring/MySQL.
 // Only explicitly named resilience tests intercept transport, after real commit.
@@ -55,10 +55,8 @@ async function observeDeniedCommand(page, pathname, perform) {
   const response = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === `/api${pathname}`)
   await perform()
   const result = await response
-  expect(result.status()).toBe(403)
   const json = await result.json()
-  expect(json.code).toBe(403)
-  expect(json.data == null, 'Denied UI command contains no clinical result').toBe(true)
+  assertAccessDenied({ status: result.status(), code: json.code, data: json.data })
 }
 
 async function selectElementOption(page, control, name) {
@@ -278,9 +276,7 @@ async function recordThroughUi(page, view, actionId, note, entryMode = 'ASSISTED
 
 async function deny(page, path, options = {}) {
   const result = await api(page, path, { ...options, allowed: [403], allowedCodes: [403] })
-  expect(result.status).toBe(403)
-  expect(result.code).toBe(403)
-  expect(result.data == null, 'Denied API response contains no clinical result').toBe(true)
+  assertAccessDenied(result)
 }
 
 async function assertCleared(page, title) {
