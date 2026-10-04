@@ -91,7 +91,29 @@ test('nurseNavigationDoesNotGrantDoctorAccess: even explicit doctor menu cannot 
 test('nurse workspace only calls HELP REVIEW care-plan queues, never clinical APIs',async t=>{const v=await fixture(t,'views/NurseWorkspace',{},server());assert.equal(v.calls.find(c=>c.url==='/care-plans').params.queue,'HELP');const clinicalCalls=v.calls.filter(c=>/doctor-workspace|clinical-workbench|care\/operations|care-journey/.test(c.url));assert.equal(clinicalCalls.length,0);assert.ok(findNode(v.root,'nurse-help'));await v.click('nurse-review');assert.equal(v.calls.filter(c=>c.url==='/care-plans').at(-1).params.queue,'REVIEW');assert.equal(findNode(v.root,'review-confirm-31'),undefined)})
 test('nurse follows up without confirming record and can only use server allowed assisted entry',async t=>{const v=await fixture(t,'ReceiptDialog',{action:{...action,allowedEntryModes:['ASSISTED']},planVersion:4,command:'followUp'},server());v.vm.form.note='Contacted synthetic patient';v.vm.form.kind='CONTACTED';await v.click('submit-receipt');assert.equal(posts(v)[0].url,'/care-plans/actions/31/follow-ups');assert.equal(posts(v)[0].data.kind,'CONTACTED');assert.equal(posts(v)[0].data.expectedVersion,4);assert.equal(posts(v).filter(c=>c.url.includes('/reviews')).length,0)})
 test('assignment revocation clears previously loaded task body',async t=>{let n=0;const v=await fixture(t,'PlanTaskList',{patientId:null,mode:'NURSE',queue:'HELP'},server({'/care-plans':()=>{if(++n===1)return {data:{items:[plan]}};throw Object.assign(new Error('revoked'),{response:{status:403}})}}));assert.match(textOf(v.root),/Synthetic plan/);await v.vm.reload();assert.equal(v.vm.state.items.length,0);assert.doesNotMatch(textOf(v.root),/Synthetic plan/)})
-test('admin assignments show consent remains separate and expiry requires explicit offset',async t=>{const v=await fixture(t,'NurseAssignments',{patientId:1},server());v.storage.set('userRoleCodes','["admin"]');await v.vm.initialize();assert.match(textOf(v.root),/patient.*authorization|患者.*授权/i);v.vm.form.nurseUserId=51;v.vm.form.expiresAt='2026-10-04T12:00';await v.vm.assign();assert.equal(posts(v).length,0);v.vm.form.expiresAt='2026-10-04T12:00:00+00:00';await v.vm.assign();assert.equal(posts(v)[0].url,'/care-nurse-assignments');assert.equal(posts(v).filter(c=>/grant/i.test(c.url)).length,0);assert.equal(posts(v)[0].data.expiresAt,'2026-10-04T12:00:00+00:00')})
+test('admin assignments show consent remains separate and expiry requires explicit offset', async t => {
+  t.mock.method(Date, 'now', () => Date.parse('2026-10-04T00:00:00Z'))
+  const v = await fixture(t, 'NurseAssignments', {patientId:1}, server())
+  v.storage.set('userRoleCodes', '["admin"]')
+  await v.vm.initialize()
+  assert.match(textOf(v.root), /patient.*authorization|患者.*授权/i)
+  v.vm.form.nurseUserId = 51
+
+  v.vm.form.expiresAt = '2026-10-04T12:00'
+  await v.vm.assign()
+  assert.equal(posts(v).length, 0, 'expiry without an explicit offset is rejected')
+
+  v.vm.form.expiresAt = '2026-10-03T12:00:00+00:00'
+  await v.vm.assign()
+  assert.equal(posts(v).length, 0, 'expired time with an explicit offset is rejected')
+
+  v.vm.form.expiresAt = '2026-10-04T12:00:00+00:00'
+  await v.vm.assign()
+  assert.equal(posts(v).length, 1, 'future expiry with an explicit offset submits one assignment')
+  assert.equal(posts(v)[0].url, '/care-nurse-assignments')
+  assert.equal(posts(v).filter(c => /grant/i.test(c.url)).length, 0)
+  assert.equal(posts(v)[0].data.expiresAt, '2026-10-04T12:00:00+00:00')
+})
 
 test('privacy nurse candidates require current patient ACTIVE assignment and never auto-create authorization',async t=>{const rows=[{id:8,patientId:1,nurseUserId:51,nurseName:'Current synthetic nurse',status:'ACTIVE',expiresAt:null},{id:9,patientId:1,nurseUserId:52,nurseName:'Expired synthetic nurse',status:'ACTIVE',expiresAt:'2000-01-01T00:00:00Z'},{id:10,patientId:1,nurseUserId:53,nurseName:'Revoked synthetic nurse',status:'REVOKED',expiresAt:null},{id:11,patientId:2,nurseUserId:54,nurseName:'Other synthetic nurse',status:'ACTIVE',expiresAt:null}];const v=await fixture(t,'views/CareJourneyManager',{},server({'/care-nurse-assignments':()=>({data:rows}),'/care-journey/access-grants':()=>({data:[]}),'/care-journey/clinicians':()=>({data:[]})}));assert.equal(typeof v.vm.loadNurseCandidates,'function','assigned-nurse loader exists');await v.vm.loadNurseCandidates();assert.deepEqual(v.vm.nurseCandidates.map(x=>x.nurseUserId),[51]);v.vm.grant.granteeRole='NURSE';v.vm.grant.granteeUserId=52;v.vm.grantModules=['CARE_PLAN'];await v.vm.createGrant();assert.equal(posts(v).length,0);v.vm.grant.granteeUserId=51;await v.vm.createGrant();assert.equal(posts(v)[0].url,'/care-journey/access-grants');assert.equal(posts(v)[0].data.visibleModules,'CARE_PLAN');assert.equal(posts(v).filter(c=>c.url==='/care-nurse-assignments').length,0)})
 
