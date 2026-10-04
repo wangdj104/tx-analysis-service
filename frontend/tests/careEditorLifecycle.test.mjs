@@ -1,3 +1,4 @@
+import { useFocusedCareSource } from '../src/composables/useFocusedCareSource.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
@@ -18,7 +19,7 @@ function setup(t, name, overrides = {}) {
       return { data: key === 'getCareContext' ? {} : [] }
     })
   } })
-  const bindings = { ref, reactive, computed, watch, onMounted() {}, onUnmounted: fn => unmount.push(fn),
+  const bindings = { useFocusedCareSource, ref, reactive, computed, watch, onMounted() {}, onUnmounted: fn => unmount.push(fn),
     useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }),
     useCurrentPatient: () => ({ currentPatientId: patient, currentPatientName: ref('Synthetic patient'), setPatientList() {} }),
     ElMessage: new Proxy({}, { get: (_, kind) => message => messages.push([kind, message]) }),

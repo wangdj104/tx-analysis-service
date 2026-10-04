@@ -1,13 +1,19 @@
 <template>
   <main class="journey-page">
-    <header class="journey-hero">
+    <header v-if="!focusedMode" class="journey-hero">
       <div><span>CONTINUOUS CARE</span><h1>Care journey</h1><p>Measurements, appointments, consultation, recovery, emergency information, specialty care, privacy, and operations in one traceable workspace.</p></div>
       <el-tag v-if="tab === 'consultation' && isDoctor" effect="plain">Consultation inbox</el-tag>
       <el-tag v-else effect="plain">Patient {{ currentPatientName || currentPatientId || 'not selected' }}</el-tag>
     </header>
 
-    <el-alert v-if="patientRequired && !currentPatientId" title="Select a patient from the workspace header before using this module." type="warning" show-icon :closable="false" />
-    <el-tabs v-model="tab" class="journey-tabs" @tab-change="syncTab">
+    <el-alert v-if="!focusedMode && patientRequired && !currentPatientId" title="Select a patient from the workspace header before using this module." type="warning" show-icon :closable="false" />
+    <section v-if="focusedMode" class="focused-source" aria-label="Linked measurement">
+      <h1>Linked measurement</h1><p v-if="sourceFocus.locator.value">Patient #{{ sourceFocus.locator.value.patientId }} · #{{ sourceFocus.locator.value.sourceId }}</p>
+      <p v-if="sourceFocus.state.loading" role="status">Checking source access…</p><p v-if="sourceFocus.state.error" role="alert">This linked record is restricted, unavailable, or its context changed.</p><button type="button" :disabled="sourceFocus.state.loading" @click="sourceFocus.reload">Recheck source</button>
+      <el-table :data="sourceFocus.state.record ? [sourceFocus.state.record] : []" max-height="440"><el-table-column prop="measured_at" label="Time" width="165"/><el-table-column prop="metric_type" label="Metric" width="110"/><el-table-column label="Value"><template #default="{row}">{{row.value_primary}}{{row.value_secondary!=null?'/'+row.value_secondary:''}} {{row.unit}}</template></el-table-column><el-table-column prop="status" label="Status" width="100"><template #default="{row}"><el-tag :type="row.status==='NORMAL'?'success':'danger'">{{row.status}}</el-tag></template></el-table-column></el-table>
+      <article v-for="note in sourceFocus.state.record?.annotations || []" :key="note.id"><p>{{note.doctor_name}} · {{note.created_at}}</p><p>{{note.annotation}}</p></article>
+    </section>
+    <el-tabs v-if="!focusedMode" v-model="tab" class="journey-tabs" @tab-change="syncTab">
       <el-tab-pane label="Measurements" name="measurements">
         <section class="panel-grid two">
           <el-card><template #header><b>Record a health measurement</b></template><el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top">
@@ -79,6 +85,7 @@
 </template>
 
 <script setup>
+import { useFocusedCareSource } from '@/composables/useFocusedCareSource'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -90,6 +97,8 @@ import request from '@/utils/request'
 import ConsultationWorkspace from '@/components/ConsultationWorkspace.vue'
 
 const route=useRoute(),router=useRouter(),{currentPatientId,currentPatientName}=useCurrentPatient()
+const sourceFocus=useFocusedCareSource(route,currentPatientId,(source,options)=>api.listMeasurements({patientId:source.patientId,measurementId:source.sourceId},options),'MEASUREMENT')
+const focusedMode=sourceFocus.attempted
 const roles=JSON.parse(localStorage.getItem('userRoleCodes')||'[]'),isDoctor=computed(()=>roles.includes('doctor')||roles.includes('admin'))
 const allowedTabs=['measurements','appointments','consultation','recovery','emergency','specialty','mental','privacy',...(isDoctor.value?['operations']:[])]
 const tab=ref(allowedTabs.includes(route.query.tab)?route.query.tab:'measurements'),busy=ref(false)
@@ -147,7 +156,7 @@ async function savePatientEditor(kind,readDraft,save,reset,refresh,message='Save
     if(current()&&JSON.stringify(readDraft())===draft&&(error.validation||error.message==='Select a patient first.'))ElMessage.warning(error.message)
   }finally{if(editorOperation===operation){editorOperation=null;busy.value=false}}
 }
-async function loadMeasurements(){await loadPatientData('measurements',id=>api.listMeasurements({patientId:id}),response=>{measurements.value=response.data||[]})}
+async function loadMeasurements(){if(focusedMode.value){await sourceFocus.reload();return;}await loadPatientData('measurements',id=>api.listMeasurements({patientId:id}),response=>{measurements.value=response.data||[]})}
 async function recordMeasurement(){await safely(async()=>{validate(measurement.measuredAt && Number(measurement.valuePrimary)>0, 'Enter a measurement time and a positive value.');if(measurement.metricType==='BP')validate(Number(measurement.valueSecondary)>0,'Enter a positive diastolic value.');await api.saveMeasurement({...measurement,patientId:pid()});await loadMeasurements()})}
 async function annotate(row){const {value}=await ElMessageBox.prompt('Add a clinician note to this exact trend point','Clinical annotation');await safely(async()=>{await api.annotateMeasurement(row.id,value);await loadMeasurements()})}
 async function loadAppointments(){await loadPatientData('appointments',id=>Promise.all([api.listAppointments(id),api.listVisits(id),api.listPrescriptions(id)]),responses=>{appointments.value=responses[0].data||[];visits.value=responses[1].data||[];prescriptions.value=responses[2].data||[]})}
@@ -304,7 +313,7 @@ async function cancelInboxAppointment(row){
   }catch{}finally{busy.value=false}
 }
 async function loadOperations(){await Promise.allSettled([loadAppointmentInbox(),(async()=>{operations.value=(await api.getOperationsReport({})).data})(),(async()=>{groups.value=(await api.listPatientGroups()).data||[]})()])}
-async function loadTab(){const current=tab.value;const loaders={measurements:loadMeasurements,appointments:loadAppointments,recovery:loadRecovery,specialty:loadSpecialty,emergency:loadEmergencyTab,mental:loadMental,privacy:loadGrants,operations:loadOperations};if(['appointments','operations','privacy'].includes(current)&&!clinicians.value.length){try{clinicians.value=(await api.listClinicians()).data||[]}catch{clinicians.value=[]}}try{if(loaders[current])await loaders[current]()}catch{}}
+async function loadTab(){if(focusedMode.value)return;const current=tab.value;const loaders={measurements:loadMeasurements,appointments:loadAppointments,recovery:loadRecovery,specialty:loadSpecialty,emergency:loadEmergencyTab,mental:loadMental,privacy:loadGrants,operations:loadOperations};if(['appointments','operations','privacy'].includes(current)&&!clinicians.value.length){try{clinicians.value=(await api.listClinicians()).data||[]}catch{clinicians.value=[]}}try{if(loaders[current])await loaders[current]()}catch{}}
 const mentalSeverityLabel=row=>({MINIMAL:'Below review threshold',MILD:'Mild',MODERATE:'Moderate',MODERATELY_SEVERE:'Moderately severe',SEVERE:'Severe',REVIEW_REQUIRED:'Further assessment suggested'})[row.severity]||row.severity||'—'
 function validate(valid,text){if(!valid){const error=new Error(text);error.validation=true;throw error}}
 async function loadSpecialty(){await loadPatientData('specialty',id=>Promise.all(['growth','vaccination','maternity'].map(type=>api.listSpecialty(type,id))),responses=>{['growth','vaccination','maternity'].forEach((type,index)=>{specialtyRows[type]=responses[index].data||[]})})}
@@ -329,7 +338,7 @@ watch(currentPatientId,()=>{
   measurement.measuredAt=now();mentalSchedule.nextDueAt=now();growth.recordDate=today();vaccine.plannedDate=today();maternity.recordDate=today()
   loadTab()
 },{flush:'sync'})
-watch(()=>route.query.tab,value=>{const next=allowedTabs.includes(value)?value:'measurements';if(tab.value!==next)tab.value=next;if(value&&value!==next){syncTab(next);return}loadTab()})
+watch([()=>route.query.tab,focusedMode],([value,focused],[,wasFocused])=>{if(focused||(wasFocused&&route.fullPath?.split('?')[0]!=='/care-journey'))return;const next=allowedTabs.includes(value)?value:'measurements';if(tab.value!==next)tab.value=next;if(value&&value!==next){syncTab(next);return}loadTab()})
 onMounted(()=>{window.addEventListener('auth-session-cleared',nurseAuthCleared);window.addEventListener('storage',nurseStorageChanged);if(route.query.tab&&!allowedTabs.includes(route.query.tab))syncTab(tab.value);else loadTab()})
 onUnmounted(()=>{nurseAuthCleared();window.removeEventListener('auth-session-cleared',nurseAuthCleared);window.removeEventListener('storage',nurseStorageChanged)})
 </script>
@@ -343,3 +352,5 @@ onUnmounted(()=>{nurseAuthCleared();window.removeEventListener('auth-session-cle
 
 .journey-page{max-width:1500px;margin:auto;padding:26px}.journey-hero{display:flex;justify-content:space-between;gap:24px;align-items:center;padding:28px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(120deg,var(--care-50),var(--paper));margin-bottom:22px}.journey-hero span{font-size:11px;letter-spacing:2px;color:var(--care-700);font-weight:700}.journey-hero h1{margin:8px 0;font-size:32px}.journey-hero p{margin:0;max-width:820px;color:var(--ink-500)}.journey-tabs{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:18px}.panel-grid{display:grid;gap:18px}.panel-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.panel-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}.section-card{margin-top:18px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.card-head,.message-compose,.inline{display:flex;align-items:center;justify-content:space-between;gap:12px}.realtime-state{display:inline-flex;align-items:center;gap:6px;margin-left:12px;color:var(--care-700);font-size:11px;font-weight:600}.realtime-state i{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 0 4px #31af7d20}.message-list{display:grid;gap:10px;max-height:360px;overflow:auto;scroll-behavior:smooth}.message-list article{padding:12px;border:1px solid var(--line);border-radius:12px}.message-list article span{float:right;color:var(--ink-500);font-size:12px}.message-list article p{margin:6px 0 0}.message-compose{margin-top:14px}.message-compose .el-input{flex:1}.media-room{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:18px;padding:12px;border-radius:14px;background:#173a36}.media-room video{width:100%;min-height:160px;max-height:320px;object-fit:cover;border-radius:10px;background:#173a36}.media-room p{color:#cbd5e1;padding:20px}.emergency-card{border-color:var(--danger-soft)}.emergency-card .el-input{margin:14px 0}.metric-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metric-cards article{padding:20px;border-radius:14px;background:var(--surface-subtle)}.metric-cards span,.metric-cards strong{display:block}.metric-cards strong{font-size:26px;margin-top:8px}.inline-form{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.inline-form .el-form-item{min-width:180px;margin-bottom:10px}pre{white-space:pre-wrap}.el-select,.el-date-editor{width:100%}@media(max-width:900px){.panel-grid.two,.panel-grid.three,.metric-cards{grid-template-columns:1fr 1fr}}@media(max-width:650px){.journey-page{padding:14px}.journey-hero{align-items:flex-start;flex-direction:column;padding:20px}.journey-tabs{padding:10px}.panel-grid.two,.panel-grid.three,.metric-cards,.form-grid{grid-template-columns:1fr}.message-compose{align-items:stretch;flex-direction:column}.inline{align-items:stretch;flex-direction:column}.media-room{grid-template-columns:1fr}}
 </style>
+
+<style scoped>.focused-source{min-width:0;overflow-wrap:anywhere}.focused-source button{min-height:44px;padding:10px 16px;font:inherit}.focused-source button:focus-visible{outline:3px solid var(--care-600)}</style>

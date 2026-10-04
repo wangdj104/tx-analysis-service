@@ -46,7 +46,7 @@
         </div></section>
       </el-tab-pane>
       <el-tab-pane label="照护计划" name="plans">
-        <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" :disabled="collaborationEditing" @change="loadPatientContext" /><CollaborationPlans :patient-id="selectedPatientId" :legacy-plans="plans" @editing="collaborationEditing=$event" /><h2>历史内部计划</h2><p>既有临床记录仍为内部记录，复制为协作草稿不会自动发布。</p><div class="plan-grid">
+        <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" :disabled="collaborationEditing" @change="loadPatientContext" /><router-link v-if="selectedPatientId" :to="`/care-plans/reports?patientId=${selectedPatientId}`" class="consultation-link" data-testid="doctor-execution-report">就诊准备 · 全部计划</router-link><CollaborationPlans :patient-id="selectedPatientId" :legacy-plans="plans" @editing="collaborationEditing=$event" /><h2>历史内部计划</h2><p>既有临床记录仍为内部记录，复制为协作草稿不会自动发布。</p><div class="plan-grid">
           <article v-for="plan in plans" :key="plan.id"><el-tag>历史内部计划 · {{ statusLabel(plan.status) }}</el-tag><h3>{{ plan.title }}</h3><p>{{ plan.instructions }}</p><small>{{ planTypeLabel(plan.planType) }} · 目标日期 {{ plan.targetDate || '持续执行' }}</small></article>
           <el-empty v-if="selectedPatientId && !plans.length" description="该患者暂无照护计划" />
         </div></section>

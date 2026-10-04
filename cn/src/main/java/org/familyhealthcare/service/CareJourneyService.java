@@ -31,23 +31,43 @@ public class CareJourneyService {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DataScopeHelper scope;
     @Autowired private NotificationAudienceService audience;
-    @Autowired private org.familyhealthcare.service.careplan.CarePlanAuthorizationService carePlanAuthorization;
+    @Autowired(required=false) private org.familyhealthcare.service.careplan.CarePlanAuthorizationService carePlanAuthorization;
 
     private static final Set<String> METRICS = new HashSet<>(Arrays.asList("BP","GLUCOSE","SPO2","WEIGHT","HEART_RATE","TEMPERATURE","CUSTOM"));
     private static final Set<String> ACCESS_LEVELS = new HashSet<>(Arrays.asList("READ","WRITE","PROXY"));
     private static final Set<String> CONSULT_MODES = new HashSet<>(Arrays.asList("TEXT","VOICE","VIDEO"));
 
     public List<Map<String,Object>> measurements(Long patientId, String metricType, LocalDateTime from, LocalDateTime to) {
-        requireRead(patientId, "MEASUREMENTS");
+        return measurements(patientId, metricType, from, to, null);
+    }
+
+    /** Exact report-source mode avoids a complete Patient or capped history read. */
+    public List<Map<String,Object>> measurements(Long patientId, String metricType, LocalDateTime from, LocalDateTime to, Long measurementId) {
+        if (measurementId != null) {
+            if (patientId == null || patientId <= 0 || measurementId <= 0 || metricType != null || from != null || to != null)
+                throw new IllegalArgumentException("Invalid source selector.");
+            requireMeasurementEvidence(patientId, measurementId);
+        } else requireRead(patientId, "MEASUREMENTS");
         StringBuilder sql = new StringBuilder("SELECT m.*,u.real_name AS recorder_name FROM health_measurement m LEFT JOIN sys_user u ON u.id=m.recorded_by WHERE m.patient_id=?");
         List<Object> args = new ArrayList<>(); args.add(patientId);
+        if (measurementId != null) { sql.append(" AND m.id=?"); args.add(measurementId); }
         if (metricType != null && !metricType.trim().isEmpty()) { sql.append(" AND m.metric_type=?"); args.add(metricType.trim().toUpperCase()); }
         if (from != null) { sql.append(" AND m.measured_at>=?"); args.add(from); }
         if (to != null) { sql.append(" AND m.measured_at<=?"); args.add(to); }
         sql.append(" ORDER BY m.measured_at DESC,m.id DESC LIMIT 1000");
         List<Map<String,Object>> rows = jdbc.queryForList(sql.toString(), args.toArray());
-        for (Map<String,Object> row : rows) row.put("annotations", jdbc.queryForList("SELECT a.*,u.real_name AS doctor_name FROM measurement_annotation a LEFT JOIN sys_user u ON u.id=a.doctor_user_id WHERE a.measurement_id=? ORDER BY a.created_at", row.get("id")));
+        for (Map<String,Object> row : rows) {
+            String annotationSql="SELECT a.*,u.real_name AS doctor_name FROM measurement_annotation a LEFT JOIN sys_user u ON u.id=a.doctor_user_id WHERE a.measurement_id=?";
+            row.put("annotations",measurementId==null
+                    ? jdbc.queryForList(annotationSql+" ORDER BY a.created_at",row.get("id"))
+                    : jdbc.queryForList(annotationSql+" AND a.patient_id=? ORDER BY a.created_at",row.get("id"),patientId));
+        }
+        if (measurementId != null) { requireMeasurementEvidence(patientId, measurementId); if (rows.size() != 1) throw new IllegalStateException("Access denied to source record."); }
         return rows;
+    }
+    private void requireMeasurementEvidence(long patientId, long id) {
+        if (carePlanAuthorization == null || !carePlanAuthorization.canReadEvidence(userId(),patientId,"MEASUREMENT",id))
+            throw new IllegalStateException("Access denied to source record.");
     }
 
     @Transactional

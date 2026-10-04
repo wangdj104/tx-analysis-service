@@ -131,3 +131,23 @@ export function reportExportMetadata(body, format, fileName, rowCount) {
     fromDate: rangeKnown ? body.fromDate : null, toDate: rangeKnown ? body.toDate : null, rangeKnown,
     timeZone: body.timeZone, language: body.language, generatedAt, rowCount, isEmpty: rowCount == null ? null : rowCount === 0 }
 }
+
+/** Calendar arithmetic only: the server computes timezone-aware instant boundaries. */
+export function defaultReportDates(timeZone, now = new Date()) {
+  if (timeZone !== 'UTC' && !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)+$/.test(timeZone)) throw new RangeError('Choose an IANA timezone.')
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now).map(part => [part.type, part.value]))
+  const toDate = `${parts.year}-${parts.month}-${parts.day}`
+  const date = new Date(`${toDate}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() - 29)
+  return { fromDate: date.toISOString().slice(0, 10), toDate }
+}
+
+/** Presentation only: compute elapsed seconds from the two immutable DTO instants. */
+export function reportReviewWaitSeconds(since, currentAsOf) {
+  const nanos = value => {
+    const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/.exec(value || '')
+    if (!match || !Number.isFinite(Date.parse(match[1] + 'Z'))) throw new RangeError('Invalid report instant.')
+    return BigInt(Date.parse(match[1] + 'Z')) * 1000000n + BigInt((match[2] || '').padEnd(9, '0'))
+  }
+  try { const elapsed = nanos(currentAsOf) - nanos(since); return elapsed < 0n ? null : Number(elapsed / 1000000000n) } catch { return null }
+}

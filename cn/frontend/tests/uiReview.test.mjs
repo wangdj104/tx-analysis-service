@@ -1,12 +1,16 @@
+import { useFocusedCareSource } from '../src/composables/useFocusedCareSource.js'
 import assert from 'node:assert/strict';
-import test, { beforeEach } from 'node:test';
+import test, { beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
-import { ref, reactive, computed, watch, nextTick } from 'vue';
+import { ref, reactive, computed, watch, nextTick, effectScope } from 'vue';
 import * as sessions from '../src/utils/authSession.js';
 import { localizePayload, localizeServerText } from '../src/utils/serverText.js';
 import * as navigation from '../src/utils/workspaceNavigation.js';
 import * as access from '../src/utils/workspaceAccess.js';
 import * as specialtyNavigation from '../src/utils/patientSpecialtyNavigation.js';
+
+const fixtureScopes=[];
+afterEach(() => { fixtureScopes.splice(0).forEach(scope => scope.stop()); });
 
 beforeEach(() => {
   const storage = new Map();
@@ -32,8 +36,8 @@ function setupSfc(file, bindings, returned) {
   const content = fs.readFileSync(new URL('../src/' + file, import.meta.url), 'utf8');
   const source = content.match(/<script setup>([\s\S]*?)<\/script>/)[1]
     .replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\r?$/gm, '');
-  const dependencies = {
-    console: { error() {} }, ref, reactive, computed, watch,
+  const dependencies = { useFocusedCareSource,
+    console: { error() {} }, ref, reactive, computed, watch, nextTick,
     platformBranding: reactive({ platformName: '澄心健康' }),
     onMounted() {}, onUnmounted() {}, provide() {},
     useMedicationNotifications: () => ({}),
@@ -46,14 +50,15 @@ function setupSfc(file, bindings, returned) {
     ...sessions, ...navigation, ...access, ...specialtyNavigation,
     clearPatientSpecialtyScope() {}, loadPatientSpecialtyScope: async () => ({ restrictedPaths: [], allowedPaths: [] }), ...bindings
   };
-  return new Function(...Object.keys(dependencies), source + '\nreturn {' + returned.join(',') + '}')(...Object.values(dependencies));
+  const scope=effectScope(); fixtureScopes.push(scope);
+  return scope.run(() => new Function(...Object.keys(dependencies), source + '\nreturn {' + returned.join(',') + '}')(...Object.values(dependencies)));
 }
 
 function info(id, roles = [], menus = ['/monitoring']) {
   return { code: 200, data: { user: { id, username: id }, roles: roles.map(roleCode => ({ roleCode, roleName: roleCode })), menus: menus.map((menuPath, index) => ({ id: index + 1, parentId: 0, menuPath, menuName: menuPath })) } };
 }
 
-function setupApp(getUserInfo, getPatientNames = async () => ({ code: 200, data: [] }), initialRoute = {}, ready = async () => {}) {
+function setupApp(getUserInfo, getPatientNames = async () => ({ code: 200, data: [] }), initialRoute = {}, ready = async () => {}, specialtyReader = async () => ({restrictedPaths:[],allowedPaths:[]})) {
   const route = reactive({ path: '/monitoring', query: {}, meta: {}, ...initialRoute });
   const patientList = ref([]);
   const redirects = [];
@@ -62,8 +67,8 @@ function setupApp(getUserInfo, getPatientNames = async () => ({ code: 200, data:
     useRouter: () => ({ resolve: path => { const url = new URL(path || '/', 'http://test'); return { path: url.pathname, query: Object.fromEntries(url.searchParams) }; }, replace: path => redirects.push(path), isReady: ready }),
     useMobile: () => ({ isMobile: ref(false) }),
     useCurrentPatient: () => ({ currentPatientId: ref(null), setPatientList: value => { patientList.value = value; } }),
-    getUserInfo, getPatientNames, ElMessage: { success() {}, info() {} }
-  }, ['loadUserMenus', 'resetNavState', 'userInfo', 'userMenus', 'appPatientList', 'navItems', 'menuLoadError', 'switchPatient', 'routerViewKey', 'currentPatientId']);
+    getUserInfo, getPatientNames, loadPatientSpecialtyScope: specialtyReader, ElMessage: { success() {}, info() {} }
+  }, ['loadUserMenus', 'resetNavState', 'userInfo', 'userMenus', 'appPatientList', 'navItems', 'menuLoadError', 'switchPatient', 'routerViewKey', 'currentPatientId', 'specialtyScope']);
   return { ...app, patientList, route, redirects };
 }
 
@@ -158,7 +163,7 @@ function setupRequestInterceptors() {
   const request = { interceptors: { request: { use: handler => { beforeRequest = handler; } }, response: { use: (success, failure) => { onResponse = success; onError = failure; } } } };
   const source = fs.readFileSync(new URL('../src/utils/request.js', import.meta.url), 'utf8')
     .replace(/^import.*$/gm, '').replace('export default request;', '');
-  const bindings = { console: { error() {} }, axios: { create: () => request }, ElMessage: { error() {} }, localizePayload, localizeServerText, ...sessions };
+  const bindings = { useFocusedCareSource, console: { error() {} }, axios: { create: () => request }, ElMessage: { error() {} }, localizePayload, localizeServerText, ...sessions };
   new Function(...Object.keys(bindings), source)(...Object.values(bindings));
   return { beforeRequest, onResponse, onError };
 }
@@ -428,3 +433,21 @@ test('App still redirects module-only care participants away from unrelated work
   assert.deepEqual(app.redirects, ['/monitoring']);
   assert.deepEqual(sessions.readPermissionCache().menuPaths, []);
 });
+
+for (const fullPath of ['/care-plans/reports?patientId=1','/care-journey?tab=measurements&patientId=1&measurementId=17','/medical-record?tab=list&patientId=1&recordId=18']) test(`menu refresh keeps exact narrow entry ${fullPath}`,async()=>{
+ sessions.saveAuthSession({token:'A',userId:'A'});const app=setupApp(async()=>info('A',['family'],[]),undefined,{path:fullPath.split('?')[0],fullPath});await app.loadUserMenus();assert.deepEqual(app.redirects,[]);assert.deepEqual(sessions.readPermissionCache().menuPaths,[])
+})
+test('explicit patient switching updates report URL to all plans and does not remount an old source locator',async()=>{
+ sessions.saveAuthSession({token:'A',userId:'A'});const report=setupApp(async()=>info('A',['family'],[]),undefined,{path:'/care-plans/reports',fullPath:'/care-plans/reports?patientId=1&planId=17'});report.currentPatientId.value=1;report.switchPatient(2);assert.deepEqual(report.redirects,['/care-plans/reports?patientId=2'])
+ const source=setupApp(async()=>info('A',['family'],[]),undefined,{path:'/medical-record',fullPath:'/medical-record?tab=list&patientId=1&recordId=18'});source.currentPatientId.value=1;const key=source.routerViewKey.value;source.switchPatient(2);assert.equal(source.routerViewKey.value,key)
+})
+
+test('entering a narrow route invalidates an already pending specialty bootstrap and leaving refreshes ordinary scope',async()=>{
+ sessions.saveAuthSession({token:'A',userId:'A'});const pending=deferred();let reads=0
+ const app=setupApp(async()=>info('A',['family'],[]),undefined,{path:'/monitoring',fullPath:'/monitoring'},undefined,()=>{reads++;return pending.promise})
+ app.route.fullPath='/care-plans/reports?patientId=1';await nextTick();pending.resolve({allowedPaths:['/dialysis'],restrictedPaths:[]});await nextTick();await nextTick();assert.equal(app.specialtyScope.value,null);const before=reads;app.route.fullPath='/monitoring';await nextTick();await nextTick();assert.equal(reads,before+1)
+})
+
+test('cold narrow source menu bootstrap cannot auto-select a different global patient and cancel its locator',async()=>{
+ sessions.saveAuthSession({token:'A',userId:'A'});const names=[{id:3,name:'Synthetic selector patient'}];const app=setupApp(async()=>info('A',['family'],[]),async()=>({code:200,data:names}),{path:'/medical-record',fullPath:'/medical-record?tab=list&patientId=1&recordId=18'});await app.loadUserMenus();assert.deepEqual(app.appPatientList.value,names);assert.deepEqual(app.patientList.value,[],'narrow bootstrap does not invoke the automatic shared-patient selector');app.route.fullPath='/care';await nextTick();assert.deepEqual(app.patientList.value,names)
+})

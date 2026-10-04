@@ -72,6 +72,9 @@ async function fixture(t, name, { timeline = [], enabled = true } = {}) {
     .replace(/from ['"]@\/utils\/carePlanTime['"]/g, `from '${timeUrl}'`))
   const patientUrl = moduleUrl(`import { ref } from '${vueUrl}'; export function useCurrentPatient() { return { currentPatientId: ref(1) } } // ${id}`)
   const elementPlusUrl = moduleUrl('export const ElMessage = { success() {}, warning() {} }; export const ElMessageBox = { prompt: async () => null }')
+  const reportDisplayUrl = new URL('../src/utils/careExecutionReport.js',import.meta.url).href
+  const reportApiCodeUrl = moduleUrl(source('api/careExecutionReport.js').replace(/import request from ['"]@\/utils\/request['"];?/g,`const request=(...args)=>globalThis.${slot}(...args)`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`).replace(/from ['"]@\/utils\/careExecutionReport['"]/g,`from '${reportDisplayUrl}'`))
+  const reportComposableUrl=moduleUrl(source('composables/useCareExecutionReport.js').replace(/from ['"]vue['"]/g,`from '${vueUrl}'`).replace(/from ['"]@\/api\/careExecutionReport['"]/g,`from '${reportApiCodeUrl}'`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`).replace(/from ['"]@\/utils\/careExecutionReport['"]/g,`from '${reportDisplayUrl}'`))
   const compiled = {}
   async function compile(componentName) {
     if (compiled[componentName]) return compiled[componentName]
@@ -92,10 +95,12 @@ async function fixture(t, name, { timeline = [], enabled = true } = {}) {
       .replace(/from ['"]@\/utils\/carePlanTime['"]/g, `from '${timeUrl}'`)
       .replace(/from ['"]element-plus['"]/g, `from '${elementPlusUrl}'`)
       .replace(/from ['"]@\/utils\/(workspaceAccess|familyHealth|timelineText)['"]/g, (_, utility) => `from '${new URL(`../src/utils/${utility}.js`, import.meta.url).href}'`)
+    code=code.replace(/from ['"]@\/composables\/useFocusedCareSource['"]/g,`from '${new URL('../src/composables/useFocusedCareSource.js',import.meta.url).href}'`)
+    code=code.replace(/from ['"]@\/composables\/useCareExecutionReport['"]/g,`from '${reportComposableUrl}'`).replace(/from ['"]@\/utils\/careExecutionReport['"]/g,`from '${reportDisplayUrl}'`)
     for (const match of code.matchAll(/from ['"](?:\.\/|@\/components\/care-plan\/)(\w+)\.vue['"]/g)) code = code.replace(match[0], `from '${await compile(match[1])}'`)
     return compiled[componentName] = moduleUrl(code)
   }
-  const node = (tag, text = '') => ({ tag, text, children: [], props: {}, parent: null, getAttribute(key) { return this.props[key] } })
+  const node = (tag, text = '') => ({ tag, text, children: [], props: {}, parent: null, style:{}, addEventListener(){}, removeEventListener(){}, get options(){return this.children}, getAttribute(key) { return this.props[key] } })
   const renderer = createRenderer({
     createElement: tag => node(tag), createText: text => node('#text', text), createComment: text => node('#comment', text),
     setText: (target, text) => { target.text = text }, setElementText: (target, text) => { target.text = text; target.children = [] },
@@ -115,6 +120,7 @@ async function fixture(t, name, { timeline = [], enabled = true } = {}) {
   const router = createRouter({ history: createMemoryHistory(appBase), routes: [
     { path: '/care', component: isDetail ? { render: () => h('p', { 'data-testid': 'care-destination' }, 'Care route') } : { render: () => h(component, { patientId: 1 }) } },
     { path: '/family-health', component },
+    { path: '/care-plans/reports', component: {render:()=>h('p',{'data-testid':'report-destination'},'Report route')} },
     { path: '/care-plans/:id(\\d+)', component: isDetail ? component : { render: () => h('p', { 'data-testid': 'plan-destination' }, 'Authorized plan route') } }
   ] })
   const root = node('root'), app = renderer.createApp({ render: () => h(RouterView) })
@@ -191,4 +197,8 @@ test(`return-to-care link stays under ${appBase} and participates in router guar
   removeGuard(); await click(link)
   assert.equal(view.router.currentRoute.value.path, '/care')
   assert.ok(nodes(view.root).some(node => node.props['data-testid'] === 'care-destination'))
+})
+
+for(const name of ['PlanTaskList','views/CarePlanDetailRoute'])test(`execution report entry from ${name} keeps patient, plan and ${appBase} base`,async t=>{
+ const view=await fixture(t,name);const id=name==='PlanTaskList'?'plan-execution-report-17':'detail-execution-report';const link=nodes(view.root).find(node=>node.props['data-testid']===id);assert.ok(link);assert.equal(link.props.href,`${appBase}care-plans/reports?patientId=1&planId=17`);await click(link);assert.equal(view.router.currentRoute.value.fullPath,'/care-plans/reports?patientId=1&planId=17')
 })

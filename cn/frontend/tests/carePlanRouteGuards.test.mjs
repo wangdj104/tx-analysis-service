@@ -174,3 +174,24 @@ test('a blocked detail owns the context acknowledgment without also prompting an
   assert.equal(view.contextChange().defaultPrevented,true);assert.equal(view.confirmations.length,0,'one blocked context does not stack native and inline acknowledgments');await flush();assert.ok(findNode(view.root,'confirm-detail-abandon'))
   detailPending.reject(new Error('Synthetic review response lost'));receiptPending.reject(new Error('Synthetic receipt response lost'));await Promise.all([detailCommand,receiptCommand]);assert.equal(posts(view).length,2)
 })
+
+import * as workspaceAccess from '../src/utils/workspaceAccess.js'
+function actualMainGuard(){
+ let guard,specialtyReads=0
+ const text=source('main.js'),body=text.slice(text.indexOf('router.beforeEach('),text.indexOf('app.use(router)'))
+ const deps={router:{beforeEach:value=>{guard=value}},localStorage:{getItem:key=>key==='token'?'synthetic':key==='userRoleCodes'?'["admin"]':'[]'},...workspaceAccess,loadPatientSpecialtyScope:async()=>{specialtyReads++;return{}},knownSpecialtyPath:()=>false,specialtyPathAllowed:()=>true}
+ new Function(...Object.keys(deps),body)(...Object.values(deps))
+ return{guard,get specialtyReads(){return specialtyReads}}
+}
+test('actual main guard permits exact cold report/source routes without full-patient specialty reads',async()=>{
+ const v=actualMainGuard()
+ for(const fullPath of ['/care-plans/reports?patientId=1','/care-journey?tab=measurements&patientId=1&measurementId=17','/medical-record?tab=list&patientId=1&recordId=18']){
+  const parsed=new URL(fullPath,'http://test');let destination='unset';await v.guard({path:parsed.pathname,fullPath,query:Object.fromEntries(parsed.searchParams)},{},value=>{destination=value});assert.equal(destination,undefined)
+ }assert.equal(v.specialtyReads,0)
+})
+test('actual main guard rejects malformed source locators before any specialty/bootstrap read, including admins',async()=>{
+ const v=actualMainGuard()
+ for(const fullPath of ['/medical-record?tab=list&patientId=1&recordId=18&extra=1','/care-journey?tab=measurements&patientId=1&measurementId=0','/medical-record?tab=list&patientId=1&recordId=18&patientId=2']){
+  const parsed=new URL(fullPath,'http://test');let destination;await v.guard({path:parsed.pathname,fullPath,query:Object.fromEntries(parsed.searchParams)},{},value=>{destination=value});assert.equal(destination,'/monitoring')
+ }assert.equal(v.specialtyReads,0)
+})

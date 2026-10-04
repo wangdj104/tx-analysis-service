@@ -1,3 +1,5 @@
+import { captureAuthSession, isAuthSessionCurrent } from '../src/utils/authSession.js'
+import { useFocusedCareSource } from '../src/composables/useFocusedCareSource.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
@@ -10,7 +12,7 @@ function setup(t, overrides = {}) {
   const script = source.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import.*$/gm, '')
   const patientId = ref(1), saves = [], messages = [], scope = effectScope(), readers = [], urls = [], revoked = [], unmount = [], pickers = []
   const api = { listRecords: async () => ({ code: 200, data: [] }), getAllItemNames: async () => ({ code: 200, data: [] }), uploadAndRecognize: async () => ({ code: 200, data: { items: [{ itemName: 'Synthetic A', resultValue: '42' }] } }), saveRecord: async (...data) => { saves.push(data); return { code: 200 } }, saveRecordsBatch: async (...data) => { saves.push(data); return { code: 200 } }, ...overrides.api }
-  const bindings = { ref, reactive, computed, watch, inject: (_key, fallback) => fallback, onMounted() {}, onUnmounted(callback) { unmount.push(callback) }, use() {},
+  const bindings = { captureAuthSession, isAuthSessionCurrent, useFocusedCareSource, ref, reactive, computed, watch, inject: (_key, fallback) => fallback, onMounted() {}, onUnmounted(callback) { unmount.push(callback) }, use() {},
     CanvasRenderer: {}, EchartsLineChart: {}, GridComponent: {}, TooltipComponent: {}, LegendComponent: {}, TitleComponent: {},
     useCurrentPatient: () => ({ currentPatientId: patientId }), useTableColumns: () => ({}), useMobile: () => ({ isMobile: ref(false) }), useRoute: () => ({ query: {}, path: '/medical-record' }), useRouter: () => ({ push: async () => {} }),
     localDateKey: () => '2026-10-02', readPermissionCache: () => ({}), canAccessWorkspace: () => true, dedupeRecognizedItems: value => value,

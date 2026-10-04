@@ -15,6 +15,7 @@ import i18n from '@/i18n';
 import { loadPlatformBranding } from '@/utils/platformBranding';
 import { initializeAppearance } from '@/utils/healthAppearance';
 import { knownSpecialtyPath, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
+import { isNarrowCareRoute, isLocatorAttempt, canAccessWorkspace } from '@/utils/workspaceAccess';
 import { loadPatientSpecialtyScope } from '@/utils/patientSpecialtyScope';
 
 function applyFavicon(href) {
@@ -42,6 +43,7 @@ const router = createRouter({
   routes: [
     { path: '/login', component: () => import('./views/Login.vue'), meta: { hideNav: true } },
     { path: '/', redirect: '/care' },
+    { path: '/care-plans/reports', component: () => import('./views/CareExecutionReportView.vue') },
     { path: '/care', component: () => import('./views/CareCenter.vue') },
     { path: '/clinical-workbench', component: () => import('./views/ClinicalWorkbench.vue') },
     { path: '/nurse-workspace', component: () => import('./views/NurseWorkspace.vue') },
@@ -112,7 +114,8 @@ router.beforeEach(async (to, from, next) => {
   if (to.path === '/doctor-workspace' && !roleCodes.includes('doctor') && !isAdmin) { next('/monitoring'); return; }
   if (to.path === '/nurse-workspace' && !roleCodes.includes('nurse')) { next('/monitoring'); return; }
   if (to.path === '/care-journey' && to.query.tab === 'operations' && !roleCodes.includes('doctor') && !isAdmin) { next('/monitoring'); return; }
-  const collaborationPath = /^\/care-plans\/[1-9]\d*$/.test(to.path) || to.path === '/nurse-workspace';
+  if (isLocatorAttempt(to.fullPath) && !canAccessWorkspace(to.fullPath, menuPaths, roleCodes)) { next('/monitoring'); return; }
+  const collaborationPath = isNarrowCareRoute(to.fullPath) || /^\/care-plans\/[1-9]\d*$/.test(to.path) || to.path === '/nurse-workspace';
   const basicCarePath = ['/care','/family-health','/medication','/bp-self-monitor','/medical-record','/settings/notifications','/care-journey','/monitoring'].includes(to.path);
   const allowed = collaborationPath || basicCarePath || isAdmin || medicationLegacyTabAllowed || menuPaths.includes(exactTarget) ||
     (!hasQuery && (menuPaths.includes(to.path) || menuPaths.some(path => path.startsWith(`${to.path}?`))));
@@ -121,6 +124,7 @@ router.beforeEach(async (to, from, next) => {
     next('/monitoring');
     return;
   }
+  if (isNarrowCareRoute(to.fullPath)) { next(); return; }
   const scope = await loadPatientSpecialtyScope();
   const restricted = knownSpecialtyPath(to.fullPath)
     || scope?.restrictedPaths?.some(path => path === to.fullPath || path === to.path);

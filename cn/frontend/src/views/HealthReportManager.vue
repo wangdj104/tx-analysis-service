@@ -14,7 +14,10 @@
         </div>
 
         <div class="content-panel">
-          <el-form :model="form" label-width="110px" ref="formRef" :rules="rules" :disabled="exporting || previewing">
+          <button class="execution-report-choice" type="button" :aria-expanded="showCareExecution" @click="showCareExecution=!showCareExecution">照护执行报告 · 当前事项CSV / 期间事件CSV</button>
+          <ExecutionReportPanel v-if="showCareExecution && currentPatientId" :patient-id="currentPatientId"/>
+          <p v-else-if="showCareExecution" role="status">请先选择患者</p>
+          <el-form v-if="!showCareExecution" :model="form" label-width="110px" ref="formRef" :rules="rules" :disabled="exporting || previewing">
             <el-row :gutter="16">
               <el-col :xs="24" :sm="8">
                 <el-form-item label="报告类型" prop="reportType">
@@ -65,12 +68,12 @@
             </el-form-item>
           </el-form>
 
-          <div v-if="previewHtml" style="margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
+          <div v-if="!showCareExecution && previewHtml" style="margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
             <div style="padding: 12px 16px; background: var(--surface-subtle); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
               <span style="font-weight: 600; color: var(--ink-800);">报告预览</span>
               <el-button type="primary" size="small" @click="handleExport" :disabled="exporting || previewing">下载</el-button>
             </div>
-            <iframe :srcdoc="previewHtml" class="report-preview-frame"></iframe>
+            <iframe sandbox="" title="Report preview" :srcdoc="previewHtml" class="report-preview-frame"></iframe>
           </div>
         </div>
       </div>
@@ -79,6 +82,7 @@
 </template>
 
 <script setup>
+import ExecutionReportPanel from '@/components/care-plan/ExecutionReportPanel.vue';
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Download, View } from '@element-plus/icons-vue';
@@ -95,6 +99,7 @@ echarts.use([CanvasRenderer, LineChart, BarChart, PieChart, GridComponent, Toolt
 
 const { currentPatientId } = useCurrentPatient();
 const { hasMenu, hasMenuName } = useMenuPermission();
+const showCareExecution = ref(false);
 const exporting = ref(false);
 const previewing = ref(false);
 const previewHtml = ref('');
@@ -394,3 +399,5 @@ function lineOption(dates = [], series = []) {
   }
 }
 </style>
+
+<style scoped>.execution-report-choice{min-height:44px;padding:10px 16px;margin-bottom:16px;max-width:100%;font:inherit;white-space:normal}.execution-report-choice:focus-visible{outline:3px solid var(--care-600)}</style>

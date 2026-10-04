@@ -10,6 +10,6 @@ export const saveDialysisSchedule = data => request({ url: '/family-health/dialy
 export const getInsights = patientId => request({ url: '/family-health/insights', params: { patientId } })
 export const getAlerts = patientId => request({ url: '/family-health/alerts', params: { patientId } })
 export const updateAlertStatus = (id, status, handlingNote) => request({ url: `/family-health/alerts/${id}/status`, method: 'put', data: { status, handlingNote } })
-export const getVisitSummary = patientId => request({ url: '/family-health/visit-summary', params: { patientId } })
+export const getVisitSummary = (patientId, options = {}) => request({ url: '/family-health/visit-summary', params: { patientId }, expectedAuth: options.expectedAuth, signal: options.signal, ...(options.expectedAuth ? { executionReport: true } : {}) })
 
 export const deleteEvent = id => request({ url: `/family-health/events/${id}`, method: 'delete' })

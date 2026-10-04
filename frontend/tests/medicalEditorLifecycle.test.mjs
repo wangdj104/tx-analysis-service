@@ -1,3 +1,5 @@
+import { captureAuthSession, isAuthSessionCurrent } from '../src/utils/authSession.js'
+import { useFocusedCareSource } from '../src/composables/useFocusedCareSource.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
@@ -27,7 +29,7 @@ function setup(t, overrides = {}) {
     listRecords: async () => { requests.push({ method: 'list' }); return ok([]) }, getAllItemNames: async () => ok([]),
     getRecord: async id => ok(record(id)), updateRecord: async (...payload) => { requests.push({ method: 'update', payload }); return ok() }, ...overrides.api
   }
-  const bindings = {
+  const bindings = { captureAuthSession, isAuthSessionCurrent, useFocusedCareSource,
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, inject: (_key, fallback) => fallback,
     onMounted() {}, onUnmounted: callback => callbacks.push(callback), use() {}, CanvasRenderer: {}, EchartsLineChart: {}, GridComponent: {}, TooltipComponent: {}, LegendComponent: {}, TitleComponent: {},
     useCurrentPatient: () => ({ currentPatientId: patientId }), useTableColumns: () => ({}), useMobile: () => ({ isMobile: Vue.ref(false) }), useRoute: () => ({ query: {}, path: '/medical-record' }), useRouter: () => ({ push: async () => {} }),

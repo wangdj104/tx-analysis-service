@@ -31,6 +31,9 @@ async function fixture(t, name, props, transport) {
   const apiModule=path=>dataModule(source(path).replace(/import request from ['"]@\/utils\/request['"];?/g,`const request=globalThis.${slot}`))
   const userUrl=apiModule('api/user.js'),careUrl=apiModule('api/care.js'),journeyUrl=apiModule('api/careJourney.js'),familyUrl=apiModule('api/familyHealth.js')
   const emptyUrl=dataModule(`export default {render(){return null}}`)
+  const reportDisplayUrl = new URL('../src/utils/careExecutionReport.js',import.meta.url).href
+  const reportApiCodeUrl = dataModule(source('api/careExecutionReport.js').replace(/import request from ['"]@\/utils\/request['"];?/g,`const request=(...args)=>globalThis.${slot}(...args)`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`).replace(/from ['"]@\/utils\/careExecutionReport['"]/g,`from '${reportDisplayUrl}'`))
+  const reportComposableUrl=dataModule(source('composables/useCareExecutionReport.js').replace(/from ['"]vue['"]/g,`from '${vueUrl}'`).replace(/from ['"]@\/api\/careExecutionReport['"]/g,`from '${reportApiCodeUrl}'`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`).replace(/from ['"]@\/utils\/careExecutionReport['"]/g,`from '${reportDisplayUrl}'`))
   const urls={}
   async function compile(componentName){
     if(urls[componentName])return urls[componentName]
@@ -44,6 +47,8 @@ async function fixture(t, name, props, transport) {
     code=code.replace(/from ['"]@\/api\/familyHealth['"]/g,`from '${familyUrl}'`).replace(/from ['"]@\/utils\/workspaceAccess['"]/g,`from '${new URL('../src/utils/workspaceAccess.js',import.meta.url).href}'`)
     code=code.replace(/from ['"]@\/api\/careJourney['"]/g,`from '${journeyUrl}'`).replace(/from ['"]@\/components\/ConsultationWorkspace\.vue['"]/g,`from '${emptyUrl}'`)
     code=code.replace(/from ['"]@\/api\/user(?:\.js)?['"]/g,`from '${userUrl}'`).replace(/from ['"]@\/api\/care['"]/g,`from '${careUrl}'`).replace(/from ['"]@\/composables\/useCurrentPatient['"]/g,`from '${patientUrl}'`).replace(/from ['"]element-plus['"]/g,`from '${epUrl}'`).replace(/from ['"]vue-router['"]/g,`from '${routerUrl}'`).replace(/import (\w+) from ['"]@\/assets\/[^'"]+['"]/g,(m,n)=>`const ${n}='synthetic-art'`).replace(/from ['"]@\/utils\/familyHealth['"]/g,`from '${new URL('../src/utils/familyHealth.js',import.meta.url).href}'`).replace(/from ['"]@\/utils\/timelineText['"]/g,`from '${new URL('../src/utils/timelineText.js',import.meta.url).href}'`)
+    code=code.replace(/from ['"]@\/composables\/useFocusedCareSource['"]/g,`from '${new URL('../src/composables/useFocusedCareSource.js',import.meta.url).href}'`)
+    code=code.replace(/from ['"]@\/composables\/useCareExecutionReport['"]/g,`from '${reportComposableUrl}'`).replace(/from ['"]@\/utils\/careExecutionReport['"]/g,`from '${reportDisplayUrl}'`)
     for(const match of code.matchAll(/from ['"]@\/components\/care-plan\/(\w+)\.vue['"]/g))code=code.replace(match[0],`from '${await compile(match[1])}'`)
     code=code.replace(/from ['"]@\/components\/(?:CareEntryDialog|FamilyBackupPanel)\.vue['"]/g,`from '${emptyUrl}'`)
     for(const match of code.matchAll(/from ['"]@\/components\/care-plan\/(\w+)\.vue['"]/g))code=code.replace(match[0],`from '${await compile(match[1])}'`)
@@ -53,7 +58,7 @@ async function fixture(t, name, props, transport) {
     for(const match of code.matchAll(/from ['"]\.\/(\w+)\.vue['"]/g))code=code.replace(match[0],`from '${await compile(match[1])}'`)
     urls[componentName]=dataModule(code);return urls[componentName]
   }
-  const node=(tag,text='')=>({tag,tagName:tag.toUpperCase(),text,children:[],props:{},parent:null,style:{},addEventListener(){},removeEventListener(){},getRootNode(){return {}},getAttribute(k){return this.props[k]},setAttribute(k,v){this.props[k]=v},removeAttribute(k){delete this.props[k]},get options(){return this.children}})
+  const node=(tag,text='')=>({tag,tagName:tag.toUpperCase(),text,children:[],props:{},parent:null,style:{},addEventListener(){},removeEventListener(){},get options(){return this.children},style:{},addEventListener(){},removeEventListener(){},getRootNode(){return {}},getAttribute(k){return this.props[k]},setAttribute(k,v){this.props[k]=v},removeAttribute(k){delete this.props[k]},get options(){return this.children}})
   const renderer=createRenderer({createElement:tag=>node(tag),createText:s=>node('#text',s),createComment:s=>node('#comment',s),setText:(n,s)=>{n.text=s},setElementText:(n,s)=>{n.text=s;n.children=[]},parentNode:n=>n.parent,nextSibling:n=>n.parent?.children[n.parent.children.indexOf(n)+1]||null,patchProp:(n,k,o,v)=>{n.props[k]=v;if(k==='value')n.value=v},insert:(n,p,a)=>{if(n.parent){const i=n.parent.children.indexOf(n);if(i>=0)n.parent.children.splice(i,1)}n.parent=p;const i=a?p.children.indexOf(a):-1;p.children.splice(i<0?p.children.length:i,0,n)},remove:n=>{if(n.parent)n.parent.children.splice(n.parent.children.indexOf(n),1)}})
   const root=node('root'),component=(await import(await compile(name))).default,events=[]
   let currentProps={...props,onSaved:data=>events.push(['saved',data]),onClosed:()=>events.push(['closed']),onChanged:data=>events.push(['changed',data]),onOpen:id=>events.push(['open',id]),onSubmitted:data=>events.push(['submitted',data])}

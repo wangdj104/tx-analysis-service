@@ -1,25 +1,29 @@
+import { captureAuthSession, isAuthSessionCurrent } from '../src/utils/authSession.js'
+import { useFocusedCareSource } from '../src/composables/useFocusedCareSource.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
 import { ref, reactive, computed, watch, nextTick, effectScope } from 'vue'
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
 const ok = data => ({ code: 200, data })
-function setup(t, api = {}) {
+function setup(t, api = {}, initialRoute = {}) {
   const source = fs.readFileSync(new URL('../src/views/MedicalRecordManager.vue', import.meta.url), 'utf8')
   const script = source.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import.*$/gm, '')
   const currentPatientId = ref(1), scope = effectScope(), unmounts = [], errors = [], infos = [], warnings = []
-  const deps = { ref, reactive, computed, watch, inject: (_key, fallback) => fallback,
-    onMounted() {}, onUnmounted: fn => unmounts.push(fn), use() {}, CanvasRenderer: {}, EchartsLineChart: {}, GridComponent: {}, TooltipComponent: {}, LegendComponent: {}, TitleComponent: {},
-    useCurrentPatient: () => ({ currentPatientId }), useTableColumns: () => ({}), useMobile: () => ({ isMobile: ref(false) }), useRoute: () => ({ query: {}, path: '/medical-record' }), useRouter: () => ({ push: async () => {} }),
+  const route = reactive({ query: {}, path: '/medical-record', ...initialRoute }), mounted=[]
+  const deps = { captureAuthSession, isAuthSessionCurrent, useFocusedCareSource, ref, reactive, computed, watch, inject: (_key, fallback) => fallback,
+    onMounted:fn=>mounted.push(fn), onUnmounted: fn => unmounts.push(fn), use() {}, CanvasRenderer: {}, EchartsLineChart: {}, GridComponent: {}, TooltipComponent: {}, LegendComponent: {}, TitleComponent: {},
+    useCurrentPatient: () => ({ currentPatientId }), useTableColumns: () => ({}), useMobile: () => ({ isMobile: ref(false) }), useRoute: () => route, useRouter: () => ({ push: async () => {} }),
     localDateKey: () => '2026-10-02', readPermissionCache: () => ({}), canAccessWorkspace: () => true, dedupeRecognizedItems: value => value,
     isImageFile: () => false, compressImageFile: async value => value, formatFileSize: String,
-    ElMessage: { error: value => errors.push(value), info: value => infos.push(value), warning: value => warnings.push(value) }, window: { removeEventListener() {} }, URL: { revokeObjectURL() {} },
+    ElMessage: { error: value => errors.push(value), info: value => infos.push(value), warning: value => warnings.push(value) }, window: { addEventListener() {}, removeEventListener() {} }, URL: { revokeObjectURL() {} },
+    getPatientNames: async () => ok([]),
     api: { listRecords: async () => ok([]), getAllItemNames: async () => ok([]), ...api }
   }
-  const view = scope.run(() => new Function(...Object.keys(deps), script + '\nreturn { filterForm, trendForm, trendData, trendLoading, loadTrend, allItemNames, loadItemNames }')(...Object.values(deps)))
+  const view = scope.run(() => new Function(...Object.keys(deps), script + '\nreturn { filterForm, trendForm, trendData, trendLoading, loadTrend, allItemNames, loadItemNames, currentRecord, detailDialogVisible, viewDetail, sourceFocus, focusedMode, records, loadRecords }')(...Object.values(deps)))
   const leave = () => { unmounts.splice(0).forEach(fn => fn()); scope.stop() }
   t.after(leave)
-  return { ...view, currentPatientId, errors, infos, warnings, leave }
+  return { ...view, currentPatientId, errors, infos, warnings, leave, route, start(){mounted.forEach(fn=>fn())} }
 }
 
 // The local trend patient and indicator own a query independently of the global patient selector.
@@ -120,4 +124,20 @@ test('current item names retain defaults, deduplicate stored names, and remain s
   assert.equal(view.allItemNames.value.filter(name => name === 'Synthetic Z').length, 1)
   assert.ok(view.allItemNames.value.includes('PTH'))
   assert.deepEqual(view.allItemNames.value, [...view.allItemNames.value].sort((a, b) => a.localeCompare(b, 'zh')))
+})
+
+function sourceSession(){const storage=new Map([['token','source-session'],['userId','7']]);globalThis.localStorage={getItem:key=>storage.get(key)};globalThis.window=new EventTarget()}
+test('actual medical page cold locator loads only exact detail, never broad items, list or names',async t=>{
+ sourceSession();const calls=[];const view=setup(t,{getRecord:async(...args)=>{calls.push(['detail',...args]);return ok({id:17,patientId:2,items:[],attachments:[]})},listRecords:async()=>{calls.push(['list']);return ok([])},getAllItemNames:async()=>{calls.push(['items']);return ok([])}},{fullPath:'/medical-record?tab=list&patientId=2&recordId=17',query:{tab:'list',patientId:'2',recordId:'17'}})
+ view.start();await nextTick();await nextTick();assert.equal(view.currentRecord.value.patientId,2);assert.deepEqual(calls.map(c=>c[0]),['detail']);assert.equal(calls[0][1],17);assert.equal(calls[0][2],2)
+})
+test('an ordinary detail response cannot overwrite a new focused source after warm navigation',async t=>{
+ sourceSession();const pending=deferred();const view=setup(t,{getRecord:async(id,patient)=>patient?ok({id,patientId:patient}):pending.promise});const old=view.viewDetail({id:99});view.route.fullPath='/medical-record?tab=list&patientId=2&recordId=17';await nextTick();await nextTick();assert.equal(view.currentRecord.value.id,17);pending.resolve(ok({id:99,patientId:1}));await old;assert.equal(view.currentRecord.value.id,17)
+})
+test('leaving focused medical mode restores ordinary independent filters and bootstrap reads',async t=>{
+ sourceSession();const calls=[];const view=setup(t,{getRecord:async()=>ok({id:17,patientId:2}),listRecords:async params=>{calls.push(['list',params]);return ok([])},getAllItemNames:async id=>{calls.push(['items',id]);return ok([])}},{fullPath:'/medical-record?tab=list&patientId=2&recordId=17',query:{tab:'list',patientId:'2',recordId:'17'}});await nextTick();view.filterForm.patientId=5;view.route.fullPath='/medical-record?tab=list';await nextTick();assert.equal(view.filterForm.patientId,5);assert.ok(calls.some(c=>c[0]==='list'&&c[1].patientId===5));assert.ok(calls.some(c=>c[0]==='items'))
+})
+
+test('leaving a focused medical page for another workspace never starts a broad fallback read',async t=>{
+ sourceSession();const calls=[];const view=setup(t,{getRecord:async()=>ok({id:17,patientId:2}),listRecords:async()=>{calls.push('list');return ok([])},getAllItemNames:async()=>{calls.push('items');return ok([])}},{fullPath:'/medical-record?tab=list&patientId=2&recordId=17',query:{tab:'list',patientId:'2',recordId:'17'}});await nextTick();view.route.fullPath='/care';await nextTick();assert.deepEqual(calls,[])
 })

@@ -102,7 +102,7 @@ import OnboardingGuide from '@/components/OnboardingGuide.vue';
 import { logout, getUserInfo } from '@/api/auth';
 import { normalizeWorkspaceMenus, getFallbackWorkspaceMenus } from '@/utils/workspaceNavigation';
 import { getAuthSessionKey, saveAuthSession, captureAuthSession, isAuthSessionCurrent, clearPermissionCache, savePermissionCache, readPermissionCache } from '@/utils/authSession';
-import { DEFAULT_WORKSPACE_TABS, canAccessWorkspace, resolveWorkspaceEntry } from '@/utils/workspaceAccess';
+import { DEFAULT_WORKSPACE_TABS, canAccessWorkspace, resolveWorkspaceEntry, isNarrowCareRoute, parseReportRoute } from '@/utils/workspaceAccess';
 import { getCarePlanCapabilities } from '@/api/carePlan';
 import { getPatientNames } from '@/api/patient';
 import { filterSpecialtyMenus, knownSpecialtyPath, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
@@ -133,7 +133,7 @@ async function refreshSpecialtyScope() {
   const epoch = ++specialtyEpoch;
   const patientId = currentPatientId.value;
   specialtyScope.value = null;
-  if (!localStorage.getItem('token') || route.meta.hideNav) return;
+  if (!localStorage.getItem('token') || route.meta.hideNav || isNarrowCareRoute(route.fullPath)) return;
   const scope = await loadPatientSpecialtyScope(patientId);
   if (epoch !== specialtyEpoch || patientId !== currentPatientId.value) return;
   specialtyScope.value = scope;
@@ -620,7 +620,8 @@ async function loadPatientList() {
     if (epoch !== patientRequestEpoch || !isAuthSessionCurrent(session) || identity !== localStorage.getItem('userId')) return;
     if (res.code === 200) {
       appPatientList.value = res.data || [];
-      setPatientList(appPatientList.value);
+      // A deep locator owns its patient; names bootstrap must not change that context.
+      if (!isNarrowCareRoute(route.fullPath)) setPatientList(appPatientList.value);
 
     }
   } catch (e) {
@@ -634,6 +635,9 @@ function switchPatient(id) {
   if (currentPatientId.value === id) return;
   const event=new Event('care-plan-before-context-change',{cancelable:true});window.dispatchEvent(event);if(event.defaultPrevented)return;
   currentPatientId.value = id;
+  // Invalidate report work at the accepted selection boundary, before Router can
+  // coalesce a same-tick A→B→A replacement back to the already-current URL.
+  window.dispatchEvent(new Event('care-report-selection-changed'));
   if (id) {
     const patient = appPatientList.value.find(p => p.id === id);
     ElMessage.success(`已切换到${patient?.patientName || patient?.name || '患者'}。`);
@@ -641,7 +645,8 @@ function switchPatient(id) {
     ElMessage.info('正在显示全部患者。');
   }
   // CareCenter watches the patient itself; preserve its selected tab and filters.
-  if (route.path !== '/care') {
+  if (parseReportRoute(route.fullPath)) router.replace(id ? `/care-plans/reports?patientId=${id}` : '/care');
+  if (route.path !== '/care' && !isNarrowCareRoute(route.fullPath)) {
     routerViewKey.value = getAuthSessionKey() + '-' + (id || 'all') + '-' + Date.now();
   }
 }
@@ -679,7 +684,8 @@ async function submitPasswordChange() {
   }
 }
 
-watch(currentPatientId, refreshSpecialtyScope, { immediate: true });
+watch(() => isNarrowCareRoute(route.fullPath), (narrow, previous) => { if (!narrow && previous) setPatientList(appPatientList.value); }, { flush: 'sync' });
+watch([currentPatientId, () => route.fullPath], refreshSpecialtyScope, { immediate: true, flush: 'sync' });
 
 watch(
   () => route.path,

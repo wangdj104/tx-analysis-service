@@ -15,7 +15,7 @@ export const recognizeBase64 = (base64Image, recordType) =>
 
 export const listRecords = (params) => request({ url: '/medical-record/list', method: 'get', params });
 
-export const getRecord = (id) => request({ url: `/medical-record/${id}`, method: 'get' });
+export const getRecord = (id, patientId, options = {}) => request({ url: `/medical-record/${id}`, method: 'get', ...(patientId != null ? { params: { patientId }, expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {}) });
 
 export const saveRecord = (record, items, attachments) =>
   request({ url: '/medical-record/save', method: 'post', data: { record, items, attachments } });

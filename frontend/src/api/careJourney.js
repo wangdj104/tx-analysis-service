@@ -1,7 +1,7 @@
 import request from '@/utils/request'
 
 const base = '/care-journey'
-export const listMeasurements = params => request({ url: `${base}/measurements`, params })
+export const listMeasurements = (params, options = {}) => request({ url: `${base}/measurements`, params, ...(params.measurementId != null ? { expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {}) })
 export const saveMeasurement = data => request({ url: `${base}/measurements`, method: 'post', data })
 export const annotateMeasurement = (id, annotation) => request({ url: `${base}/measurements/${id}/annotations`, method: 'post', data: { annotation } })
 export const listAccessGrants = patientId => request({ url: `${base}/access-grants`, params: { patientId } })

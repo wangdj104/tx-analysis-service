@@ -14,7 +14,10 @@
         </div>
 
         <div class="content-panel">
-          <el-form :model="form" label-width="110px" ref="formRef" :rules="rules">
+          <button class="execution-report-choice" type="button" :aria-expanded="showCareExecution" @click="showCareExecution=!showCareExecution">Care execution report · Current actions CSV / Period events CSV</button>
+          <ExecutionReportPanel v-if="showCareExecution && currentPatientId" :patient-id="currentPatientId"/>
+          <p v-else-if="showCareExecution" role="status">Select a patient first</p>
+          <el-form v-if="!showCareExecution" :model="form" label-width="110px" ref="formRef" :rules="rules">
             <el-form-item label="datatype" prop="dataType">
               <el-select v-model="form.dataType" style="width: 100%">
                 <el-option v-for="opt in dataTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -59,6 +62,7 @@
 </template>
 
 <script setup>
+import ExecutionReportPanel from '@/components/care-plan/ExecutionReportPanel.vue';
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Download } from '@element-plus/icons-vue';
@@ -68,6 +72,7 @@ import { useMenuPermission } from '@/composables/useMenuPermission';
 
 const { currentPatientId } = useCurrentPatient();
 const { hasMenu, hasMenuName } = useMenuPermission();
+const showCareExecution = ref(false);
 const exporting = ref(false);
 const formRef = ref(null);
 
@@ -155,3 +160,5 @@ async function handleExport() {
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>
+
+<style scoped>.execution-report-choice{min-height:44px;padding:10px 16px;margin-bottom:16px;max-width:100%;font:inherit;white-space:normal}.execution-report-choice:focus-visible{outline:3px solid var(--care-600)}</style>

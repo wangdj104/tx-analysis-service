@@ -19,7 +19,17 @@ public class CareJourneyController {
     @Autowired private CareJourneyService service;
     @Autowired private ConsultationService consultationService;
 
-    @GetMapping("/measurements") public Result<List<Map<String,Object>>> measurements(@RequestParam Long patientId,@RequestParam(required=false)String metricType,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE_TIME)LocalDateTime from,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE_TIME)LocalDateTime to){return Result.ok(service.measurements(patientId,metricType,from,to));}
+    @GetMapping("/measurements") public Result<List<Map<String,Object>>> measurements(@RequestParam Long patientId,@RequestParam(required=false)String metricType,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE_TIME)LocalDateTime from,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE_TIME)LocalDateTime to,javax.servlet.http.HttpServletRequest request){
+        if (!request.getParameterMap().containsKey("measurementId")) return Result.ok(service.measurements(patientId,metricType,from,to));
+        if (request.getParameterMap().size()!=2 || !request.getParameterMap().containsKey("patientId")) throw new IllegalArgumentException("Invalid source selector.");
+        long sourceId=sourceId(request,"measurementId"); sourceId(request,"patientId");
+        return Result.ok(service.measurements(patientId,null,null,null,sourceId));
+    }
+    private static long sourceId(javax.servlet.http.HttpServletRequest request,String key){
+        String[] values=request.getParameterValues(key);
+        if(values==null||values.length!=1||!values[0].matches("[1-9][0-9]*"))throw new IllegalArgumentException("Invalid source selector.");
+        try{return Long.parseLong(values[0]);}catch(NumberFormatException invalid){throw new IllegalArgumentException("Invalid source selector.");}
+    }
     @PostMapping("/measurements") public Result<Map<String,Object>> saveMeasurement(@RequestBody Map<String,Object> body){return Result.ok(service.saveMeasurement(body));}
     @PostMapping("/measurements/{id}/annotations") public Result<Map<String,Object>> annotate(@PathVariable Long id,@RequestBody Map<String,String>body){return Result.ok(service.annotateMeasurement(id,body.get("annotation")));}
 

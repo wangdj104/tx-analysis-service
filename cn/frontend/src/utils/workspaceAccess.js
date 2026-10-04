@@ -1,3 +1,30 @@
+// These routes permit an authenticated attempt; the source/report API owns authorization.
+function positiveId(value) { return /^[1-9]\d*$/.test(value || '') && Number.isSafeInteger(Number(value)) ? Number(value) : null }
+function exactQuery(fullPath, path, required, optional = []) {
+  if (typeof fullPath !== 'string' || fullPath.includes('#') || fullPath.split('?')[0] !== path || fullPath.split('?').length !== 2) return null
+  const query = new URLSearchParams(fullPath.split('?')[1]), keys = [...query.keys()]
+  return new Set(keys).size === keys.length && required.every(key => keys.includes(key)) && keys.every(key => [...required, ...optional].includes(key)) ? query : null
+}
+export function parseReportRoute(fullPath) {
+  const query = exactQuery(fullPath, '/care-plans/reports', ['patientId'], ['planId'])
+  if (!query) return null
+  const patientId = positiveId(query.get('patientId')), planId = query.has('planId') ? positiveId(query.get('planId')) : null
+  return patientId && (!query.has('planId') || planId) ? { patientId, planId } : null
+}
+export function parseEvidenceRoute(fullPath) {
+  for (const [path, tab, key, sourceType] of [['/care-journey', 'measurements', 'measurementId', 'MEASUREMENT'], ['/medical-record', 'list', 'recordId', 'MEDICAL_RECORD']]) {
+    const query = exactQuery(fullPath, path, ['tab', 'patientId', key])
+    if (!query || query.get('tab') !== tab) continue
+    const patientId = positiveId(query.get('patientId')), sourceId = positiveId(query.get(key))
+    if (patientId && sourceId) return { patientId, sourceId, sourceType }
+  }
+  return null
+}
+export function isNarrowCareRoute(fullPath) { return !!(parseReportRoute(fullPath) || parseEvidenceRoute(fullPath)) }
+export function isLocatorAttempt(fullPath) {
+  const path = fullPath.split(/[?#]/, 1)[0], query = new URLSearchParams(fullPath.split('?')[1] || '')
+  return path === '/care-plans/reports' || (['/care-journey', '/medical-record'].includes(path) && ['measurementId', 'recordId'].some(key => query.has(key)))
+}
 export const DEFAULT_WORKSPACE_TABS = {
   '/dialysis': 'data',
   '/medical-record': 'list',
@@ -8,6 +35,7 @@ export const DEFAULT_WORKSPACE_TABS = {
 
 /** navigation and routeguardtotaluse: emptyPermissiontableshowUnknown or Noneauthorize, not tableshowmanagementmember.  */
 export function canAccessWorkspace(fullPath, menuPaths = [], roleCodes = []) {
+  if (isLocatorAttempt(fullPath)) return isNarrowCareRoute(fullPath);
   const path = fullPath.split(/[?#]/, 1)[0];
   if (path === '/doctor-workspace' && !roleCodes.includes('doctor') && !roleCodes.includes('admin')) return false;
   if (path === '/nurse-workspace') return roleCodes.includes('nurse') && fullPath === path;

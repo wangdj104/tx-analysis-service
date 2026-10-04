@@ -1,6 +1,7 @@
 <template>
   <el-container class="module-page medical-record-manager">
-    <el-main class="main-content">
+    <section v-if="focusedMode" class="focused-source"><h1>关联病历记录</h1><p v-if="sourceFocus.locator.value">患者 #{{sourceFocus.locator.value.patientId}} · #{{sourceFocus.locator.value.sourceId}}</p><p v-if="sourceFocus.state.loading" role="status">正在检查来源权限…</p><p v-if="sourceFocus.state.error" role="alert">关联记录受限、不可用或上下文已变化。</p><button type="button" :disabled="sourceFocus.state.loading" @click="sourceFocus.reload">重新检查来源</button><button v-if="sourceFocus.state.record" type="button" @click="detailDialogVisible=true">打开记录详情</button></section>
+    <el-main v-if="!focusedMode" class="main-content">
       <div class="page-inner">
         <div class="page-header">
           <div class="top-bar record-heading">
@@ -752,13 +753,14 @@
 </template>
 
 <script setup>
+import { useFocusedCareSource } from '@/composables/useFocusedCareSource';
 import { localDateKey } from '@/utils/familyHealth';
 import { dedupeRecognizedItems } from '@/utils/medicalRecordItems';
 import recordsCareSmall from '@/assets/illustrations/records-care-small.webp';
 import recordsCare from '@/assets/illustrations/records-care.webp';
 import { ref, reactive, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { readPermissionCache } from '@/utils/authSession';
+import { captureAuthSession, isAuthSessionCurrent, readPermissionCache } from '@/utils/authSession';
 import { canAccessWorkspace } from '@/utils/workspaceAccess';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { UploadFilled, Loading, Search, Upload, Setting, Camera, Picture, Document } from '@element-plus/icons-vue';
@@ -1230,6 +1232,12 @@ function addRecognizedItem() {
   });
 }
 
+const sourceFocus=useFocusedCareSource(route,currentPatientId,(source,options)=>api.getRecord(source.sourceId,source.patientId,options),'MEDICAL_RECORD');
+const focusedMode=sourceFocus.attempted;
+watch(()=>sourceFocus.state.record,record=>{currentRecord.value=record;detailDialogVisible.value=!!record;},{flush:'sync'});
+let detailReadEpoch=0
+watch(focusedMode,()=>{detailReadEpoch++;recordListRequest++;records.value=[];itemNamesRequest++;allItemNames.value=[];currentRecord.value=null;detailDialogVisible.value=false;uploadDialogVisible.value=false;editDialogVisible.value=false;if(!focusedMode.value&&route.fullPath?.split('?')[0]==='/medical-record'){loadRecords();loadItemNames();loadPatientList()}},{flush:'sync'});
+
 function dedupeRecognizedItemsLocal() {
   const rec = currentRecognizeRecord.value;
   const before = rec.items.length;
@@ -1250,6 +1258,7 @@ onUnmounted(() => {
 });
 
 async function loadRecords() {
+  if (focusedMode.value) return;
   if (recordListDisposed) return;
   const request = ++recordListRequest;
   const params = { ...filterForm };
@@ -1315,6 +1324,7 @@ async function loadTrend() {
 }
 
 async function loadItemNames() {
+  if (focusedMode.value) return;
   if (medicalReadDisposed) return;
   const request = ++itemNamesRequest, patientId = currentPatientId.value;
   const isCurrent = () => !medicalReadDisposed && request === itemNamesRequest && patientId === currentPatientId.value;
@@ -1348,6 +1358,7 @@ async function loadItemNames() {
 }
 
 async function loadPatientList() {
+  if (focusedMode.value) return;
   try {
     const res = await getPatientNames();
     if (res.code === 200) {
@@ -1670,15 +1681,16 @@ async function saveRecognizedRecord() {
 }
 
 async function viewDetail(row) {
+  if(focusedMode.value)return;
+  const epoch=++detailReadEpoch,auth=captureAuthSession(),actor=localStorage.getItem('userId');
+  const owns=()=>!medicalReadDisposed&&!focusedMode.value&&epoch===detailReadEpoch&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId');
   try {
     const res = await api.getRecord(row.id);
-    if (res.code === 200) {
+    if (owns() && res.code === 200) {
       currentRecord.value = res.data;
-      detailDialogVisible.value = true;
+      if(owns())detailDialogVisible.value = true;
     }
-  } catch (e) {
-    ElMessage.error('详情加载失败：' + e.message);
-  }
+  } catch { if(owns())ElMessage.error('无法加载记录详情'); }
 }
 
 async function deleteRecord(row) {
@@ -2092,3 +2104,5 @@ watch(currentPatientId, (newVal, oldVal) => {
 }
 
 </style>
+
+<style scoped>.focused-source{padding:24px;min-width:0;overflow-wrap:anywhere}.focused-source button{min-height:44px;padding:10px 16px;margin:8px;font:inherit}.focused-source button:focus-visible{outline:3px solid var(--care-600)}</style>

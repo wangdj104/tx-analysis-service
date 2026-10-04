@@ -33,6 +33,9 @@ import java.time.LocalDateTime;
 public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, MedicalRecord>
         implements MedicalRecordService {
 
+    @Autowired(required=false)
+    private org.familyhealthcare.service.careplan.CarePlanAuthorizationService carePlanAuthorization;
+
     @Autowired
     private MedicalRecordItemMapper itemMapper;
 
@@ -125,6 +128,24 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
             record.setAttachments(attachments);
         }
         return record;
+    }
+
+    @Override
+    public MedicalRecord getRecordWithDetails(Long id, Long patientId) {
+        if (patientId == null) return getRecordWithDetails(id);
+        if (patientId <= 0 || id == null || id <= 0) throw new IllegalArgumentException("Invalid source selector.");
+        requireRecordEvidence(patientId,id);
+        MedicalRecord record = baseMapper.selectOne(new QueryWrapper<MedicalRecord>().eq("id",id).eq("patient_id",patientId));
+        if (record == null) throw new IllegalStateException("Access denied to source record.");
+        record.setItems(itemMapper.selectList(new QueryWrapper<MedicalRecordItem>().eq("record_id",id)));
+        record.setAttachments(attachmentMapper.selectList(new QueryWrapper<MedicalRecordAttachment>().eq("record_id",id)));
+        requireRecordEvidence(patientId,id);
+        return record;
+    }
+    private void requireRecordEvidence(long patientId,long id) {
+        Long actor = CurrentUserUtil.getCurrentUserId();
+        if (actor == null || carePlanAuthorization == null || !carePlanAuthorization.canReadEvidence(actor,patientId,"MEDICAL_RECORD",id))
+            throw new IllegalStateException("Access denied to source record.");
     }
 
     @Override
@@ -239,6 +260,7 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
         if (patientId == null) {
             return getAllItemNames();
         }
+        dataScopeHelper.requirePatientAccess(patientId, "MEDICAL", false);
         return itemMapper.selectDistinctItemNamesByPatientId(patientId);
     }
 

@@ -18,6 +18,7 @@ function setup(t, kind) {
   const patientId = ref(1), scope = effectScope(), route = reactive({ path: '/family-health', query: { tab: 'today' } })
   let timerId = 0
   const window = {
+    addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name),
     setInterval(fn, ms) { const id = ++timerId; timers.set(id, { fn, ms }); return id },
     clearInterval(id) { timers.delete(id) }
   }

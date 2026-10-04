@@ -1,11 +1,12 @@
+import { useFocusedCareSource } from '../src/composables/useFocusedCareSource.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
 import { computed, reactive, ref, watch, nextTick, effectScope } from 'vue'
 
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
-function setup(t, overrides = {}, roles = [], initialTab = 'measurements') {
-  const patient = ref(10), route = reactive({ query: { tab: initialTab } }), warnings = [], storage = new Map([['userRoleCodes', JSON.stringify(roles)], ['userId', '8']])
+function setup(t, overrides = {}, roles = [], initialTab = 'measurements', initialRoute = {}) {
+  const patient = ref(10), route = reactive({ query: { tab: initialTab }, ...initialRoute }), warnings = [], storage = new Map([['userRoleCodes', JSON.stringify(roles)], ['userId', '8']])
   const api = {
     listClinicians: async () => ({ data: [] }), listMeasurements: async () => ({ data: [] }), listMentalAssessments: async () => ({ data: [] }), listMentalSchedules: async () => ({ data: [] }),
     listAppointments: async () => ({ data: [] }), listVisits: async () => ({ data: [] }), listPrescriptions: async () => ({ data: [] }), listEmergencies: async () => ({ data: [] }),
@@ -13,8 +14,8 @@ function setup(t, overrides = {}, roles = [], initialTab = 'measurements') {
   }
   const content = fs.readFileSync(new URL('../src/views/CareJourneyManager.vue', import.meta.url), 'utf8')
   const source = content.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
-  const successes = [], unmounted = []
-  const deps = {
+  const successes = [], unmounted = [], mounted = []
+  const deps = { useFocusedCareSource,
     captureAuthSession: () => ({ token: storage.get('token') || null, revision: 0 }),
     isAuthSessionCurrent: session => !!session?.token && session.token === (storage.get('token') || null) && session.revision === 0,
     AUTH_STORAGE_KEYS: ['token','userId','username','realName'],
@@ -22,11 +23,13 @@ function setup(t, overrides = {}, roles = [], initialTab = 'measurements') {
     listNurseAssignments: async () => ({ data: [] }),
     request: async () => { throw new Error('Care-plan commands are outside this legacy fixture') },
     window: new EventTarget(),
-    computed, reactive, ref, watch, onMounted() {}, onUnmounted: callback => unmounted.push(callback), useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }), useCurrentPatient: () => ({ currentPatientId: patient, currentPatientName: ref('Patient') }), ElMessage: { success: message => successes.push(message), warning: message => warnings.push(message) }, ElMessageBox: { confirm: async () => {} }, api, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }, navigator: { geolocation: null } }
-  const scope = effectScope(), exposed = ['loadMeasurements','measurements','measurement','recordMeasurement','loadEmergencyCard','emergencyCard','loadEmergencyEvents','emergencyEvents','openEmergency','selectedEmergency','sos','loadMental','mentalSchedules','disableMentalSchedule','mental','mentalAnswers','submitMental','mentalSchedule','scheduleMental','loadTab','busy','tab','saveSpecial','specialtyRows','schedule','createSchedule','appointmentInbox','loadAppointmentInbox','cancelInboxAppointment','completeInboxAppointment','syncTab','grant','grantModules','clinicians','createGrant']
+    computed, reactive, ref, watch, onMounted:callback=>mounted.push(callback), onUnmounted: callback => unmounted.push(callback), useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }), useCurrentPatient: () => ({ currentPatientId: patient, currentPatientName: ref('Patient') }), ElMessage: { success: message => successes.push(message), warning: message => warnings.push(message) }, ElMessageBox: { confirm: async () => {} }, api, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }, navigator: { geolocation: null } }
+  const previousWindow=globalThis.window,previousStorage=globalThis.localStorage
+  if(initialRoute.fullPath){storage.set('token','synthetic-source');globalThis.window=deps.window;globalThis.localStorage=deps.localStorage}
+  const scope = effectScope(), exposed = ['sourceFocus','focusedMode','loadMeasurements','measurements','measurement','recordMeasurement','loadEmergencyCard','emergencyCard','loadEmergencyEvents','emergencyEvents','openEmergency','selectedEmergency','sos','loadMental','mentalSchedules','disableMentalSchedule','mental','mentalAnswers','submitMental','mentalSchedule','scheduleMental','loadTab','busy','tab','saveSpecial','specialtyRows','schedule','createSchedule','appointmentInbox','loadAppointmentInbox','cancelInboxAppointment','completeInboxAppointment','syncTab','grant','grantModules','clinicians','createGrant']
   const view = scope.run(() => new Function(...Object.keys(deps), source + '\nreturn {' + exposed.map(name => `${name}: typeof ${name} === 'undefined' ? undefined : ${name}`).join(',') + '}')(...Object.values(deps)))
-  t.after(() => { unmounted.splice(0).forEach(callback => callback()); scope.stop() })
-  return { ...view, patient, route, warnings, successes, storage }
+  t.after(() => { unmounted.splice(0).forEach(callback => callback()); scope.stop();if(initialRoute.fullPath){globalThis.window=previousWindow;globalThis.localStorage=previousStorage} })
+  return { ...view, patient, route, warnings, successes, storage, start(){mounted.forEach(callback=>callback())} }
 }
 
 test('a failed clinician directory does not block independent patient tabs', async t => {
@@ -253,4 +256,20 @@ test('returning to a patient does not revive an abandoned emergency detail', asy
   view.patient.value = 10; await nextTick()
   pending.resolve({ data: { id: 1, patient_id: 10 } }); await request
   assert.equal(view.selectedEmergency.value, null)
+})
+
+const sourceRoute={path:'/care-journey',fullPath:'/care-journey?tab=measurements&patientId=10&measurementId=17',query:{tab:'measurements',patientId:'10',measurementId:'17'}}
+const flushSource=async()=>{for(let i=0;i<6;i++)await nextTick()}
+test('cold measurement locator restores the ordinary same-tab list exactly once without source history bootstrap',async t=>{
+ const calls=[],v=setup(t,{listMeasurements:async params=>{calls.push(params);return{data:[{id:params.measurementId||88,patient_id:params.patientId}]}}},[],'measurements',sourceRoute);v.start();await flushSource();assert.deepEqual(calls,[{patientId:10,measurementId:17}]);assert.equal(v.sourceFocus.state.record.id,17);assert.deepEqual(v.measurements.value,[])
+ v.route.fullPath='/care-journey?tab=measurements';v.route.query={tab:'measurements'};await flushSource();assert.deepEqual(calls,[{patientId:10,measurementId:17},{patientId:10}]);assert.equal(v.measurements.value[0].id,88)
+})
+test('ordinary measurement page enters exact source mode and leaves to another workspace without a broad fallback',async t=>{
+ const calls=[],v=setup(t,{listMeasurements:async params=>{calls.push(params);return{data:[{id:params.measurementId||88,patient_id:params.patientId}]}}},[],'measurements',{path:'/care-journey',fullPath:'/care-journey?tab=measurements',query:{tab:'measurements'}});v.start();await flushSource();Object.assign(v.route,sourceRoute);await flushSource();assert.deepEqual(calls,[{patientId:10},{patientId:10,measurementId:17}]);v.route.fullPath='/care';v.route.path='/care';v.route.query={};await flushSource();assert.equal(calls.length,2)
+})
+for(const outcome of ['missing','wrong ID','wrong patient','denied'])test(`actual measurement locator isolates ${outcome} without broad fallback`,async t=>{
+ const calls=[],v=setup(t,{listMeasurements:async params=>{calls.push(params);if(outcome==='denied')throw{code:403};return{data:outcome==='missing'?[]:[{id:outcome==='wrong ID'?18:17,patient_id:outcome==='wrong patient'?11:10}]}}},[],'measurements',sourceRoute);v.start();await flushSource();assert.equal(v.sourceFocus.state.record,null);assert.equal(v.sourceFocus.state.error,true);assert.deepEqual(v.measurements.value,[]);assert.deepEqual(calls,[{patientId:10,measurementId:17}])
+})
+test('actual measurement recheck after revocation removes its formerly authorized source and never loads a broad list',async t=>{
+ let revoked=false;const calls=[],v=setup(t,{listMeasurements:async params=>{calls.push(params);if(revoked)throw{code:403};return{data:[{id:17,patient_id:10}]}}},[],'measurements',sourceRoute);v.start();await flushSource();assert.equal(v.sourceFocus.state.record.id,17);revoked=true;const recheck=v.sourceFocus.reload();assert.equal(v.sourceFocus.state.record,null);await recheck;assert.equal(v.sourceFocus.state.error,true);assert.deepEqual(calls,[{patientId:10,measurementId:17},{patientId:10,measurementId:17}])
 })

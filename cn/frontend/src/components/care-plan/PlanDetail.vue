@@ -3,6 +3,7 @@
     <p v-if="state.opening || loading" role="status">正在加载获授权的计划…</p><p v-if="message" role="status" class="feedback">{{ message }}</p>
     <template v-if="enabled && state.plan">
       <header><div><span>协作计划 · 版本 {{ state.plan.revisionNo }} · {{ lifecycleLabel(state.plan.lifecycle) }}</span><h2>{{ state.plan.title }}</h2></div><button type="button" data-testid="reload-detail" :disabled="busy" @click="requestReload">重新加载服务器状态</button></header>
+      <router-link v-if="state.plan.revisionStatus!=='DRAFT'" :to="`/care-plans/reports?patientId=${state.plan.patientId}&planId=${planId}`" class="execution-report-entry" data-testid="detail-execution-report">此计划执行报告</router-link>
       <p class="instructions">{{ state.plan.instructions }}</p><p v-if="state.plan.revisionStatus==='DRAFT'" class="notice">私有临床草稿，尚未向患者或照护协作者发布。</p>
       <label v-if="revisions.length">版本历史 <select :value="historyRevisionId || ''" @change="selectHistory($event.target.value)"><option value="">当前已发布版本</option><option v-for="revision in revisions" :key="revision.id" :value="revision.id">版本 {{ revision.revisionNo }} · {{ revisionLabel(revision.status) }} · {{ displayTime(revision.publishedAt || revision.createdAt) }}</option></select></label><button v-if="revisionCursor" type="button" :disabled="busy" @click="loadRevisions(revisionCursor)">更多版本</button>
       <p v-if="historical" class="notice">历史快照，回执仍属于此版本。查看历史也需要当前权限。</p>
@@ -91,5 +92,7 @@ onUnmounted(()=>{generation++;historyGeneration++;controller?.abort();window.rem
 defineExpose({requestLeave})
 </script>
 <style scoped>
+.execution-report-entry{display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:10px 14px;max-width:100%;overflow-wrap:anywhere}
+
 .care-plan-detail{min-width:0;color:var(--ink-800)}header,.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}h2,h3{margin:8px 0;overflow-wrap:anywhere}p,li{line-height:1.6;overflow-wrap:anywhere}.instructions{white-space:pre-wrap}.action-card,.notice,.event-list article{padding:16px;border:1px solid var(--line);border-radius:12px;margin:16px 0}.notice{background:var(--care-50)}.event-list article{background:var(--surface-subtle);border-left:3px solid var(--care-600)}.feedback{padding:12px;background:var(--surface-subtle)}label{display:grid;gap:6px;margin:12px 0;font-weight:600}select,textarea{width:100%;box-sizing:border-box;min-height:44px;min-width:0;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink-800);font:inherit}button{min-height:44px;max-width:100%;padding:10px 14px;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800);font:inherit;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.controls{justify-content:flex-start}a{color:var(--care-700)}@media(max-width:600px){.controls button{width:100%}.action-card,.notice{padding:12px}header>div{width:100%;min-width:0}}
 </style>

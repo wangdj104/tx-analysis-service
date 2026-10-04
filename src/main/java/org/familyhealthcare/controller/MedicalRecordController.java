@@ -248,9 +248,13 @@ public class MedicalRecordController {
 
     @GetMapping("/{id}")
     @ApiOperation("based onIDqueryrecordDetails")
-    public Result<MedicalRecord> getById(@PathVariable Long id) {
-        MedicalRecord record = medicalRecordService.getRecordWithDetails(id);
-        return Result.ok(record);
+    public Result<MedicalRecord> getById(@PathVariable String id, javax.servlet.http.HttpServletRequest request) {
+        if (!request.getParameterMap().containsKey("patientId")) return Result.ok(medicalRecordService.getRecordWithDetails(Long.valueOf(id)));
+        String[] patients=request.getParameterValues("patientId");
+        if(request.getParameterMap().size()!=1||patients.length!=1||!patients[0].matches("[1-9][0-9]*")||!id.matches("[1-9][0-9]*"))
+            throw new IllegalArgumentException("Invalid source selector.");
+        try{return Result.ok(medicalRecordService.getRecordWithDetails(Long.valueOf(id),Long.valueOf(patients[0])));}
+        catch(NumberFormatException invalid){throw new IllegalArgumentException("Invalid source selector.");}
     }
 
     @PostMapping("/{id}/review")

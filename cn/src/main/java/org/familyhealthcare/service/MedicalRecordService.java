@@ -28,6 +28,7 @@ public interface MedicalRecordService extends IService<MedicalRecord> {
      * based onIDqueryrecord (containExamination item details)
      */
     MedicalRecord getRecordWithDetails(Long id);
+    MedicalRecord getRecordWithDetails(Long id, Long patientId);
 
     /**
      * queryRecord List

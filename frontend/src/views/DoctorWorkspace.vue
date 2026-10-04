@@ -46,7 +46,7 @@
         </div></section>
       </el-tab-pane>
       <el-tab-pane label="Care plans" name="plans">
-        <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" :disabled="collaborationEditing" @change="loadPatientContext" /><CollaborationPlans :patient-id="selectedPatientId" :legacy-plans="plans" @editing="collaborationEditing=$event" /><h2>Historical internal plans</h2><p>These existing clinician records remain internal. Copying to a collaboration draft does not publish them.</p><div class="plan-grid">
+        <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" :disabled="collaborationEditing" @change="loadPatientContext" /><router-link v-if="selectedPatientId" :to="`/care-plans/reports?patientId=${selectedPatientId}`" class="consultation-link" data-testid="doctor-execution-report">Visit preparation · all plans</router-link><CollaborationPlans :patient-id="selectedPatientId" :legacy-plans="plans" @editing="collaborationEditing=$event" /><h2>Historical internal plans</h2><p>These existing clinician records remain internal. Copying to a collaboration draft does not publish them.</p><div class="plan-grid">
           <article v-for="plan in plans" :key="plan.id"><el-tag>Historical internal plan · {{ plan.status }}</el-tag><h3>{{ plan.title }}</h3><p>{{ plan.instructions }}</p><small>{{ plan.planType }} · Target {{ plan.targetDate || 'ongoing' }}</small></article>
           <el-empty v-if="selectedPatientId && !plans.length" description="No care plans for this patient" />
         </div></section>

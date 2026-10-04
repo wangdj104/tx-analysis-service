@@ -34,17 +34,18 @@
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('summary')" label="就诊摘要" name="summary">
           <div class="toolbar"><el-button :loading="summaryLoading" @click="loadSummary">生成 / 刷新摘要</el-button><el-button :disabled="!summary" @click="printSummary">打印 / 保存 PDF</el-button></div>
-          <article v-if="summary" ref="summaryElement" class="visit-summary">
+          <div ref="summaryElement"><article v-if="summary" class="visit-summary">
             <h2>{{summary.patient?.name}} · 就诊摘要</h2><p>生成时间：{{summary.generatedAt}}</p><p>既往病史：{{summary.patient?.medicalHistory || '未填写'}}</p>
             <p>医院：{{summary.target?.hospitalName || '未填写'}}；主管医生：{{summary.target?.doctorName || '未填写'}}</p><p>紧急联系人：{{summary.target?.emergencyContact || summary.patient?.emergencyContact || '未填写'}} {{summary.target?.emergencyPhone || summary.patient?.emergencyPhone}}</p>
             <p>血压目标：{{summary.target?.systolicMin || '—'}}–{{summary.target?.systolicMax || '—'}} / {{summary.target?.diastolicMin || '—'}}–{{summary.target?.diastolicMax || '—'}} mmHg</p>
             <h3>当前用药</h3><table><thead><tr><th>药品</th><th>剂量说明</th></tr></thead><tbody><tr v-for="m in summary.medications" :key="m.id"><td>{{m.drugName}}</td><td>{{m.defaultDosage || '遵医嘱服用'}}</td></tr></tbody></table><p v-if="!summary.medications?.length">暂无用药记录</p>
             <h3>近期测量（最多 30 条）</h3><table><thead><tr><th>时间</th><th>血压（mmHg）</th><th>血糖</th></tr></thead><tbody><tr v-for="r in summary.recentMeasurements" :key="r.id"><td>{{r.recordDate}} {{r.recordTime}}</td><td>{{r.systolicBp ?? '—'}} / {{r.diastolicBp ?? '—'}}</td><td>{{r.bloodGlucose ?? '—'}} {{r.bgUnit}}</td></tr></tbody></table>
             <h3>未解决告警（最多 30 条）</h3><ul><li v-for="a in summary.unresolvedAlerts" :key="a.id">{{a.triggeredAt}} {{a.alertTitle}}：{{a.triggeredValue}} {{a.handlingNote}}</li></ul><p v-if="!summary.unresolvedAlerts?.length">暂无未解决告警</p>
-            <h3>准备咨询医生的问题</h3><ul><li v-for="q in summary.questions||[]" :key="q.id"><b>{{q.title}}</b><p>{{q.details?.description}}</p><p v-if="q.details?.answer">医生答复：{{q.details.answer}}</p><p v-if="q.details?.followUp">后续事项：{{q.details.followUp}}</p></li></ul>
+            <h3>准备咨询医生的问题</h3><ul><li v-for="q in summary.questions||[]" :key="q.id"><b>{{q.title}}</b><p>{{q.details?.description}}</p><p v-if="q.details?.answer">记录的答复：{{q.details.answer}}</p><p v-if="q.details?.followUp">后续事项：{{q.details.followUp}}</p></li></ul>
             <h3>近期症状跟踪</h3><ul><li v-for="s in summary.careSymptoms||[]" :key="s.id">{{s.eventAt}} {{s.title}}，自评分 {{s.details?.severity}}/10，持续 {{s.details?.duration || '未填写'}}；{{s.details?.response}}</li></ul>
             <h3>近期健康事件（最多 30 条）</h3><ul><li v-for="e in localizedSummaryEvents" :key="`${e.sourceType}-${e.id}`">{{e.eventDate}} {{e.title}}：{{e.summary}}</li></ul><p>{{summary.disclaimer}}</p>
           </article><el-empty v-else description="生成摘要，为下次就诊准备近期记录"/>
+          <ExecutionReportPanel ref="reportPanel" :patient-id="patientId"/></div>
         </el-tab-pane>
       </el-tabs>
     </template>
@@ -53,11 +54,12 @@
   </main>
 </template>
 <script setup>
-import {ref,reactive,computed,watch,onMounted,onUnmounted,inject} from 'vue'
+import {ref,reactive,computed,watch,onMounted,onUnmounted,inject,nextTick} from 'vue'
 import {ElMessage,ElMessageBox} from 'element-plus'
 import {useCurrentPatient} from '@/composables/useCurrentPatient'
 import {useRoute,useRouter} from 'vue-router'
-import {readPermissionCache} from '@/utils/authSession'
+import ExecutionReportPanel from '@/components/care-plan/ExecutionReportPanel.vue'
+import {captureAuthSession,isAuthSessionCurrent,AUTH_STORAGE_KEYS,readPermissionCache} from '@/utils/authSession'
 import {canAccessWorkspace} from '@/utils/workspaceAccess'
 import * as api from '@/api/familyHealth'
 import {localDateKey, replaceTarget} from '@/utils/familyHealth'
@@ -66,6 +68,7 @@ import {localizeHealthTimelineEntry} from '@/utils/timelineText'
 const {currentPatientId:patientId}=useCurrentPatient()
 const tab=ref('today'),intakes=ref([]),events=ref([]),schedules=ref([]),target=reactive({}),loading=ref(false),saving=ref(false)
 const eventVisible=ref(false),scheduleVisible=ref(false),eventForm=reactive({}),scheduleForm=reactive({}),eventRange=ref(null)
+const reportPanel=ref(null)
 const summary=ref(null),summaryElement=ref(null),summaryLoading=ref(false),today=ref(localDateKey())
 const route=useRoute()
 const router=useRouter()
@@ -90,6 +93,7 @@ const todaySchedule=computed(()=>schedules.value.find(x=>x.scheduleDate===today.
 const localizedEvents=computed(()=>events.value.map(localizeHealthTimelineEntry))
 const localizedSummaryEvents=computed(()=>(summary.value?.recentEvents||[]).map(localizeHealthTimelineEntry))
 let requestVersion=0, taskVersion=0, summaryVersion=0, timer
+let summaryController=null, printPopup=null
 let disposed=false, taskPending=null
 async function reload(){
   const id=patientId.value
@@ -104,7 +108,7 @@ async function reload(){
     events.value=b.data||[];schedules.value=c.data||[];replaceTarget(target,d.data)
   } finally {if(!disposed && version===requestVersion)loading.value=false}
 }
-watch(patientId,()=>{requestVersion++;taskVersion++;summaryVersion++;taskPending=null;intakes.value=[];events.value=[];schedules.value=[];summary.value=null;summaryLoading.value=false;eventVisible.value=false;scheduleVisible.value=false;replaceTarget(target,null);loading.value=false;reload()},{immediate:true})
+watch(patientId,()=>{requestVersion++;taskVersion++;invalidateSummary();taskPending=null;intakes.value=[];events.value=[];schedules.value=[];summary.value=null;summaryLoading.value=false;eventVisible.value=false;scheduleVisible.value=false;replaceTarget(target,null);loading.value=false;reload()},{immediate:true,flush:'sync'})
 async function refreshTasks(){
   const id=patientId.value
   // Skip redundant background reads before advancing result ownership.
@@ -118,7 +122,7 @@ async function refreshTasks(){
   finally{if(taskPending===pending)taskPending=null}
 }
 onMounted(()=>{timer=window.setInterval(refreshTasks,30000)})
-onUnmounted(()=>{disposed=true;taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;summaryVersion++})
+onUnmounted(()=>{disposed=true;taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateSummary);window.removeEventListener('storage',summaryStorageChanged)})
 async function save(operation){if(saving.value)return;const id=patientId.value;if(!id)return;saving.value=true;try{await operation(id);ElMessage.success('保存成功。');if(id===patientId.value){summaryVersion++;summary.value=null;summaryLoading.value=false;await reload()}}finally{saving.value=false}}
 async function doIntake(item,status){const id=patientId.value;let reason='';if(status==='SKIPPED'){const answer=await ElMessageBox.prompt('请简要说明跳过本次服药的原因。','跳过本次服药').catch(()=>null);if(!answer)return;reason=answer.value}if(id!==patientId.value)return;await save(()=>api.actionIntake(item.id,status,reason))}
 function openEvent(row){Object.keys(eventForm).forEach(k=>delete eventForm[k]);Object.assign(eventForm,{id:null,eventDate:localDateKey(),eventTime:'',eventType:'SYMPTOM',title:'',summary:''},row||{});eventVisible.value=true}
@@ -128,8 +132,62 @@ function openSchedule(row){Object.keys(scheduleForm).forEach(k=>delete scheduleF
 async function submitSchedule(){if(!scheduleForm.scheduleDate){ElMessage.warning('请选择日期');return}const data={...scheduleForm};await save(async id=>{await api.saveDialysisSchedule({...data,patientId:id,scheduleTime:data.scheduleTime||''});scheduleVisible.value=false})}
 async function changeSchedule(row,status){await save(id=>api.saveDialysisSchedule({...row,status,patientId:id}))}
 async function submitTarget(){if(target.systolicMin>target.systolicMax || target.diastolicMin>target.diastolicMax){ElMessage.warning('目标最小值不能大于最大值。');return}const data={...target};delete data.id;await save(id=>api.saveHealthTarget({...data,patientId:id}))}
-async function loadSummary(){const id=patientId.value,v=++summaryVersion;if(!id)return;summaryLoading.value=true;try{const r=await api.getVisitSummary(id);if(id===patientId.value && v===summaryVersion)summary.value=r.data}finally{if(v===summaryVersion)summaryLoading.value=false}}
-function printSummary(){if(!summaryElement.value)return;const popup=window.open('','_blank');if(!popup){ElMessage.warning('请允许弹出窗口以打印摘要。');return}popup.document.write('<!doctype html><html><head><meta charset="UTF-8"><title>就诊摘要</title><style>body{font-family:Arial,"Microsoft YaHei",sans-serif;margin:24px;line-height:1.6}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;text-align:left;padding:6px}thead{display:table-header-group}tr{break-inside:avoid}h3{break-after:avoid}</style></head><body>'+summaryElement.value.innerHTML+'</body></html>');popup.document.close();popup.focus();popup.setTimeout(()=>popup.print(),250)}
+function invalidateSummary(){
+  summaryVersion++;summaryController?.abort();summaryController=null
+  summary.value=null;summaryLoading.value=false;reportPanel.value?.clear()
+  closePrintPopup()
+}
+function closePrintPopup(){if(printPopup){try{printPopup.document.body?.replaceChildren();printPopup.close()}catch{}printPopup=null}}
+// A replacement report must clear a prepared popup immediately. Do not clear the
+// replacement client here: the intentional paired refresh advances this too.
+watch(()=>reportPanel.value?.generation,closePrintPopup,{flush:'sync'})
+function summaryStorageChanged(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))invalidateSummary()}
+watch(()=>JSON.stringify(reportPanel.value?.context),invalidateSummary,{flush:'sync'})
+window.addEventListener('auth-session-cleared',invalidateSummary)
+window.addEventListener('storage',summaryStorageChanged)
+async function refreshVisit(forPrint=false){
+  if(summaryLoading.value||!patientId.value||!reportPanel.value)return false
+  invalidateSummary()
+  const id=patientId.value,version=summaryVersion,auth=captureAuthSession(),actor=localStorage.getItem('userId'),panel=reportPanel.value
+  const reportContext=JSON.stringify(panel.context),controller=new AbortController();summaryController=controller
+  let reportGeneration
+  const owns=()=>panel.generation===reportGeneration&&!disposed&&version===summaryVersion&&id===patientId.value&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId')&&panel===reportPanel.value&&reportContext===JSON.stringify(panel.context)
+  summaryLoading.value=true
+  try{
+    const legacyRequest=api.getVisitSummary(id,{expectedAuth:{...auth,actorId:actor},signal:controller.signal})
+    const projectionRequest=panel.refresh()
+    reportGeneration=panel.generation
+    const [old,projection]=await Promise.all([legacyRequest,projectionRequest])
+    if(!owns()||old.data?.patient?.id!==id)return false
+    // A freshly denied/disabled optional section is shown as unavailable, never as zero.
+    const unavailable=projection.status==='failed'&&['ACCESS_DENIED','FEATURE_DISABLED'].includes(panel.state.error?.errorCode)
+    if(projection.status!=='succeeded'&&!unavailable)return false
+    if(!unavailable&&(panel.state.report?.patient?.id!==id||panel.state.report?.scope?.planId!=null))return false
+    summary.value=old.data
+    if(!owns())return false
+    await nextTick()
+    if(!owns())return false
+    if(forPrint){
+      const markup=summaryElement.value?.innerHTML
+      if(!markup||!owns())return false
+      const popup=window.open('','_blank')
+      if(!popup){ElMessage.warning('请允许弹出窗口以打印摘要。');return false}
+      printPopup=popup
+      if(!owns()){invalidateSummary();return false}
+      popup.document.write('<!doctype html><html><head><meta charset="UTF-8"><title>Visit Summary</title><style>body{font-family:Arial,"Microsoft YaHei",sans-serif;margin:24px;line-height:1.6;overflow-wrap:anywhere}.report-controls{display:none}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;text-align:left;padding:6px}thead{display:table-header-group}tr{break-inside:avoid}h2,h3,h4,h5{break-after:avoid}.original{white-space:pre-wrap}</style></head><body>'+markup+'</body></html>')
+      popup.document.close();popup.focus()
+      popup.setTimeout(()=>{if(!owns()||printPopup!==popup){try{popup.document.body?.replaceChildren();popup.close()}catch{}return}popup.print()},250)
+    }
+    return true
+  }catch{if(owns()){summary.value=null;panel.clear();ElMessage.warning('无法生成当前已授权摘要，请重新尝试。')}return false}
+  finally{if(version===summaryVersion){
+    if(panel.generation!==reportGeneration){summary.value=null;summaryLoading.value=false;if(summaryController===controller)summaryController=null;closePrintPopup()}
+    else if(!owns())invalidateSummary()
+    else{summaryLoading.value=false;summaryController=null}
+  }}
+}
+async function loadSummary(){return refreshVisit(false)}
+async function printSummary(){return refreshVisit(true)}
 const intakeText=s=>({PENDING:'待服用',TAKEN:'已服用',SNOOZED:'已延后',SKIPPED:'已跳过',MISSED:'已漏服',CANCELLED:'已取消'}[s]||s)
 const tagType=s=>({TAKEN:'success',MISSED:'danger',SKIPPED:'info',SNOOZED:'warning',CANCELLED:'info'}[s]||'primary')
 const statusText=s=>({PLANNED:'已计划',COMPLETED:'已完成',CANCELLED:'已取消'}[s]||s)
@@ -269,6 +327,7 @@ const eventType=s=>({SYMPTOM:'症状',VISIT:'就诊',NOTE:'备注',MEASUREMENT:'
 }
 
 .toolbar :deep(.el-button) {
+  min-height: 44px;
   margin-left: 0;
 }
 

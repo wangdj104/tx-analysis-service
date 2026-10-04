@@ -125,10 +125,10 @@ test('monitoring legend swatches match actual chart series when the accent chang
 
 test('print summary is self-contained without app CSS variables', () => {
   const source = fs.readFileSync(new URL('../src/views/FamilyHealthManager.vue', import.meta.url), 'utf8')
-  const printFunction = source.match(/function printSummary\(\)\{[^\n]+/)[0]
+  const writeStatement = source.match(/popup.document.write\([^\n]+/)[0]
   let html = ''
-  const popup = { document: { write(value) { html = value }, close() {} }, focus() {}, setTimeout() {} }
-  new Function('window', 'summaryElement', printFunction + '; printSummary()')({ open: () => popup }, { value: { innerHTML: '<table><tr><td>Example</td></tr></table>' } })
+  const popup = { document: { write(value) { html = value } } }
+  new Function('popup','markup',writeStatement)(popup,'<table><tr><td>Example</td></tr></table>')
   let border
   postcss.parse(html.match(/<style>([\s\S]*?)<\/style>/)[1]).walkRules(rule => {
     if (rule.selectors.includes('td')) border = rule.nodes.find(item => item.prop === 'border')?.value
