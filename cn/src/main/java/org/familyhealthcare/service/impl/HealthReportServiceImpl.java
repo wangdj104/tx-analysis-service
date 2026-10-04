@@ -8,13 +8,9 @@ import org.familyhealthcare.vo.DialysisStatsVO;
 import org.familyhealthcare.vo.HealthReportRequestVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.familyhealthcare.util.PdfFontSupport;
-import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.context.i18n.LocaleContextHolder;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -121,33 +117,9 @@ public class HealthReportServiceImpl implements HealthReportService {
     }
 
     private byte[] renderPdf(String html) throws Exception {
-        try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            PdfRendererBuilder builder = new PdfRendererBuilder();
-            builder.useFastMode();
-            boolean fontAvailable = registerChineseFonts(builder, html);
-            if (!fontAvailable && PdfFontSupport.containsCjk(html)) {
-                throw new IllegalStateException(text("Chinese PDF export requires a readable TrueType CJK font. Install fonts-wqy-microhei or configure REPORT_PDF_FONT_PATH.", "中文 PDF 导出需要可读取的 TrueType 中文字体。请安装 fonts-wqy-microhei 或配置 REPORT_PDF_FONT_PATH。"));
-            }
-            builder.withHtmlContent(html, null);
-            builder.toStream(out);
-            builder.run();
-            return out.toByteArray();
-        }
+        return new org.familyhealthcare.util.ReportPdfRenderer().renderLegacy(html, pdfFontPath);
     }
 
-    private boolean registerChineseFonts(PdfRendererBuilder builder, String html) {
-        java.util.List<File> candidates = new java.util.ArrayList<>();
-        if (pdfFontPath != null && !pdfFontPath.trim().isEmpty()) candidates.add(new File(pdfFontPath.trim()));
-        String[] fontPaths = {
-                "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-                "C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simsun.ttc", "C:/Windows/Fonts/simhei.ttf",
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-        };
-        for (String path : fontPaths) candidates.add(new File(path));
-        return PdfFontSupport.register(builder, candidates, html);
-    }
     private String buildHtmlReport(Patient patient, PatientClinical clinical,
                                     DialysisStatsVO stats,
                                     DialysisStatsVO chartData,

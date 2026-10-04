@@ -55,6 +55,45 @@ class ReportPdfFontTest {
         assertFalse(org.familyhealthcare.util.PdfFontSupport.containsCjk("English report"));
     }
 
+    @Test void legacyChartDataUrlStillEmbedsItsActualPixels() throws Exception {
+        java.awt.image.BufferedImage chart = new java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D graphics = chart.createGraphics();
+        graphics.setColor(java.awt.Color.BLUE); graphics.fillRect(0, 0, 8, 8); graphics.dispose();
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(chart, "png", png);
+        String url = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(png.toByteArray());
+        HealthReportServiceImpl service = new HealthReportServiceImpl();
+        ReflectionTestUtils.setField(service, "pdfFontPath", font("wqy-report-subset.ttf").getAbsolutePath());
+        byte[] pdf = ReflectionTestUtils.invokeMethod(service, "renderPdf", "<html><body><p>Synthetic chart</p><img src='" + url + "'/></body></html>");
+        try (PDDocument document = PDDocument.load(pdf)) {
+            int images = 0;
+            for (org.apache.pdfbox.cos.COSName name : document.getPage(0).getResources().getXObjectNames()) {
+                org.apache.pdfbox.pdmodel.graphics.PDXObject object = document.getPage(0).getResources().getXObject(name);
+                if (object instanceof org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject) {
+                    images++;
+                    java.awt.image.BufferedImage image = ((org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject) object).getImage();
+                    assertEquals(java.awt.Color.BLUE.getRGB(), image.getRGB(0, 0));
+                }
+            }
+            assertEquals(1, images, "Legacy saved chart data URLs must not inherit strict resource denial");
+        }
+    }
+
+    @Test void strictAllGlyphGateSkipsCffAndMixedCollectionBeforeCompatibleFallback() throws Exception {
+        com.openhtmltopdf.pdfboxout.PdfRendererBuilder builder = new com.openhtmltopdf.pdfboxout.PdfRendererBuilder();
+        java.util.List<String> visible = java.util.Collections.singletonList("Care report 患者测试照护执行");
+        org.familyhealthcare.service.careplan.CareExecutionReportBudget budget = org.familyhealthcare.service.careplan.CareExecutionReportBudget.start(java.time.Duration.ofSeconds(30));
+        assertFalse(org.familyhealthcare.util.PdfFontSupport.registerAllText(builder, java.util.Collections.singletonList(font("noto-cff-subset.ttc")), visible, budget));
+        assertTrue(org.familyhealthcare.util.PdfFontSupport.registerAllText(builder, java.util.Arrays.asList(font("noto-cff-subset.ttc"), font("wqy-mixed-coverage.ttc"), font("wqy-care-report-subset.ttf")), visible, budget));
+        try (java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream()) {
+            builder.withHtmlContent("<html><body style=\"font-family:'CareReport'\">Care report 患者测试照护执行</body></html>", null);
+            builder.toStream(output); builder.run();
+            try (PDDocument document = PDDocument.load(output.toByteArray())) {
+                assertTrue(new PDFTextStripper().getText(document).contains("Care report 患者测试照护执行"));
+            }
+        }
+    }
+
     private java.io.File font(String name) throws Exception {
         return new java.io.File(getClass().getResource("/fonts/" + name).toURI());
     }
