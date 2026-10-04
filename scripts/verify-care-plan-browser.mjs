@@ -7,6 +7,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolve, join, extname, relative } from 'node:path'
 import { readFile, mkdir, readdir, lstat, writeFile, mkdtemp, copyFile, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { constants } from 'node:fs'
+import { access, open } from 'node:fs/promises'
+import { assertDirectoryAncestors, digest } from './package-care-plan-browser-artifacts.mjs'
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 export function validateBrowserEnvironment(env) {
   const guard = (ok, label) => assert.ok(ok, `care-plan browser guard: ${label}`)
@@ -25,14 +28,43 @@ export function validateBrowserEnvironment(env) {
   guard(env.CARE_PLAN_E2E_WEB_PORT==null || env.CARE_PLAN_E2E_WEB_PORT==='14173','isolated web port')
   return { project:env.CARE_PLAN_MYSQL_PROJECT, backendPort:18081, browserPort:14173 }
 }
-function environment(input) {
+export function environment(input) {
   // Do not inherit real DB/AI/provider/JWT/bootstrap settings or unrelated credentials.
-  const allowed = ['PATH','JAVA_HOME','HOME','TMPDIR','CI','GITHUB_ACTIONS','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','PLAYWRIGHT_BROWSERS_PATH',
+  const allowed = ['PATH','JAVA_HOME','HOME','TMPDIR','CI','GITHUB_ACTIONS','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','PLAYWRIGHT_BROWSERS_PATH','RUNNER_TEMP','REPORT_PDF_FONT_PATH',
     'CARE_PLAN_TEST_ONLY','CARE_PLAN_BROWSER_REQUIRED','CARE_PLAN_MYSQL_HOST','CARE_PLAN_MYSQL_PORT','CARE_PLAN_MYSQL_DATABASE',
     'CARE_PLAN_MYSQL_UPGRADE_DATABASE','CARE_PLAN_MYSQL_RESTORE_DATABASE','CARE_PLAN_MYSQL_USER','CARE_PLAN_MYSQL_PASSWORD',
     'CARE_PLAN_MYSQL_CONTAINER_ID','CARE_PLAN_MYSQL_PROJECT','CARE_PLAN_E2E_PASSWORD']
   return Object.fromEntries(allowed.filter(k=>input[k]!=null).map(k=>[k,input[k]]))
 }
+
+export async function validateReportFontEnvironment(input) {
+  assert.ok(input.CI==='true' && input.GITHUB_ACTIONS==='true','Report font requires actual CI contract')
+  const temporary=input.RUNNER_TEMP,path=input.REPORT_PDF_FONT_PATH
+  assert.ok(typeof temporary==='string' && temporary===resolve(temporary) && !temporary.split('/').includes('..'),'Report font requires absolute runner temp')
+  assert.ok(typeof path==='string' && path===join(temporary,'care-report-font','wqy-microhei.ttf'),'Report font path must match the owned CI face')
+  await assertDirectoryAncestors(path)
+  for(const directory of [temporary,join(temporary,'care-report-font')]) {
+    const metadata=await lstat(directory)
+    assert.ok(metadata.isDirectory() && !metadata.isSymbolicLink() && metadata.uid===process.getuid(),'Report font directory must be owned and non-symlink')
+  }
+  const metadata=await lstat(path)
+  assert.ok(metadata.isFile() && !metadata.isSymbolicLink() && metadata.uid===process.getuid() && (metadata.mode&0o444)!==0 && metadata.size>=12 && metadata.size<=30*1024*1024,'Report font must be an owned readable regular TTF')
+  await access(path,constants.R_OK)
+  const file=await open(path,'r')
+  try {const signature=Buffer.alloc(4);await file.read(signature,0,4,0);assert.ok(signature.equals(Buffer.from([0,1,0,0])),'Report font must be TrueType face, not a collection')}finally{await file.close()}
+  const summaryPath=join(temporary,'care-report-font','font-preparation.json'),summaryMetadata=await lstat(summaryPath)
+  assert.ok(summaryMetadata.isFile() && !summaryMetadata.isSymbolicLink() && summaryMetadata.uid===process.getuid() && summaryMetadata.size<=4096,'Report font preparation metadata must be owned and bounded')
+  const summary=JSON.parse(await readFile(summaryPath,'utf8'))
+  const keys=['sourceSha256','ttfSha256','glyphCount','unicodeCmapCount','unicodeCodepointCount','tableCount','nameSha256','fontPackageVersion','fonttoolsPackageVersion','fonttoolsVersion','faceIndex','copyrightSha256']
+  assert.ok(summary && Object.keys(summary).length===keys.length && keys.every(key=>Object.hasOwn(summary,key)) && summary.faceIndex===0,'Report font preparation metadata keys invalid')
+  for(const key of ['sourceSha256','ttfSha256','nameSha256','copyrightSha256'])assert.ok(/^[a-f0-9]{64}$/.test(summary[key]),'Report font preparation metadata hash invalid')
+  for(const key of ['glyphCount','unicodeCmapCount','unicodeCodepointCount','tableCount'])assert.ok(Number.isSafeInteger(summary[key]) && summary[key]>0 && summary[key]<=1114112,'Report font preparation metadata counts invalid')
+  for(const key of ['fontPackageVersion','fonttoolsPackageVersion','fonttoolsVersion'])assert.ok(typeof summary[key]==='string' && /^[A-Za-z0-9.+:~_-]{1,100}$/.test(summary[key]),'Report font preparation metadata version invalid')
+  const sha256=await digest(path)
+  assert.equal(sha256,summary.ttfSha256,'Report font hash differs from complete-face preparation')
+  return {path,sha256}
+}
+
 async function run(command, args, cwd, env, {background=false}={}) {
   const child = spawn(command,args,{cwd,env,stdio:background?['ignore','ignore','pipe']:'inherit'})
   if(background) {
@@ -161,7 +193,10 @@ async function artifactFiles(directory) {
   return files
 }
 export async function main(input=process.env) {
-  const contract=validateBrowserEnvironment(input),env=environment(input),project=resolve(root,contract.project),frontend=join(project,'frontend')
+  const contract=validateBrowserEnvironment(input)
+  const font=await validateReportFontEnvironment(input)
+  const env=environment(input),project=resolve(root,contract.project),frontend=join(project,'frontend')
+  console.log(`Verified complete report font SHA-256: ${font.sha256}`)
   await run('bash',[join(root,'scripts/verify-care-plan-mysql.sh'),'--check-guards'],root,env)
   env.CARE_PLAN_BROWSER_SERVER_UUID=await verifyService(env)
   const outputs=join(frontend,'test-results')
@@ -197,7 +232,7 @@ export async function main(input=process.env) {
       await run('ffmpeg',['-v','error','-y','-i',video,'-c:v','libx264','-preset','fast','-pix_fmt','yuv420p','-movflags','+faststart',video.replace(/\.webm$/,'.mp4')],root,env)
     }
     // No traces, HAR, storageState, dumps, request headers or login responses are uploaded.
-    assert.ok(files.every(f=>/\.(webm|png|json|mp4)$/.test(f)),'Unexpected artifact type')
+    assert.ok(files.every(f=>/\.(webm|png|mp4)$/.test(f) || ['.last-run.json','acceptance-evidence.json'].includes(relative(outputs,f))),'Unexpected artifact type')
     await writeFile(join(outputs,'acceptance-evidence.json'),JSON.stringify({language:contract.project==='cn'?'cn':'en',actualSpring:true,actualMySQL:true,builtVue:true,videoCount:videos.length,screenshotCount:screenshots.length,recordings:recordingEvidence,trace:false},null,2))
     console.log('Actual Spring / native MySQL / built Vue browser assertions and genuine recording probes passed')
   } finally {

@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 import { validateBrowserEnvironment, staticRequestPath, createCleanFrontendBuild, safeBootDiagnostic } from '../verify-care-plan-browser.mjs'
 import * as browserRunner from '../verify-care-plan-browser.mjs'
 import { appPath } from '../../frontend/e2e/paths.mjs'
-import { mkdtemp, mkdir, writeFile, readFile, readdir, symlink, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, readdir, symlink, rm, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 
 for(const [edition, pomPath] of [['.', '../../pom.xml'], ['cn', '../../cn/pom.xml']]) {
   test(`${edition} production jar follows the actual Maven finalName and ignores unrelated jars`, async () => {
@@ -104,4 +105,39 @@ test('startup diagnostics admit bounded class names only, never raw error/creden
   const safe='CARE_PLAN_BROWSER_BOOT_FAILURE org.springframework.beans.factory.BeanCreationException > java.lang.IllegalArgumentException'
   assert.equal(safeBootDiagnostic(safe),safe)
   for(const value of ['raw error password=SyntheticSecret',safe+' password=SyntheticSecret','CARE_PLAN_BROWSER_BOOT_FAILURE SyntheticSecret',safe+'\nAuthorization: Bearer SyntheticToken','CARE_PLAN_BROWSER_BOOT_FAILURE '+'org.'+'x'.repeat(3000)])assert.equal(safeBootDiagnostic(value),null)
+})
+
+test('selected report font survives the narrow environment while unrelated secrets never do', () => {
+  assert.equal(typeof browserRunner.environment,'function')
+  const input={...valid,REPORT_PDF_FONT_PATH:'/tmp/owned/care-report-font/wqy-microhei.ttf',RUNNER_TEMP:'/tmp/owned',DB_PASSWORD:'forbidden',OPENAI_API_KEY:'forbidden',JWT_SECRET:'forbidden',UNRELATED:'forbidden'}
+  const output=browserRunner.environment(input)
+  assert.equal(output.REPORT_PDF_FONT_PATH,input.REPORT_PDF_FONT_PATH)
+  assert.equal(output.RUNNER_TEMP,input.RUNNER_TEMP)
+  for(const key of ['DB_PASSWORD','OPENAI_API_KEY','JWT_SECRET','UNRELATED'])assert.equal(Object.hasOwn(output,key),false)
+})
+test('report font requires exact owned regular readable CI path and rejects missing or symlink paths', async () => {
+  assert.equal(typeof browserRunner.validateReportFontEnvironment,'function')
+  const base=await mkdtemp(join(tmpdir(),'care-report-font-guard-')),directory=join(base,'care-report-font'),font=join(directory,'wqy-microhei.ttf')
+  try {
+    const bytes=Buffer.from([0,1,0,0,...Buffer.alloc(12)])
+    await mkdir(directory);await writeFile(font,bytes)
+    const summary={sourceSha256:'a'.repeat(64),ttfSha256:createHash('sha256').update(bytes).digest('hex'),glyphCount:3,unicodeCmapCount:2,unicodeCodepointCount:2,tableCount:10,nameSha256:'b'.repeat(64),fontPackageVersion:'0.2.0',fonttoolsPackageVersion:'4.57.0',fonttoolsVersion:'4.57.0',faceIndex:0,copyrightSha256:'c'.repeat(64)}
+    await writeFile(join(directory,'font-preparation.json'),JSON.stringify(summary))
+    const input={CI:'true',GITHUB_ACTIONS:'true',RUNNER_TEMP:base,REPORT_PDF_FONT_PATH:font}
+    assert.equal((await browserRunner.validateReportFontEnvironment(input)).path,font)
+    for(const key of Object.keys(input))await assert.rejects(browserRunner.validateReportFontEnvironment({...input,[key]:undefined}),/font/)
+    await assert.rejects(browserRunner.validateReportFontEnvironment({...input,REPORT_PDF_FONT_PATH:join(base,'other.ttf')}),/font/)
+    await writeFile(font,Buffer.from([0,1,0,0,...Buffer.alloc(12,9)]))
+    await assert.rejects(browserRunner.validateReportFontEnvironment(input),/hash/)
+    await writeFile(font,bytes);await chmod(font,0)
+    await assert.rejects(browserRunner.validateReportFontEnvironment(input),/readable/)
+    await chmod(font,0o600)
+    await writeFile(join(directory,'font-preparation.json'),JSON.stringify({...summary,token:'forbidden'}))
+    await assert.rejects(browserRunner.validateReportFontEnvironment(input),/metadata/)
+    await writeFile(join(directory,'font-preparation.json'),JSON.stringify(summary))
+    await rm(font);await symlink('/nonexistent-source',font)
+    await assert.rejects(browserRunner.validateReportFontEnvironment(input),/font|symlink/)
+    await rm(font);await rm(directory,{recursive:true});await symlink('/nonexistent-directory',directory)
+    await assert.rejects(browserRunner.validateReportFontEnvironment(input),/font|symlink/)
+  } finally {await rm(base,{recursive:true,force:true})}
 })

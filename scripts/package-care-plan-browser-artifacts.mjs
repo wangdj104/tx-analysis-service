@@ -8,16 +8,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 export const PRIMARY_SCENARIO_DIRECTORY='carePlanCollaboration-real-dcac3-p-return-review-and-closure'
 export const PAYLOAD_BUDGET_BYTES=30*1024*1024 // Reserve 2MiB for ZIP/manifest overhead below the 32MiB download limit.
+export const MAX_MEDIA_FILES=2048
+export const MAX_DELIVERY_MANIFEST_BYTES=1024*1024
+export const MAX_ACCEPTANCE_EVIDENCE_BYTES=512*1024
 const roles=['personal','family','doctor','nurse','admin','outsider']
-const groups=[...roles.map(role=>'main-'+role),'screenshots-1','screenshots-2','screenshots-3','screenshots-4','remainder']
-const safePath=path=>typeof path==='string' && Buffer.byteLength(path)<=256 && !/[\\\x00-\x1f\x7f]/.test(path) && !path.startsWith('/') && path.split('/').every(part=>part!=='' && part!=='.' && part!=='..')
+export const REMAINDER_GROUPS=Array.from({length:16},(_,index)=>'remainder-'+(index+1))
+export const BROWSER_GROUPS=[...roles.map(role=>'main-'+role),'screenshots-1','screenshots-2','screenshots-3','screenshots-4',...REMAINDER_GROUPS]
+const groups=BROWSER_GROUPS
+export const safePath=path=>typeof path==='string' && Buffer.byteLength(path)<=256 && !/[\\\x00-\x1f\x7f]/.test(path) && !path.startsWith('/') && path.split('/').every(part=>part!=='' && part!=='.' && part!=='..')
 const allowed=path=>!path.split('/').some(part=>part.startsWith('.')) && (/\.(webm|mp4|png)$/.test(path) || path==='acceptance-evidence.json')
 
 export function planArtifactGroups(input,{budgetBytes=PAYLOAD_BUDGET_BYTES}={}) {
   assert.ok(Number.isSafeInteger(budgetBytes) && budgetBytes>0,'Invalid artifact byte budget')
   for(const file of input)assert.ok(safePath(file.path) && Number.isSafeInteger(file.bytes) && file.bytes>=0,'Invalid artifact path or byte count')
   const files=input.filter(file=>allowed(file.path)).sort((a,b)=>a.path.localeCompare(b.path))
-  assert.ok(files.length<=512 && new Set(files.map(file=>file.path)).size===files.length,'Artifact file count/identity limit exceeded')
+  assert.ok(files.length<=MAX_MEDIA_FILES && new Set(files.map(file=>file.path)).size===files.length,'Artifact file count/identity limit exceeded')
+  for(const file of files)assert.ok(file.bytes<=budgetBytes,'Single artifact exceeds payload budget')
   const result={groups:Object.fromEntries(groups.map(name=>[name,[]])),oversizedPrimaryRoles:[]},assigned=new Set()
   for(const role of roles) {
     const candidates=files.filter(file=>{const parts=file.path.split('/');return parts.length===3 && parts[0]===PRIMARY_SCENARIO_DIRECTORY && [role+'-desktop-video',role+'-390-video'].includes(parts[1]) && /\.(webm|mp4)$/.test(parts[2])})
@@ -35,11 +41,11 @@ export function planArtifactGroups(input,{budgetBytes=PAYLOAD_BUDGET_BYTES}={}) 
     const group=['screenshots-1','screenshots-2','screenshots-3','screenshots-4'].find(name=>result.groups[name].reduce((sum,entry)=>sum+entry.bytes,0)+file.bytes<=budgetBytes)
     if(group){result.groups[group].push(file);assigned.add(file.path)}
   }
-  result.groups.remainder=files.filter(file=>!assigned.has(file.path))
+  Object.assign(result.groups,planBoundedGroups(files.filter(file=>!assigned.has(file.path)),REMAINDER_GROUPS,budgetBytes))
   return result
 }
 
-async function sourceFiles(directory,prefix='') {
+export async function sourceFiles(directory,prefix='') {
   const metadata=await lstat(directory)
   assert.ok(!metadata.isSymbolicLink() && metadata.isDirectory(),'Artifact source directory must not be a symlink')
   const files=[]
@@ -55,15 +61,15 @@ async function sourceFiles(directory,prefix='') {
 function assertSafeEvidence(data) {
   const keys=['language','actualSpring','actualMySQL','builtVue','videoCount','screenshotCount','recordings','trace']
   assert.ok(data && Object.keys(data).length===keys.length && Object.keys(data).every(key=>keys.includes(key)) && ['en','cn'].includes(data.language) && data.actualSpring===true && data.actualMySQL===true && data.builtVue===true && data.trace===false,'Unsafe acceptance evidence')
-  assert.ok([data.videoCount,data.screenshotCount].every(value=>Number.isSafeInteger(value) && value>=0 && value<=512) && Array.isArray(data.recordings) && data.recordings.length===data.videoCount,'Unsafe acceptance evidence counts')
+  assert.ok([data.videoCount,data.screenshotCount].every(value=>Number.isSafeInteger(value) && value>=0 && value<=MAX_MEDIA_FILES) && Array.isArray(data.recordings) && data.recordings.length===data.videoCount,'Unsafe acceptance evidence counts')
   for(const recording of data.recordings)assert.ok(Object.keys(recording).length===4 && ['width','height','decodedFrames','durationSeconds'].every(key=>Number.isFinite(recording[key]) && recording[key]>0),'Unsafe recording evidence')
 }
-async function digest(path) {
+export async function digest(path) {
   const hash=createHash('sha256')
   for await(const data of createReadStream(path))hash.update(data)
   return hash.digest('hex')
 }
-async function assertDirectoryAncestors(path) {
+export async function assertDirectoryAncestors(path) {
   assert.ok(typeof path==='string' && path!=='' && !path.split('/').includes('..'),'Invalid artifact directory path')
   const ancestors=[]
   for(let current=dirname(resolve(path));;current=dirname(current)) {
@@ -76,6 +82,8 @@ async function assertDirectoryAncestors(path) {
   }
 }
 export async function packageBrowserArtifacts(source,destination,options={}) {
+  const src=resolve(source),dest=resolve(destination)
+  assert.ok(src!==dest && !src.startsWith(dest+'/') && !dest.startsWith(src+'/'),'Artifact source/destination ancestry must be separate')
   await assertDirectoryAncestors(source)
   await assertDirectoryAncestors(destination)
   try {await lstat(destination);throw new Error('Artifact destination already exists')}
@@ -86,7 +94,7 @@ export async function packageBrowserArtifacts(source,destination,options={}) {
   const result=planArtifactGroups(files,options),selected=Object.values(result.groups).flat()
   const evidence=selected.find(file=>file.path==='acceptance-evidence.json')
   if(evidence) {
-    assert.ok(evidence.bytes<=65536,'Unsafe acceptance evidence size')
+    assert.ok(evidence.bytes<=MAX_ACCEPTANCE_EVIDENCE_BYTES,'Unsafe acceptance evidence size')
     assertSafeEvidence(JSON.parse(await readFile(join(source,evidence.path),'utf8')))
   }
   await mkdir(destination)
@@ -95,19 +103,40 @@ export async function packageBrowserArtifacts(source,destination,options={}) {
     for(const [group,entries] of Object.entries(result.groups)) {
       for(const file of entries) {
         const original=join(source,file.path),copy=join(destination,group,file.path)
-        await mkdir(dirname(copy),{recursive:true});await copyFile(original,copy)
-        const sha256=await digest(original)
-        assert.ok((await lstat(copy)).size===file.bytes && await digest(copy)===sha256,'Staged artifact bytes changed')
+        const sha256=await copyVerified(original,copy,file.bytes)
         manifest.files.push({group,path:file.path,bytes:file.bytes,sha256})
       }
     }
     const text=JSON.stringify(manifest,null,2)
-    assert.ok(Buffer.byteLength(text)<=256*1024,'Delivery manifest size limit exceeded')
-    await mkdir(join(destination,'screenshots-1'),{recursive:true})
-    await writeFile(join(destination,'screenshots-1','delivery-manifest.json'),text)
+    assert.ok(Buffer.byteLength(text)<=MAX_DELIVERY_MANIFEST_BYTES,'Delivery manifest size limit exceeded')
+    assert.ok(Buffer.byteLength(text)<=manifest.payloadBudgetBytes,'Delivery manifest exceeds payload budget')
+    await mkdir(join(destination,'manifest'))
+    await writeFile(join(destination,'manifest','delivery-manifest.json'),text)
     return {...result,selectedFileCount:selected.length}
   } catch(error){await rm(destination,{recursive:true,force:true});throw error}
 }
+
+export function planBoundedGroups(files,names,budgetBytes=PAYLOAD_BUDGET_BYTES) {
+  const result=Object.fromEntries(names.map(name=>[name,[]])),sizes=Object.fromEntries(names.map(name=>[name,0]))
+  assert.ok(Number.isSafeInteger(budgetBytes) && budgetBytes>0,'Invalid artifact byte budget')
+  for(const file of files) {
+    assert.ok(Number.isSafeInteger(file.bytes) && file.bytes>=0 && file.bytes<=budgetBytes,'Single artifact exceeds payload budget')
+    const group=names.find(name=>sizes[name]+file.bytes<=budgetBytes)
+    assert.ok(group,'Artifact partition capacity exceeded')
+    result[group].push(file);sizes[group]+=file.bytes
+  }
+  return result
+}
+export async function copyVerified(original,copy,bytes,expectedHash) {
+  const metadata=await lstat(original)
+  assert.ok(metadata.isFile() && !metadata.isSymbolicLink() && metadata.size===bytes,'Artifact source must remain a regular file of expected size')
+  const sha256=await digest(original)
+  assert.ok(!expectedHash || expectedHash===sha256,'Artifact source hash mismatch')
+  await mkdir(dirname(copy),{recursive:true});await copyFile(original,copy)
+  assert.ok((await lstat(copy)).size===bytes && await digest(copy)===sha256,'Staged artifact bytes changed')
+  return sha256
+}
+
 async function main() {
   const [project,output]=process.argv.slice(2),root=resolve(fileURLToPath(new URL('..',import.meta.url)))
   assert.ok(process.env.CI==='true' && process.env.GITHUB_ACTIONS==='true' && ['.','cn'].includes(project),'CI-only artifact packaging contract required')
@@ -115,8 +144,6 @@ async function main() {
   assert.ok(process.env.RUNNER_TEMP && resolve(output||'')===join(resolve(process.env.RUNNER_TEMP),'care-plan-browser-artifacts-'+language),'Owned artifact destination required')
   const result=await packageBrowserArtifacts(join(root,project,'frontend/test-results'),resolve(output))
   console.log(`Sanitized browser artifact files staged exactly once: ${result.selectedFileCount}`)
-  if(result.oversizedPrimaryRoles.length)console.warn(`Primary roles exceeding the delivery budget remain intact in remainder: ${result.oversizedPrimaryRoles.join(', ')}`)
-  const remainderBytes=result.groups.remainder.reduce((sum,file)=>sum+file.bytes,0)
-  if(remainderBytes>PAYLOAD_BUDGET_BYTES)console.warn('Raw/secondary remainder exceeds the bounded download size; primary role and screenshot artifacts remain separate')
+  if(result.oversizedPrimaryRoles.length)console.warn(`Primary roles span bounded remainder parts: ${result.oversizedPrimaryRoles.join(', ')}`)
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(resolve(process.argv[1])).href)main().catch(()=>{console.error('Sanitized browser artifact packaging failed');process.exitCode=1})

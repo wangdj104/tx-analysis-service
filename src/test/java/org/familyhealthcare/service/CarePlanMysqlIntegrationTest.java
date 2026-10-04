@@ -5,6 +5,10 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.familyhealthcare.service.careplan.CarePlanAuthorizationService;
+import org.familyhealthcare.service.careplan.CareExecutionReportAccess;
+import org.familyhealthcare.service.careplan.CareExecutionReportProjector;
+import org.familyhealthcare.service.careplan.CareExecutionReportRenderer;
+import org.familyhealthcare.service.careplan.CareExecutionReportService;
 import org.familyhealthcare.service.careplan.CarePlanContracts;
 import org.familyhealthcare.service.careplan.CarePlanCommandStore;
 import org.familyhealthcare.service.careplan.CarePlanEventStore;
@@ -529,7 +533,13 @@ class CarePlanMysqlIntegrationTest {
         }
     }
 
-    @Test @Order(9) void restorePreservesAllPlanRelationships() throws Exception {
+    @Test @Order(9) void nativeExecutionReportAcceptance() throws Exception {
+        try (NativeServices services = new NativeServices(true)) {
+            CareExecutionReportMysqlAssertions.verify(services.source,services);
+        }
+    }
+
+    @Test @Order(10) void restorePreservesAllPlanRelationships() throws Exception {
         Map<String, List<String>> beforeRestore;
         try (Connection c = connect(upgrade)) { assertRelationships(c); beforeRestore = comparisonSnapshot(snapshot(c), true); }
         Path directory = Files.createTempDirectory("care-plan-mysql-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
@@ -559,16 +569,20 @@ class CarePlanMysqlIntegrationTest {
     public static class MysqlReplayTransactionConfiguration { }
 
     private NativeServices nativeServices() throws Exception { return new NativeServices(); }
-    private final class NativeServices implements AutoCloseable {
+    final class NativeServices implements AutoCloseable {
         final AnnotationConfigApplicationContext context=new AnnotationConfigApplicationContext();
         final List<String> sql=new CopyOnWriteArrayList<>();
         final Map<String,Set<String>> transactionConnections=new ConcurrentHashMap<>();
         final AtomicReference<Instant> now=new AtomicReference<>(Instant.parse("2026-10-03T06:10:00.123456Z"));
         final SyntheticTransport transport=new SyntheticTransport();
+        final CareExecutionReportMysqlAssertions.Observer reportObserver = new CareExecutionReportMysqlAssertions.Observer();
+        final CareExecutionReportService reports;final CareExecutionReportProjector reportProjector;final CareExecutionReportAccess reportAccess;
+        final DataSource source;
         final JdbcTemplate jdbc;final CarePlanProperties properties;final CarePlanAuthorizationService auth;
         final CarePlanQueryService queries;final CarePlanService plans;final CarePlanActionService actions;final CarePlanNotificationWorker worker;
-        NativeServices() throws Exception {
-            DataSource source=new AbstractDataSource(){
+        NativeServices() throws Exception { this(false); }
+        NativeServices(boolean runtimeReportClock) throws Exception {
+            source=new AbstractDataSource(){
                 @Override public Connection getConnection()throws SQLException {
                     Connection c=connect(upgrade);c.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
                     String physicalId=scalar(c,"SELECT CONNECTION_ID()");
@@ -577,12 +591,18 @@ class CarePlanMysqlIntegrationTest {
                             sql.add((String)args[0]);
                             if(TransactionSynchronizationManager.isActualTransactionActive())transactionConnections.computeIfAbsent(Thread.currentThread().getName(),ignored->ConcurrentHashMap.newKeySet()).add(physicalId);
                         }
-                        try{return method.invoke(c,args);}catch(InvocationTargetException failure){throw failure.getCause();}
+                        try {
+                            Object result=method.invoke(c,args);
+                            if(result instanceof Statement) return reportObserver.statement((Statement)result,c,physicalId,
+                                    args!=null&&args.length>0&&args[0] instanceof String?(String)args[0]:null);
+                            return result;
+                        }catch(InvocationTargetException failure){throw failure.getCause();}
                     });
                 }
                 @Override public Connection getConnection(String ignoredUser,String ignoredPassword)throws SQLException {throw new SQLFeatureNotSupportedException("Explicit guarded native identity only");}
             };
             jdbc=new JdbcTemplate(source);
+            if(runtimeReportClock) now.set(CareExecutionReportMysqlAssertions.databaseNow(jdbc));
             for(Object[] binding:new Object[][]{{7002L,"family"},{7004L,"nurse"},{7005L,"admin"}})
                 jdbc.update("INSERT INTO sys_user_role(user_id,role_id) SELECT ?,id FROM sys_role WHERE role_code=? ON DUPLICATE KEY UPDATE role_id=VALUES(role_id)",binding);
             properties=new CarePlanProperties(true,new Clock(){public java.time.ZoneId getZone(){return ZoneOffset.UTC;}public Clock withZone(java.time.ZoneId zone){return this;}public Instant instant(){return now.get();}});
@@ -593,7 +613,14 @@ class CarePlanMysqlIntegrationTest {
             context.registerBean("transactionManager",PlatformTransactionManager.class,()->new DataSourceTransactionManager(source));
             context.registerBean(CarePlanService.class,()->new CarePlanService(jdbc,auth,properties,queries,commands,events,worker));
             context.registerBean(CarePlanActionService.class,()->new CarePlanActionService(jdbc,auth,properties,commands,events,worker));
+            context.registerBean(CareExecutionReportAccess.class,()->new CareExecutionReportAccess(jdbc,auth,context.getBean(PlatformTransactionManager.class)));
+            context.registerBean(CareExecutionReportProjector.class,()->new CareExecutionReportProjector(jdbc,auth,context.getBean(PlatformTransactionManager.class)));
+            context.registerBean(CareExecutionReportRenderer.class,()->reportObserver.renderer(System.getenv("REPORT_PDF_FONT_PATH")));
+            context.registerBean(CareExecutionReportService.class,()->new CareExecutionReportService(context.getBean(CareExecutionReportAccess.class),
+                    context.getBean(CareExecutionReportProjector.class),context.getBean(CareExecutionReportRenderer.class),
+                    new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules().disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)));
             context.register(MysqlReplayTransactionConfiguration.class);context.refresh();
+            reports=context.getBean(CareExecutionReportService.class);reportProjector=context.getBean(CareExecutionReportProjector.class);reportAccess=context.getBean(CareExecutionReportAccess.class);
             plans=context.getBean(CarePlanService.class);actions=context.getBean(CarePlanActionService.class);
             assertTrue(AopUtils.isAopProxy(plans));assertTrue(AopUtils.isAopProxy(actions));
         }

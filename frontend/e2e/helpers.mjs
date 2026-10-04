@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test'
 import { appPath } from './paths.mjs'
 export { appPath } from './paths.mjs'
-export const ids = Object.freeze({ personal:9001, family:9002, doctor:9003, nurse:9004, admin:9005, outsider:9006, patientA:9001, patientB:9002, patientC:9003 })
+export const ids = Object.freeze({ personal:9001, family:9002, doctor:9003, nurse:9004, admin:9005, outsider:9006, patientA:9001, patientB:9002, patientC:9003, reportPatient:9101, emptyReportPatient:9102, limitedReportPatient:9103, outsideReportPatient:9104, reportPlan:19101, reportMeasurement:19101, reportMedical:19102, outsideReportSource:19104 })
 export const language = process.env.CARE_PLAN_E2E_LANGUAGE || 'en'
 export async function login(page, role) {
   if(!Object.hasOwn(ids,role) || !process.env.CARE_PLAN_E2E_PASSWORD)throw new Error('Synthetic login configuration absent')

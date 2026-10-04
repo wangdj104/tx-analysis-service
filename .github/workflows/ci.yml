@@ -66,7 +66,9 @@ jobs:
     # Both languages and both fresh/upgrade passes use this exact checkout.
     name: Care plan MySQL 8.0 (${{ matrix.language }})
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Two native passes plus 56 serial browser cases, real PDF inspection and artifact preparation.
+    # Per-request, latch and individual browser-case deadlines remain unchanged.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -107,15 +109,26 @@ jobs:
           node --test scripts/tests/care-plan-mysql-guards.test.mjs
           node --test scripts/tests/care-plan-browser-guards.test.mjs
           node --test scripts/tests/care-plan-browser-artifacts.test.mjs
+          node --test scripts/tests/care-report-artifacts.test.mjs
       - name: Install pinned official browser test dependencies
         working-directory: ${{ matrix.directory }}/frontend
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ffmpeg
+          sudo apt-get install --yes --no-install-recommends ffmpeg fonts-wqy-microhei python3-fonttools poppler-utils
           npm ci
           npx --no-install playwright install --with-deps chromium
           command -v ffmpeg
           command -v ffprobe
+          command -v pdfinfo
+          command -v pdftotext
+          command -v pdftoppm
+      - name: Prepare complete official report font
+        id: font_preparation
+        run: |
+          /usr/bin/python3 scripts/tests/care-report-font.test.py
+          /usr/bin/python3 scripts/prepare-care-report-font.py
+      - name: Check actual report download inspectors
+        run: node --test scripts/tests/care-report-download-inspection.test.mjs
       - name: Verify two disposable native schema and restore passes
         env:
           CARE_PLAN_TEST_ONLY: 'true'
@@ -148,6 +161,18 @@ jobs:
             bash scripts/verify-care-plan-mysql.sh
             unset CARE_PLAN_MYSQL_PASSWORD CARE_PLAN_E2E_PASSWORD CARE_PLAN_BROWSER_REQUIRED
           done
+      - name: Generate fresh Task 5 renderer evidence
+        id: renderer_evidence
+        if: always() && steps.font_preparation.outcome == 'success'
+        run: |
+          set -euo pipefail
+          # Only the four reviewed renderer specimen names; no target-directory sweep.
+          rm -f -- '${{ matrix.directory }}/target/care-execution-report-qa/en/coverage-report.pdf' \
+            '${{ matrix.directory }}/target/care-execution-report-qa/en/long-report.pdf' \
+            '${{ matrix.directory }}/target/care-execution-report-qa/zh-CN/coverage-report.pdf' \
+            '${{ matrix.directory }}/target/care-execution-report-qa/zh-CN/long-report.pdf'
+          (cd '${{ matrix.directory }}' && mvn -B -Dtest=CareExecutionReportPdfTest -DskipTests=false test)
+          node scripts/collect-care-report-renderer-evidence.mjs '${{ matrix.directory }}'
       - name: Stage bounded sanitized browser review artifacts
         id: browser_artifacts
         if: always()
@@ -242,12 +267,324 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
           retention-days: 14
-      - name: Preserve browser remainder
+      - name: Preserve browser remainder-1
         if: always() && steps.browser_artifacts.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder
-          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder/
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-1
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-1/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser manifest
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-manifest
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/manifest/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-2
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-2
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-2/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-3
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-3
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-3/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-4
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-4
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-4/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-5
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-5
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-5/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-6
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-6
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-6/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-7
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-7
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-7/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-8
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-8
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-8/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-9
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-9
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-9/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-10
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-10
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-10/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-11
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-11
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-11/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-12
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-12
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-12/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-13
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-13
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-13/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-14
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-14
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-14/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-15
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-15
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-15/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve browser remainder-16
+        if: always() && steps.browser_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-plan-browser-${{ matrix.language }}-${{ github.sha }}-remainder-16
+          path: ${{ runner.temp }}/care-plan-browser-artifacts-${{ matrix.language }}/remainder-16/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Stage strict synthetic report review artifacts
+        id: report_artifacts
+        if: always()
+        run: node scripts/package-care-report-artifacts.mjs '${{ matrix.language }}'
+      - name: Preserve report-manifest specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-manifest
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-manifest/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-1 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-1
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-1/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-2 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-2
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-2/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-3 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-3
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-3/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-4 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-4
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-4/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-5 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-5
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-5/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-6 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-6
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-6/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-7 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-7
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-7/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-8 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-8
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-8/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-9 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-9
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-9/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-10 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-10
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-10/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-11 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-11
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-11/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-12 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-12
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-12/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-13 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-13
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-13/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-14 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-14
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-14/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-15 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-15
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-15/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve report-16 specimens
+        if: always() && steps.report_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-report-16
+          path: ${{ runner.temp }}/care-report-artifacts-${{ matrix.language }}/report-16/
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Preserve bounded complete font provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-font-provenance
+          path: |
+            ${{ runner.temp }}/care-report-font/font-preparation.json
+            ${{ runner.temp }}/care-report-font/WQY-COPYRIGHT.txt
           compression-level: 0
           if-no-files-found: ignore
           retention-days: 14

@@ -135,6 +135,9 @@ router.beforeEach(async (to, from, next) => {
   next();
 });
 app.use(router);
+// isReady handles startup errors below; suppress Vue Router's raw-error fallback
+// only during this unmounted lifetime. Later navigation keeps existing handling.
+const clearBootstrapErrorHandler = router.onError(() => {});
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component);
 }
@@ -151,7 +154,32 @@ app.use(ElementPlus, {
     showClose: true
   }
 });
-app.mount('#app');
+// Keep startup UI outside App: unresolved routes must never start patient watchers.
+const bootstrapRoot = document.getElementById('app');
+const bootstrapLoading = document.createElement('p');
+bootstrapLoading.setAttribute('role', 'status');
+bootstrapLoading.textContent = '正在加载应用…';
+bootstrapRoot.replaceChildren(bootstrapLoading);
+router.isReady().then(() => {
+  clearBootstrapErrorHandler();
+  bootstrapRoot.replaceChildren();
+  app.mount('#app');
+}).catch(() => {
+  const failure = document.createElement('section');
+  failure.setAttribute('role', 'alert');
+  const title = document.createElement('h1');
+  title.textContent = '应用加载失败';
+  const message = document.createElement('p');
+  message.textContent = '请检查网络连接，然后重新加载。';
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.textContent = '重新加载应用';
+  // A new page lifetime retries failed lazy imports without reusing rejected state.
+  retry.addEventListener('click', () => window.location.reload(), { once: true });
+  failure.append(title, message, retry);
+  bootstrapRoot.replaceChildren(failure);
+  console.error('Application route initialization failed.');
+});
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
