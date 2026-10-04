@@ -11,6 +11,21 @@ const request = axios.create({
   }
 });
 
+// Logs contain fixed event names and numeric status only, never Axios config/body/headers.
+function logRequestError(event, error) {
+  const status = Number(error?.response?.status || error?.code);
+  console.error(event, { status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : 0 });
+}
+
+// Report parsing can await Blob.text after axios has delivered the response. Recheck
+// the captured context before any message, redirect, or return at that boundary.
+function requireCurrentReport(config) {
+  if (config?.executionReport && (config.signal?.aborted || !isAuthSessionCurrent(config.expectedAuth) ||
+      config.expectedAuth?.actorId !== localStorage.getItem('userId'))) {
+    throw new axios.CanceledError('REPORT_CONTEXT_CHANGED', config);
+  }
+}
+
 // requestinterceptor
 request.interceptors.request.use(
   (config) => {
@@ -41,7 +56,7 @@ request.interceptors.request.use(
     return config;
   },
   (error) => {
-    console.error('requesterror:', error);
+    logRequestError('request_failed', error);
     return Promise.reject(error);
   }
 );
@@ -49,13 +64,22 @@ request.interceptors.request.use(
 // responseshouldinterceptor
 request.interceptors.response.use(
   async (response) => {
+    requireCurrentReport(response.config);
     const binary = response.config.responseType === 'blob';
     const jsonBlob = binary && response.data instanceof Blob && /json/i.test(response.data.type || response.headers?.['content-type'] || '');
     if (binary && !jsonBlob) {
+      if (response.config.returnExportResponse) {
+        return { blob: response.data, headers: {
+          'content-disposition': response.headers?.['content-disposition'],
+          'content-type': response.headers?.['content-type']
+        } };
+      }
       return response.data;
     }
 
     const res = jsonBlob ? JSON.parse(await response.data.text()) : response.data;
+
+    requireCurrentReport(response.config);
 
     // ifBack Statuscodenot Yes200, instructionsAPIhas question
     if (res.code && res.code !== 200) {
@@ -67,7 +91,7 @@ request.interceptors.response.use(
         window.location.href = '/login';
       }
 
-      return Promise.reject(Object.assign(new Error(res.msg || 'Request failed'), { code: res.code }));
+      return Promise.reject(Object.assign(new Error(res.msg || 'Request failed'), { code: res.code, ...(response.config.executionReport ? { data: res.data } : {}) }));
     }
 
     if (binary) throw new Error('The export did not return a file. Please try again.');
@@ -76,11 +100,14 @@ request.interceptors.response.use(
   async (error) => {
     // Opt-in obsolete/cancelled care requests are silent; legacy error behavior is unchanged.
     if (error.config?.expectedAuth && axios.isCancel(error)) return Promise.reject(error);
-    console.error('responseshoulderror:', error);
+    requireCurrentReport(error.config);
 
-    if (error.response?.data instanceof Blob && /json/i.test(error.response.data.type || '')) {
+    if (error.response?.data instanceof Blob && /json/i.test(error.response.data.type || error.response.headers?.['content-type'] || '')) {
       try { error.response.data = JSON.parse(await error.response.data.text()); } catch {}
     }
+
+    requireCurrentReport(error.config);
+    logRequestError('response_failed', error);
 
     if (error.response) {
       switch (error.response.status) {
