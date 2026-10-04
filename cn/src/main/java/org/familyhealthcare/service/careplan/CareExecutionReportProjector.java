@@ -22,6 +22,7 @@ import static org.familyhealthcare.service.careplan.CareExecutionReportContracts
 
 /** One immutable, independently scoped database snapshot. This class never calls a clinical command. */
 @Service
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CareExecutionReportProjector {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final List<String> STATES = Arrays.asList("OPEN", "NEEDS_HELP", "SUBMITTED", "CONFIRMED");

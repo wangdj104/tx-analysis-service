@@ -2,6 +2,7 @@ package org.familyhealthcare.controller;
 
 import org.familyhealthcare.common.Result;
 import org.familyhealthcare.service.careplan.CarePlanException;
+import org.familyhealthcare.service.careplan.CareExecutionReportException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,13 @@ public class CarePlanExceptionAdvice {
     @Inherited
     public @interface Api { }
 
+    @ExceptionHandler(CareExecutionReportException.class)
+    public ResponseEntity<Result<Map<String,Object>>> report(CareExecutionReportException exception) {
+        Map<String,Object> details=new java.util.LinkedHashMap<>();details.put("errorCode",exception.getErrorCode());
+        if(exception.getLimitKind()!=null){details.put("limitKind",exception.getLimitKind());details.put("limit",exception.getLimit());}
+        Result<Map<String,Object>> result=Result.error(exception.getStatus(),exception.getMessage());result.setData(details);
+        return ResponseEntity.status(exception.getStatus()).body(result);
+    }
     @ExceptionHandler(CarePlanException.class)
     public ResponseEntity<Result<Map<String,String>>> carePlan(CarePlanException exception) {
         int status=exception.getStatus()==503&&"FEATURE_DISABLED".equals(exception.getErrorCode())?404:exception.getStatus();

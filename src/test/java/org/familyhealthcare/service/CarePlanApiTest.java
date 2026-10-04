@@ -29,50 +29,8 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/** Real /api prefix, JWT/permission/audit interceptor chain, transactional JDBC services; all data synthetic. */
-class CarePlanApiTest {
-    @Configuration @EnableWebMvc @EnableTransactionManagement static class WebConfig { }
-    CarePlanLifecycleTest h;
-    GenericWebApplicationContext context;
-    MockMvc mvc;
-    ObjectMapper json=new ObjectMapper();
-    JwtUtil jwt;
-    CarePlanNotificationTransport transport;
-    @BeforeEach void setup() throws Exception {
-        h=new CarePlanLifecycleTest();h.setup();
-        // The shared H2 fixture skips the legacy migration's conditional audit-column DDL.
-        for(String ddl:new String[]{"action_type VARCHAR(30)","target_type VARCHAR(80)","target_id VARCHAR(80)","detail_json CLOB"})
-            h.f.jdbc().execute("ALTER TABLE operation_audit_log ADD COLUMN IF NOT EXISTS "+ddl);
-        buildContext(true);
-    }
-    private void buildContext(boolean enabled) throws Exception {
-        ReflectionTestUtils.setField(h.properties,"enabled",enabled);
-        context=new GenericWebApplicationContext();context.setServletContext(new MockServletContext());
-        context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("care",Collections.singletonMap("care-plan.enabled",enabled)));
-        context.registerBean(org.springframework.jdbc.core.JdbcTemplate.class,()->h.f.jdbc());
-        context.registerBean(CarePlanProperties.class,()->h.properties);
-        context.registerBean(org.springframework.transaction.PlatformTransactionManager.class,()->new DataSourceTransactionManager(h.f.jdbc().getDataSource()));
-        jwt=mock(JwtUtil.class);when(jwt.validateToken(anyString())).thenAnswer(a->a.getArgument(0).toString().matches("synthetic-[0-9]+"));
-        when(jwt.getUserIdFromToken(anyString())).thenAnswer(a->Long.parseLong(a.getArgument(0).toString().substring(10)));
-        context.registerBean(JwtUtil.class,()->jwt);
-        SysUserMapper users=mock(SysUserMapper.class);when(users.selectById(any())).thenAnswer(a->{long id=Long.parseLong(a.getArgument(0).toString());
-            List<SysUser> rows=h.f.jdbc().query("SELECT id,username,status,deleted FROM sys_user WHERE id=?",(r,i)->{SysUser u=new SysUser();u.setId(r.getLong("id"));u.setUsername(r.getString("username"));u.setStatus(r.getInt("status"));u.setDeleted(r.getInt("deleted"));return u;},id);return rows.isEmpty()?null:rows.get(0);});
-        context.registerBean(SysUserMapper.class,()->users);
-        SysRoleMapper roles=mock(SysRoleMapper.class);when(roles.selectRolesByUserId(anyLong())).thenAnswer(a->h.f.jdbc().query("SELECT r.role_code FROM sys_role r JOIN sys_user_role ur ON ur.role_id=r.id WHERE ur.user_id=? AND r.status=1 AND r.deleted=0",(r,i)->{SysRole role=new SysRole();role.setRoleCode(r.getString(1));return role;},(Object)a.getArgument(0)));
-        context.registerBean(SysRoleMapper.class,()->roles);
-        context.registerBean(SysMenuMapper.class,()->mock(SysMenuMapper.class));
-        context.registerBean(OperationAuditLogMapper.class,()->mock(OperationAuditLogMapper.class));
-        transport=mock(CarePlanNotificationTransport.class);context.registerBean(CarePlanNotificationTransport.class,()->transport);
-        AnnotatedBeanDefinitionReader reader=new AnnotatedBeanDefinitionReader(context);
-        reader.register(WebConfig.class,WebMvcConfig.class,JwtInterceptor.class,PermissionInterceptor.class,AuditLogInterceptor.class,CarePlanExceptionAdvice.class,
-                CarePlanAuthorizationService.class,CarePlanQueryService.class,CarePlanCommandStore.class,CarePlanEventStore.class,CarePlanNotificationWorker.class,CarePlanService.class,CarePlanActionService.class,CareNurseAssignmentService.class,
-                org.familyhealthcare.controller.CareNurseAssignmentController.class);
-        Class<?> controller=assertDoesNotThrow(()->Class.forName("org.familyhealthcare.controller.CarePlanController"));
-        Class<?> projector=assertDoesNotThrow(()->Class.forName("org.familyhealthcare.service.careplan.CarePlanTimelineProjector"));
-        reader.register(controller,projector);context.refresh();mvc=MockMvcBuilders.webAppContextSetup(context).build();
-    }
-    @AfterEach void close() throws Exception {if(context!=null)context.close();if(h!=null)h.close();}
-
+/** Existing collaboration API regressions use the shared actual web chain. */
+class CarePlanApiTest extends CarePlanWebTestSupport {
     @Test void capabilitiesAreAuthenticatedDataFreeAndFeatureOffNeverReadsNewTables() throws Exception {
         mvc.perform(get("/api/care-plans/capabilities")).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(401));
         perform(get("/api/care-plans/capabilities"),OWNER).andExpect(status().isOk()).andExpect(jsonPath("$.data.enabled").value(true));
@@ -182,8 +140,4 @@ class CarePlanApiTest {
         assertEquals(1,h.f.jdbc().queryForObject("SELECT COUNT(*) FROM operation_audit_log WHERE action_type='RETRY'",Integer.class));
         verifyNoInteractions(transport);
     }
-    private ResultActions perform(MockHttpServletRequestBuilder req,long actor)throws Exception{return mvc.perform(req.header("Authorization","Bearer synthetic-"+actor));}
-    private MockHttpServletRequestBuilder command(String path,Map<String,Object>body,long version)throws Exception {Map<String,Object>b=new LinkedHashMap<>(body);b.put("commandKey",key());b.put("expectedVersion",version);return post(path).contentType("application/json").content(json.writeValueAsString(b));}
-    @SuppressWarnings("unchecked") private Map<String,Object>read(ResultActions result)throws Exception{return json.readValue(result.andReturn().getResponse().getContentAsString(),Map.class);}
-    @SuppressWarnings("unchecked") private Map<String,Object>create()throws Exception{return (Map<String,Object>)read(perform(command("/api/care-plans",body(1),0),DOCTOR).andExpect(status().isOk())).get("data");}
 }

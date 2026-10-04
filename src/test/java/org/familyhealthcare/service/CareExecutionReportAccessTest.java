@@ -284,6 +284,17 @@ class CareExecutionReportAccessTest {
         assertThrows(UnsupportedOperationException.class, () -> manifest.getReadableEvidence().clear());
     }
 
+    @Test void remainingSharedBudgetBoundsAllFreshAuthorizationStatements() {
+        CareExecutionReportBudget budget=CareExecutionReportBudget.start(Duration.ofMillis(900));
+        access.inspect(OWNER,request(),budget);access.recheck(OWNER,request(),manifest(true),budget);
+        assertFalse(dataSource.reads.isEmpty());
+        for(Read read:dataSource.reads){assertEquals(1,read.queryTimeout,read.sql);assertEquals(Connection.TRANSACTION_READ_COMMITTED,read.isolation);assertTrue(read.readOnly);}
+        dataSource.reads.clear();
+        assertEquals("REPORT_TIMEOUT",assertThrows(CareExecutionReportException.class,()->access.inspect(OWNER,request(),CareExecutionReportBudget.start(Duration.ZERO))).getErrorCode());
+        assertEquals("REPORT_TIMEOUT",assertThrows(CareExecutionReportException.class,()->access.recheck(OWNER,request(),manifest(true),CareExecutionReportBudget.start(Duration.ZERO))).getErrorCode());
+        assertTrue(dataSource.reads.isEmpty());
+    }
+
     private Set<Integer> observedFreshConnections(int outerConnection) {
         assertFalse(dataSource.reads.isEmpty());
         Set<Integer> connections = new HashSet<>();

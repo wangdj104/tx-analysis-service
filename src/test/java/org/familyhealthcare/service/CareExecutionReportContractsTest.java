@@ -14,6 +14,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Synthetic, clock-independent tests of the public report boundary. */
 class CareExecutionReportContractsTest {
+    @org.junit.jupiter.api.Test void interruptedBudgetFailsClosed() {
+        Thread.currentThread().interrupt();
+        try { org.junit.jupiter.api.Assertions.assertThrows(CareExecutionReportException.class,
+            () -> CareExecutionReportBudget.start(java.time.Duration.ofSeconds(30)).checkTime()); }
+        finally { Thread.interrupted(); }
+    }
+
     private static final Instant NOW = Instant.parse("2026-10-04T12:00:00Z");
     private static final long SOURCE_LIMIT = 8L * 1024 * 1024;
     private static final long OUTPUT_LIMIT = 32L * 1024 * 1024;

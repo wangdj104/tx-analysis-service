@@ -27,11 +27,20 @@ public final class CareExecutionReportBudget {
 
     public void checkTime() {
         // Subtraction also works when nanoTime wraps; adding a deadline could overflow.
-        if (nanoTime.getAsLong() - startedAtNanos >= timeoutNanos) throw CareExecutionReportException.timeout();
+        if (Thread.currentThread().isInterrupted() || nanoTime.getAsLong() - startedAtNanos >= timeoutNanos) throw CareExecutionReportException.timeout();
+    }
+
+    /** Same entry-time deadline, including executor queue time and final authorization. */
+    public long remainingNanos() {
+        checkTime();
+        long remaining=timeoutNanos-(nanoTime.getAsLong()-startedAtNanos);
+        if(remaining<=0)throw CareExecutionReportException.timeout();
+        return remaining;
     }
 
     /** JDBC uses whole seconds; round up and check the exact monotonic deadline after each read. */
     public int remainingQuerySeconds() {
+        checkTime();
         long elapsed = nanoTime.getAsLong() - startedAtNanos;
         if (elapsed >= timeoutNanos) throw CareExecutionReportException.timeout();
         long remaining = timeoutNanos - elapsed;

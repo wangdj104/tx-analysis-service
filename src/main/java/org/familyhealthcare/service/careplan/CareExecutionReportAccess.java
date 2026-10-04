@@ -21,6 +21,7 @@ import static org.familyhealthcare.service.careplan.CareExecutionReportException
 
 /** Fresh, narrow report authorization. No clinical body or full Patient entity is loaded here. */
 @Service
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CareExecutionReportAccess {
     private final JdbcTemplate jdbc;
     private final CarePlanAuthorizationService auth;
@@ -37,31 +38,45 @@ public class CareExecutionReportAccess {
     }
 
     public Access inspect(long actorId, CareExecutionReportContracts.Request request) {
-        Objects.requireNonNull(request);
-        return freshRead.execute(status -> {
+        return inspect(actorId,request,CareExecutionReportBudget.start(CareExecutionReportContracts.REQUEST_TIMEOUT));
+    }
+    public Access inspect(long actorId,CareExecutionReportContracts.Request request,CareExecutionReportBudget budget) {
+        Objects.requireNonNull(request);Objects.requireNonNull(budget).checkTime();
+        return withinBudget(budget,status -> {
             requireFreshTransaction();
-            requireScope(actorId, request);
-            return new Access(questionsAllowed(actorId, request.getPatientId()));
+            requireScope(actorId, request);budget.checkTime();
+            Access result=new Access(questionsAllowed(actorId, request.getPatientId()));budget.checkTime();return result;
         });
     }
 
     public void recheck(long actorId, CareExecutionReportContracts.Request request, Manifest manifest) {
-        Objects.requireNonNull(request);
-        Objects.requireNonNull(manifest);
-        freshRead.execute(status -> {
+        recheck(actorId,request,manifest,CareExecutionReportBudget.start(CareExecutionReportContracts.REQUEST_TIMEOUT));
+    }
+    public void recheck(long actorId,CareExecutionReportContracts.Request request,Manifest manifest,CareExecutionReportBudget budget) {
+        Objects.requireNonNull(request);Objects.requireNonNull(manifest);Objects.requireNonNull(budget).checkTime();
+        withinBudget(budget,status -> {
             requireFreshTransaction();
             // Base loss takes precedence over loss of an optional section or reference.
-            requireScope(actorId, request);
+            requireScope(actorId, request);budget.checkTime();
             if (manifest.isQuestionsIncluded() && !questionsAllowed(actorId, request.getPatientId())) {
                 throw new CareExecutionReportException(Code.REPORT_ACCESS_CHANGED);
             }
+            budget.checkTime();
             for (EvidenceKey key : manifest.getReadableEvidence()) {
+                budget.checkTime();
                 if (!auth.canReadEvidence(actorId, request.getPatientId(), key.getSourceType(), key.getSourceId())) {
                     throw new CareExecutionReportException(Code.REPORT_ACCESS_CHANGED);
                 }
             }
-            return null;
+            budget.checkTime();return null;
         });
+    }
+    private <T> T withinBudget(CareExecutionReportBudget budget,org.springframework.transaction.support.TransactionCallback<T> read) {
+        TransactionTemplate transaction=new TransactionTemplate(freshRead.getTransactionManager(),freshRead);
+        // JdbcTemplate applies this connection-bound remaining timeout to every authorization statement.
+        transaction.setTimeout(budget.remainingQuerySeconds());
+        try {T result=transaction.execute(read);budget.checkTime();return result;}
+        catch(org.springframework.dao.QueryTimeoutException|org.springframework.transaction.TransactionTimedOutException timeout){throw CareExecutionReportException.timeout();}
     }
 
     private void requireScope(long actorId, CareExecutionReportContracts.Request request) {
