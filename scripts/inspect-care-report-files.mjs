@@ -17,6 +17,16 @@ export function reportCsvSchema(format,language) {
   assert.ok(Object.hasOwn(REPORT_CSV_SCHEMA,format) && ['en','zh-CN'].includes(language),'Invalid report CSV schema request')
   return REPORT_CSV_SCHEMA[format].map(c=>({key:c.key,header:language==='en'?c.en:c.zh}))
 }
+// The file has already passed raw BOM/strict UTF-8/schema/content inspection.
+// CDP's text view may omit exactly the one leading CSV BOM. Never alter the
+// downloaded file or normalize any other byte, even a line ending.
+export function assertInspectedResponseBytes(served,{format,bytes,sha256}) {
+  assert.ok(Buffer.isBuffer(served)&&Object.hasOwn(formats,format)&&Number.isSafeInteger(bytes)&&bytes>0&&bytes<=REPORT_MAX_BYTES&&/^[a-f0-9]{64}$/.test(sha256),'Invalid inspected response comparison')
+  if(served.length===bytes){assert.equal(hash(served),sha256,'Downloaded bytes differ from actual response');return}
+  const bom=Buffer.from([0xef,0xbb,0xbf])
+  assert.ok(['actions_csv','events_csv'].includes(format)&&served.length===bytes-3&&!served.subarray(0,3).equals(bom),'Actual response bytes differ from inspected delivery length')
+  assert.equal(createHash('sha256').update(bom).update(served).digest('hex'),sha256,'CSV response differs beyond the single inspector BOM')
+}
 export async function assertSafeReportPath(path,{directory=false,allowMissing=false}={}) {
   const absolute=resolve(path),root=parse(absolute).root,parts=absolute.slice(root.length).split('/').filter(Boolean)
   for(let i=0;i<parts.length;i++) {

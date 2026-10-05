@@ -1,3 +1,4 @@
+import { reportPhase } from './reportOutcomePhase.mjs'
 import { test as base, expect } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { ids, language, login, api, pageErrorCounter, appPath } from './helpers.mjs'
@@ -50,10 +51,12 @@ export const test = base.extend({
     try {
       const owner = await open('personal'), admin = await open('admin')
       await clearAccess(owner, admin)
+      await reportPhase('test-body')
       await use({ open, owner, admin, pages, sibling: async (page, label) => {
         const sibling = await page.context().newPage(); checks.push(pageErrorCounter(sibling)); pages[label] = sibling; return sibling
       } })
     } finally {
+      await reportPhase('teardown',async()=>{
       if (testInfo.status !== testInfo.expectedStatus) {
         for (const [role, page] of Object.entries(pages)) {
           if (!page.isClosed()) {
@@ -64,6 +67,7 @@ export const test = base.extend({
       }
       for (const context of contexts) await context.close()
       for (const check of checks) check()
+      })
     }
   },
 })

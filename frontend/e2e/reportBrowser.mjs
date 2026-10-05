@@ -1,3 +1,4 @@
+import { reportPhase } from './reportOutcomePhase.mjs'
 import { expect } from '@playwright/test'
 import { ids, appPath, api, assignNurse, grant, language } from './helpers.mjs'
 
@@ -41,6 +42,7 @@ export function reportResponse(page, endpoint = 'preview', body = {}) {
   })
 }
 export async function preview(page) {
+  await reportPhase('preview')
   const responsePromise = reportResponse(page)
   await page.getByTestId('preview-report').focus()
   await expect(page.getByTestId('preview-report')).toBeFocused()

@@ -9,6 +9,8 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.support.EncodedResource;
+import java.nio.charset.StandardCharsets;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
@@ -51,7 +53,7 @@ public final class CarePlanBrowserApplication {
             try(java.sql.Statement s=connection.createStatement();java.sql.ResultSet r=s.executeQuery("SELECT VERSION(),DATABASE(),@@server_uuid")){
                 require(r.next()&&r.getString(1).startsWith("8.0.")&&db.equals(r.getString(2))&&r.getString(3).equals(env.get("CARE_PLAN_BROWSER_SERVER_UUID")),"native exact disposable service/schema");
             }
-            ScriptUtils.executeSqlScript(connection,new ClassPathResource("sql/care-plan-e2e-fixture.sql"));
+            ScriptUtils.executeSqlScript(connection,new EncodedResource(new ClassPathResource("sql/care-plan-e2e-fixture.sql"),StandardCharsets.UTF_8));
             String hash=new BCryptPasswordEncoder().encode(loginPassword);
             try(java.sql.PreparedStatement s=connection.prepareStatement("UPDATE sys_user SET password=? WHERE id BETWEEN 9001 AND 9006")){
                 s.setString(1,hash);require(s.executeUpdate()==6,"synthetic account count");

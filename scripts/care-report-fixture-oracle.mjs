@@ -76,7 +76,11 @@ export function assertDownloadClickMetadata(observation,{request,format,filename
   assert.ok(paragraphs.includes(patient),'Pre-click scope does not match the exact request')
   assert.ok(paragraphs.includes(`${request.fromDate} — ${request.toDate} · UTC · ${request.language} · ${zh?'报告schema':'Report schema'} 1`),'Pre-click dates/language/schema do not match the exact request')
   const date=new Intl.DateTimeFormat(request.language,{timeZone:'UTC',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'longOffset'}).format(new Date(generatedSecond))
-  assert.ok(paragraphs.includes(flat(`${zh?'生成时间':'Generated'}: ${date} (UTC+00:00, UTC)`)),'Pre-click generation time does not match the actual server filename')
+  // ECMA-402 implementations spell UTC's longOffset as GMT or GMT+00:00.
+  // Normalize only that standalone zero-offset token; all date/time/zone fields
+  // and the explicit UTC+00:00 suffix must still match the server filename.
+  const canonical=value=>flat(value).replace(/\bGMT\+00:00(?= |$)/g,'GMT')
+  assert.ok(paragraphs.some(value=>canonical(value)===canonical(`${zh?'生成时间':'Generated'}: ${date} (UTC+00:00, UTC)`)),'Pre-click generation time does not match the actual server filename')
   if(rowCount!=null){assert.ok(Number.isSafeInteger(rowCount)&&rowCount>=0&&rowCount<=5000,'Bounded row count required');assert.ok(paragraphs.some(value=>rowCount===0?value.startsWith(zh?'0条 · 仅表头。':'0 rows · header only.'):value===`${rowCount} ${zh?'条':'rows'}`),'Pre-click row count differs')}
   return {generatedSecond}
 }

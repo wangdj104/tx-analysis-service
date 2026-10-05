@@ -29,6 +29,7 @@ function setup(t, kind) {
     computed, reactive, ref, watch, onMounted: fn => mounted.push(fn), onUnmounted: fn => unmounted.push(fn),
     useCurrentPatient: () => ({ currentPatientId: patientId }), window, document, api,
     useRoute: () => route, useRouter: () => ({ push() {} }), inject: (_, fallback) => fallback,
+    captureAuthSession:()=>({}), isAuthSessionCurrent:()=>true,
     readPermissionCache: () => ({ menuPaths: [], roleCodes: [] }), canAccessWorkspace: () => true,
     localDateKey: () => '2026-10-02', replaceTarget(target, value) { for (const key in target) delete target[key]; Object.assign(target, value || {}) },
     getMonitoringSnapshot: (...args) => request('getMonitoringSnapshot', args),
@@ -47,18 +48,21 @@ function setup(t, kind) {
     ...view, patientId, calls, timers, listeners, document, unmount,
     start() { mounted.forEach(fn => fn()) },
     async tick() { for (const timer of [...timers.values()]) timer.fn(); await flush() },
-    async finish(call, data = []) { assert.ok(!call.settled); call.settled = true; call.resolve({ code: 200, data }); await flush() },
+    async finish(call, data = []) { assert.ok(!call.settled); call.settled = true; call.resolve({ code: 200, data: call.name==='getSpecialtyMenuScope'?{patientId:call.args[0],allowedPaths:['/family-health?tab=schedule']}:data }); await flush() },
     async fail(call) { assert.ok(!call.settled); call.settled = true; call.reject(new Error('Synthetic read failure')); await flush() },
     pending(name) { return calls.filter(call => !call.settled && (!name || call.name === name)) }
   }
 }
 async function ready(t, kind) {
   const view = setup(t, kind); view.start()
-  for (const call of [...view.calls]) await view.finish(call, kind === 'monitoring' ? { marker: 'initial' } : [])
+  while(view.pending().length)for (const call of [...view.pending()]) await view.finish(call, kind === 'monitoring' ? { marker: 'initial' } : [])
   return view
 }
 const finishReload = async (view, calls, id = 1) => {
-  for (const call of calls) await view.finish(call, call.name === 'getIntakes' ? [{ id }] : [{ marker: id }])
+  for (const call of calls) {
+    const before=new Set(view.calls);await view.finish(call, call.name === 'getIntakes' ? [{ id }] : [{ marker: id }])
+    for(const follow of view.calls.filter(value=>!before.has(value)&&value.name==='getDialysisSchedules'))await view.finish(follow,[{marker:id}])
+  }
 }
 
 test('monitoring automatic visibility and timer wakes share an in-flight read', async t => {
@@ -245,7 +249,7 @@ test('family clearing the patient suppresses all background and explicit reads',
 
 test('family failed full reload releases background work and allows explicit retry', async t => {
   const v = await ready(t, 'family'), request = v.reload(), calls = [...v.pending()]
-  const failure = assert.rejects(request, /Synthetic read failure/)
+  const failure = assert.doesNotReject(request)
   await v.fail(calls[0]); await failure
   for (const call of calls.slice(1)) await v.finish(call)
   assert.equal(v.loading.value, false); await v.tick(); await v.finish(v.calls.at(-1), [{ id: 21 }])

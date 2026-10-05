@@ -13,3 +13,6 @@ export const updateAlertStatus = (id, status, handlingNote) => request({ url: `/
 export const getVisitSummary = (patientId, options = {}) => request({ url: '/family-health/visit-summary', params: { patientId }, expectedAuth: options.expectedAuth, signal: options.signal, ...(options.expectedAuth ? { executionReport: true } : {}) })
 
 export const deleteEvent = id => request({ url: `/family-health/events/${id}`, method: 'delete' })
+
+// Fresh scope for the optional dialysis read; clinical data remains separately authorized.
+export const getSpecialtyMenuScope = patientId => request({ url: '/patient/specialty-menu-scope', params: { patientId } })

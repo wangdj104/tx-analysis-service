@@ -128,7 +128,7 @@ jobs:
           /usr/bin/python3 scripts/tests/care-report-font.test.py
           /usr/bin/python3 scripts/prepare-care-report-font.py
       - name: Check actual report download inspectors
-        run: node --test scripts/tests/care-report-download-inspection.test.mjs
+        run: node --test scripts/tests/care-report-download-inspection.test.mjs scripts/tests/care-plan-browser-outcomes.test.mjs
       - name: Verify two disposable native schema and restore passes
         env:
           CARE_PLAN_TEST_ONLY: 'true'
@@ -173,6 +173,19 @@ jobs:
             '${{ matrix.directory }}/target/care-execution-report-qa/zh-CN/long-report.pdf'
           (cd '${{ matrix.directory }}' && mvn -B -Dtest=CareExecutionReportPdfTest -DskipTests=false test)
           node scripts/collect-care-report-renderer-evidence.mjs '${{ matrix.directory }}'
+      - name: Validate bounded final browser outcomes
+        id: browser_outcomes
+        if: always()
+        run: node scripts/care-plan-browser-outcomes.mjs '${{ matrix.language }}'
+      - name: Preserve bounded final browser outcomes
+        if: always() && steps.browser_outcomes.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-report-${{ matrix.language }}-${{ github.sha }}-outcomes
+          path: ${{ runner.temp }}/care-plan-outcome-artifacts-${{ matrix.language }}/outcomes.json
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
       - name: Stage bounded sanitized browser review artifacts
         id: browser_artifacts
         if: always()

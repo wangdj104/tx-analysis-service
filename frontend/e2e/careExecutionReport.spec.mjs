@@ -1,3 +1,4 @@
+import { reportPhase } from './reportOutcomePhase.mjs'
 import { expect } from '@playwright/test'
 import { test } from './carePlanSessions.mjs'
 import { ids, appPath, api, grant, assignNurse, assertNoOverflow } from './helpers.mjs'
@@ -12,13 +13,16 @@ async function uiDownload(page, testInfo, format, outputLanguage, expected, scen
   expected = { ...expected, ...selected }
   const restore = await observeDownloadMetadata(page)
   try {
+    await reportPhase('download-click')
     const response = reportResponse(page, 'export', { format, language: outputLanguage })
     const downloaded = page.waitForEvent('download')
     const button = page.getByTestId(`download-${format}`)
     await button.focus(); await expect(button).toBeFocused(); await button.press('Enter')
     const result = await inspectReportDownload({ download: await downloaded, response: await response, format, language: outputLanguage, expected, testInfo, scenario })
-    const observation = await page.evaluate(() => window.__reportClickObservation)
-    assertDownloadClickMetadata(observation, { request: selected, format, filename: result.filename, rowCount: result.csvRowCount })
+    await reportPhase('pre-click-metadata',async()=>{
+      const observation = await page.evaluate(() => window.__reportClickObservation)
+      assertDownloadClickMetadata(observation, { request: selected, format, filename: result.filename, rowCount: result.csvRowCount })
+    })
     await expect(button).toBeEnabled()
     return result
   } finally { await restore() }
@@ -120,6 +124,7 @@ test('real report: empty and independently limited CSVs disclose zero-row metada
     await openReport(page, { patientId, language: outputLanguage })
     if (limited) {
       const response = reportResponse(page)
+      await reportPhase('preview')
       await page.getByTestId('preview-report').click()
       await assertReportDeniedResponse(await response, { status: 422, errorCode: 'REPORT_LIMIT_EXCEEDED', limitKind: 'QUESTIONS', limit: 200 })
       await expect(panel(page).getByRole('alert')).toContainText('QUESTIONS')
@@ -152,6 +157,7 @@ test('real report: JSON and every export reject admin, outsider, cross-patient a
     const counter = downloadCounter(page)
     try {
       const response = reportResponse(page)
+      await reportPhase('preview')
       await page.getByTestId('preview-report').click()
       await assertReportDeniedResponse(await response)
       for (const format of formats) {
@@ -175,7 +181,8 @@ test('real report: JSON and every export reject admin, outsider, cross-patient a
         if (assignment.nurseUserId === ids.nurse && assignment.status === 'ACTIVE') await api(admin, `/care-nurse-assignments/${assignment.id}/revoke`, { method: 'POST' })
       }
       for (const format of formats) {
-        const response = reportResponse(page, 'export', { format })
+        await reportPhase('download-click')
+    const response = reportResponse(page, 'export', { format })
         await page.getByTestId(`download-${format}`).click()
         await assertReportDeniedResponse(await response)
         await expect(panel(page).getByRole('alert')).toBeVisible()

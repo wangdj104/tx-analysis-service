@@ -27,17 +27,17 @@ async function generateSummary(page) {
   await expect(reportBody(page)).toBeVisible()
   await expect(refresh(page)).not.toHaveClass(/is-loading/)
 }
-async function preparePrintData(owner) {
-  await api(owner,'/patient/update',{method:'PUT',body:{id:ids.reportPatient,medicalHistory:oldHistory}})
+async function preparePrintData(owner, admin) {
+  await api(admin,'/patient/update',{method:'PUT',body:{id:ids.reportPatient,medicalHistory:oldHistory}})
   const question=await api(owner,'/care/items',{method:'POST',body:{patientId:ids.reportPatient,kind:'QUESTION',title:oldQuestion,details:{description:'Synthetic print source before refresh'}}})
   return {
     async freshen() {
-      await api(owner,'/patient/update',{method:'PUT',body:{id:ids.reportPatient,medicalHistory:newHistory}})
+      await api(admin,'/patient/update',{method:'PUT',body:{id:ids.reportPatient,medicalHistory:newHistory}})
       await api(owner,'/care/items',{method:'POST',body:{id:question.id,patientId:ids.reportPatient,kind:'QUESTION',title:newQuestion,details:{description:'Synthetic print source after refresh'}}})
     },
     async dispose() {
       await api(owner,'/care/items/'+question.id,{method:'DELETE'})
-      await api(owner,'/patient/update',{method:'PUT',body:{id:ids.reportPatient,medicalHistory:oldHistory}})
+      await api(admin,'/patient/update',{method:'PUT',body:{id:ids.reportPatient,medicalHistory:oldHistory}})
     },
   }
 }
@@ -77,7 +77,7 @@ async function observeRealPrint(page,{hold=false}={}) {
 for(const mobile of [false,true]) for(const outputLanguage of ['en','zh-CN']) test(`real print ${mobile?'390px':'desktop'} ${outputLanguage} freshly renders both legacy and care content, focuses one popup and cleans it on change`,async({sessions},testInfo)=>{
   test.setTimeout(120000)
   const page=mobile?await sessions.open('personal',{mobile:true}):sessions.owner
-  const data=await preparePrintData(sessions.owner)
+  const data=await preparePrintData(sessions.owner, sessions.admin)
   let restore
   try{
     await openSummary(page,outputLanguage);await generateSummary(page)

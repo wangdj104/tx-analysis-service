@@ -3,15 +3,16 @@
     <header class="hero"><div><span class="hero-eyebrow">Daily care</span><h1>Family Health Workspace</h1><p>See today's tasks, completed care, and items that need attention in one place.</p></div><el-button @click="reload">Refresh data</el-button></header>
     <el-alert v-if="!patientId" title="Select a family member in the top bar first." type="warning" :closable="false" show-icon />
     <template v-else>
-      <section class="today-grid">
+      <el-alert v-if="['unavailable','denied'].includes(reloadState)" :title="reloadState==='denied'?'Access to these records was denied. Check access and refresh.':'These records are unavailable. Refresh to try again.'" type="warning" :closable="false" show-icon />
+      <section v-if="reloadState==='ready'" class="today-grid">
         <article class="status-card"><span>Today's medications</span><strong>{{ takenCount }}/{{ activeIntakes.length }}</strong><small>{{ missedCount ? `${missedCount} missed` : 'Follow today’s plan and record each dose' }}</small></article>
-        <article class="status-card"><span>Dialysis schedule</span><strong>{{ todaySchedule ? statusText(todaySchedule.status) : 'No schedule' }}</strong><small>{{ todaySchedule?.scheduleTime || '—' }}</small></article>
+        <article class="status-card"><span>Dialysis schedule</span><strong>{{ scheduleState==='ready' ? (todaySchedule ? statusText(todaySchedule.status) : 'No schedule') : scheduleStateText(scheduleState) }}</strong><small>{{ todaySchedule?.scheduleTime || '—' }}</small></article>
         <article class="status-card"><span>Personal targets</span><strong>{{ target.id ? 'Configured' : 'Not configured' }}</strong><small>Personal targets improve alert accuracy</small></article>
       </section>
       <el-tabs v-model="tab" class="workspace">
         <el-tab-pane v-if="availableTabs.includes('today')" label="Today's Tasks" name="today">
           <div class="toolbar"><el-button type="primary" @click="openEvent()">Record symptom or event</el-button><el-button @click="$router.push('/bp-self-monitor')">Quick blood pressure / glucose entry</el-button><el-button @click="$router.push('/medication?tab=remind')">Medication reminders</el-button></div>
-          <el-empty v-if="!intakes.length && !todaySchedule" description="Nothing needs attention today" />
+          <el-empty v-if="reloadState==='ready' && !intakes.length && !todaySchedule" description="Nothing needs attention today" />
           <div v-if="todaySchedule" class="task-row"><div><b>{{ todaySchedule.scheduleTime || 'Time not set' }} Dialysis session</b><p>{{ todaySchedule.remark }}</p></div><el-tag>{{statusText(todaySchedule.status)}}</el-tag><div class="actions"><el-button @click="openSchedule(todaySchedule)">View schedule</el-button><el-button v-if="todaySchedule.status==='PLANNED'" :disabled="saving" @click="changeSchedule(todaySchedule,'COMPLETED')">Mark complete</el-button></div></div>
           <div v-for="item in intakes" :key="item.id" class="task-row">
             <div><b>{{ item.scheduledAt?.slice(11,16) }} {{ item.drugName }}</b><p>{{ item.dosage || 'As prescribed' }}</p><small v-if="item.status==='SNOOZED'">Snoozed until {{ item.snoozeUntil }}</small></div>
@@ -22,11 +23,12 @@
         <el-tab-pane v-if="availableTabs.includes('timeline')" label="Health Timeline" name="timeline">
           <div class="toolbar"><el-button type="primary" @click="openEvent()">Add health event</el-button><el-date-picker v-model="eventRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="Start Date" end-placeholder="End Date" @change="reload" /></div>
           <p>Measurements, dialysis sessions, and medication records are combined automatically. Up to 200 recent events are shown; edit source records in their original module.</p>
-          <el-timeline><el-timeline-item v-for="e in events" :key="`${e.sourceType || 'MANUAL'}-${e.sourceId ?? e.id}`" :timestamp="timelineTimestamp(e)" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><router-link v-if="safePlanLink(e)" :to="safePlanLink(e)" class="care-plan-event-link">Open plan and authorized history</router-link><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">Edit</el-button><el-popconfirm title="Delete this event?" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">Delete</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="!events.length" description="No health events" />
+          <el-timeline><el-timeline-item v-for="e in events" :key="`${e.sourceType || 'MANUAL'}-${e.sourceId ?? e.id}`" :timestamp="timelineTimestamp(e)" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><router-link v-if="safePlanLink(e)" :to="safePlanLink(e)" class="care-plan-event-link">Open plan and authorized history</router-link><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">Edit</el-button><el-popconfirm title="Delete this event?" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">Delete</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="reloadState==='ready' && !events.length" description="No health events" />
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('schedule')" label="Dialysis Schedule" name="schedule">
+          <el-alert v-if="scheduleState!=='ready'" :title="scheduleStateText(scheduleState)" type="warning" :closable="false" show-icon />
           <el-alert class="schedule-tip" title="Schedules are created only from dates you add or a recurring plan you explicitly confirm in the Clinical Workbench. Entries can be edited or cancelled here." type="info" :closable="false" show-icon />
-          <div class="toolbar"><el-button type="primary" @click="openSchedule()">Add schedule</el-button></div>
+          <div class="toolbar"><el-button type="primary" :disabled="scheduleState!=='ready'" @click="openSchedule()">Add schedule</el-button></div>
           <el-table :data="schedules"><el-table-column prop="scheduleDate" label="Date" min-width="110"/><el-table-column prop="scheduleTime" label="Time"/><el-table-column label="Status"><template #default="{row}">{{statusText(row.status)}}<small v-if="row.completedRecordId"> (linked to a record) </small></template></el-table-column><el-table-column prop="remark" label="Notes"/><el-table-column label="Actions" min-width="200"><template #default="{row}"><el-button link @click="openSchedule(row)">Edit</el-button><el-button v-if="row.status==='PLANNED'" link type="success" :disabled="saving" @click="changeSchedule(row,'COMPLETED')">Complete</el-button><el-button v-if="row.status!=='CANCELLED'" link type="danger" :disabled="saving" @click="changeSchedule(row,'CANCELLED')">Cancel schedule</el-button><el-button v-else link type="primary" :disabled="saving" @click="changeSchedule(row,'PLANNED')">Restore</el-button></template></el-table-column></el-table>
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('target')" label="Personal Goals" name="target">
@@ -92,20 +94,47 @@ const todaySchedule=computed(()=>schedules.value.find(x=>x.scheduleDate===today.
 let requestVersion=0, taskVersion=0, summaryVersion=0, timer
 let summaryController=null, printPopup=null
 let disposed=false, taskPending=null
+const reloadState=ref('idle'),scheduleState=ref('idle')
+function clearReload(){
+  requestVersion++;taskVersion++;taskPending=null
+  intakes.value=[];events.value=[];schedules.value=[];replaceTarget(target,null)
+  reloadState.value='idle';scheduleState.value='idle';loading.value=false
+  eventVisible.value=false;scheduleVisible.value=false
+}
+function invalidateContext(){clearReload();invalidateSummary()}
+const readFailure=error=>[401,403].includes(Number(error?.response?.status||error?.code))?'denied':'unavailable'
+async function loadOptionalSchedules(id,owns){
+  if(!availableTabs.value.includes('schedule'))return {state:'denied',data:[]}
+  try{
+    const result=await api.getSpecialtyMenuScope(id)
+    if(!owns())return {state:'unavailable',data:[]}
+    const scope=result.data
+    if(Number(scope?.patientId)!==Number(id)||!Array.isArray(scope?.allowedPaths))return {state:'unavailable',data:[]}
+    if(!scope.allowedPaths.includes('/family-health?tab=schedule'))return {state:'disabled',data:[]}
+    const schedules=await api.getDialysisSchedules(id)
+    return {state:'ready',data:schedules.data||[]}
+  }catch(error){return {state:readFailure(error),data:[]}}
+}
 async function reload(){
   const id=patientId.value
   if(disposed || !id)return
-  const version=++requestVersion,intakeVersion=++taskVersion
-  loading.value=true
+  clearReload()
+  const version=++requestVersion,intakeVersion=++taskVersion,auth=captureAuthSession()
+  let active=true
+  const owns=()=>active&&!disposed&&id===patientId.value&&version===requestVersion&&isAuthSessionCurrent(auth)
+  loading.value=true;reloadState.value='loading';scheduleState.value='loading'
   try {
-    const [a,b,c,d]=await Promise.all([api.getIntakes(id),api.getTimeline(id,eventRange.value?.[0],eventRange.value?.[1]),api.getDialysisSchedules(id),api.getHealthTarget(id)])
-    if(disposed || id!==patientId.value || version!==requestVersion)return
+    const [a,b,c,d]=await Promise.all([api.getIntakes(id),api.getTimeline(id,eventRange.value?.[0],eventRange.value?.[1]),loadOptionalSchedules(id,owns),api.getHealthTarget(id)])
+    if(!owns())return
     // Full reload and task-only refresh share ownership of the intake list.
     if(intakeVersion===taskVersion){intakes.value=a.data||[];today.value=localDateKey()}
-    events.value=b.data||[];schedules.value=c.data||[];replaceTarget(target,d.data)
-  } finally {if(!disposed && version===requestVersion)loading.value=false}
+    events.value=b.data||[];schedules.value=c.data;scheduleState.value=c.state;replaceTarget(target,d.data)
+    reloadState.value='ready'
+  }catch(error){
+    if(owns()){intakes.value=[];events.value=[];schedules.value=[];replaceTarget(target,null);reloadState.value=readFailure(error);scheduleState.value='unavailable'}
+  } finally {active=false;if(!disposed && version===requestVersion)loading.value=false}
 }
-watch(patientId,()=>{requestVersion++;taskVersion++;invalidateSummary();taskPending=null;intakes.value=[];events.value=[];schedules.value=[];summary.value=null;summaryLoading.value=false;eventVisible.value=false;scheduleVisible.value=false;replaceTarget(target,null);loading.value=false;reload()},{immediate:true,flush:'sync'})
+watch(patientId,()=>{invalidateContext();reload()},{immediate:true,flush:'sync'})
 async function refreshTasks(){
   const id=patientId.value
   // Skip redundant background reads before advancing result ownership.
@@ -119,7 +148,7 @@ async function refreshTasks(){
   finally{if(taskPending===pending)taskPending=null}
 }
 onMounted(()=>{timer=window.setInterval(refreshTasks,30000)})
-onUnmounted(()=>{disposed=true;taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateSummary);window.removeEventListener('storage',summaryStorageChanged)})
+onUnmounted(()=>{disposed=true;taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateContext);window.removeEventListener('storage',summaryStorageChanged)})
 async function save(operation){if(saving.value)return;const id=patientId.value;if(!id)return;saving.value=true;try{await operation(id);ElMessage.success('Saved successfully.');if(id===patientId.value){summaryVersion++;summary.value=null;summaryLoading.value=false;await reload()}}finally{saving.value=false}}
 async function doIntake(item,status){const id=patientId.value;let reason='';if(status==='SKIPPED'){const answer=await ElMessageBox.prompt('Briefly explain why this dose was skipped.','Skip this medication dose').catch(()=>null);if(!answer)return;reason=answer.value}if(id!==patientId.value)return;await save(()=>api.actionIntake(item.id,status,reason))}
 function openEvent(row){Object.keys(eventForm).forEach(k=>delete eventForm[k]);Object.assign(eventForm,{id:null,eventDate:localDateKey(),eventTime:'',eventType:'SYMPTOM',title:'',summary:''},row||{});eventVisible.value=true}
@@ -138,9 +167,9 @@ function closePrintPopup(){if(printPopup){try{printPopup.document.body?.replaceC
 // A replacement report must clear a prepared popup immediately. Do not clear the
 // replacement client here: the intentional paired refresh advances this too.
 watch(()=>reportPanel.value?.generation,closePrintPopup,{flush:'sync'})
-function summaryStorageChanged(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))invalidateSummary()}
+function summaryStorageChanged(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))invalidateContext()}
 watch(()=>JSON.stringify(reportPanel.value?.context),invalidateSummary,{flush:'sync'})
-window.addEventListener('auth-session-cleared',invalidateSummary)
+window.addEventListener('auth-session-cleared',invalidateContext)
 window.addEventListener('storage',summaryStorageChanged)
 async function refreshVisit(forPrint=false){
   if(summaryLoading.value||!patientId.value||!reportPanel.value)return false
@@ -187,6 +216,7 @@ async function loadSummary(){return refreshVisit(false)}
 async function printSummary(){return refreshVisit(true)}
 const intakeText=s=>({PENDING:'Due',TAKEN:'Taken',SNOOZED:'Snoozed',SKIPPED:'Skipped',MISSED:'Missed',CANCELLED:'Cancelled'}[s]||s)
 const tagType=s=>({TAKEN:'success',MISSED:'danger',SKIPPED:'info',SNOOZED:'warning',CANCELLED:'info'}[s]||'primary')
+const scheduleStateText=s=>({loading:'Loading',disabled:'Dialysis care is not enabled',denied:'Dialysis schedule access denied',unavailable:'Dialysis schedules unavailable',idle:'Not loaded'}[s]||'')
 const statusText=s=>({PLANNED:'Planned',COMPLETED:'Completed',CANCELLED:'Cancelled'}[s]||s)
 function timelineTimestamp(event){
   if(event.sourceType!=='CARE_PLAN_EVENT')return `${event.eventDate} ${event.eventTime||''}`

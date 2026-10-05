@@ -212,3 +212,50 @@ test('authorized evidence fields must retain the allowed type/id/title associati
     await writeFile(file,invalid);await assert.rejects(inspect(file,{format:'html',language:'en',expected}),/inspection/)
   }
 }))
+
+test('literal Chromium pre-click UTC timestamps accept only the zero-offset GMT alias',async()=>{
+ const {assertDownloadClickMetadata}=await import('../care-report-fixture-oracle.mjs')
+ for(const [language,generated] of [['en','Generated: 10/04/2026, 11:09:44 PM GMT (UTC+00:00, UTC)'],['zh-CN','生成时间: 2026/10/04 GMT 23:09:44 (UTC+00:00, UTC)']]){
+  const zh=language==='zh-CN',filename=`care-execution-report-${language}-20261004T230944Z-actions.csv`,request={patientId:9102,planId:null,fromDate:'2026-09-05',toDate:'2026-10-04',language,timeZone:'UTC'}
+  const paragraphs=[zh?'0条 · 仅表头。':'0 rows · header only.',`${zh?'全部计划 · 患者':'All plans · Patient'} #9102`,`2026-09-05 — 2026-10-04 · UTC · ${language} · ${zh?'报告schema':'Report schema'} 1`,generated]
+  const observation={paragraphs,text:paragraphs.join(' '),connected:true,fileName:filename},options={request,filename,format:'actions_csv',rowCount:0}
+  for(const value of [generated,generated.replace('GMT ','GMT+00:00 ')])assert.doesNotThrow(()=>assertDownloadClickMetadata({...observation,paragraphs:[...paragraphs.slice(0,3),value]},options))
+  for(const [from,to] of [['2026','2025'],['10/04','10/03'],['09:44','09:45'],['GMT','GMT-00:00'],['GMT','GMT+00:01']])assert.throws(()=>assertDownloadClickMetadata({...observation,paragraphs:[...paragraphs.slice(0,3),generated.replace(from,to)]},options))
+  for(const [from,to] of [['09:44','09:45'],['2026','2025'],['GMT','GMT+08:00'],['UTC+00:00','UTC+08:00'],['UTC)','Asia/Shanghai)'],['9102','9101'],['2026-09-05','2026-09-04'],[zh?'全部计划':'All plans',zh?'仅此计划':'Only this plan']])assert.throws(()=>assertDownloadClickMetadata({...observation,paragraphs:paragraphs.map(p=>p.replace(from,to))},options))
+ }
+})
+
+test('installed Playwright CDP callback preserves inspected CSV bytes with raw or single-BOM-omitted response representations',async()=>{
+ const {inspectReportDownload}=await import('../../frontend/e2e/reportDownloads.mjs'),{Readable}=await import('node:stream'),{runInNewContext}=await import('node:vm')
+ let source;for(const edition of ['frontend','cn/frontend']){try{source=await readFile(new URL(`../../${edition}/node_modules/playwright-core/lib/server/chromium/crNetworkManager.js`,import.meta.url),'utf8');break}catch(error){if(error.code!=='ENOENT')throw error}};assert.ok(source,'Pinned installed browser source required')
+ const start=source.indexOf('const getResponseBody = async () => {'),end=source.indexOf('\n    };',start)+7
+ assert.ok(start>0&&end>start,'Installed pinned callback must be found')
+ const callback=source.slice(start,end)+';getResponseBody'
+ for(const format of ['actions_csv','events_csv'])for(const language of ['en','zh-CN']){
+  const raw=Buffer.from('\ufeff'+inspector.reportCsvSchema(format,language).map(s=>'"'+s.header.replaceAll('"','""')+'"').join(',')+'\r\n'),kind=format.replace('_csv',''),filename=`care-execution-report-${language}-20261004T230944Z-${kind}.csv`
+  const inspectTransport=async(downloaded,represented,declared=downloaded.length)=>{
+   const body={patientId:9102,planId:null,fromDate:'2026-09-05',toDate:'2026-10-04',timeZone:'UTC',language,format}
+   const download={suggestedFilename:()=>filename,failure:async()=>null,createReadStream:async()=>Readable.from([downloaded])}
+   const response={allHeaders:async()=>({'content-type':'text/csv;charset=UTF-8','content-length':String(declared),'content-disposition':`attachment; filename="${filename}"`,'cache-control':'no-store, private','x-content-type-options':'nosniff'}),status:()=>200,request:()=>({method:()=> 'POST',postDataJSON:()=>body}),url:()=> 'http://127.0.0.1:18081/api/care-plans/reports/export',body:async()=>represented}
+   return inspectReportDownload({download,response,format,language,expected:{patientId:9102,rows:0}})
+  }
+  for(const base64Encoded of [true,false]){
+   const body=base64Encoded?raw.toString('base64'):new TextDecoder('utf-8',{fatal:true}).decode(raw)
+   const actual=await runInNewContext(callback,{Buffer,responsePayload:{headers:{'content-length':String(raw.length)}},request:{_requestId:'synthetic-model',session:{send:async method=>{assert.equal(method,'Network.getResponseBody');return{body,base64Encoded}}}}})()
+   assert.equal(actual.length,raw.length-(base64Encoded?0:3))
+   const result=await inspectTransport(raw,actual);assert.equal(result.bytes,raw.length);assert.equal(result.csvRowCount,0)
+  }
+  for(const bad of [raw.subarray(4),Buffer.concat([raw,Buffer.from('x')]),Buffer.concat([Buffer.from('\ufeff'),raw]),Buffer.from(raw.subarray(3).toString().replace('\r\n','\n')),Buffer.concat([raw.subarray(3,-1),Buffer.from('x')])])await assert.rejects(inspectTransport(raw,bad))
+  await assert.rejects(inspectTransport(raw,raw,raw.length+1))
+  for(const bad of [raw.subarray(3),Buffer.concat([Buffer.from('\ufeff'),raw]),Buffer.concat([raw.subarray(0,-2),Buffer.from([0xff,0xfe])])])await assert.rejects(inspectTransport(bad,bad))
+ }
+})
+
+test('only CSV permits one omitted BOM; HTML/PDF and all other byte changes retain exact length and hash',async()=>{
+ const {createHash}=await import('node:crypto'),bom=Buffer.from([0xef,0xbb,0xbf]),raw=Buffer.from('\ufeffSynthetic,UTF8,护理\r\n'),sha256=createHash('sha256').update(raw).digest('hex')
+ for(const format of ['html','pdf','actions_csv','events_csv']){
+  const expected={format,bytes:raw.length,sha256};assert.doesNotThrow(()=>inspector.assertInspectedResponseBytes(raw,expected))
+  if(format.endsWith('_csv'))assert.doesNotThrow(()=>inspector.assertInspectedResponseBytes(raw.subarray(3),expected));else assert.throws(()=>inspector.assertInspectedResponseBytes(raw.subarray(3),expected))
+  for(const value of [raw.subarray(1),raw.subarray(4),Buffer.concat([bom,raw]),Buffer.concat([bom,raw.subarray(6)]),Buffer.from(raw.toString().replace('Synthetic','Synthetid')),Buffer.from(raw.toString().replace('\r\n','\n'))])assert.throws(()=>inspector.assertInspectedResponseBytes(value,expected))
+ }
+})
