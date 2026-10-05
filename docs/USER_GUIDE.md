@@ -89,6 +89,32 @@ The doctor reviews each submitted receipt, either confirming it or returning it 
 
 Use **Reload server state, keep my input** after a conflict. After an uncertain response, retry the original frozen command or inspect server history before creating another. Closing a dialog does not cancel a server request already sent. Patient switches, sign-out and revoked permissions clear plan context; historical access also depends on current authority. Time is stored in UTC and shown with the browser's local timezone.
 
+### 4.5 Care execution and visit preparation
+
+This read-only preparation tool uses the collaboration prerequisites and remains disabled by default. Final software and bounded report acceptance passed in the [release evidence](CARE_EXECUTION_REPORT_RELEASE.md); the prior collaboration milestone's acceptance is separate. Production activation, real provider delivery and clinical effectiveness have not been validated.
+
+**Open the report.** Use the entry from Doctor plan tasks in Family Care, the assigned doctor's workspace, Nursing follow-up or plan detail. Plan detail presets only that plan. The dedicated route is `/care-plans/reports` with `patientId` and optional `planId`; it does not require access to the old comprehensive report menu. Existing visit-summary/report/export pages embed the care panel only under their existing page permissions.
+
+**Choose the scope.** Confirm the patient, all published plans or one plan, date pair, named IANA time zone and output language (`en` or `zh-CN`). The default is today and the previous 29 local dates in that zone. Both dates must be supplied together; the range is 1–366 dates inclusive, with no future end date. Supported unambiguous aliases such as Japan and GMT are accepted when supported by the browser and backend; ambiguous abbreviations and bare offsets are rejected. The selected dates filter activity by its recording time, not the current-state snapshot or the actual execution time.
+
+**Read the two sections separately.** Current N counts unique actions in ACTIVE plans' current published revisions. OPEN, NEEDS_HELP, SUBMITTED and CONFIRMED add up to N; zero shows an empty set, not a completion rate. Current difficulty, overdue/supplement needs, review waiting and readable OPEN questions remain visible even when older than the activity period. A submitted action waits for review and is not patient-overdue merely because its deadline later passes. Return and resubmission establish the appropriate new waiting start. `currentAsOf` is the database snapshot time; `generatedAt` is the generation time. Waiting duration uses the snapshot, not a moving browser clock.
+
+The period section counts public recorded events and distinct action IDs separately. Repeated submissions are separate events; plan-level events can have no action ID. Do not add category distinct-action counts together or divide period events by current N. Revision keeps receipts under their original instructions/version; cancellation or closure removes actions from current N while retaining history. The persisted COMPLETED plan code is displayed as Closed; it is not a claim that treatment succeeded.
+
+**Understand provenance.** SELF/ASSISTED declarations, actor ID and historical role, actual execution time and recording time remain distinct. A record-owner self-entry declaration does not independently verify patient identity. Nursing administrative follow-up is separate from receipt submission and doctor review. Recorded question answers are editable legacy data, not independent doctor confirmation or a complete answer history. Legacy question times explicitly remain unzoned; no UTC instant is invented. Instructions, notes, difficulties, answers and review opinions keep their original language.
+
+**Check authority and omissions.** READ permits preparation and download; it does not permit plan changes. Nursing still needs a current nurse role, active unexpired assignment and an explicit CARE_PLAN grant. Family membership alone and an administrator role grant no report shortcut. CARE_PLAN-only access does not expand medication/history/questions or old page/menu access. Questions distinguish authorized with data, authorized with zero data, not authorized and excluded from a single-plan report; questions never enter the two care CSVs. Linked evidence additionally requires current MEASUREMENTS or MEDICAL authority and patient/source matching. Restricted evidence shows only that a record exists; readable references provide an authenticated original-module location, not source values or attachments. Opening a source checks authority again.
+
+**Regenerate before sharing.** Every preview, export and care-inclusive print freshly checks access and reads data. Their generation times can differ. Printing an old summary plus care rereads both parts; it does not create a cross-module atomic clinical snapshot. Changing patient, plan, dates, zone, language or account clears old output. Closing/canceling makes the client reject a late response without guaranteeing that server work stops. Revocation detected before final delivery discards prepared content; revocation after the last check or delivery cannot recall network or saved copies. Reports change no care state and send no care notifications. A download means the browser obtained a file, not that a doctor read or confirmed it.
+
+**Choose an export.** HTML/PDF uses one selected interface language while keeping free text unchanged. PDF requires a validated configured font covering every actual visible character. Supported Latin/CJK text has test coverage; unsupported complex shaping, right-to-left, combining or supplementary text and missing glyphs fail visibly with an HTML alternative. Universal Unicode support is not promised. Print/PDF wraps long text and repeats headers rather than silently cutting notes.
+
+Current-actions CSV has one row per current action; period-events CSV has one row per recorded public event. Headers and display labels are localized, stable codes remain, and nonempty rows repeat scope/time-zone/language/schema/generation metadata. UTF-8 BOM and quoted multiline cells are intentional. Text cells receive formula/control-prefix protection without modifying source records; CSV is not a raw-byte archive or anonymization. An empty CSV contains BOM plus headers only, with no invented metadata row. Before download, the page displays 0 rows, actual scope, time zone, language, schema and generation time; its safe filename includes language and generation time. The empty file alone is not self-contained offline metadata.
+
+**Respect limits and errors.** Limits are 1,000 current actions, 5,000 period events, 200 included current questions, 8 MiB included UTF-8 original text and 32 MiB output; the total server budget is 30 seconds and this report client's timeout is 45 seconds. Nothing is silently truncated. A conservative 8 MiB raw storage-cell preflight may also reject a legacy cell even if only part would be rendered. Shorten an event period, select one plan or choose an independently smaller CSV. A full preview failure does not disable a CSV whose own needed collections fit its limits.
+
+Treat unauthorized access, FEATURE_DISABLED, REPORT_ACCESS_CHANGED (regenerate with fresh access), inconsistent data, exact limit category/limit, unavailable rendering and timeout/network failure as distinct outcomes. A generic failure is not a successful zero-row report. No partial successful file should appear on a failed generation. These exports are limited review aids, not prescriptions, medical proof, a restorable archive or verified clinical outcomes. Existing family-backup exclusions and format stay unchanged.
+
 ## 5. Medications, prescriptions, reminders, and stock
 
 ### 5.1 Create the medication catalog
@@ -199,9 +225,15 @@ Automation requires the backend scheduler and any configured AI provider. It sho
 
 Generate a **Visit Summary** before an appointment. It includes the selected patient's recent measurements, current medication, unresolved alerts, symptoms, questions, and key context. Review it before printing or saving as PDF.
 
+
+The care section and Care execution report use the independent authority, current/period definitions and fresh-generation rules in [section 4.5](#45-care-execution-and-visit-preparation). Existing comprehensive-summary access is unchanged. Combined printing rereads the old summary and care; it does not promise a cross-module consistent snapshot.
+
 ### 10.2 CSV export
 
 Open **Data Export**, select one patient and a date range, then choose the data types. Inspect the generated CSV before sharing. Spreadsheet applications may infer dates or identifiers, so verify formatting after opening.
+
+
+Care current-actions and period-events CSV use the separate row models, stable codes and formula protection in [section 4.5](#45-care-execution-and-visit-preparation). Empty files contain only BOM plus headers; 0 rows and full scope metadata appear on the page before download. These limited reports cannot restore collaboration history.
 
 ### 10.3 Download a backup
 

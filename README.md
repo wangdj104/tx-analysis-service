@@ -60,6 +60,12 @@ The application implements a doctor → patient/family → nursing follow-up →
 
 `CARE_PLAN_ENABLED` defaults to `false`. Installing the additive migration does not activate the workflow. Implementation and local regression results are recorded separately from final real MySQL/browser acceptance, public-demo verification and deployment in the [release evidence](docs/CARE_PLAN_COLLABORATION_RELEASE.md) and [machine-readable evidence](docs/verification/care-plan-collaboration.json). Final runtime `af06584b655b875ebfd16d0482a9712a99dc6cec` passed both real MySQL gates, all ten browser scenarios per language and all seven CI jobs, including backup contracts and bilingual logo/default-save corrections. The selected final role recordings/screenshots are verified. The evidence-only docs commit is identified by Git history and must preserve the tested runtime identity; the backend has not been deployed or activated in production. Provider delivery and clinical effectiveness have not been validated.
 
+## Care execution and visit preparation
+
+The read-only report separates a fresh current-action snapshot from activity recorded during a selected period (30 local calendar dates by default). Record owners, authorized family caregivers, assigned doctors and separately authorized nurses can prepare EN or zh-CN HTML/PDF, current-actions CSV and period-events CSV. Counts, original notes, assisted-entry identity and review waiting remain explicit; the report does not calculate clinical effectiveness or a completion rate.
+
+`CARE_PLAN_ENABLED` remains default `false`; this backend has not been deployed or activated in production. The reviewed candidate passed CI/native/browser gates. The test-only settled-dialog capture correction is reviewed and published. Final same-source software/export and bounded visual/media acceptance passed after one disclosed CN job rerun; the evidence-only documentation publication is separate. See the [report guide](docs/USER_GUIDE.md#45-care-execution-and-visit-preparation), [report release evidence](docs/CARE_EXECUTION_REPORT_RELEASE.md) and [machine-readable evidence](docs/verification/care-execution-report.json) for verified layers and limits. The existing public static demo remains the earlier fictional showcase; no execution-report simulator was added.
+
 ## Product principles
 
 1. **One longitudinal record:** measurements, treatment events, consultations and documents remain connected to the patient timeline.
