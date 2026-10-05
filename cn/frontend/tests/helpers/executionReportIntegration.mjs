@@ -21,17 +21,20 @@ const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;')
 // supplies a canned summaryElement string and therefore detects stale print markup.
 function serialize(node){if(node.tag==='#comment')return '';if(node.tag==='#text')return escape(node.text);const attrs=Object.entries(node.props).filter(([key,value])=>!key.startsWith('on')&&value!=null&&typeof value!=='object'&&typeof value!=='function').map(([key,value])=>` ${key}="${escape(value)}"`).join('');return `<${node.tag}${attrs}>${escape(node.text||'')}${node.children.map(serialize).join('')}</${node.tag}>`}
 let serial=0
-export async function mountedReport(t,{family=false,journey=false,initialRoute,selectedPatient=1,preview,summary,exportFile,sourceRead,blockPopup=false,mutateFamily}={}){
+export async function mountedReport(t,{family=false,journey=false,initialRoute,selectedPatient=1,preview,summary,exportFile,sourceRead,familyRead,blockPopup=false,mutateFamily}={}){
  const id=++serial,slot=`__reportIntegration${id}`,storage=new Map([['token',`synthetic-${id}`],['userId','7'],['permissionSession',`synthetic-${id}`],['userMenus','["/family-health"]'],['userMenuNames','[]'],['userRoleCodes','["family"]']])
  const currentPatientId=ref(selectedPatient),calls=[],windows=[],downloads=[],createdUrls=[],revoked=[],warnings=[]
  globalThis.localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key),key:index=>[...storage.keys()][index],get length(){return storage.size}}
  globalThis.window=Object.assign(new EventTarget(),{setInterval:()=>1,clearInterval(){},URL:{createObjectURL(blob){createdUrls.push(blob);return`blob:synthetic-${id}-${createdUrls.length}`},revokeObjectURL:url=>revoked.push(url)},open(){if(blockPopup)return null;const popup={closed:false,printed:false,html:'',document:{body:{replaceChildren(){popup.html=''}},write(html){popup.html=html},close(){}},focus(){},print(){popup.printed=true},close(){popup.closed=true},setTimeout(callback){popup.pending=callback}};windows.push(popup);return popup}})
+ // Vue v-model updates test whether a node root is a real DOM document.
+ globalThis.Document=class Document {};globalThis.ShadowRoot=class ShadowRoot {}
  globalThis.document={activeElement:null,body:{appendChild(){}},createElement(tag){return{tag,style:{},click(){downloads.push({href:this.href,fileName:this.download})},remove(){}}}}
  globalThis[slot]={currentPatientId,warnings,transport:async config=>{
   calls.push(config)
   if(config.url==='/care-plans/reports/preview')return preview?preview(config.data,config):{code:200,data:syntheticReport(config.data)}
   if(config.url==='/care-plans/reports/export')return exportFile?exportFile(config.data,config):{blob:new Blob(['\ufeffheader\r\nsynthetic\r\n'],{type:'text/csv'}),headers:{'content-disposition':`attachment; filename="care-execution-report-${config.data.language}-20261004T120000Z-actions.csv"`}}
   if(config.url==='/care-journey/measurements')return sourceRead?sourceRead(config.params,config):{code:200,data:[]}
+  if(familyRead && (config.url.startsWith('/family-health/') || config.url==='/patient/specialty-menu-scope'))return familyRead(config)
   if(config.url==='/family-health/visit-summary')return summary?summary(config.params.patientId,config):{code:200,data:syntheticSummary(config.params.patientId)}
   return{code:200,data:config.url==='/family-health/target'?{}:[]}
  }}

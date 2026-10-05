@@ -12,7 +12,7 @@
       <el-tabs v-model="tab" class="workspace">
         <el-tab-pane v-if="availableTabs.includes('today')" label="Today's Tasks" name="today">
           <div class="toolbar"><el-button type="primary" @click="openEvent()">Record symptom or event</el-button><el-button @click="$router.push('/bp-self-monitor')">Quick blood pressure / glucose entry</el-button><el-button @click="$router.push('/medication?tab=remind')">Medication reminders</el-button></div>
-          <el-empty v-if="reloadState==='ready' && !intakes.length && !todaySchedule" description="Nothing needs attention today" />
+          <el-empty v-if="reloadState==='ready' && ['ready','disabled'].includes(scheduleState) && !intakes.length && !todaySchedule" description="Nothing needs attention today" />
           <div v-if="todaySchedule" class="task-row"><div><b>{{ todaySchedule.scheduleTime || 'Time not set' }} Dialysis session</b><p>{{ todaySchedule.remark }}</p></div><el-tag>{{statusText(todaySchedule.status)}}</el-tag><div class="actions"><el-button @click="openSchedule(todaySchedule)">View schedule</el-button><el-button v-if="todaySchedule.status==='PLANNED'" :disabled="saving" @click="changeSchedule(todaySchedule,'COMPLETED')">Mark complete</el-button></div></div>
           <div v-for="item in intakes" :key="item.id" class="task-row">
             <div><b>{{ item.scheduledAt?.slice(11,16) }} {{ item.drugName }}</b><p>{{ item.dosage || 'As prescribed' }}</p><small v-if="item.status==='SNOOZED'">Snoozed until {{ item.snoozeUntil }}</small></div>

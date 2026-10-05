@@ -151,20 +151,25 @@ test('real print authorization: revoked full-record grant rejects legacy refresh
   const grants=await api(owner,`/care-journey/access-grants?patientId=${ids.reportPatient}`)
   const full=grants.find(row=>row.grantee_role==='GUARDIAN'&&Number(row.grantee_user_id)===ids.family)
   await api(owner,`/care-journey/access-grants/${full.id}`,{method:'DELETE'})
+  // A denied legacy read legitimately aborts an outstanding care preview. Hold
+  // only its real delivery so this case can also prove the separate CARE_PLAN
+  // grant still authorizes the paired request; no response or authority changes.
+  const hold=await holdLegacy(family)
   let popups=0;const opened=()=>popups++;family.on('popup',opened)
   try{
     const legacy=legacyResponse(family),care=reportResponse(family)
-    await printButton(family).click()
+    await printButton(family).click();await hold.reached
+    expect((await care).status()).toBe(200)
+    hold.release()
     const denial = await (await legacy).json()
     // Existing legacy Result semantics use code400 here, unlike report HTTP403.
     expect(denial.code).toBe(400); expect(denial.data).toBeNull()
-    expect((await care).status()).toBe(200)
     await expect(refresh(family)).not.toHaveClass(/is-loading/)
     await expect(family.locator('.visit-summary')).toHaveCount(0)
     await assertClearedReport(family)
     expect(popups).toBe(0)
     await screenshotReport(family,testInfo,'print-full-record-revoked')
-  }finally{family.off('popup',opened)}
+  }finally{family.off('popup',opened);await hold.dispose()}
 })
 
 test('real print callback: a prepared popup closes on logout before its delayed native print callback',async({sessions},testInfo)=>{

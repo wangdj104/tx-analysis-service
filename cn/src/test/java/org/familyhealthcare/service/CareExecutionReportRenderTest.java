@@ -45,6 +45,20 @@ class CareExecutionReportRenderTest {
         assertTrue(out.contains("thead")); assertTrue(out.contains("table-header-group")); assertFalse(out.contains("overflow:hidden"));
     }
 
+    @Test void persistedLifecycleLabelsKeepCodesInHtmlAndEventCsv() throws Exception {
+        String[] codes={"ACTIVE","COMPLETED","CANCELLED","UNKNOWN_LIFECYCLE"};
+        String[][] names={{"Active","Closed","Cancelled","UNKNOWN_LIFECYCLE"},{"有效","已关闭","已取消","UNKNOWN_LIFECYCLE"}};
+        for(int language=0;language<2;language++) for(int i=0;i<codes.length;i++) {
+            EventSummary event=new EventSummary(901,9,"COMPLETED".equals(codes[i])?"PLAN_CLOSED":"PLAN_PUBLISHED","Synthetic doctor","DOCTOR",null,null,"原始声明",null,NOW,null,Collections.emptyList());
+            PeriodEvent period=new PeriodEvent(event,10,11,null,1,"Synthetic plan","Original instructions",null,null,codes[i],false);
+            CareExecutionReport r=report(language==0?"en":"zh-CN","Synthetic patient",Collections.emptyList(),Collections.singletonList(period),"NOT_AUTHORIZED",Collections.emptyList());
+            assertTrue(markup(html(r,budget())).contains(names[language][i]+" ("+codes[i]+")"));
+            assertTrue(new String(csv(r,Format.EVENTS_CSV),StandardCharsets.UTF_8).contains("\""+codes[i]+"\",\""+names[language][i]+"\""));
+            assertEquals(codes[i],period.getPlanLifecycleAtGeneration());
+            assertEquals(event.getEventType(),period.getEventType());
+        }
+    }
+
     @Test void csvPreservesTwoRowModels() throws Exception {
         byte[] actions = csv(fixture("en"),Format.ACTIONS_CSV), events = csv(fixture("zh-CN"),Format.EVENTS_CSV);
         assertEquals(golden("care-execution-actions-en.csv"),new String(actions,StandardCharsets.UTF_8));
@@ -165,7 +179,7 @@ class CareExecutionReportRenderTest {
         List<Evidence> evidence=Arrays.asList(new Evidence(false,"MEASUREMENT",44L,"Synthetic measurement","/care-journey?tab=measurements&patientId=7&measurementId=44"),new Evidence(true,"SECRET",99L,"SECRET-TITLE","https://secret.test"));
         CurrentAction a=action("  =instruction",evidence,true),b=action("Safe 中文−42",Collections.emptyList(),false);
         PeriodEvent e=new PeriodEvent(a.getLatestReceipt(),10,11,12L,2,a.getPlanTitle(),a.getInstructions(),a.getInstruction(),"SUBMITTED","ACTIVE",true);
-        PeriodEvent plan=new PeriodEvent(new EventSummary(106,32,"PLAN_CLOSED","Synthetic doctor","DOCTOR",null,null,"\r\n@closed",null,NOW.minusSeconds(1000),null,Collections.emptyList()),20,21,null,1,"Synthetic closed","旧版本原文",null,null,"CLOSED",false);
+        PeriodEvent plan=new PeriodEvent(new EventSummary(106,32,"PLAN_CLOSED","Synthetic doctor","DOCTOR",null,null,"\r\n@closed",null,NOW.minusSeconds(1000),null,Collections.emptyList()),20,21,null,1,"Synthetic closed","旧版本原文",null,null,"COMPLETED",false);
         Question q=new Question(40,"QUESTION-ONLY","ANSWERED","保留描述","原文答复","后续安排","Synthetic recorder",31L,"2026-09-01 09:00:00",null,"2026-09-02 10:00:00");
         return report(lang,"Synthetic patient",Arrays.asList(a,b),Arrays.asList(e,plan),"AVAILABLE",Arrays.asList(q));
     }

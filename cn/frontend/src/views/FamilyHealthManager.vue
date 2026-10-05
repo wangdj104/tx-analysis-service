@@ -12,7 +12,7 @@
       <el-tabs v-model="tab" class="workspace">
         <el-tab-pane v-if="availableTabs.includes('today')" label="今日任务" name="today">
           <div class="toolbar"><el-button type="primary" @click="openEvent()">记录症状或事件</el-button><el-button @click="$router.push('/bp-self-monitor')">快速录入血压 / 血糖</el-button><el-button @click="$router.push('/medication?tab=remind')">用药提醒</el-button></div>
-          <el-empty v-if="reloadState==='ready' && !intakes.length && !todaySchedule" description="今天没有需要关注的事项" />
+          <el-empty v-if="reloadState==='ready' && ['ready','disabled'].includes(scheduleState) && !intakes.length && !todaySchedule" description="今天没有需要关注的事项" />
           <div v-if="todaySchedule" class="task-row"><div><b>{{ todaySchedule.scheduleTime || '未设置时间' }} 透析</b><p>{{ todaySchedule.remark }}</p></div><el-tag>{{statusText(todaySchedule.status)}}</el-tag><div class="actions"><el-button @click="openSchedule(todaySchedule)">查看排班</el-button><el-button v-if="todaySchedule.status==='PLANNED'" :disabled="saving" @click="changeSchedule(todaySchedule,'COMPLETED')">标记完成</el-button></div></div>
           <div v-for="item in intakes" :key="item.id" class="task-row">
             <div><b>{{ item.scheduledAt?.slice(11,16) }} {{ item.drugName }}</b><p>{{ item.dosage || '遵医嘱服用' }}</p><small v-if="item.status==='SNOOZED'">已延后至 {{ item.snoozeUntil }}</small></div>

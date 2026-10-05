@@ -61,6 +61,35 @@ class CareExecutionReportProjectionTest {
         assertEquals(0,project(200L,null,true).getReport().getCurrentSummary().getTotal());
         assertEquals(1,project(200L,null,true).getReport().getPeriodEvents().size());
     }
+    @Test void actualCloseLifecycleProjectsCompletedHistoryWithLocalizedExportLabels() {
+        CarePlanProperties properties=new CarePlanProperties(true,Clock.fixed(f.now(),ZoneOffset.UTC));
+        CarePlanAuthorizationService lifecycleAuth=new CarePlanAuthorizationService(f.jdbc(),properties);
+        CarePlanQueryService query=new CarePlanQueryService(f.jdbc(),lifecycleAuth,properties);
+        CarePlanService service=new CarePlanService(f.jdbc(),lifecycleAuth,properties,query,new CarePlanCommandStore(f.jdbc(),properties),new CarePlanEventStore(f.jdbc(),lifecycleAuth,properties),eventId->
+                f.jdbc().update("INSERT INTO care_plan_notification(event_id,patient_id,recipient_user_id,dispatch_key,status,created_at,updated_at) SELECT id,patient_id,7,?,'QUEUED',?,? FROM care_plan_event WHERE id=?","synthetic-close-"+eventId,utc(f.now()),utc(f.now()),eventId));
+        f.jdbc().update("UPDATE care_plan_action SET status='CONFIRMED',review_waiting_since=NULL WHERE plan_id=100 AND revision_id=101");
+        TransactionTemplate write=new TransactionTemplate(new DataSourceTransactionManager(f.jdbc().getDataSource()));
+        write.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        f.as(DOCTOR);
+        Map<String,Object> closed=write.execute(status->service.transitionPlan(DOCTOR,100,"CLOSE",null,UUID.randomUUID().toString(),0));
+        assertEquals("COMPLETED",closed.get("lifecycle"));
+        long eventId=((Number)closed.get("eventId")).longValue();
+        assertEquals("COMPLETED",f.jdbc().queryForObject("SELECT lifecycle FROM doctor_care_plan WHERE id=100",String.class));
+        assertEquals("PLAN_CLOSED",f.jdbc().queryForObject("SELECT event_type FROM care_plan_event WHERE id=?",String.class,eventId));
+        f.as(OWNER);
+        for(String language:Arrays.asList("en","zh-CN")) {
+            Request input=CareExecutionReportContracts.parse("{\"patientId\":1,\"planId\":100,\"timeZone\":\"UTC\",\"language\":\""+language+"\"}",false,f.now());
+            CareExecutionReport r=projector.project(OWNER,input,new Access(false),CareExecutionReportBudget.start(Duration.ofSeconds(30))).getReport();
+            assertEquals(0,r.getCurrentSummary().getTotal());
+            PeriodEvent ended=r.getPeriodEvents().stream().filter(event->event.getEventId()==eventId).findFirst().get();
+            assertEquals("COMPLETED",ended.getPlanLifecycleAtGeneration());assertEquals("PLAN_CLOSED",ended.getEventType());
+            String label=language.equals("en")?"Closed":"已关闭";
+            assertTrue(new CareExecutionReportHtmlRenderer().render(r,CareExecutionReportBudget.start(Duration.ofSeconds(30))).getMarkup().contains(label+" (COMPLETED)"));
+            String csv=new String(new CareExecutionReportCsvRenderer().render(r,Format.EVENTS_CSV,CareExecutionReportBudget.start(Duration.ofSeconds(30))),java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue(csv.contains("\"COMPLETED\",\""+label+"\""));
+        }
+    }
+
     @Test void questionsAndEvidenceAreSeparateScopes() {
         f.jdbc().update("INSERT INTO care_access_grant(patient_id,grantee_user_id,grantee_role,access_level,visible_modules,granted_by) VALUES(1,8,'FAMILY','READ','CARE_PLAN,MEASUREMENTS',7)");
         CareExecutionReportProjector.Projection p=projectAs(FAMILY,null,null,false);

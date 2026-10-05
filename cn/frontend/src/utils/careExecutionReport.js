@@ -4,7 +4,8 @@ import { formatPlanTime } from './carePlanTime.js'
 const labels = {
   status: { OPEN: ['To do or supplement', '待执行或补充'], NEEDS_HELP: ['Needs help', '遇到困难'], SUBMITTED: ['Submitted awaiting doctor review', '已提交待医生复核'], CONFIRMED: ['Reviewed by doctor', '医生已复核'] },
   eventType: { PLAN_PUBLISHED: ['Plan published', '计划已发布'], REVISION_PUBLISHED: ['Revision published', '修订已发布'], RECEIPT_SUBMITTED: ['Receipt submitted', '回执已提交'], HELP_REQUESTED: ['Help requested', '已记录困难'], FOLLOW_UP_RECORDED: ['Administrative follow-up recorded', '已记录行政跟进'], RECEIPT_RETURNED: ['Receipt returned for supplement', '回执已退回补充'], RECEIPT_CONFIRMED: ['Receipt reviewed by doctor', '回执已由医生复核'], PLAN_CANCELLED: ['Plan cancelled', '计划已取消'], PLAN_CLOSED: ['Plan closed', '计划已关闭'] },
-  actorRole: { PATIENT: ['Patient', '患者'], FAMILY: ['Family member', '家属'], NURSE: ['Nurse', '护理人员'], DOCTOR: ['Doctor', '医生'] },
+  actorRole: { OWNER: ['Record owner', '记录所有者'], PATIENT: ['Patient', '患者'], FAMILY: ['Family member', '家属'], NURSE: ['Nurse', '护理人员'], DOCTOR: ['Doctor', '医生'] },
+  lifecycle: { ACTIVE: ['Active', '有效'], COMPLETED: ['Closed', '已关闭'], CANCELLED: ['Cancelled', '已取消'] },
   entryMode: { SELF: ['Self-reported', '本人自报'], ASSISTED: ['Assisted entry', '协助代录'] },
   followUpKind: { CONTACTED: ['Contacted', '已联系'], AWAITING_INFORMATION: ['Awaiting information', '等待补充信息'], DOCTOR_NOTIFIED: ['Doctor notified', '已通知医生'] },
   questionStatus: { OPEN: ['To discuss', '待讨论'], ANSWERED: ['Recorded answer', '已记录答复'], DONE: ['Marked done', '标记完成'], RESOLVED: ['Marked resolved', '标记解决'], CANCELLED: ['Cancelled', '已取消'] },
@@ -132,9 +133,13 @@ export function reportExportMetadata(body, format, fileName, rowCount) {
     timeZone: body.timeZone, language: body.language, generatedAt, rowCount, isEmpty: rowCount == null ? null : rowCount === 0 }
 }
 
+// Same ambiguous names as ZoneId.SHORT_IDS plus the backend's CET/EET/MET/WET exclusions.
+const ambiguousReportZones = new Set(['ACT', 'AET', 'AGT', 'ART', 'AST', 'BET', 'BST', 'CAT', 'CNT', 'CST', 'CTT', 'EAT', 'ECT', 'IET', 'IST', 'JST', 'MIT', 'NET', 'NST', 'PLT', 'PNT', 'PRT', 'PST', 'SST', 'VST', 'EST', 'MST', 'HST', 'CET', 'EET', 'MET', 'WET'])
+
 /** Calendar arithmetic only: the server computes timezone-aware instant boundaries. */
 export function defaultReportDates(timeZone, now = new Date()) {
-  if (timeZone !== 'UTC' && !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)+$/.test(timeZone)) throw new RangeError('Choose an IANA timezone.')
+  if (typeof timeZone !== 'string' || !/^[A-Za-z_][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)*$/.test(timeZone) || ambiguousReportZones.has(timeZone.toUpperCase())) throw new RangeError('Choose an IANA timezone.')
+  // Intl validates browser support for canonical IANA names and unambiguous aliases.
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now).map(part => [part.type, part.value]))
   const toDate = `${parts.year}-${parts.month}-${parts.day}`
   const date = new Date(`${toDate}T12:00:00Z`)
