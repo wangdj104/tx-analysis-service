@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test'
 import { test, showIdentity, signOut } from './carePlanSessions.mjs'
-import { ids, language, appPath, login, api, grant, assertNoOverflow } from './helpers.mjs'
+import { ids, language, appPath, login, api, grant, assertNoOverflow, assertMedicalDialogReady } from './helpers.mjs'
 
 // Actual built Vue, Spring authorization and disposable MySQL fixtures. The only
 // transport failure below is one explicitly named menu-bootstrap failure; source
@@ -136,11 +136,13 @@ async function assertSourceVisible(page, source) {
     await expect(medicalDialog(page)).toBeVisible()
     await expect(medicalDialog(page)).toContainText('Synthetic exact report medical source')
     await expect(medicalDialog(page)).not.toContainText('Synthetic outside medical source')
+    await assertMedicalDialogReady(medicalDialog(page), 'Synthetic exact report medical source')
   }
 }
 
 async function closeMedicalDialog(page, source) {
   if (source.kind === 'medical') {
+    await assertMedicalDialogReady(medicalDialog(page), 'Synthetic exact report medical source')
     await page.keyboard.press('Escape')
     await expect(medicalDialog(page)).toBeHidden()
     await expect(page.locator('.el-overlay:visible')).toHaveCount(0)

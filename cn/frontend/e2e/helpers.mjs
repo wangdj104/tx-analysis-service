@@ -60,3 +60,42 @@ export async function publish(doctor,view){return api(doctor,`/care-plans/${view
 export async function detail(page,id){return api(page,`/care-plans/${id}`)}
 export async function assertNoOverflow(page){expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true)}
 export function pageErrorCounter(page){const errors=[];page.on('pageerror',error=>errors.push(error.name));return ()=>expect(errors).toEqual([])}
+
+// Evaluate real DOM state in the browser. Fixed diagnostic codes keep assertion
+// failures free of clinical text; native CI still supplies styles and hit tests.
+export function readMedicalDialogReadiness(root, sourceText) {
+  const document = root.ownerDocument, view = document.defaultView
+  const panel = root.querySelector('.el-dialog'), overlay = root.closest('.el-overlay')
+  if (!root.isConnected || !panel || !overlay) return 'missing-dialog'
+  if (['dialog-fade-enter-active', 'dialog-fade-leave-active'].some(name => overlay.classList.contains(name))) return 'transitioning'
+  for (let node = panel; node; node = node.parentElement) {
+    const style = view.getComputedStyle(node)
+    if (style.visibility !== 'visible' || style.display === 'none') return 'hidden'
+    if (Number(style.opacity) !== 1) return 'not-opaque'
+    if (node.getAnimations().some(animation => animation.pending || !['finished', 'idle'].includes(animation.playState))) return 'animating'
+  }
+  if ([root, overlay].some(node => view.getComputedStyle(node).transform !== 'none')) return 'moving'
+  const source = [...root.querySelectorAll('.el-descriptions__content')].find(node => node.textContent.trim() === sourceText)
+  const targets = [root.querySelector('.el-dialog__title'), source, root.querySelector('.el-dialog__headerbtn')]
+  if (targets.some(node => !node)) return 'missing-target'
+  for (const target of targets) {
+    for (let node = target; node !== panel; node = node.parentElement) {
+      const style = view.getComputedStyle(node)
+      if (style.visibility !== 'visible' || style.display === 'none') return 'hidden'
+      if (Number(style.opacity) !== 1) return 'not-opaque'
+      if (node.getAnimations().some(animation => animation.pending || !['finished', 'idle'].includes(animation.playState))) return 'animating'
+    }
+    const rect = target.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0 || rect.left < 0 || rect.top < 0 || rect.right > view.innerWidth + 1 || rect.bottom > view.innerHeight + 1) return 'offscreen'
+    const hit = document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2)
+    if (!target.contains(hit)) return 'obscured'
+  }
+  return 'ready'
+}
+
+export async function assertMedicalDialogReady(dialog, sourceText) {
+  await expect(dialog).toBeVisible()
+  await expect.poll(() => dialog.evaluate(readMedicalDialogReadiness, sourceText), {
+    message: 'Medical source dialog must be fully open, opaque and unobscured',
+  }).toBe('ready')
+}
