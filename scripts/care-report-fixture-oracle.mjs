@@ -74,7 +74,7 @@ export function assertDownloadClickMetadata(observation,{request,format,filename
   const scope=request.planId==null?(zh?'全部计划':'All plans'):(zh?'仅此计划':'Only this plan')
   const patient=`${scope} · ${zh?'患者':'Patient'} #${request.patientId}${request.planId==null?'':` · ${zh?'计划':'Plan'} #${request.planId}`}`
   assert.ok(paragraphs.includes(patient),'Pre-click scope does not match the exact request')
-  assert.ok(paragraphs.includes(`${request.fromDate} — ${request.toDate} · UTC · ${request.language} · ${zh?'报告schema':'Report schema'} 1`),'Pre-click dates/language/schema do not match the exact request')
+  assert.ok(paragraphs.includes(`${request.fromDate} — ${request.toDate} · UTC · ${request.language} · ${zh?'报告格式版本':'Report schema'} 1`),'Pre-click dates/language/schema do not match the exact request')
   const date=new Intl.DateTimeFormat(request.language,{timeZone:'UTC',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'longOffset'}).format(new Date(generatedSecond))
   // ECMA-402 implementations spell UTC's longOffset as GMT or GMT+00:00.
   // Normalize only that standalone zero-offset token; all date/time/zone fields

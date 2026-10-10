@@ -116,3 +116,27 @@ test('nonempty period renders plan and action events with original provenance in
   const period=html.slice(html.indexOf('id="period-report-heading"'));assert.ok(!period.includes(language==='en'?'Review wait duration':'本次待复核时长'),'period events never invent a current-action review wait')
  }
 })
+
+// Exercise the independent acceptance oracle against the real compiled panel,
+// rather than duplicating its expected wording in another hand-built fixture.
+import { assertDownloadClickMetadata } from '../../../scripts/care-report-fixture-oracle.mjs'
+for(const language of ['en','zh-CN'])for(const format of ['html','pdf','actions_csv','events_csv'])test(`compiled ${language} ${format} download metadata meets the independent filename/scope/time oracle`,async()=>{
+ const kind={html:'html.html',pdf:'pdf.pdf',actions_csv:'actions.csv',events_csv:'events.csv'}[format]
+ const filename=`care-execution-report-${language}-20261004T230944Z-${kind}`
+ const request={patientId:1,planId:null,fromDate:'2026-09-05',toDate:'2026-10-04',timeZone:'UTC',language}
+ const csv=format.endsWith('_csv')
+ const lastExport={format,scope:{patientId:1,planId:null,label:'ALL_PLANS'},...request,rangeKnown:true,reportSchemaVersion:1,generatedAt:'2026-10-04T23:09:44Z',rowCount:csv?0:null,isEmpty:csv}
+ const html=await renderPanel(null,{language,lastExport})
+ const notice=html.match(/<section[^>]*data-testid="last-export"[^>]*>([\s\S]*?)<\/section>/)?.[1]
+ assert.ok(notice,'Actual rendered export notice is required')
+ const paragraphs=[...notice.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/g)].map(match=>match[1].replace(/<[^>]*>/g,''))
+ const observation={paragraphs,text:paragraphs.join(' '),connected:true,fileName:filename}
+ const options={request,format,filename,rowCount:csv?0:null}
+ assert.deepEqual(assertDownloadClickMetadata(observation,options),{generatedSecond:'2026-10-04T23:09:44Z'})
+ // Wording synchronization must not relax dates, identity, schema, or exact
+ // time/UTC validation. Each independent corruption remains a hard failure.
+ for(const [from,to] of [['2026-09-05','2026-09-04'],['#1','#2'],[language==='zh-CN'?'报告格式版本 1':'Report schema 1',language==='zh-CN'?'报告格式版本 2':'Report schema 2'],['09:44','09:45'],['UTC+00:00','UTC+08:00'],['UTC)','Asia/Shanghai)']]){
+  const changed=paragraphs.map(value=>value.replace(from,to));assert.notDeepEqual(changed,paragraphs)
+  assert.throws(()=>assertDownloadClickMetadata({...observation,paragraphs:changed},options),/scope|schema|time/)
+ }
+})
