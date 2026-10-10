@@ -111,6 +111,8 @@ docker compose up --build
 
 ## 中英文生产部署
 
+完整迁移顺序、初始管理员、TLS／私有 HTTP 绑定、可选字体挂载和显式启用验收见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。数据库和实际部署步骤由运维自行执行。
+
 生产镜像会在 `/` 提供英文正式系统，在 `/cn/` 提供中文正式系统。用户通过页面右上角切换语言时会保留当前业务页面；两套界面共用同一个 API、账号、登录状态和数据库。
 
 ```bash
@@ -119,7 +121,7 @@ cp .env.production.example .env.production
 docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
 ```
 
-访问 `http://服务器地址:8080/` 或 `http://服务器地址:8080/cn/`。同一镜像还在 `/demo/` 和 `/cn/demo/` 提供静态演示。生产编排不会创建 MySQL，也不会导入 `demo-data.sql`，只会连接 `DB_URL` 指定的现有数据库。
+生产模板把 HTTP 绑定到 `127.0.0.1:8080`，由宿主机 HTTPS 反向代理对外提供服务。配置后访问 `https://正式域名/` 或 `https://正式域名/cn/`。同一镜像还在 `/demo/` 和 `/cn/demo/` 提供静态演示。生产编排不会创建 MySQL，也不会导入 `demo-data.sql`，只会连接 `DB_URL` 指定的现有数据库。
 
 首次启动前必须完成下方数据库初始化，已有库需单独执行适用升级。生产编排关闭管理员自动初始化，首次使用前应明确创建管理员。部署后检查公开地址的 `/api/health`；它仅检查进程存活，还应验证登录与患者页面再验收。以上双语生产命令均从仓库根目录执行。
 
@@ -200,6 +202,7 @@ Vite 通常监听 `http://localhost:5174`，将 `/api` 代理到 `http://localho
 | `OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` | 可选 OCR 服务 | API 密钥仅保存在服务端 |
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_API_URL` / `DEEPSEEK_API_MODEL` | 可选 AI 分析 | 先审查隐私和数据保留策略 |
 | `CARE_PLAN_ENABLED` | 协作照护计划开关，默认 `false` | 迁移与验收完成后，由获授权的部署决策启用 |
+| `REPORT_PDF_FONT_PATH` | 可选容器／本机 PDF 字体路径；留空使用已安装字体 | 宿主机自定义字体需只读挂载，并验收实际导出 |
 | `DEV_PROXY_TARGET` | Vite 开发代理目标 | 生产不使用此值，由 Nginx 转发 `/api` |
 
 完整配置请查看 [.env.example](.env.example) 和 [application.yml](src/main/resources/application.yml)。
@@ -208,11 +211,11 @@ Vite 通常监听 `http://localhost:5174`，将 `/api` 代理到 `http://localho
 
 平台可通过企业微信或钉钉机器人 Webhook 及浏览器通知主动发送消息。Webhook 地址和机器人密钥属于敏感信息，API 返回时会脱敏，严禁提交到版本库。
 
-新安装必须按顺序执行基础表、医生工作台、照护平台和照护计划协作脚本；`demo-data.sql` 只用于本地演示。应用启动时不会静默创建或修改生产表。对已有数据库执行人工操作前必须备份数据；后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
+新安装必须按顺序执行基础表、医生工作台、照护平台和照护计划协作脚本；`demo-data.sql` 只用于本地演示。专病角色迁移是明确的启动例外：每次 MySQL/MariaDB 启动都会创建／检查其表并更新角色和菜单数据，手动执行后仍会再次运行。其他迁移由运维执行，详见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。对已有数据库执行人工操作前必须备份数据；后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
 
 ## 测试与构建
 
-患者专病角色升级脚本为 [`patient_specialty_roles_20260923.sql`](src/main/resources/sql/patient_specialty_roles_20260923.sql)。MySQL/MariaDB 服务启动时会自动执行幂等升级；发布前请备份数据库，并确保数据库用户有 `CREATE` 和 `INSERT` 权限。现有患者不会自动获得透析专病角色，需在患者编辑页选择“透析患者”。
+患者专病角色升级脚本为 [`patient_specialty_roles_20260923.sql`](src/main/resources/sql/patient_specialty_roles_20260923.sql)。MySQL/MariaDB 服务启动时会自动执行幂等升级；发布前请备份数据库，运行账号须具备此脚本用到的 `CREATE`、`SELECT`、`INSERT`、`UPDATE`，创建外键时还可能需要 `REFERENCES`，权限限定于应用库。可在上述四个脚本后手动执行，但本版本没有禁用其启动执行的开关。现有患者不会自动获得透析专病角色，需在患者编辑页选择“透析患者”。
 
 ```bash
 mvn clean test
