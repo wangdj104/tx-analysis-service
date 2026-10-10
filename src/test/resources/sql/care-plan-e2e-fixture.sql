@@ -48,6 +48,9 @@ INSERT INTO health_measurement(id,patient_id,metric_type,value_primary,unit,meas
 INSERT INTO medical_record(id,patient_id,user_id,record_type,patient_name,record_date,remark)
  VALUES(19102,9101,9001,'OTHER','Synthetic exact report medical source',DATE(@report_now),'Synthetic exact medical marker 19102'),
        (19104,9104,9006,'OTHER','Synthetic outside medical source',DATE(@report_now),'Synthetic cross-owner private marker');
+-- Synthetic labelled-result fixture for desktop table and narrow-screen cards.
+INSERT INTO medical_record_item(id,record_id,item_name,result_value,unit,reference_range,is_abnormal)
+ VALUES(19102,19102,'Synthetic mobile examination', '0', 'mmol/L', '0–5', 0);
 INSERT INTO doctor_care_plan(id,doctor_user_id,patient_id,title,plan_type,instructions,status,workflow_version,lifecycle,current_revision_id,lock_version,created_at,updated_at)
  VALUES(19101,9003,9101,'Synthetic report published plan','FOLLOW_UP','Saved successfully','ACTIVE',1,'ACTIVE',NULL,0,@report_now,@report_now);
 INSERT INTO care_plan_revision(id,plan_id,revision_no,status,title,instructions,plan_type,draft_json,created_by,created_at,updated_at,published_by,published_at)

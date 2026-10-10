@@ -566,7 +566,7 @@
       </el-descriptions>
 
       <el-divider content-position="left">Examination item details</el-divider>
-      <el-table :data="currentRecord?.items || []" class="app-data-table" stripe>
+      <el-table :data="currentRecord?.items || []" class="app-data-table medical-result-table" stripe>
         <el-table-column prop="itemName" label="Test item" width="150" />
         <el-table-column prop="resultValue" label="measured value" width="120" />
         <el-table-column prop="unit" label="Unit" width="80" />
@@ -577,6 +577,18 @@
           </template>
         </el-table-column>
       </el-table>
+      <section class="medical-result-cards" aria-label="Examination item details">
+        <p v-if="!currentRecord?.items?.length" class="medical-result-empty">No examination items</p>
+        <article v-for="(item, index) in currentRecord?.items || []" :key="item.id ?? index" class="medical-result-card">
+          <h3>{{ item.itemName || 'Unnamed examination item' }}</h3>
+          <dl>
+            <div><dt>Measured value</dt><dd>{{ item.resultValue === null || item.resultValue === undefined || item.resultValue === '' ? '—' : item.resultValue }}</dd></div>
+            <div><dt>Unit</dt><dd>{{ item.unit || '—' }}</dd></div>
+            <div><dt>Reference range</dt><dd>{{ item.referenceRange || '—' }}</dd></div>
+            <div><dt>Status</dt><dd><span class="medical-result-status" :class="'medical-result-status--' + getAbnormalType(item.isAbnormal)">{{ getAbnormalText(item.isAbnormal) }}</span></dd></div>
+          </dl>
+        </article>
+      </section>
 
       <el-divider content-position="left">Attachmentimage</el-divider>
       <div v-if="detailImageAttachments.length" class="attachment-images">
@@ -2103,6 +2115,36 @@ watch(currentPatientId, (newVal, oldVal) => {
   background: var(--surface-subtle);
 }
 
+
+/* Detail results: retain the desktop table and show complete labelled values on phones. */
+.medical-result-cards {
+  display: none;
+  gap: 12px;
+  min-width: 0;
+}
+.medical-result-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  overflow-wrap: anywhere;
+}
+.medical-result-card h3 { margin: 0 0 12px; font-size: 15px; line-height: 1.5; }
+.medical-result-card dl { display: grid; gap: 10px; margin: 0; }
+.medical-result-card dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; align-items: start; }
+.medical-result-card dt { color: var(--ink-500); font-size: 12px; line-height: 1.5; }
+.medical-result-card dd { min-width: 0; margin: 0; color: var(--ink-800); font-size: 14px; line-height: 1.5; }
+.medical-result-status { display: inline-block; padding: 2px 8px; border-radius: 6px; background: var(--surface-subtle); }
+.medical-result-status--success { color: var(--success); background: var(--success-soft); }
+.medical-result-status--warning { color: var(--warning); background: var(--warning-soft); }
+.medical-result-status--danger { color: var(--danger); background: var(--danger-soft); }
+
+.medical-result-empty { margin: 0; padding: 16px; color: var(--ink-500); }
+@media (max-width: 600px) {
+  .medical-result-table { display: none; }
+  .medical-result-cards { display: grid; }
+}
 </style>
 
 <style scoped>.focused-source{padding:24px;min-width:0;overflow-wrap:anywhere}.focused-source button{min-height:44px;padding:10px 16px;margin:8px;font:inherit}.focused-source button:focus-visible{outline:3px solid var(--care-600)}</style>

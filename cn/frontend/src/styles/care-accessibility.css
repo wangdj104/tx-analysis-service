@@ -22,3 +22,8 @@ body.care-senior .care-count { font-size: 17px; }
   body.care-senior .workspace-content { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
   body.care-senior .care-center .quick-actions { grid-template-columns: 1fr; }
 }
+
+/* Preserve large-text mode when narrow medical results use labelled cards. */
+body.care-senior .medical-result-card :is(h3, dt, dd) { font-size: 18px; line-height: 1.7; }
+body.care-senior .medical-result-status { font-size: 17px; }
+body.care-senior .medical-result-empty { font-size: 18px; line-height: 1.7; }

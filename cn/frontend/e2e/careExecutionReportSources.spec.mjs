@@ -137,6 +137,40 @@ async function assertSourceVisible(page, source) {
     await expect(medicalDialog(page)).toContainText('Synthetic exact report medical source')
     await expect(medicalDialog(page)).not.toContainText('Synthetic outside medical source')
     await assertMedicalDialogReady(medicalDialog(page), 'Synthetic exact report medical source')
+    const resultCards = medicalDialog(page).locator('.medical-result-cards')
+    const resultTable = medicalDialog(page).locator('.medical-result-table')
+    if (page.viewportSize().width <= 600) {
+      await expect(resultTable).toBeHidden()
+      await expect(resultCards).toBeVisible()
+      await expect(resultCards.getByRole('heading', { name: 'Synthetic mobile examination', exact: true })).toBeVisible()
+      for (const label of [text('Measured value', '检测值'), text('Unit', '单位'), text('Reference range', '参考范围'), text('Status', '状态')]) {
+        await expect(resultCards.locator('dt').filter({ hasText: label })).toBeVisible()
+      }
+      await expect(resultCards.locator('dd').filter({ hasText: /^0$/ })).toBeVisible()
+      await expect(resultCards).toContainText('mmol/L')
+      await expect(resultCards).toContainText('0–5')
+      expect(await resultCards.evaluate(root => [...root.querySelectorAll('h3, dt, dd')].every(node => {
+        const box = node.getBoundingClientRect()
+        return box.width > 0 && box.left >= 0 && box.right <= window.innerWidth + 1 && node.scrollWidth <= node.clientWidth + 1
+      })), 'Every mobile result label and value fits without horizontal clipping').toBe(true)
+      const previousSeniorMode = await page.evaluate(() => {
+        const previous = document.body.classList.contains('care-senior')
+        document.body.classList.add('care-senior')
+        return previous
+      })
+      try {
+        expect(await resultCards.evaluate(root => [...root.querySelectorAll('h3, dt, dd')].every(node =>
+          parseFloat(getComputedStyle(node).fontSize) >= 18 && node.scrollWidth <= node.clientWidth + 1
+        )), 'Saved large-text styling also enlarges mobile result labels and values').toBe(true)
+      } finally {
+        await page.evaluate(previous => document.body.classList.toggle('care-senior', previous), previousSeniorMode)
+      }
+    } else {
+      await expect(resultCards).toBeHidden()
+      await expect(resultTable).toBeVisible()
+      await expect(resultTable).toContainText('Synthetic mobile examination')
+      await expect(resultTable).toContainText('mmol/L')
+    }
   }
 }
 
