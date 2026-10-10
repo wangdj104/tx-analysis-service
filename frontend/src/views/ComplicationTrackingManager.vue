@@ -7,7 +7,7 @@
             <div class="left">
               <div>
                 <h1>Complication Tracking</h1>
-                <p class="subtitle">recordDialysiscomplicationevent, trackoccurtrend and Severelevel</p>
+                <p class="subtitle">Record dialysis complications and track their frequency and severity</p>
               </div>
             </div>
             <div class="right">
@@ -22,7 +22,7 @@
         <div v-if="stats" class="content-panel stats-overview">
           <el-row :gutter="16">
             <el-col :xs="12" :sm="6" :md="6">
-              <el-statistic title="totalrecordcount" :value="stats.totalCount || 0" suffix="items" />
+              <el-statistic title="Total records" :value="stats.totalCount || 0" suffix="items" />
             </el-col>
             <el-col :xs="12" :sm="6" :md="6">
               <el-statistic title="Mild" :value="mildCount" suffix="times">
@@ -43,7 +43,7 @@
 
           <!-- typedistribution -->
           <div v-if="stats.typeCounts && stats.typeCounts.length" class="stats-distribution">
-            <span class="distribution-label">typedistribution</span>
+            <span class="distribution-label">Type distribution</span>
             <div class="stats-tag-wrap">
               <el-tag v-for="tc in stats.typeCounts" :key="tc.type" :type="typeTagType(tc.type)" size="small">
                 {{ typeLabel(tc.type) }} · {{ tc.count }}
@@ -57,7 +57,7 @@
           <div class="toolbar">
             <div class="list-panel-title">
               <el-icon><Warning /></el-icon>
-              <span>complicationrecord</span>
+              <span>Complication records</span>
               <span v-if="records.length" class="list-count">{{ records.length }} items</span>
             </div>
             <el-button @click="loadData" :loading="loading">
@@ -66,19 +66,19 @@
           </div>
 
           <div class="table-wrap">
-            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="Nonecomplicationrecord">
-              <el-table-column prop="occurrenceDate" label="occurDate" width="108" />
+            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="NoneComplication records">
+              <el-table-column prop="occurrenceDate" label="Date of occurrence" width="108" />
               <el-table-column prop="complicationType" label="type" width="120">
                 <template #default="{ row }">
                   <el-tag :type="typeTagType(row.complicationType)" size="small">{{ typeLabel(row.complicationType) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="severity" label="Severelevel" width="100" align="center">
+              <el-table-column prop="severity" label="Severity" width="100" align="center">
                 <template #default="{ row }">
                   <el-tag :type="severityTagType(row.severity)" size="small">{{ severityLabel(row.severity) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="relatedDialysissummary" min-width="160" show-overflow-tooltip>
+              <el-table-column label="Related dialysis summary" min-width="160" show-overflow-tooltip>
                 <template #default="{ row }">
                   <template v-if="row.relatedDialysisId && row.dialysisWeightGain != null">
                     <el-tag type="info" size="small">
@@ -110,16 +110,16 @@
     </el-main>
 
     <!-- Add/Editcomplicationrecord -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Editcomplicationrecord' : 'Addcomplicationrecord'" :width="isMobile ? '94%' : '600px'" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Edit complication record' : 'Add complication record'" :width="isMobile ? '94%' : '600px'" destroy-on-close>
       <el-form :model="form" label-width="110px" ref="formRef" :rules="rules">
-        <el-form-item label="relatedDialysis Records">
-          <el-select v-model="form.relatedDialysisId" filterable clearable placeholder="selectDialysis Records (Optional) " style="width: 100%" @change="onDialysisSelect">
+        <el-form-item label="Related dialysis record">
+          <el-select v-model="form.relatedDialysisId" filterable clearable placeholder="Select a dialysis record (optional)" style="width: 100%" @change="onDialysisSelect">
             <el-option v-for="d in dialysisOptions" :key="d.id" :label="`${d.recordDate} | weight gain${d.weightGain ?? '-'}kg | Blood Pressure${d.systolicBp ?? '-'}/${d.diastolicBp ?? '-'}`" :value="d.id" />
           </el-select>
         </el-form-item>
         <!-- relatedDialysisdataPreview -->
         <div v-if="linkedDialysisData" class="linked-dialysis-preview">
-          <div class="linked-preview-title">relatedDialysisdata: </div>
+          <div class="linked-preview-title">Related dialysis data: </div>
           <div class="linked-preview-grid">
             <div><span class="muted">pre-dialysis</span> <strong>{{ linkedDialysisData.onWeight ?? '-' }}</strong> kg</div>
             <div><span class="muted">post-dialysis</span> <strong>{{ linkedDialysisData.offWeight ?? '-' }}</strong> kg</div>
@@ -129,25 +129,25 @@
             <div><span class="muted">fluid removal</span> <el-tag :type="dehydrationTagType(linkedDialysisData.dehydrationStatus)" size="small">{{ dehydrationLabel(linkedDialysisData.dehydrationStatus) }}</el-tag></div>
           </div>
         </div>
-        <el-form-item label="occurDate" prop="occurrenceDate">
-          <el-date-picker v-model="form.occurrenceDate" type="date" placeholder="selectDate" value-format="YYYY-MM-DD" style="width: 100%" />
+        <el-form-item label="Date of occurrence" prop="occurrenceDate">
+          <el-date-picker v-model="form.occurrenceDate" type="date" placeholder="Select a date" value-format="YYYY-MM-DD" style="width: 100%" />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :xs="24" :sm="12">
-            <el-form-item label="complicationtype" prop="complicationType">
+            <el-form-item label="Complication type" prop="complicationType">
               <el-select v-model="form.complicationType" placeholder="Select" style="width: 100%">
                 <el-option label="infection" value="INFECTION" />
-                <el-option label="DialysisinlowBlood Pressure" value="HYPOTENSION" />
+                <el-option label="Intradialytic hypotension" value="HYPOTENSION" />
                 <el-option label="anemia" value="ANEMIA" />
                 <el-option label="bone disease" value="BONE_DISEASE" />
                 <el-option label="cardiovascular event" value="CARDIOVASCULAR" />
-                <el-option label="vascular accessquestion" value="VASCULAR_ACCESS_ISSUE" />
+                <el-option label="Vascular access issue" value="VASCULAR_ACCESS_ISSUE" />
                 <el-option label="Other" value="OTHER" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12">
-            <el-form-item label="Severelevel" prop="severity">
+            <el-form-item label="Severity" prop="severity">
               <el-select v-model="form.severity" placeholder="Select" style="width: 100%">
                 <el-option label="Mild" value="MILD" />
                 <el-option label="Moderate" value="MODERATE" />
@@ -157,16 +157,16 @@
           </el-col>
         </el-row>
         <el-form-item label="Description">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="complicationDetailedDescription" />
+          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="Describe the complication" />
         </el-form-item>
         <el-form-item label="treatment measures">
-          <el-input v-model="form.treatmentMeasures" type="textarea" :rows="2" placeholder="collectget treatment measures" />
+          <el-input v-model="form.treatmentMeasures" type="textarea" :rows="2" placeholder="Describe the treatment measures taken" />
         </el-form-item>
         <el-form-item label="outcome/result">
-          <el-input v-model="form.outcome" placeholder="resultDescription, for example : improved, stable, needhospitalization" />
+          <el-input v-model="form.outcome" placeholder="Describe the outcome, for example: improved, stable, or hospitalization needed" />
         </el-form-item>
         <el-form-item label="Notes">
-          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="Notesinformation" />
+          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="Additional notes" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -203,15 +203,15 @@ const form = reactive({
 });
 
 const rules = {
-  occurrenceDate: [{ required: true, message: 'SelectoccurDate', trigger: 'change' }],
-  complicationType: [{ required: true, message: 'Selectcomplicationtype', trigger: 'change' }],
-  severity: [{ required: true, message: 'SelectSeverelevel', trigger: 'change' }]
+  occurrenceDate: [{ required: true, message: 'Select a date of occurrence', trigger: 'change' }],
+  complicationType: [{ required: true, message: 'Select a complication type', trigger: 'change' }],
+  severity: [{ required: true, message: 'Select a severity level', trigger: 'change' }]
 };
 
 const TYPE_MAP = {
-  INFECTION: 'infection', HYPOTENSION: 'DialysisinlowBlood Pressure', ANEMIA: 'anemia',
+  INFECTION: 'infection', HYPOTENSION: 'Intradialytic hypotension', ANEMIA: 'anemia',
   BONE_DISEASE: 'bone disease', CARDIOVASCULAR: 'cardiovascular event',
-  VASCULAR_ACCESS_ISSUE: 'vascular accessquestion', OTHER: 'Other'
+  VASCULAR_ACCESS_ISSUE: 'Vascular access issue', OTHER: 'Other'
 };
 const SEVERITY_MAP = { MILD: 'Mild', MODERATE: 'Moderate', SEVERE: 'severe' };
 

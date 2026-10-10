@@ -211,7 +211,7 @@ public class MonitoringServiceImpl implements MonitoringService {
             MonitoringSnapshotVO.TaskItem task = new MonitoringSnapshotVO.TaskItem();
             task.setId(intake.getId());
             task.setTaskType("MEDICATION");
-            task.setTitle(medication != null ? medication.getDrugName() : "by timemedication intake");
+            task.setTitle(medication != null ? medication.getDrugName() : org.familyhealthcare.util.ExportLocalization.text("Take medication on time", "按时服药"));
             task.setScheduledAt(intake.getSnoozeUntil() != null ? intake.getSnoozeUntil() : intake.getScheduledAt());
             task.setStatus(intake.getStatus());
             task.setDosage(intake.getDosage());
@@ -222,7 +222,7 @@ public class MonitoringServiceImpl implements MonitoringService {
             MonitoringSnapshotVO.TaskItem task = new MonitoringSnapshotVO.TaskItem();
             task.setId(schedule.getId());
             task.setTaskType("DIALYSIS");
-            task.setTitle("Dialysisschedule");
+            task.setTitle(org.familyhealthcare.util.ExportLocalization.text("Dialysis schedule", "透析计划"));
             task.setScheduledAt(schedule.getScheduleDate().atTime(parseTime(schedule.getScheduleTime())));
             task.setStatus(schedule.getStatus());
             task.setDescription(schedule.getRemark());
@@ -516,14 +516,14 @@ public class MonitoringServiceImpl implements MonitoringService {
     }
 
     private String freshness(LocalDateTime at, LocalDateTime now) {
-        if (at == null) return "No updates";
+        if (at == null) return org.familyhealthcare.util.ExportLocalization.text("No updates", "暂无更新");
         long minutes = Math.max(0, Duration.between(at, now).toMinutes());
-        if (minutes < 1) return "just nowupdate";
-        if (minutes < 60) return minutes + (minutes == 1 ? " minute ago" : " minutes ago");
+        if (minutes < 1) return org.familyhealthcare.util.ExportLocalization.text("Updated just now", "刚刚更新");
+        if (minutes < 60) return org.familyhealthcare.util.ExportLocalization.text(minutes + (minutes == 1 ? " minute ago" : " minutes ago"), minutes + " 分钟前");
         long hours = minutes / 60;
-        if (hours < 24) return hours + (hours == 1 ? " hour ago" : " hours ago");
+        if (hours < 24) return org.familyhealthcare.util.ExportLocalization.text(hours + (hours == 1 ? " hour ago" : " hours ago"), hours + " 小时前");
         long days = hours / 24;
-        return days + (days == 1 ? " day ago" : " days ago");
+        return org.familyhealthcare.util.ExportLocalization.text(days + (days == 1 ? " day ago" : " days ago"), days + " 天前");
     }
 
     private LocalDateTime max(LocalDateTime a, LocalDateTime b) {

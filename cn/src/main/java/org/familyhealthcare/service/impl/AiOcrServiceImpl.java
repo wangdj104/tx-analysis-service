@@ -16,6 +16,7 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import static org.familyhealthcare.util.ExportLocalization.text;
 
 /**
  * ExaminationReportrecognizechart: call OpenAI compatible multiplemodal Chat Completions (image_url + text) .
@@ -33,67 +34,16 @@ public class AiOcrServiceImpl implements AiOcrService {
     private RestTemplate restTemplate;
 
     private static final String OCR_PROMPT_TEMPLATE =
-            "youYesoneprofessional medicallaboratory testReportrecognitionassistant. userUploadmultipleimagesExaminationReportimage (can cancomeselfsameonecopy PDF  not samepage) . Please recognitionhas laboratory testitemitem, andby Examination Typesplitafter Backstrictgrid JSON. \n" +
-            "\n" +
-            "Please by todown formatBack (mustuse records countgroup) : \n" +
-            "{\n" +
-            "  \"records\": [\n" +
-            "    {\n" +
-            "      \"recordType\": \"BLOOD|URINE|KIDNEY|LIVER|BONE|IRON|IMAGE|OTHER ofone\",\n" +
-            "      \"hospitalName\": \"HospitalName (not findto fill null) \",\n" +
-            "      \"checkDate\": \"Examination Date yyyy-MM-dd (not findto fill null) \",\n" +
-            "      \"doctorName\": \"ClinicianName (not findto fill null) \",\n" +
-            "      \"items\": [\n" +
-            "        {\n" +
-            "          \"name\": \"ExaminationitemName\",\n" +
-            "          \"value\": \"measured value\",\n" +
-            "          \"unit\": \"Unit (nohas then null) \",\n" +
-            "          \"referenceRange\": \"Reference Range (nohas then null) \",\n" +
-            "          \"isAbnormal\": \"high/low/Normal\"\n" +
-            "        }\n" +
-            "      ]\n" +
-            "    }\n" +
-            "  ]\n" +
-            "}\n" +
-            "\n" +
-            "heavyneedneedrequest: \n" +
-            "1. mustBackcombinemethod JSON, not need markdown replacecodeblock or additionalinstructions\n" +
-            "2. ifReportcontainmultipletypeExamination (for example bloodoftenrule, urineoftenrule, biochemistry, tumorlabellogitem) , mustsplitcompletemultipleitems records, each itemscorrespondingonetype recordType, items onlyplacethis type itemitem\n" +
-            "3. BLOOD=bloodoftenrule/bloodbiochemistryetc.blooditem; URINE=urineoftenrule; KIDNEY=kidneyfeature; LIVER=liverfeature; BONE=bone metabolism; IRON=iron metabolism; IMAGE=imaging; OTHER=Nonemethodcategorize\n" +
-            "4. ifwholecopyReportonlyhas onetypetype, records alsoonlyneedoneitems\n" +
-            "5. each Examinationitemmustinclude name, value, unit, referenceRange, isAbnormal; isAbnormal can onlyYeshigh/low/Normal\n" +
-            "6. tablegridReportPlease eachrowread, not needomit; Nonedatatime items for  []\n" +
-            "7. sameoneindicatorin sameone record withindo notduplicate (measured value+Unit+Reference Rangerelativesameviewfor duplicate) ";
+            "Extract all visible medical report rows into strict JSON without Markdown. Preserve original source wording, names, values, units and reference ranges. Do not translate or infer missing clinical content. " +
+            "Return {\"records\":[{\"recordType\":\"BLOOD|URINE|KIDNEY|LIVER|BONE|IRON|IMAGE|OTHER\",\"hospitalName\":null,\"checkDate\":null,\"doctorName\":null,\"items\":[{\"name\":null,\"value\":null,\"unit\":null,\"referenceRange\":null,\"isAbnormal\":\"high|low|Normal\"}]}]}. " +
+            "Use one supported recordType per record; split different examination types into separate records. BLOOD covers blood count or blood chemistry, URINE urine tests, KIDNEY renal function, LIVER liver function, BONE bone metabolism, IRON iron metabolism, IMAGE imaging, OTHER other reports. " +
+            "Use yyyy-MM-dd for checkDate and null when unavailable. Include every visible row, avoid duplicate identical items within one record, and return an empty items array if none are readable. Keep JSON keys and enumeration tokens exactly as specified.";
 
     private static final String MEDICATION_PROMPT_TEMPLATE =
-            "youYesoneprofessional Medicationinformationrecognitionassistant. userUploadmultipleimagesMedicationpackage or instructionsdocumentimage, each imagescan canincludeonetype or multipletypeMedication. Please carefullyViewhas image, recognitionoutputhas not same Medication, andBackstrictgrid JSONformatdata. \n" +
-            "\n" +
-            "Please by todown formatBack (mustuse drugs countgroup) : \n" +
-            "{\n" +
-            "  \"drugs\": [\n" +
-            "    {\n" +
-            "      \"drugName\": \"Medication Name (productname, for example : visitnewsame, if unavailable, enternull) \",\n" +
-            "      \"genericName\": \"Generic Name/chemistryname (for example : nifedipineflatcontrolexplaintablet, if unavailable, enternull) \",\n" +
-            "      \"specification\": \"Specification (for example : 30mg*7tablet, if unavailable, enternull) \",\n" +
-            "      \"unit\": \"Unit (tablet/dose/bottle/box/itemetc., if unavailable, enternull) \",\n" +
-            "      \"dosageForm\": \"dosage form (Please Backtodown ofone: tablet/capsule/injection/oral solution/powder, Nonemethodrecognitionthenfillnull) \",\n" +
-            "      \"manufacturer\": \"manufacturer (if unavailable, enternull) \",\n" +
-            "      \"approvalNumber\": \"approval number (for example : SinopharmaccuratecharacterH20240001, if unavailable, enternull) \",\n" +
-            "      \"category\": \"Medicationcategory (Please Backtodown ofone: antihypertensive/phosphate binder/iron supplement/vitamin/erythropoietin/calcium supplement/active vitamin DD/diuretic/antibiotic/Other, Nonemethodrecognitionthenfillnull) \",\n" +
-            "      \"defaultDosage\": \"DefaultDose instructions (for example : each times1tablet, each days1times, if unavailable, enternull) \",\n" +
-            "      \"remark\": \"Otherheavyneedinformation (if unavailable, enternull) \"\n" +
-            "    }\n" +
-            "  ]\n" +
-            "}\n" +
-            "\n" +
-            "heavyneedneedrequest: \n" +
-            "1. mustBackcombinemethodJSON, not needhas any markdown replacecodeblockmark or Othertextcharacterinstructions\n" +
-            "2. ifimageinhas multipletypenot sameMedication, mustin  drugs countgroupinpointothercolumnoutputeach typeMedication\n" +
-            "3. ifmultipleimagesimageYessameonetypeMedication not samecornerlevel/page, onlyBackoneitemsthis Medication information (mergeinformation) \n" +
-            "4. has fieldallmustinclude, nohas information fieldwrite null, not needomitthis field\n" +
-            "5. dosageForm can onlyBack: tablet/capsule/injection/oral solution/powder itsinofone,  or  null\n" +
-            "6. category can onlyBack: antihypertensive/phosphate binder/iron supplement/vitamin/erythropoietin/calcium supplement/active vitamin DD/diuretic/antibiotic/Other itsinofone,  or  null\n" +
-            "7. ifNonemethodrecognitionimagecontent, drugs Backemptycountgroup []";
+            "Extract every distinct medication shown in the supplied packaging or instructions into strict JSON without Markdown. Preserve original source names, manufacturer, specification, units, dosage instructions and notes; never translate these fields or infer a dose. " +
+            "Return {\"drugs\":[{\"drugName\":null,\"genericName\":null,\"specification\":null,\"unit\":null,\"dosageForm\":null,\"manufacturer\":null,\"approvalNumber\":null,\"category\":null,\"defaultDosage\":null,\"remark\":null}]}. " +
+            "Only dosageForm and category are coded fields: dosageForm must be tablet/capsule/injection/oral solution/powder or null; category must be antihypertensive/phosphate binder/iron supplement/vitamin/erythropoietin/calcium supplement/active vitamin DD/diuretic/antibiotic/Other or null. " +
+            "Include all fields and use null for unavailable data. Merge multiple views of the same medication. Return an empty drugs array when nothing is readable. Keep JSON keys and enumeration tokens exactly as specified.";
 
     @Override
     public Map<String, Object> recognizeMedicalReport(String base64Image, String recordType) {
@@ -106,13 +56,13 @@ public class AiOcrServiceImpl implements AiOcrService {
 
         String apiKey = resolveApiKey();
         if (!StringUtils.hasText(apiKey)) {
-            result.put("error", "not configuration OCR secret, Please settings OCR_API_KEY  or  BAILIAN_API_KEY environmentvariable. ");
+            result.put("error", text("OCR is not configured. Set OCR_API_KEY or BAILIAN_API_KEY.", "尚未配置 OCR，请设置 OCR_API_KEY 或 BAILIAN_API_KEY。"));
             return result;
         }
 
         String prompt = OCR_PROMPT_TEMPLATE;
         if (recordType != null && !recordType.isEmpty()) {
-            prompt = prompt.replace("recordType", "recordType (excellentfirstrecognitionfor " + recordType + ") ");
+            prompt += "\nPreferred examination type: " + recordType + ". Keep the JSON key recordType unchanged.";
         }
 
         List<String> imageDataUris = new ArrayList<>();
@@ -131,7 +81,7 @@ public class AiOcrServiceImpl implements AiOcrService {
             String err = errJson.getString("error");
             result.put("error", err);
             if (err != null && (err.contains("image_url") || err.contains("unknown variant"))) {
-                result.put("error", err + ". currentmodel「" + model + "」not supportimageinput, Please changeusevisualmodel (for example  gpt-4o-mini, qwen-vl-plus) , seeconfiguration ocr.vision.model. ");
+                result.put("error", text("The configured model does not support image input. Choose a vision-capable model in ocr.vision.model. Current model: ", "当前模型不支持图像输入，请在 ocr.vision.model 中选择视觉模型。当前模型：") + model);
             }
             return result;
         }
@@ -139,7 +89,7 @@ public class AiOcrServiceImpl implements AiOcrService {
         try {
             JSONObject json = extractJson(rawResult);
             if (json == null) {
-                result.put("error", "AI BackcontentNonemethodparsefor  JSON, Please changemoreclearimage or morechangerecognizechartmodelafter retry. ");
+                result.put("error", text("The recognition result was not valid JSON. Try a clearer image or check the OCR model.", "识别结果不是有效的 JSON，请使用更清晰的图片或检查 OCR 模型。"));
                 return result;
             }
 
@@ -165,14 +115,14 @@ public class AiOcrServiceImpl implements AiOcrService {
                 }
             }
             if (records.size() > 1) {
-                String splitHint = "already by Examination Typesplitfor  " + records.size() + " records, Savetimewill pointotherenterdatabase. ";
+                String splitHint = text("Split into ", "已按检查类型拆分为 ") + records.size() + text(" records; each will be saved separately.", " 条记录，保存时将分别入库。");
                 appendWarning(result, splitHint);
             }
             if (totalItems == 0) {
-                appendWarning(result, "not recognitionto Examinationitem, Please Confirmimageclear, for laboratory testReport,  or trymorechangerecognizechartmodel (current: " + model + ") . ");
+                appendWarning(result, text("No examination items were recognized. Check the image clarity and OCR model. Current model: ", "未识别到检查项目，请检查图片清晰度及 OCR 模型。当前模型：") + model);
             }
         } catch (Exception e) {
-            result.put("error", "parseAIBackresultfailed: " + e.getMessage());
+            result.put("error", text("The recognition result could not be parsed. Please try again.", "无法解析识别结果，请重试。"));
         }
 
         return result;
@@ -189,7 +139,7 @@ public class AiOcrServiceImpl implements AiOcrService {
 
         String apiKey = resolveApiKey();
         if (!StringUtils.hasText(apiKey)) {
-            result.put("error", "not configuration OCR secret, Please settings OCR_API_KEY  or  BAILIAN_API_KEY environmentvariable. ");
+            result.put("error", text("OCR is not configured. Set OCR_API_KEY or BAILIAN_API_KEY.", "尚未配置 OCR，请设置 OCR_API_KEY 或 BAILIAN_API_KEY。"));
             return result;
         }
 
@@ -210,7 +160,7 @@ public class AiOcrServiceImpl implements AiOcrService {
             String err = errJson.getString("error");
             result.put("error", err);
             if (err != null && (err.contains("image_url") || err.contains("unknown variant"))) {
-                result.put("error", err + ". currentmodel「" + model + "」not supportimageinput, Please changeusevisualmodel (for example  gpt-4o-mini, qwen-vl-plus) , seeconfiguration ocr.vision.model. ");
+                result.put("error", text("The configured model does not support image input. Choose a vision-capable model in ocr.vision.model. Current model: ", "当前模型不支持图像输入，请在 ocr.vision.model 中选择视觉模型。当前模型：") + model);
             }
             return result;
         }
@@ -218,7 +168,7 @@ public class AiOcrServiceImpl implements AiOcrService {
         try {
             JSONObject json = extractJson(rawResult);
             if (json == null) {
-                result.put("error", "AI BackcontentNonemethodparsefor  JSON, Please changemoreclearimage or morechangerecognizechartmodelafter retry. ");
+                result.put("error", text("The recognition result was not valid JSON. Try a clearer image or check the OCR model.", "识别结果不是有效的 JSON，请使用更清晰的图片或检查 OCR 模型。"));
                 return result;
             }
 
@@ -241,12 +191,12 @@ public class AiOcrServiceImpl implements AiOcrService {
             }
 
             if (drugs.isEmpty()) {
-                result.put("warning", "not recognitionto Medication, Please Confirmimageclear, for Medicationpackage or instructionsdocument,  or trymorechangerecognizechartmodel (current: " + model + ") . ");
+                result.put("warning", text("No medications were recognized. Check the packaging image and OCR model. Current model: ", "未识别到药品，请检查药品包装图片及 OCR 模型。当前模型：") + model);
             } else if (drugs.size() > 1) {
-                result.put("warning", "already recognitionto  " + drugs.size() + " typeMedication, Savetimewill pointotherenterdatabase. ");
+                result.put("warning", text("Recognized ", "已识别到 ") + drugs.size() + text(" medications; each will be saved separately.", " 种药品，保存时将分别入库。"));
             }
         } catch (Exception e) {
-            result.put("error", "parseAIBackresultfailed: " + e.getMessage());
+            result.put("error", text("The recognition result could not be parsed. Please try again.", "无法解析识别结果，请重试。"));
         }
 
         return result;
@@ -369,7 +319,8 @@ public class AiOcrServiceImpl implements AiOcrService {
 
             Map<String, Object> systemMsg = new HashMap<>();
             systemMsg.put("role", "system");
-            systemMsg.put("content", "youYesprofessional medicallaboratory testReportrecognitionassistant. Please carefullyrecognitionimagein ExaminationReportcontent, extracthas laboratory testitemitem data. ");
+            systemMsg.put("content", "Extract medical document data accurately. Preserve original source language and wording for every extracted name, clinical observation, medication, dosage instruction and note. Never translate source clinical text. Keep JSON keys and enumeration codes exactly as specified. "
+                    + text("Write system-generated warnings or errors in English.", "识别过程中自行生成的提示或错误说明必须使用简体中文。"));
 
             Map<String, Object> userMsg = new HashMap<>();
             userMsg.put("role", "user");
@@ -394,14 +345,16 @@ public class AiOcrServiceImpl implements AiOcrService {
                 return json.getJSONArray("choices").getJSONObject(0)
                         .getJSONObject("message").getString("content");
             }
-            return "{\"error\": \"AIRecognition failed, not Backhas validresult\"}";
+            return errorJson(text("AI recognition did not return a valid result. Please try again.", "AI 识别未返回有效结果，请重试。"));
         } catch (HttpStatusCodeException e) {
-            String body = e.getResponseBodyAsString();
-            String msg = body != null && !body.isEmpty() ? body : e.getMessage();
-            return "{\"error\": \"AIrecognitioncallfailed: " + escapeJson(msg) + "\"}";
+            return errorJson(text("AI recognition request failed. Check the OCR configuration. HTTP ", "AI 识别请求失败，请检查 OCR 配置。HTTP ") + e.getRawStatusCode());
         } catch (Exception e) {
-            return "{\"error\": \"AIrecognitioncallfailed: " + escapeJson(e.getMessage()) + "\"}";
+            return errorJson(text("AI recognition could not be completed. Check the OCR configuration and try again.", "AI 识别调用失败，请检查 OCR 配置后重试。"));
         }
+    }
+
+    private String errorJson(String message) {
+        return JSON.toJSONString(Collections.singletonMap("error", message));
     }
 
     private static String normalizeChatCompletionsUrl(String baseUrl) {

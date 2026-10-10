@@ -7,7 +7,7 @@
             <div class="left">
               <div>
                 <h1>Patient Management</h1>
-                <p class="subtitle">managementPatientinformation, convenientineachmoduleQuickselect</p>
+                <p class="subtitle">Manage patient information for use across care modules</p>
               </div>
             </div>
           </div>
@@ -15,7 +15,7 @@
         <div class="content-panel">
           <div class="toolbar">
             <el-button type="primary" @click="showAddDialog">
-              <el-icon><Plus /></el-icon>AddPatient
+              <el-icon><Plus /></el-icon>Add patient
             </el-button>
             <el-button @click="showSensitive = !showSensitive">{{ showSensitive ? 'hidesensitiveinformation' : 'displaysensitiveinformation' }}</el-button>
           </div>
@@ -30,7 +30,7 @@
             </el-table-column>
             <el-table-column v-if="patientColVisible('birthDate')" prop="birthDate" label="Date of Birth" width="108" />
             <el-table-column v-if="patientColVisible('phone')" prop="phone" label="phone" min-width="112" />
-            <el-table-column v-if="patientColVisible('idCard')" prop="idCard" label="bodycopycertificate" min-width="148" show-overflow-tooltip />
+            <el-table-column v-if="patientColVisible('idCard')" prop="idCard" label="ID number" min-width="148" show-overflow-tooltip />
             <el-table-column v-if="patientColVisible('address')" prop="address" label="address" min-width="140" show-overflow-tooltip />
             <el-table-column v-if="patientColVisible('status')" prop="status" label="Status" width="80" align="center">
               <template #default="{ row }">
@@ -44,7 +44,7 @@
               </template>
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="showEditDialog(row)">Edit</el-button>
-                <el-button link type="success" size="small" @click="showClinicalDialog(row)">clinical</el-button>
+                <el-button link type="success" size="small" @click="showClinicalDialog(row)">Clinical profile</el-button>
                 <el-button v-if="nurseAssignmentEnabled" class="nurse-assignment-entry" link type="primary" size="small" @click="nurseAssignmentPatient=row">Assign nursing team</el-button>
                 <el-popconfirm title="Confirm deletion?" @confirm="handleDelete(row.id)">
                   <template #reference>
@@ -60,23 +60,23 @@
 
     <el-dialog :model-value="!!nurseAssignmentPatient" @update:model-value="value=>{if(!value)nurseAssignmentPatient=null}" title="Nursing team assignments" width="min(640px,94vw)" destroy-on-close><NurseAssignments v-if="nurseAssignmentPatient" :patient-id="nurseAssignmentPatient.id" /></el-dialog>
     <!-- clinicalinformationdialog -->
-    <el-dialog v-model="clinicalDialogVisible" title="Patientclinicalinformation" width="min(640px, 94vw)" destroy-on-close>
+    <el-dialog v-model="clinicalDialogVisible" title="Patient clinical information" width="min(640px, 94vw)" destroy-on-close>
       <p class="clinical-patient-context">Patient: {{ clinicalPatientName || clinicalPatientId }}</p>
       <el-alert v-if="clinicalError" :title="clinicalError" type="error" :closable="false" show-icon />
       <el-form v-loading="clinicalLoading" :disabled="clinicalLoading || !clinicalReady || clinicalFormSaving" :model="clinicalForm" label-width="120px" ref="clinicalFormRef">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Dialysistype">
-              <el-select v-model="clinicalForm.dialysisType" placeholder="SelectDialysistype" style="width: 100%">
-                <el-option label="bloodDialysis(HD)" value="HD" />
-                <el-option label="peritonealDialysis(PD)" value="PD" />
+            <el-form-item label="Dialysis type">
+              <el-select v-model="clinicalForm.dialysisType" placeholder="Select a dialysis type" style="width: 100%">
+                <el-option label="Hemodialysis (HD)" value="HD" />
+                <el-option label="Peritoneal dialysis (PD)" value="PD" />
                 <el-option label="CRRT" value="CRRT" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="startDialysis Date">
-              <el-date-picker v-model="clinicalForm.dialysisStartDate" type="date" placeholder="selectDate" value-format="YYYY-MM-DD" style="width: 100%" />
+            <el-form-item label="Dialysis start date">
+              <el-date-picker v-model="clinicalForm.dialysisStartDate" type="date" placeholder="Select a date" value-format="YYYY-MM-DD" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -84,33 +84,33 @@
           <el-col :span="12">
             <el-form-item label="vascular access">
               <el-select v-model="clinicalForm.vascularAccess" placeholder="Select" style="width: 100%">
-                <el-option label="arteriovenous fistula(AVF)" value="AVF" />
-                <el-option label="personworkbloodmanagewithinfistula(AVG)" value="AVG" />
-                <el-option label="central venous catheter(CATH)" value="CATH" />
+                <el-option label="Arteriovenous fistula (AVF)" value="AVF" />
+                <el-option label="Arteriovenous graft (AVG)" value="AVG" />
+                <el-option label="Central venous catheter (CATH)" value="CATH" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="targetDry Weight(kg)">
+            <el-form-item label="Target dry weight (kg)">
               <el-input-number v-model="clinicalForm.targetDryWeight" :precision="2" :min="20" :max="200" :step="0.1" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="originalonset/primary diagnosis">
-          <el-input v-model="clinicalForm.primaryDiagnosis" placeholder="for example : slowlypropertykidneysmallglobulekidneyinflammation, glucoseurinediseasekidneydiseaseetc." />
+        <el-form-item label="Underlying condition / primary diagnosis">
+          <el-input v-model="clinicalForm.primaryDiagnosis" placeholder="For example: chronic glomerulonephritis or diabetic kidney disease" />
         </el-form-item>
-        <el-form-item label="Medicationallergy history">
-          <el-input v-model="clinicalForm.allergyDrugs" type="textarea" :rows="2" placeholder="allergyMedicationlist" />
+        <el-form-item label="Medication allergy history">
+          <el-input v-model="clinicalForm.allergyDrugs" type="textarea" :rows="2" placeholder="List medication allergies" />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Dayfluidup limit(ml)">
+            <el-form-item label="Daily fluid limit (ml)">
               <el-input-number v-model="clinicalForm.fluidLimitMl" :min="0" :max="5000" :step="100" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="Notes">
-          <el-input v-model="clinicalForm.remark" type="textarea" :rows="2" placeholder="Notesinformation" />
+          <el-input v-model="clinicalForm.remark" type="textarea" :rows="2" placeholder="Additional notes" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -121,7 +121,7 @@
     </el-dialog>
 
     <!-- Add/EditPatient -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'EditPatient' : 'AddPatient'" width="600px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Edit patient' : 'Add patient'" width="600px" destroy-on-close>
       <el-form :disabled="profileSaving" :model="form" label-width="100px" :rules="rules" ref="formRef">
         <el-row :gutter="16">
           <el-col :span="12">
@@ -141,7 +141,7 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="Date of Birth">
-              <el-date-picker v-model="form.birthDate" type="date" placeholder="selectDate" value-format="YYYY-MM-DD" style="width: 100%" />
+              <el-date-picker v-model="form.birthDate" type="date" placeholder="Select a date" value-format="YYYY-MM-DD" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -158,21 +158,21 @@
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Urgentcontact">
-              <el-input v-model="form.emergencyContact" placeholder="UrgentcontactName" />
+            <el-form-item label="Emergency contact">
+              <el-input v-model="form.emergencyContact" placeholder="Emergency contact name" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Urgentphone">
-              <el-input v-model="form.emergencyPhone" placeholder="Urgentcontactphone" />
+            <el-form-item label="Emergency phone">
+              <el-input v-model="form.emergencyPhone" placeholder="Emergency contact phone" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="medical history">
-          <el-input v-model="form.medicalHistory" type="textarea" :rows="2" placeholder="medical historysimpleneedrecord" />
+          <el-input v-model="form.medicalHistory" type="textarea" :rows="2" placeholder="Brief medical history" />
         </el-form-item>
         <el-form-item label="Notes">
-          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="Notesinformation" />
+          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="Additional notes" />
         </el-form-item>
         <el-form-item label="Specialty roles">
           <el-select v-model="form.specialtyRoleIds" multiple filterable clearable :loading="specialtyLoading" :disabled="profileSaving || specialtyLoading || !specialtyReady" placeholder="Select specialties; empty means general patient" style="width:100%">

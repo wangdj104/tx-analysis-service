@@ -18,4 +18,4 @@ Before the first public release, schema changes must update `src/main/resources/
 - Enforce patient ownership on the server; hidden UI controls are not authorization.
 - Keep destructive actions explicit and confirm irreversible operations.
 - Preserve keyboard access, readable contrast, responsive layouts, and meaningful empty/error states.
-- Keep all public UI text, API messages, documentation, and baseline data in English. Add new languages through the localization layer rather than duplicating pages.
+- Keep system-owned UI text, validation/errors, accessibility labels, and generated labels consistent with the edition: English in the root application/demo and Chinese in `cn/`. Reports must follow the explicitly selected output language. Localize known presentation fields, never recursively translate API payloads or overwrite clinical prose, patient input, medication names, actor identities, or source values. Retain necessary medical abbreviations and stable machine-readable codes.

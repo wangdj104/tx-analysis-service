@@ -38,7 +38,7 @@
           <div class="list-panel-head">
             <div class="list-panel-title">
               <el-icon><Document /></el-icon>
-              <span>Dialysis Recordslist</span>
+              <span>Dialysis records</span>
               <span v-if="records.length" class="list-count">{{ records.length }} items</span>
               <span class="list-filter-tag">{{ listScopeLabel }}</span>
             </div>
@@ -104,8 +104,8 @@
                   <p class="empty-hint">Switch to Year or View all to see more history.</p>
                 </template>
                 <div class="empty-actions">
-                  <el-button size="small" @click="switchToYearFilter">Viewthis Year</el-button>
-                  <el-button size="small" @click="loadAllRecords">ViewAll</el-button>
+                  <el-button size="small" @click="switchToYearFilter">View this year</el-button>
+                  <el-button size="small" @click="loadAllRecords">View all</el-button>
                   <el-button type="primary" size="small" @click="handleAdd">Add record</el-button>
                 </div>
               </el-empty>
@@ -134,7 +134,7 @@
             </template>
           </el-table-column>
               <el-table-column v-if="dialysisColVisible('lastOffWeight')" min-width="76" align="right" class-name="col-weight">
-                <template #header><span class="col-head col-head--right">before post-dialysis</span></template>
+                <template #header><span class="col-head col-head--right">Previous post-dialysis</span></template>
                 <template #default="{ row }">
                   <span class="num-cell" :class="{ 'muted': row.recordType === 'INCOMPLETE' }">{{ row.recordType === 'INCOMPLETE' ? '-' : formatNum(row.lastOffWeight) }}</span>
                 </template>
@@ -160,7 +160,7 @@
               <el-table-column v-if="dialysisColVisible('intervalDays')" min-width="64" align="center">
                 <template #header><span class="col-head col-head--center">interval</span></template>
                 <template #default="{ row }">
-                  <span class="interval-badge">{{ row.intervalDays ?? '-' }}days</span>
+                  <span class="interval-badge">{{ row.intervalDays ?? '-' }} days</span>
                 </template>
               </el-table-column>
               <el-table-column v-if="dialysisColVisible('weightGain')" min-width="68" align="right" class-name="col-fluid">
@@ -191,7 +191,7 @@
                 </template>
               </el-table-column>
               <el-table-column v-if="dialysisColVisible('dailyWeightGain')" min-width="68" align="right">
-                <template #header><span class="col-head col-head--right">Dayaverage</span></template>
+                <template #header><span class="col-head col-head--right">Daily average</span></template>
                 <template #default="{ row }">
                   <span class="num-cell" :class="[dailyWeightGainClass(row), { 'muted': row.recordType === 'INCOMPLETE' }]">{{ row.recordType === 'INCOMPLETE' ? '-' : formatNum(row.dailyWeightGain) }}</span>
                 </template>
@@ -229,11 +229,11 @@
               <el-empty :image-size="96">
                 <template #description>
                   <p class="empty-title">No records for {{ listScopeLabel }}</p>
-                  <p class="empty-hint">you datacan canin OtherTimesection, Please tryexpandlargeFilterrange</p>
+                  <p class="empty-hint">Your records may be in another period. Try a wider date range.</p>
                 </template>
                 <div class="empty-actions">
-                  <el-button size="small" @click="switchToYearFilter">Viewthis Year</el-button>
-                  <el-button size="small" @click="loadAllRecords">ViewAll</el-button>
+                  <el-button size="small" @click="switchToYearFilter">View this year</el-button>
+                  <el-button size="small" @click="loadAllRecords">View all</el-button>
                   <el-button type="primary" size="small" @click="handleAdd">Add record</el-button>
                 </div>
               </el-empty>
@@ -244,7 +244,7 @@
 
       <!-- AI analysis -->
       <div v-show="activeMenu === 'ai'" v-loading="aiLoading" class="ai-page">
-        <el-alert title="AI analysisresultonlyprovideHealth Managementreference, cannotreplaceCliniciandiagnosis or treatmentsolution; for example has discomfortPlease andtimecontactmedicalprotectpersonmember. " type="warning" :closable="false" show-icon class="ai-disclaimer" />
+        <el-alert title="AI analysis supports health management and does not replace a clinician’s diagnosis or treatment plan. Contact your care team promptly if you feel unwell." type="warning" :closable="false" show-icon class="ai-disclaimer" />
         <header class="ai-hero">
           <div class="ai-hero-top">
             <div class="ai-hero-brand">
@@ -252,8 +252,8 @@
                 <el-icon :size="26"><Cpu /></el-icon>
               </div>
               <div class="ai-hero-copy">
-                <h2 class="ai-hero-title">AI smartanalysis</h2>
-                <p class="ai-hero-desc">based on DeepSeek largemodel, toDialysisdataenterrowprofessionalmedicalscienceresolveread</p>
+                <h2 class="ai-hero-title">AI-assisted analysis</h2>
+                <p class="ai-hero-desc">DeepSeek-assisted interpretation of dialysis data for clinician review</p>
               </div>
             </div>
             <div class="ai-hero-filters">
@@ -278,31 +278,31 @@
         <section class="ai-workspace">
           <div class="ai-toolbar">
             <div class="ai-toolbar-left">
-              <span class="ai-toolbar-label">{{ showAiHistory ? 'historyanalysis' : 'analysisReport' }}</span>
-              <span v-if="!showAiHistory && aiResult" class="ai-toolbar-hint">already generate, can Save or againanalysis</span>
+              <span class="ai-toolbar-label">{{ showAiHistory ? 'Analysis history' : 'Analysis report' }}</span>
+              <span v-if="!showAiHistory && aiResult" class="ai-toolbar-hint">Report generated. Save it or run a new analysis.</span>
             </div>
             <div class="ai-toolbar-actions">
               <el-button v-if="currentAiResult && !showAiHistory" type="success" :loading="aiSaving" @click="handleSaveAnalysis">
-                Saveanalysis
+                Save analysis
               </el-button>
               <el-button :class="{ 'is-active': showAiHistory }" @click="toggleAiHistory">
-                {{ showAiHistory ? 'Backanalysis' : 'historyrecord' }}
+                {{ showAiHistory ? 'Back to analysis' : 'History' }}
               </el-button>
               <el-button type="primary" @click="loadAiAnalysis" :loading="aiLoading" :disabled="showAiHistory">
                 <el-icon class="el-icon--left"><Cpu /></el-icon>
-                startanalysis
+                Start analysis
               </el-button>
             </div>
           </div>
 
           <div class="ai-body">
-            <!-- historyrecordlist -->
+            <!-- Historylist -->
             <div v-if="showAiHistory" class="ai-history-panel">
               <div v-if="aiHistory.length === 0" class="ai-history-empty">
-                <el-empty description="NoneSave analysisrecord">
+                <el-empty description="No saved analyses">
                   <template #description>
-                    <p class="ai-empty-title">Nonehistoryrecord</p>
-                    <p class="ai-empty-sub">completeanalysisafter click「Saveanalysis」immediatelycan in thisView</p>
+                    <p class="ai-empty-title">No analysis history</p>
+                    <p class="ai-empty-sub">After an analysis finishes, select “Save analysis” to view it here.</p>
                   </template>
                 </el-empty>
               </div>
@@ -319,17 +319,17 @@
                   </div>
                   <div class="ai-history-right">
                     <div class="ai-history-tags">
-                      <el-tag v-if="item.dwAdjustNeeded" :type="item.dwAdjustNeeded === 'Yes' ? 'warning' : 'success'" size="small">
-                        {{ item.dwAdjustNeeded === 'Yes' ? 'recommendationadjust' : 'Noneneedadjust' }}
+                      <el-tag v-if="item.dwAdjustNeeded" :type="dwAdjustmentTagType(item.dwAdjustNeeded)" size="small">
+                        {{ dwAdjustmentLabel(item.dwAdjustNeeded) }}
                       </el-tag>
                       <el-tag v-if="item.weightControlEval" :type="evalTagType(item.weightControlEval)" size="small">
-                        Weight{{ item.weightControlEval }}
+                        Weight: {{ item.weightControlEval }}
                       </el-tag>
                       <el-tag v-if="item.dehydrationEval" :type="evalTagType(item.dehydrationEval)" size="small">
-                        fluid removal{{ item.dehydrationEval }}
+                        Fluid removal: {{ item.dehydrationEval }}
                       </el-tag>
                       <el-tag v-if="item.bpControlEval" :type="evalTagType(item.bpControlEval)" size="small">
-                        Blood Pressure{{ item.bpControlEval }}
+                        Blood pressure: {{ item.bpControlEval }}
                       </el-tag>
                     </div>
                     <el-button link type="danger" size="small" @click.stop="handleDeleteAnalysis(item.id)">
@@ -350,15 +350,15 @@
                     <el-icon :size="36"><Cpu /></el-icon>
                   </div>
                 </div>
-                <h3 class="ai-empty-heading">accuratebackupstartsmartanalysis</h3>
-                <p class="ai-empty-text">selectup sideTime rangeafter , click「startanalysis」generatefluid removal, Weight and Dry Weightrecommendation</p>
+                <h3 class="ai-empty-heading">Ready to start AI-assisted analysis</h3>
+                <p class="ai-empty-text">Select a time range above, then choose “Start analysis” to generate fluid removal, weight, and dry weight guidance for review.</p>
                 <ul class="ai-empty-features">
-                  <li><el-icon :size="16"><TrendCharts /></el-icon><span>weight gain and ultrafiltrationtrendresolveread</span></li>
-                  <li><el-icon :size="16"><ScaleToOriginal /></el-icon><span>Dry Weightadjustrecommendation</span></li>
-                  <li><el-icon :size="16"><Document /></el-icon><span>can Savehistoryconvenientintocompared with</span></li>
+                  <li><el-icon :size="16"><TrendCharts /></el-icon><span>Review weight gain and ultrafiltration trends</span></li>
+                  <li><el-icon :size="16"><ScaleToOriginal /></el-icon><span>Dry weight adjustment guidance</span></li>
+                  <li><el-icon :size="16"><Document /></el-icon><span>Save analyses for later comparison</span></li>
                 </ul>
                 <el-button type="primary" size="large" @click="loadAiAnalysis" :loading="aiLoading">
-                  immediatelyanalysis
+                  Analyze now
                 </el-button>
               </div>
             </template>
@@ -374,15 +374,15 @@
               <p class="hero-eyebrow">{{ timeRangeLabel }}</p>
               <div class="hero-count-row">
                 <span class="hero-count">{{ statsHero.totalCount }}</span>
-                <span class="hero-count-unit">timesDialysis</span>
+                <span class="hero-count-unit">dialysis sessions</span>
               </div>
               <div class="hero-quick">
                 <div class="hero-quick-item">
-                  <span class="q-label">averageweight gain</span>
+                  <span class="q-label">Average weight gain</span>
                   <span class="q-value">{{ statsHero.avgGain }} <small>kg</small></span>
                 </div>
                 <div class="hero-quick-item">
-                  <span class="q-label">averageultrafiltration</span>
+                  <span class="q-label">Average ultrafiltration</span>
                   <span class="q-value">{{ statsHero.avgUf }} <small>kg</small></span>
                 </div>
               </div>
@@ -395,10 +395,10 @@
               >
                 <div class="hero-ring-inner">
                   <span class="ring-num">{{ statsHero.matchRate }}%</span>
-                  <span class="ring-label">fluid removalon target</span>
+                  <span class="ring-label">Ultrafiltration on target</span>
                 </div>
               </div>
-              <p class="ring-sub">match {{ statsHero.matchCount }} times</p>
+              <p class="ring-sub">On target in {{ statsHero.matchCount }} sessions</p>
             </div>
             <div class="hero-status">
               <div class="status-pill danger" v-if="statsHero.tooMuch > 0">
@@ -410,7 +410,7 @@
                 <span class="pill-txt">Insufficient ultrafiltration</span>
               </div>
               <div class="status-pill ok" v-if="statsHero.tooMuch === 0 && statsHero.insufficient === 0 && statsHero.totalCount > 0">
-                <span class="pill-txt">fluid removalStatusGood</span>
+                <span class="pill-txt">Fluid removal status is good</span>
               </div>
             </div>
           </div>
@@ -446,29 +446,29 @@
         </template>
 
         <div v-else-if="!chartLoading" class="analysis-empty">
-          <el-empty description="currentTimesectionNo data">
-            <el-button type="primary" @click="goToDataEntry">goentrydata</el-button>
+          <el-empty description="No data in this period">
+            <el-button type="primary" @click="goToDataEntry">Add data</el-button>
           </el-empty>
         </div>
 
         <div class="charts-block">
           <div class="block-title-row">
-            <h2 class="block-title">trendcharttable</h2>
+            <h2 class="block-title">Trend charts</h2>
             <div class="block-title-actions">
               <el-button v-if="hasChartData" size="small" @click="handleExportData">
-                <el-icon><Download /></el-icon>Exportdata
+                <el-icon><Download /></el-icon>Export data
               </el-button>
               <el-button v-if="hasChartData" size="small" @click="downloadAllCharts">
-                <el-icon><Picture /></el-icon>DownloadAllcharttable
+                <el-icon><Picture /></el-icon>Download all charts
               </el-button>
             </div>
           </div>
-          <p v-if="!hasChartData" class="block-hint">entryDialysis Recordsafter , charttablewill AutomaticdisplayWeight, weight gain and Blood Pressurechange</p>
+          <p v-if="!hasChartData" class="block-hint">Add dialysis records to display weight, weight gain, and blood pressure trends.</p>
 
           <div v-if="hasChartData" class="chart-panel chart-panel--full chart-panel--overview">
             <div class="chart-panel-head">
               <span class="dot dot-blue"></span>
-              <span>Weight and weight gainthresholdoveralltrend</span>
+              <span>Weight and weight gain threshold trends</span>
             </div>
             <div class="chart-body chart-body--overview">
               <v-chart class="chart" :option="weightOverviewChartOption" autoresize />
@@ -480,7 +480,7 @@
               <div class="chart-panel">
                 <div class="chart-panel-head">
                   <span class="dot dot-blue"></span>
-                  <span>Pre-dialysis Weighttrend</span>
+                  <span>Pre-dialysis weight trend</span>
                 </div>
                 <div class="chart-body">
                   <v-chart v-if="hasChartData" class="chart" :option="onWeightChartOption" autoresize />
@@ -492,7 +492,7 @@
               <div class="chart-panel">
                 <div class="chart-panel-head">
                   <span class="dot dot-green"></span>
-                  <span>Post-dialysis Weighttrend</span>
+                  <span>Post-dialysis weight trend</span>
                 </div>
                 <div class="chart-body">
                   <v-chart v-if="hasChartData" class="chart" :option="offWeightChartOption" autoresize />
@@ -534,7 +534,7 @@
               <div class="chart-panel">
                 <div class="chart-panel-head">
                   <span class="dot dot-red"></span>
-                  <span>Blood Pressuretrend</span>
+                  <span>Blood pressure trend</span>
                 </div>
                 <div class="chart-body">
                   <v-chart v-if="hasChartData" class="chart" :option="bpChartOption" autoresize />
@@ -579,9 +579,9 @@
           </el-select>
         </el-form-item>
         <el-form-item label="Dialysis Date" prop="recordDate">
-          <el-date-picker v-model="form.recordDate" type="date" value-format="YYYY-MM-DD" placeholder="selectDate" style="width:100%" />
+          <el-date-picker v-model="form.recordDate" type="date" value-format="YYYY-MM-DD" placeholder="Select a date" style="width:100%" />
         </el-form-item>
-        <el-form-item label="intervaldayscount" prop="intervalDays">
+        <el-form-item label="Interval (days)" prop="intervalDays">
           <div class="interval-field">
             <el-input-number
               v-model="form.intervalDays"
@@ -589,26 +589,26 @@
               :max="365"
               :precision="0"
               controls-position="right"
-              placeholder="leave blankAutomaticcalculate"
+              placeholder="Leave blank to calculate automatically"
               class="interval-input"
             />
-            <el-button link type="primary" @click="form.intervalDays = null">useAutomaticcalculate</el-button>
+            <el-button link type="primary" @click="form.intervalDays = null">Calculate automatically</el-button>
           </div>
-          <p class="form-tip">leave blank or point「useAutomaticcalculate」time, by  and up onetimesDialysis Dateintervalestimate</p>
+          <p class="form-tip">Leave blank or select “Calculate automatically” to estimate the interval from the previous dialysis date.</p>
         </el-form-item>
         <el-form-item label="Previous post-dialysis weight (kg)">
           <el-input-number v-model="form.lastOffWeight" :precision="2" :step="0.01" style="width:100%" />
         </el-form-item>
-        <el-form-item label="this timesPre-dialysis Weight(kg)" prop="onWeight">
+        <el-form-item label="Current pre-dialysis weight (kg)" prop="onWeight">
           <el-input-number v-model="form.onWeight" :precision="2" :step="0.01" style="width:100%" />
         </el-form-item>
-        <el-form-item label="this timesPost-dialysis Weight(kg)" prop="offWeight">
+        <el-form-item label="Current post-dialysis weight (kg)" prop="offWeight">
           <el-input-number v-model="form.offWeight" :precision="2" :step="0.01" style="width:100%" />
         </el-form-item>
-        <el-form-item label="Blood Pressure-systolic">
+        <el-form-item label="Systolic blood pressure">
           <el-input-number v-model="form.systolicBp" :min="0" style="width:100%" />
         </el-form-item>
-        <el-form-item label="Blood Pressure-diastolic">
+        <el-form-item label="Diastolic blood pressure">
           <el-input-number v-model="form.diastolicBp" :min="0" style="width:100%" />
         </el-form-item>
         <el-form-item label="Session duration (min)">
@@ -666,6 +666,7 @@
 </template>
 
 <script setup>
+import DOMPurify from 'dompurify';
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -691,7 +692,7 @@ import { useTableColumns } from '@/composables/useTableColumns';
 
 const DIALYSIS_COLUMN_DEFS = [
   { key: 'recordDate', label: 'Date' },
-  { key: 'lastOffWeight', label: 'before post-dialysis', default: false },
+  { key: 'lastOffWeight', label: 'Previous post-dialysis', default: false },
   { key: 'onWeight', label: 'pre-dialysis' },
   { key: 'offWeight', label: 'post-dialysis' },
   { key: 'dryWeight', label: 'Dry Weight' },
@@ -699,7 +700,7 @@ const DIALYSIS_COLUMN_DEFS = [
   { key: 'weightGain', label: 'weight gain' },
   { key: 'ufAmount', label: 'ultrafiltration' },
   { key: 'bloodPressure', label: 'Blood Pressure' },
-  { key: 'dailyWeightGain', label: 'Dayaverage', default: false },
+  { key: 'dailyWeightGain', label: 'Daily average', default: false },
   { key: 'dehydrationStatus', label: 'fluid removal' }
 ];
 const { visibleKeys: dialysisVisibleCols, isVisible: dialysisColVisible, resetColumns: resetDialysisColumns } =
@@ -812,7 +813,7 @@ const formPreview = computed(() => {
   }
   if (gain != null && t5 != null && gain > t5) {
     level = 'danger';
-    hint = `weight gainalready exceedDry Weight 5% threshold ${formatKgText(t5)}, recommendationheavypointattention. `;
+    hint = `Weight gain exceeds the 5% dry weight threshold of ${formatKgText(t5)}. Review this carefully. `;
   }
 
   return {
@@ -820,8 +821,8 @@ const formPreview = computed(() => {
     statusText,
     weightGain: formatKgText(gain),
     ufAmount: formatKgText(uf),
-    dailyGain: daily == null ? '-' : `${daily.toFixed(2)} kg/days`,
-    thresholdText: t3 != null && t5 != null ? `${t3.toFixed(2)} / ${t5.toFixed(2)} kg` : 'NoneDry Weight',
+    dailyGain: daily == null ? '-' : `${daily.toFixed(2)} kg/day`,
+    thresholdText: t3 != null && t5 != null ? `${t3.toFixed(2)} / ${t5.toFixed(2)} kg` : 'No dry weight reference',
     hint
   };
 });
@@ -847,7 +848,7 @@ const rules = {
   intervalDays: [{
     validator: (_rule, value, callback) => {
       if (value == null || value === '') return callback();
-      if (Number(value) < 1) return callback(new Error('intervaldayscountto fewfor  1 days'));
+      if (Number(value) < 1) return callback(new Error('The interval must be at least 1 day'));
       return callback();
     },
     trigger: 'blur'
@@ -862,7 +863,7 @@ const listFilterOverride = ref('');
 
 const hasChartData = computed(() => chartDates.value.length > 0);
 
-const listScopeLabel = computed(() => listFilterOverride.value || timeRangeLabel.value);
+const listScopeLabel = computed(() => listFilterOverride.value === 'Allhistory' ? 'All history' : listFilterOverride.value || timeRangeLabel.value);
 
 const tableMaxHeight = computed(() => (isMobile.value ? undefined : 520));
 
@@ -873,8 +874,8 @@ function rowKey(row, index) {
 const timeRangeLabel = computed(() => {
   const t = currentTimeType.value;
   const v = currentTimeValue.value;
-  if (t === 'year') return `${v} Yearleveloverview`;
-  if (t === 'week') return `${v} when weekoverview`;
+  if (t === 'year') return `${v} yearly overview`;
+  if (t === 'week') return `Week of ${v}`;
   return `${v} Monthly overview`;
 });
 
@@ -918,8 +919,8 @@ const weightOverviewChartOption = computed(() => ({
     { name: 'Post-dialysis Weight', type: 'line', data: chartOffWeight.value, smooth: true, itemStyle: { color: '#10b981' } },
     { name: 'Dry Weight', type: 'line', data: chartDryWeight.value, lineStyle: { type: 'dashed', color: '#64748b' }, symbol: 'none' },
     { name: 'weight gain', type: 'bar', yAxisIndex: 1, data: chartWeightGain.value, barMaxWidth: 18, itemStyle: { color: '#38bdf8', borderRadius: [4, 4, 0, 0] } },
-    { name: '3%threshold', type: 'line', yAxisIndex: 1, data: chart3pct.value, lineStyle: { type: 'dashed', color: '#f59e0b' }, symbol: 'none' },
-    { name: '5%threshold', type: 'line', yAxisIndex: 1, data: chart5pct.value, lineStyle: { type: 'dashed', color: '#ef4444' }, symbol: 'none' }
+    { name: '3% threshold', type: 'line', yAxisIndex: 1, data: chart3pct.value, lineStyle: { type: 'dashed', color: '#f59e0b' }, symbol: 'none' },
+    { name: '5% threshold', type: 'line', yAxisIndex: 1, data: chart5pct.value, lineStyle: { type: 'dashed', color: '#ef4444' }, symbol: 'none' }
   ]
 }));
 
@@ -930,7 +931,7 @@ const onWeightChartOption = computed(() => ({
   yAxis: { type: 'value', scale: true },
   series: [
     { name: 'Pre-dialysis Weight', type: 'line', data: chartOnWeight.value, smooth: true, itemStyle: { color: '#6366f1' } },
-    { name: 'Dry Weightreference', type: 'line', data: chartDryWeight.value, lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' }
+    { name: 'Dry weight reference', type: 'line', data: chartDryWeight.value, lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' }
   ]
 }));
 
@@ -941,7 +942,7 @@ const offWeightChartOption = computed(() => ({
   yAxis: { type: 'value', scale: true },
   series: [
     { name: 'Post-dialysis Weight', type: 'line', data: chartOffWeight.value, smooth: true, itemStyle: { color: '#10b981' } },
-    { name: 'Dry Weightreference', type: 'line', data: chartDryWeight.value, lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' }
+    { name: 'Dry weight reference', type: 'line', data: chartDryWeight.value, lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' }
   ]
 }));
 
@@ -953,8 +954,8 @@ const ufChartOption = computed(() => ({
   series: [
     { name: 'interdialytic weight gain', type: 'line', data: chartWeightGain.value, smooth: true, itemStyle: { color: '#3b82f6' } },
     { name: 'ultrafiltration volume', type: 'line', data: chartUfAmount.value, smooth: true, itemStyle: { color: '#10b981' } },
-    { name: '3%threshold', type: 'line', data: chart3pct.value, lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' },
-    { name: '5%threshold', type: 'line', data: chart5pct.value, lineStyle: { type: 'dashed', color: '#F56C6C' }, symbol: 'none' }
+    { name: '3% threshold', type: 'line', data: chart3pct.value, lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' },
+    { name: '5% threshold', type: 'line', data: chart5pct.value, lineStyle: { type: 'dashed', color: '#F56C6C' }, symbol: 'none' }
   ]
 }));
 
@@ -962,7 +963,7 @@ const dailyGainChartOption = computed(() => ({
   ...commonChartConfig.value,
   title: { show: false },
   xAxis: { type: 'category', data: chartDates.value, axisLabel: { rotate: isMobile.value ? 45 : 30, fontSize: 10 } },
-  yAxis: { type: 'value', name: 'kg/days' },
+  yAxis: { type: 'value', name: 'kg/day' },
   series: [
     { name: 'Average daily weight gain', type: 'line', data: chartDailyGain.value, smooth: true, areaStyle: { opacity: 0.12 }, itemStyle: { color: '#8b5cf6' } }
   ]
@@ -976,8 +977,8 @@ const bpChartOption = computed(() => ({
   series: [
     { name: 'systolic', type: 'line', data: chartSystolic.value, smooth: true, itemStyle: { color: '#ef4444' } },
     { name: 'diastolic', type: 'line', data: chartDiastolic.value, smooth: true, itemStyle: { color: '#3b82f6' } },
-    { name: 'idealsystolic', type: 'line', data: chartDates.value.map(() => 130), lineStyle: { type: 'dashed', color: '#67C23A' }, symbol: 'none' },
-    { name: 'idealdiastolic', type: 'line', data: chartDates.value.map(() => 80), lineStyle: { type: 'dashed', color: '#67C23A' }, symbol: 'none' }
+    { name: 'Target systolic pressure', type: 'line', data: chartDates.value.map(() => 130), lineStyle: { type: 'dashed', color: '#67C23A' }, symbol: 'none' },
+    { name: 'Target diastolic pressure', type: 'line', data: chartDates.value.map(() => 80), lineStyle: { type: 'dashed', color: '#67C23A' }, symbol: 'none' }
   ]
 }));
 
@@ -1019,7 +1020,7 @@ function dryWeightThresholds(row) {
   return { t3, t5 };
 }
 
-/** twotimesDialysisbetweenweight gain: 3%～5% ideal, exceed 5% bright red */
+/** twodialysis sessionsbetweenweight gain: 3%～5% ideal, exceed 5% bright red */
 function weightGainClass(row) {
   const gain = row.weightGain;
   if (gain == null || gain === '') return '';
@@ -1031,7 +1032,7 @@ function weightGainClass(row) {
   return '';
 }
 
-/** Average daily weight gain and interdialytic weight gainsamerule (totalamountover 5% thenDayaverageoneandhighlight in red)  */
+/** Average daily weight gain and interdialytic weight gainsamerule (totalamountover 5% thenDaily averageoneandhighlight in red)  */
 function dailyWeightGainClass(row) {
   return weightGainClass(row);
 }
@@ -1133,13 +1134,13 @@ function buildStatDisplay(s) {
       items: [
         { label: 'Average interdialytic weight gain', value: fmt(s.avgWeightGain), unit: 'kg' },
         { label: 'Average ultrafiltration volume', value: fmt(s.avgUfAmount), unit: 'kg' },
-        { label: 'Average daily weight gain', value: fmt(s.avgDailyWeightGain), unit: 'kg/days' },
-        { label: 'weight gainpeakvalue', value: fmt(s.maxWeightGain), unit: 'kg' },
+        { label: 'Average daily weight gain', value: fmt(s.avgDailyWeightGain), unit: 'kg/day' },
+        { label: 'Peak weight gain', value: fmt(s.maxWeightGain), unit: 'kg' },
         { label: 'Average interval', value: fmt(s.avgIntervalDays), unit: 'days' }
       ]
     },
     {
-      title: 'Blood Pressuremonitoring',
+      title: 'Blood pressure monitoring',
       icon: 'Monitor',
       items: [
         {
@@ -1157,24 +1158,24 @@ function buildStatDisplay(s) {
           level: bpAvgLevel(avgDia, false)
         },
         {
-          label: 'systolicAbnormal',
+          label: 'Abnormal systolic readings',
           value: bpSysAbn,
           unit: 'times',
-          hint: 'non- 120–140',
+          hint: 'Outside 120–140',
           level: bpSysAbn > 0 ? 'danger' : 'ok'
         },
         {
-          label: 'diastolicAbnormal',
+          label: 'Abnormal diastolic readings',
           value: bpDiaAbn,
           unit: 'times',
-          hint: 'non- 70–90',
+          hint: 'Outside 70–90',
           level: bpDiaAbn > 0 ? 'warn' : 'ok'
         },
         {
-          label: 'Blood PressureAbnormaltotal',
+          label: 'Total abnormal blood pressure readings',
           value: bpAbn,
           unit: 'times',
-          hint: 'systolic or diastolicanyoneout of range',
+          hint: 'Either systolic or diastolic pressure outside the target range',
           level: bpAbn > 0 ? 'warn' : 'ok'
         }
       ]
@@ -1190,7 +1191,7 @@ function buildStatDisplay(s) {
           label: 'Ultrafiltration on target',
           value: s.matchCount || 0,
           unit: 'times',
-          hint: 'ultrafiltration and weight gaindifference≤0.3kg',
+          hint: 'Ultrafiltration and weight gain differ by no more than 0.3 kg',
           level: (s.matchCount || 0) > 0 ? 'ok' : 'normal'
         },
         { label: 'Excessive ultrafiltration', value: s.tooMuchCount || 0, unit: 'times', level: (s.tooMuchCount || 0) > 0 ? 'danger' : 'ok' },
@@ -1211,20 +1212,20 @@ function buildInsightTags(s) {
   const rate = Number(s.dehydrationMatchRate || 0);
   if (rate >= 80) tags.push({ text: `Ultrafiltration target rate ${rate}% · Good`, type: 'success' });
   else if (rate >= 60) tags.push({ text: `Ultrafiltration target rate ${rate}% · Fair`, type: 'warning' });
-  else if (s.totalCount > 0) tags.push({ text: `Ultrafiltration target rate ${rate}% · needimprove`, type: 'danger' });
+  else if (s.totalCount > 0) tags.push({ text: `Ultrafiltration target rate ${rate}% · Needs improvement`, type: 'danger' });
 
   if ((s.over5pctCount || 0) > 0) {
-    tags.push({ text: `${s.over5pctCount} timesweight gain exceeds 5% Dry Weight`, type: 'danger' });
+    tags.push({ text: `${s.over5pctCount} sessions with weight gain above 5% of dry weight`, type: 'danger' });
   }
   if ((s.idealGainCount || 0) > 0) {
-    tags.push({ text: `${s.idealGainCount} timesweight gainin  3%-5% idealrangebetween`, type: 'success' });
+    tags.push({ text: `${s.idealGainCount} sessions with weight gain within the 3%–5% target range`, type: 'success' });
   }
 
   if ((s.bpSysAbnormalCount || 0) > 0) {
-    tags.push({ text: `systolicAbnormal ${s.bpSysAbnormalCount} times (target 120–140) `, type: 'warning' });
+    tags.push({ text: `${s.bpSysAbnormalCount} abnormal systolic readings (target 120–140) `, type: 'warning' });
   }
   if ((s.bpDiaAbnormalCount || 0) > 0) {
-    tags.push({ text: `diastolicAbnormal ${s.bpDiaAbnormalCount} times (target 70–90) `, type: 'warning' });
+    tags.push({ text: `${s.bpDiaAbnormalCount} abnormal diastolic readings (target 70–90) `, type: 'warning' });
   }
 
   if ((s.tooMuchCount || 0) > (s.insufficientCount || 0)) {
@@ -1368,7 +1369,7 @@ async function loadData() {
   } catch {
     if (!isRequestCurrent(request)) return;
     records.value = [];
-    ElMessage.error('Failed to load records, Please Examinationnetwork or after endservice');
+    ElMessage.error('Failed to load records. Check the network or server connection.');
   } finally {
     if (isRequestCurrent(request)) loading.value = false;
   }
@@ -1385,9 +1386,9 @@ async function loadAllRecords() {
     if (res.code === 200) {
       records.value = Array.isArray(res.data) ? res.data : [];
       if (records.value.length) {
-        ElMessage.success(`already loadAll ${records.value.length} itemsrecord`);
+        ElMessage.success(`Loaded all ${records.value.length} records`);
       } else {
-        ElMessage.info('datadatabaseinNoneDialysis Records');
+        ElMessage.info('No dialysis records in the database');
       }
     } else {
       records.value = [];
@@ -1594,7 +1595,7 @@ async function submitForm() {
       row.recordDate === payload.recordDate
     );
     if (duplicate) {
-      ElMessage.warning(`${payload.recordDate} already has Dialysis Records, Please Editwhen daysoriginalrecord`);
+      ElMessage.warning(`A dialysis record already exists for ${payload.recordDate}. Edit the existing record for that date.`);
       return;
     }
     if (payload.intervalDays == null || payload.intervalDays === '') payload.intervalDays = null;
@@ -1643,7 +1644,7 @@ async function loadAiAnalysis() {
   aiLoading.value = true;
   try {
     if (!currentPatientId.value) {
-      aiResult.value = 'Select a patient first.after againenterrow AI analysis';
+      aiResult.value = 'Select a patient before starting AI analysis.';
       currentAiResult.value = null;
       return;
     }
@@ -1654,7 +1655,7 @@ async function loadAiAnalysis() {
       analysisContext = request;
       aiResult.value = res.data?.rawText || '';
     } else {
-      aiResult.value = 'analysisfailed: ' + (res.msg || 'Unknown error');
+      aiResult.value = 'Analysis failed: ' + (res.msg || 'Unknown error');
       currentAiResult.value = null;
     }
   } catch {
@@ -1706,7 +1707,7 @@ async function handleSaveAnalysis() {
     const res = await saveAnalysis(record);
     if (!isRequestCurrent(context) || activeAnalysisSave !== operation) return;
     if (res.code === 200) {
-      ElMessage.success('analysisresultSaved successfully.');
+      ElMessage.success('Analysis saved successfully.');
       loadAiHistory();
     } else {
       ElMessage.error(res.msg || 'Failed to save');
@@ -1774,8 +1775,11 @@ async function handleDeleteAnalysis(id) {
 
 function formatAiResult(text) {
   if (!text) return '';
-  const marker = '【Dry Weightadjustment conclusion】';
-  const idx = text.indexOf(marker);
+  // Source narrative remains literal; only the presentation markup below is HTML.
+  text = String(text).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const match = /【(?:Dry weight adjustment conclusion|干体重调整结论|Dry Weightadjustment conclusion)】/.exec(text);
+  const marker = match?.[0] || '';
+  const idx = match?.index ?? -1;
   const bodyPart = idx >= 0 ? text.slice(0, idx) : text;
   const conclusionPart = idx >= 0 ? text.slice(idx + marker.length) : '';
 
@@ -1788,17 +1792,29 @@ function formatAiResult(text) {
     const cleanConclusion = conclusionPart.replace(/```json[\s\S]*?```\s*$/, '').trim();
     const lines = cleanConclusion.split('\n').map(l => l.trim()).filter(Boolean);
     const rows = lines.map((line) => {
-      const m = line.match(/^(.+?)[: :]\s*(.+)$/);
+      const m = line.match(/^(.+?)[:：]\s*(.+)$/);
       if (!m) return `<p class="ai-dw-line">${line}</p>`;
       const key = m[1];
       const val = m[2];
-      const highlight = key.includes('adjustment amount') ? ' highlight' : '';
+      const highlight = /adjustment amount|调整幅度|调整量/i.test(key) ? ' highlight' : '';
       return `<div class="ai-dw-line"><span class="ai-dw-key">${key}</span><span class="ai-dw-val${highlight}">${val}</span></div>`;
     }).join('');
     html += `<div class="ai-dw-conclusion"><strong>${marker}</strong>${rows}</div>`;
   }
 
-  return html;
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['br','strong','div','span','p'], ALLOWED_ATTR: ['class'] });
+}
+
+function dwAdjustmentLabel(value) {
+  if (['Yes', '是'].includes(value)) return 'Adjustment recommended';
+  if (['No', '否'].includes(value)) return 'No adjustment needed';
+  return value == null ? '' : String(value);
+}
+
+function dwAdjustmentTagType(value) {
+  if (['Yes', '是'].includes(value)) return 'warning';
+  if (['No', '否'].includes(value)) return 'success';
+  return 'info';
 }
 
 function evalTagType(value) {
@@ -1816,7 +1832,7 @@ async function handleExportData() {
     const res = await listRecords(request.timeType, request.timeValue, request.patientId);
     if (!isRequestCurrent(request)) return;
     if (res.code !== 200 || !res.data || !res.data.length) {
-      ElMessage.warning('currentTimesectionNo datacan Export');
+      ElMessage.warning('No data to export for this period');
       return;
     }
     const rows = res.data;
@@ -1841,27 +1857,27 @@ async function handleExportData() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.href = url;
-    const fileName = `Dialysisdata_${request.patientId}_${request.timeValue || 'All'}.csv`;
+    const fileName = `Dialysis_data_${request.patientId}_${request.timeValue || 'All'}.csv`;
     link.setAttribute('download', fileName);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    ElMessage.success(`already Export ${rows.length} itemsrecord`);
+    ElMessage.success(`Exported ${rows.length} records`);
   } catch (e) {
     if (!isRequestCurrent(request)) return;
-    ElMessage.error('Exportfailed: ' + (e.message || 'Unknown error'));
+    ElMessage.error('Export failed: ' + (e.message || 'Unknown error'));
   }
 }
 
 async function downloadAllCharts() {
   const el = document.querySelector('.dialysis-manager .charts-block');
   if (!el) {
-    ElMessage.warning('not findto charttablerangedomain');
+    ElMessage.warning('Chart area not found');
     return;
   }
   try {
-    ElMessage.info('positivein generateimage, Please wait...');
+    ElMessage.info('Generating image. Please wait...');
     const canvas = await html2canvas(el, {
       backgroundColor: '#ffffff',
       scale: 2,
@@ -1870,12 +1886,12 @@ async function downloadAllCharts() {
       logging: false
     });
     const link = document.createElement('a');
-    link.download = `Dialysistrendcharttable_${currentTimeValue.value || 'All'}.png`;
+    link.download = `Dialysis_trend_charts_${currentTimeValue.value || 'All'}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
-    ElMessage.success('charttablealready Download');
+    ElMessage.success('Charts downloaded');
   } catch (e) {
-    ElMessage.error('Downloadfailed: ' + (e.message || 'Unknown error'));
+    ElMessage.error('Download failed: ' + (e.message || 'Unknown error'));
   }
 }
 

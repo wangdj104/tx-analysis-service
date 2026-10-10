@@ -29,14 +29,13 @@ public class Result<T> implements Serializable {
         Result<T> r = new Result<>();
         r.setCode(200);
         r.setMsg(MessageLocalizer.localize("success"));
-        if (data instanceof String) {
-            @SuppressWarnings("unchecked")
-            T localized = (T) MessageLocalizer.localize((String) data);
-            r.setData(localized);
-        } else {
-            r.setData(data);
-        }
+        r.setData(data);
         return r;
+    }
+
+    /** Use only for controller-generated acknowledgements, never clinical or user-entered strings. */
+    public static Result<String> okMessage(String message) {
+        return ok(MessageLocalizer.localize(message));
     }
 
     public static <T> Result<T> error(String msg) {

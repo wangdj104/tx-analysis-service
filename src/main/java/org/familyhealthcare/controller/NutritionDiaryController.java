@@ -49,7 +49,7 @@ public class NutritionDiaryController {
     public Result<String> update(@RequestBody NutritionDiary record) {
         try {
             boolean success = nutritionDiaryService.updateOwned(record);
-            return success ? Result.ok("Updated successfully") : Result.error("Update failed");
+            return success ? Result.okMessage("Updated successfully") : Result.error("Update failed");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -66,7 +66,7 @@ public class NutritionDiaryController {
     public Result<String> delete(@PathVariable Long id) {
         try {
             boolean success = nutritionDiaryService.deleteOwned(id);
-            return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+            return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }

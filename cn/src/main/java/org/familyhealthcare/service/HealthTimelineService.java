@@ -40,22 +40,22 @@ public class HealthTimelineService {
         catch(CarePlanException denied){if(denied.getStatus()!=403)throw denied;}
         for (BpSelfMonitorRecord r : measurements.selectList(dated(patientId, "record_date", from, to, limit))) {
             List<String> values = new ArrayList<>();
-            if (r.getSystolicBp() != null || r.getDiastolicBp() != null) values.add("Blood Pressure " + text(r.getSystolicBp()) + "/" + text(r.getDiastolicBp()) + " mmHg");
-            if (r.getBloodGlucose() != null) values.add("Blood Glucose " + r.getBloodGlucose() + " " + text(r.getBgUnit()));
-            result.add(event(r.getId(), patientId, "MEASUREMENT", "Blood Pressure & Glucoserecord", r.getRecordDate(), text(r.getRecordTime()), String.join("; ", values)));
+            if (r.getSystolicBp() != null || r.getDiastolicBp() != null) values.add(org.familyhealthcare.util.ExportLocalization.text("Blood pressure ", "血压 ") + text(r.getSystolicBp()) + "/" + text(r.getDiastolicBp()) + " mmHg");
+            if (r.getBloodGlucose() != null) values.add(org.familyhealthcare.util.ExportLocalization.text("Blood glucose ", "血糖 ") + r.getBloodGlucose() + " " + text(r.getBgUnit()));
+            result.add(event(r.getId(), patientId, "MEASUREMENT", org.familyhealthcare.util.ExportLocalization.text("Blood pressure and glucose record", "血压血糖记录"), r.getRecordDate(), text(r.getRecordTime()), String.join("; ", values)));
         }
         for (DialysisRecord r : dialysis.selectList(dated(patientId, "record_date", from, to, limit))) {
-            result.add(event(r.getId(), patientId, "DIALYSIS", "Dialysis Records", r.getRecordDate(), "", "Pre-dialysis Weight " + text(r.getOnWeight()) + " kg; Post-dialysis Weight " + text(r.getOffWeight()) + " kg"));
+            result.add(event(r.getId(), patientId, "DIALYSIS", org.familyhealthcare.util.ExportLocalization.text("Dialysis record", "透析记录"), r.getRecordDate(), "", org.familyhealthcare.util.ExportLocalization.text("Pre-dialysis weight ", "透前体重 ") + text(r.getOnWeight()) + org.familyhealthcare.util.ExportLocalization.text(" kg; Post-dialysis weight ", " kg；透后体重 ") + text(r.getOffWeight()) + " kg"));
         }
         Map<Long, String> names = new HashMap<>();
         for (Medication r : medications.selectList(new QueryWrapper<Medication>().eq("patient_id", patientId))) names.put(r.getId(), r.getDrugName());
         for (MedicationIntake r : intakes.selectList(this.<MedicationIntake>dated(patientId, "action_at", from, to, limit).eq("status", "TAKEN"))) {
             if (r.getActionAt() == null) continue;
-            result.add(event(r.getId(), patientId, "INTAKE", "Taken: " + names.getOrDefault(r.getMedicationId(), "DeletedMedication"), r.getActionAt().toLocalDate(), r.getActionAt().toLocalTime().toString(), text(r.getDosage())));
+            result.add(event(r.getId(), patientId, "INTAKE", org.familyhealthcare.util.ExportLocalization.text("Taken: ", "已服药：") + names.getOrDefault(r.getMedicationId(), org.familyhealthcare.util.ExportLocalization.text("Deleted medication", "已删除药品")), r.getActionAt().toLocalDate(), r.getActionAt().toLocalTime().toString(), text(r.getDosage())));
         }
         for (MedicationLog r : logs.selectList(dated(patientId, "administration_time", from, to, limit))) {
             if (r.getAdministrationTime() == null) continue;
-            result.add(event(r.getId(), patientId, "MEDICATION_LOG", "medicationrecord: " + names.getOrDefault(r.getMedicationId(), "DeletedMedication"), r.getAdministrationTime().toLocalDate(), r.getAdministrationTime().toLocalTime().toString(), text(r.getDosage())));
+            result.add(event(r.getId(), patientId, "MEDICATION_LOG", org.familyhealthcare.util.ExportLocalization.text("Medication record: ", "用药记录：") + names.getOrDefault(r.getMedicationId(), org.familyhealthcare.util.ExportLocalization.text("Deleted medication", "已删除药品")), r.getAdministrationTime().toLocalDate(), r.getAdministrationTime().toLocalTime().toString(), text(r.getDosage())));
         }
         result.sort(Comparator.comparing(HealthEvent::getEventDate, Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(e -> text(e.getEventTime()), Comparator.reverseOrder())

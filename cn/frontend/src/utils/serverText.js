@@ -182,6 +182,8 @@ const exact = {
   Administrator: '系统管理员',
   'Standard User': '普通用户',
   Doctor: '医生',
+  Nurse: '护理人员',
+  'Dialysis Patient': '透析患者',
   Patient: '患者',
   'Family Caregiver': '家庭照护者',
   'Platform Branding': '平台品牌',
@@ -229,7 +231,7 @@ const patterns = [
 
 export function localizeServerText(value) {
   if (typeof value !== 'string') return value
-  if (exact[value]) return exact[value]
+  if (Object.hasOwn(exact, value)) return exact[value]
   const fields = { symptom: '症状或咨询问题', content: '消息内容', medicalHistory: '既往史', durationText: '持续时间', patientId: '患者', doctorUserId: '接诊医生', targetUserId: '通话对象', transferAdvice: '转科建议' }
   const required = value.match(/^(\w+) is required\.$/)
   if (required && fields[required[1]]) return fields[required[1]] + '不能为空。'
@@ -242,12 +244,125 @@ export function localizeServerText(value) {
   return localized
 }
 
-export function localizePayload(value, seen = new WeakSet()) {
-  if (typeof value === 'string') return localizeServerText(value)
-  if (!value || typeof value !== 'object' || value instanceof Blob || value instanceof ArrayBuffer) return value
-  if (seen.has(value)) return value
-  seen.add(value)
-  if (Array.isArray(value)) return value.map(item => localizePayload(item, seen))
-  for (const key of Object.keys(value)) value[key] = localizePayload(value[key], seen)
+// Only response fields owned by the application are translated. Clinical prose,
+// account identities, medicine names and editable configuration stay exact.
+const builtInMenus = {
+  "workspace": "Workspace",
+  "patient-center": "Patient Center",
+  "patient-profile": "Patient Profiles",
+  "patient-care": "Care Plan",
+  "dialysis": "Dialysis Management",
+  "dialysis-record": "Dialysis Records",
+  "dialysis-trend": "Trend Analysis",
+  "dialysis-dry-weight": "Dry Weight Management",
+  "dialysis-ai": "AI Health Analytics",
+  "dialysis-schedule": "Dialysis Schedule",
+  "clinical-record": "Medical Records",
+  "clinical-record-list": "Record List",
+  "clinical-record-upload": "Upload Report",
+  "clinical-abnormal": "Abnormal Results",
+  "clinical-trend": "Result Trends",
+  "medication": "Medication Management",
+  "medication-catalog": "Medication List",
+  "medication-log": "Medication Log",
+  "medication-reminder": "Medication Reminders",
+  "health-monitoring": "Health Monitoring",
+  "health-vitals": "Blood Pressure & Glucose",
+  "health-complication": "Complication Tracking",
+  "health-alert": "Health Alerts",
+  "health-nutrition": "Nutrition Diary",
+  "health-nutrition-assessment": "Nutrition Assessment",
+  "analysis-report": "Analytics & Reports",
+  "analysis-bp-pattern": "Blood Pressure Pattern Analysis",
+  "analysis-health-report": "Health Report",
+  "analysis-data-export": "Data Export",
+  "system": "System Administration",
+  "system-user": "User Management",
+  "system-role": "Role Management",
+  "system-menu": "Menu Management",
+  "notification-settings": "Notification Settings",
+  "clinical-workbench": "Clinical Workbench",
+  "doctor-workspace": "Doctor Workspace",
+  "system-audit": "Audit Log",
+  "care-journey": "Care Journey",
+  "platform-branding": "Platform Branding"
+}
+const builtInRoles = {admin:'Administrator',user:'Standard User',doctor:'Doctor',patient:'Patient',family:'Family Caregiver',nurse:'Nurse',specialty_dialysis:'Dialysis Patient'}
+const builtInDescriptions = {
+  admin: ['System administrator with full permissions', '拥有全部权限的系统管理员'],
+  user: ['Backward-compatible standard application role', '向后兼容的标准应用角色'],
+  doctor: ['Clinical review and assigned-patient management', '临床审核与分配患者管理'],
+  patient: ['Self-management and personal health records', '自我管理与个人健康档案'],
+  family: ['Authorized family care and coordination', '已授权家庭照护与协作'],
+  specialty_dialysis: ['Patient-specific dialysis menu scope', '患者档案的透析专病菜单范围']
+}
+export function localizeMenuName(menu) {
+  return Object.hasOwn(builtInMenus, menu.menuCode) && menu.menuName === builtInMenus[menu.menuCode] ? localizeServerText(menu.menuName) : menu.menuName
+}
+export function localizeRoleName(role) {
+  return Object.hasOwn(builtInRoles, role.roleCode) && role.roleName === builtInRoles[role.roleCode] ? localizeServerText(role.roleName) : role.roleName
+}
+export function localizeRoleDescription(role) {
+  const entry = Object.hasOwn(builtInDescriptions, role.roleCode) && builtInDescriptions[role.roleCode]
+  return entry && role.description === entry[0] ? entry[1] : role.description
+}
+const mapRows = (rows, transform) => Array.isArray(rows) ? rows.map(transform) : rows
+const fields = (value, names) => {
+  if (!value || typeof value !== 'object') return value
+  const result = {...value}
+  for (const name of names) if (Object.hasOwn(value, name)) result[name] = localizeServerText(value[name])
+  return result
+}
+function attention(value) {
+  if (!value) return value
+  return {...value, items: mapRows(value.items, item => {
+    const result = fields(item, ['recommendedAction'])
+    if (item.type === 'MEDICATION' && typeof item.title === 'string') result.title = item.title.replace(/ · (PENDING|MISSED|SNOOZED)$/, (_, status) => ' · ' + ({PENDING:'待处理',MISSED:'已漏服',SNOOZED:'已延后'}[status]))
+    if (item.type === 'STOCK') {
+      if (typeof item.title === 'string') result.title = item.title.replace(/^Low medication stock · /, '药品库存不足 · ')
+      if (typeof item.evidence === 'string') result.evidence = item.evidence.replace(/^Remaining /, '剩余 ')
+    }
+    return result
+  })}
+}
+function dataQuality(value) {
+  if (!value) return value
+  return {...value, issues: mapRows(value.issues, item => {
+    const result = fields(item, ['title'])
+    if (typeof item.detail !== 'string') return result
+    if (item.type === 'MISSING_CONTEXT') result.detail = item.detail.replace(/ · add date and facility$/, ' · 请补充日期和医疗机构')
+    if (item.type === 'DIALYSIS_COMPLETENESS') result.detail = item.detail.replace(/ · add duration and Kt\/V or URR when available$/, ' · 请补充透析时长及已知的 Kt/V 或 URR')
+    if (item.type === 'DUPLICATE') result.detail = item.detail.replace(/ appears (\d+) times$/, ' 出现 $1 次')
+    if (item.type === 'AI_DRAFT' && /^\d{4}(?:-\d{2}|-W\d{1,2})? /.test(item.detail)) result.detail = localizeServerText(item.detail)
+    return result
+  })}
+}
+function medicationSafety(value) {
+  if (!value) return value
+  return {...fields(value, ['disclaimer']), findings: mapRows(value.findings, item => fields(item, item.type === 'INTERACTION' ? ['title'] : ['title', 'action']))}
+}
+function dialysisQuality(value) {
+  if (!value) return value
+  return {...fields(value, ['disclaimer']), flags: mapRows(value.flags, item => fields(item, ['message']))}
+}
+function localizeData(value, url) {
+  if (!value || typeof value !== 'object') return value
+  if (url === '/auth/info') return {...value,
+    menus: mapRows(value.menus, item => ({...item, menuName: localizeMenuName(item)})),
+    roles: mapRows(value.roles, item => ({...item, roleName: localizeRoleName(item)}))
+  }
+  if (url === '/clinical-workbench/overview') return {...value, attention: attention(value.attention), dataQuality: dataQuality(value.dataQuality), medicationSafety: medicationSafety(value.medicationSafety), dialysisQuality: dialysisQuality(value.dialysisQuality), emergencyCard: fields(value.emergencyCard, ['disclaimer'])}
+  if (url === '/clinical-workbench/attention') return attention(value)
+  if (url === '/clinical-workbench/data-quality') return dataQuality(value)
+  if (url === '/clinical-workbench/medication-safety') return medicationSafety(value)
+  if (url === '/clinical-workbench/dialysis-quality') return dialysisQuality(value)
+  if (['/clinical-workbench/emergency-card','/care-journey/emergency-card','/family-health/visit-summary'].includes(url)) return fields(value, ['disclaimer'])
   return value
+}
+export function localizePayload(value, url = '') {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value instanceof Blob || value instanceof ArrayBuffer) return value
+  const result = {...value}
+  if (Object.hasOwn(value, 'msg')) result.msg = localizeServerText(value.msg)
+  if (Object.hasOwn(value, 'data')) result.data = localizeData(value.data, String(url).split('?')[0])
+  return result
 }

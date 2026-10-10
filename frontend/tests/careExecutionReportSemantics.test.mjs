@@ -24,9 +24,11 @@ for (const [language, index] of [['en', 0], ['zh-CN', 1]]) {
     assert.equal((await v.panel.refresh()).status, 'succeeded'); await flush()
     const label = ['Record owner', '记录所有者'][index]
     assert.equal(v.html.split(`${label} (OWNER)`).length - 1, 2)
-    assert.equal(v.html.split(`${label} (OWNER) · SELF · ${['Self-reported', '本人自报'][index]}`).length - 1, 2)
+    assert.equal(v.html.split(`${label} (OWNER) · ${['Relation: Self', '关系: 本人'][index]} (SELF) · ${['Self-reported', '本人自报'][index]}`).length - 1, 2)
     assert.ok(v.html.includes('原始声明'))
     assert.equal(v.panel.state.report.currentActions[0].latestReceipt.actorRole, 'OWNER')
+    assert.equal(v.panel.state.report.currentActions[0].latestReceipt.actorRelation, 'SELF')
+    assert.equal(v.panel.state.report.periodEvents[0].actorRelation, 'SELF')
   })
   test(`compiled panel localizes real lifecycle markers and keeps every code in ${language}`, async t => {
     const v = await mountedReport(t, { preview: body => {

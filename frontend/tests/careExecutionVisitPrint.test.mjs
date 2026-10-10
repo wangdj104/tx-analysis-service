@@ -19,7 +19,7 @@ async function setup(t,{summaryRequest,projectionRequest}={}){
 test('printing always re-reads both sources and opens only after both authorize the same patient',async t=>{
  const old=deferred(),projection=deferred(),v=await setup(t,{summaryRequest:()=>old.promise,projectionRequest:()=>projection.promise});v.summary.value={patient:{id:1,name:'Obsolete cached name'}}
  const job=v.printSummary();await nextTick();assert.deepEqual(v.calls.map(c=>c.kind),['summary','projection']);assert.equal(v.windows.length,0);assert.equal(v.summary.value,null)
- old.resolve({data:{patient:{id:1,name:'Fresh summary'}}});await nextTick();assert.equal(v.windows.length,0);projection.resolve({status:'succeeded'});await job;assert.equal(v.windows.length,1);assert.equal(v.summary.value.patient.name,'Fresh summary');assert.ok(v.calls[0].options.expectedAuth)
+ old.resolve({data:{patient:{id:1,name:'Fresh summary'}}});await nextTick();assert.equal(v.windows.length,0);projection.resolve({status:'succeeded'});await job;assert.equal(v.windows.length,1);assert.ok(v.windows[0].html.includes('<html lang="en">'));assert.ok(v.windows[0].html.includes('<title>Visit Summary</title>'));assert.equal(v.summary.value.patient.name,'Fresh summary');assert.ok(v.calls[0].options.expectedAuth)
 })
 for(const kind of ['denied','wrong patient','patient A-B-A','account A-B-A','silent account','report options','unmount'])test(`fresh print rejects ${kind} instead of printing cached DOM`,async t=>{
  const old=deferred(),v=await setup(t,{summaryRequest:()=>old.promise});v.summary.value={patient:{id:1,name:'Stale'}};const job=v.printSummary();await nextTick()

@@ -211,7 +211,7 @@ public class MonitoringServiceImpl implements MonitoringService {
             MonitoringSnapshotVO.TaskItem task = new MonitoringSnapshotVO.TaskItem();
             task.setId(intake.getId());
             task.setTaskType("MEDICATION");
-            task.setTitle(medication != null ? medication.getDrugName() : "按时服药");
+            task.setTitle(medication != null ? medication.getDrugName() : org.familyhealthcare.util.ExportLocalization.text("Take medication on time", "按时服药"));
             task.setScheduledAt(intake.getSnoozeUntil() != null ? intake.getSnoozeUntil() : intake.getScheduledAt());
             task.setStatus(intake.getStatus());
             task.setDosage(intake.getDosage());
@@ -516,13 +516,14 @@ public class MonitoringServiceImpl implements MonitoringService {
     }
 
     private String freshness(LocalDateTime at, LocalDateTime now) {
-        if (at == null) return "暂无更新";
+        if (at == null) return org.familyhealthcare.util.ExportLocalization.text("No updates", "暂无更新");
         long minutes = Math.max(0, Duration.between(at, now).toMinutes());
-        if (minutes < 1) return "刚刚更新";
-        if (minutes < 60) return minutes + " 分钟前";
+        if (minutes < 1) return org.familyhealthcare.util.ExportLocalization.text("Updated just now", "刚刚更新");
+        if (minutes < 60) return org.familyhealthcare.util.ExportLocalization.text(minutes + (minutes == 1 ? " minute ago" : " minutes ago"), minutes + " 分钟前");
         long hours = minutes / 60;
-        if (hours < 24) return hours + " 小时前";
-        return (hours / 24) + " 天前";
+        if (hours < 24) return org.familyhealthcare.util.ExportLocalization.text(hours + (hours == 1 ? " hour ago" : " hours ago"), hours + " 小时前");
+        long days = hours / 24;
+        return org.familyhealthcare.util.ExportLocalization.text(days + (days == 1 ? " day ago" : " days ago"), days + " 天前");
     }
 
     private LocalDateTime max(LocalDateTime a, LocalDateTime b) {

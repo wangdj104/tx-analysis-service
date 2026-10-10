@@ -16,7 +16,7 @@ public class HealthAnalysisAutomationController {
     @Autowired private HealthAnalysisAutomationService service;
     @GetMapping public Result<List<HealthAnalysisAutomation>> list(){return Result.ok(service.list());}
     @PostMapping public Result<HealthAnalysisAutomation> save(@RequestBody HealthAnalysisAutomation row){return Result.ok(service.save(row));}
-    @DeleteMapping("/{id}") public Result<String> delete(@PathVariable Long id){service.delete(id);return Result.ok("Deleted");}
+    @DeleteMapping("/{id}") public Result<String> delete(@PathVariable Long id){service.delete(id);return Result.okMessage("Deleted");}
     @PostMapping("/{id}/run") public Result<AiAnalysisRecord> run(@PathVariable Long id){return Result.ok(service.runNow(id));}
     @PostMapping("/analysis/{id}/review") public Result<AiAnalysisRecord> review(@PathVariable Long id,@RequestBody Map<String,Object> body){
         boolean approved=Boolean.parseBoolean(String.valueOf(body.getOrDefault("approved",false)));

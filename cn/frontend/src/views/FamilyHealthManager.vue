@@ -203,7 +203,7 @@ async function refreshVisit(forPrint=false){
       if(!popup){ElMessage.warning('请允许弹出窗口以打印摘要。');return false}
       printPopup=popup
       if(!owns()){invalidateSummary();return false}
-      popup.document.write('<!doctype html><html><head><meta charset="UTF-8"><title>Visit Summary</title><style>body{font-family:Arial,"Microsoft YaHei",sans-serif;margin:24px;line-height:1.6;overflow-wrap:anywhere}.report-controls{display:none}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;text-align:left;padding:6px}thead{display:table-header-group}tr{break-inside:avoid}h2,h3,h4,h5{break-after:avoid}.original{white-space:pre-wrap}</style></head><body>'+markup+'</body></html>')
+      popup.document.write('<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><title>就诊摘要</title><style>body{font-family:Arial,"Microsoft YaHei",sans-serif;margin:24px;line-height:1.6;overflow-wrap:anywhere}.report-controls{display:none}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;text-align:left;padding:6px}thead{display:table-header-group}tr{break-inside:avoid}h2,h3,h4,h5{break-after:avoid}.original{white-space:pre-wrap}</style></head><body>'+markup+'</body></html>')
       popup.document.close();popup.focus()
       popup.setTimeout(()=>{if(!owns()||printPopup!==popup){try{popup.document.body?.replaceChildren();popup.close()}catch{}return}popup.print()},250)
     }

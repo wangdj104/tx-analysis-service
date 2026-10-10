@@ -39,7 +39,7 @@ public class ComplicationRecordController {
     public Result<String> save(@RequestBody ComplicationRecord record) {
         try {
             boolean success = complicationRecordService.saveRecord(record);
-            return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
+            return success ? Result.okMessage("Saved successfully") : Result.error("Failed to save");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -50,7 +50,7 @@ public class ComplicationRecordController {
     public Result<String> update(@RequestBody ComplicationRecord record) {
         try {
             boolean success = complicationRecordService.updateRecord(record);
-            return success ? Result.ok("Updated successfully") : Result.error("Update failed");
+            return success ? Result.okMessage("Updated successfully") : Result.error("Update failed");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -61,7 +61,7 @@ public class ComplicationRecordController {
     public Result<String> delete(@PathVariable Long id) {
         try {
             boolean success = complicationRecordService.deleteOwned(id);
-            return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+            return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }

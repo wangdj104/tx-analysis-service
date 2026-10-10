@@ -1101,7 +1101,7 @@ const trendChartOption = computed(() => {
     xAxis: { type: 'category', data: dates, axisLabel: { rotate: isMobile.value ? 45 : 30, fontSize: 11 } },
     yAxis: { type: 'value', scale: true, name: unit },
     series: [{
-      name: trendForm.itemName || 'measured value',
+      name: trendForm.itemName || '检测值',
       type: 'line',
       data: values,
       smooth: true,
@@ -1214,8 +1214,8 @@ function getAbnormalType(status) {
 }
 
 function getAbnormalText(status) {
-  if (status === 1) return 'high';
-  if (status === -1) return 'low';
+  if (status === 1) return '偏高';
+  if (status === -1) return '偏低';
   return '正常';
 }
 
@@ -1347,17 +1347,10 @@ async function loadItemNames() {
     if (res.code === 200) {
       const dbNames = res.data || [];
       const defaults = [
-        'whitecell', 'red blood cells', 'hemoglobin', 'bloodsmallpanel',
-        'creatinine', 'blood urea nitrogen', 'urineacid',
-        'ALTconvertaminotransferase', 'ASTconvertaminotransferase', 'totalbilirubin',
-        'serum calcium', 'serum phosphorus', 'parathyroid hormone',
-        'ferritin', 'convertferritinfull and level',
-        'potassium', 'sodium', 'chloride',
-        'twooxygentransformcarboncombinestrength', 'albumin',
-        'totalbilefixedalcohol', 'glycerolthreeester',
-        'Blood Glucose', 'glycatedhemoglobin',
-        'PTH', 'β2slightglobuleproteinwhite',
-        'Creverseshouldproteinwhite', 'iron'
+        '白细胞', '红细胞', '血红蛋白', '血小板', '肌酐', '尿素氮', '尿酸',
+        '丙氨酸氨基转移酶', '天冬氨酸氨基转移酶', '总胆红素', '血钙', '血磷', '甲状旁腺激素',
+        '铁蛋白', '转铁蛋白饱和度', '钾', '钠', '氯', '二氧化碳结合力', '白蛋白',
+        '总胆固醇', '甘油三酯', '血糖', '糖化血红蛋白', 'PTH', 'β2微球蛋白', 'C反应蛋白', '铁'
       ];
       const merged = Array.from(new Set([...dbNames, ...defaults]));
       allItemNames.value = merged.sort((a, b) => a.localeCompare(b, 'zh'));
@@ -1499,7 +1492,7 @@ async function startRecognize() {
     const status = e.response?.status;
     if (status === 413) {
       ElMessage.error('图片过大而被拒绝，请选择较小的文件或联系管理员。');
-    } else if (e.message?.includes('timeout')) {
+    } else if (e.code === 'ECONNABORTED' || e.code === 'ETIMEDOUT' || e.message?.includes('timeout')) {
       ElMessage.error('识别超时，请尝试较小的文件或在网络更稳定时重试。');
     } else {
       ElMessage.error('识别失败：' + (e.message || '未知错误'));

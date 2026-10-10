@@ -1,5 +1,7 @@
 package org.familyhealthcare.interceptor;
 
+import org.familyhealthcare.common.MessageLocalizer;
+
 import org.familyhealthcare.entity.SysRole;
 import org.familyhealthcare.entity.SysUser;
 import org.familyhealthcare.mapper.SysRoleMapper;
@@ -85,6 +87,6 @@ public class JwtInterceptor implements HandlerInterceptor {
     private void writeUnauthorized(HttpServletResponse response, String msg) throws Exception {
         response.setStatus(401);
         response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"code\":401,\"msg\":\"" + msg + "\",\"data\":null}");
+        response.getWriter().write("{\"code\":401,\"msg\":\"" + MessageLocalizer.localize(msg) + "\",\"data\":null}");
     }
 }

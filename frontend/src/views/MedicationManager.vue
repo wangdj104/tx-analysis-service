@@ -37,7 +37,7 @@
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item label="Uploadfile" required>
+              <el-form-item label="Upload files" required>
                 <el-upload
                   ref="uploadRef"
                   drag
@@ -53,27 +53,27 @@
                   class="upload-drop"
                 >
                   <el-icon :size="40"><UploadFilled /></el-icon>
-                  <div class="upload-text">will Medicationpackage or instructionsdocumentdragto thisplace,  or <em>clickUpload</em>, alsocan <em>paste</em>image (supportmultipleimages) </div>
+                  <div class="upload-text">Drag medication packaging or instructions here, or <em>Click to upload</em>, or <em>paste</em> images (multiple images supported) </div>
                   <template #tip>
-                    <div class="el-upload__tip">supportimage(jpg/png), PDF, Word(doc/docx), largefilerecognitioncan canneedneedrelativelylongTime, Please please wait</div>
+                    <div class="el-upload__tip">JPG, PNG, PDF, and Word (DOC/DOCX) files are supported. Larger files may take longer to recognize.</div>
                   </template>
                 </el-upload>
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" :loading="recognizeLoading" :disabled="recognizeSaving" @click="startRecognize">Start recognition</el-button>
                 <el-button v-if="recognizeResult" type="success" :loading="recognizeSaving" @click="saveRecognizedDrug">
-                  {{ recognizedDrugs.length > 1 ? `Save ${recognizedDrugs.length} itemsMedicationto Medicationdatabase` : 'Saveto Medicationdatabase' }}
+                  {{ recognizedDrugs.length > 1 ? `Save ${recognizedDrugs.length} medications to catalog` : 'Save to medication catalog' }}
                 </el-button>
               </el-form-item>
             </el-form>
 
             <div v-if="recognizeLoading" class="recognize-loading">
               <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-              <span>AI positivein recognitionin, largefilecan canneedneed 1~3 minutes, Please please wait...</span>
+              <span>AI is recognizing the medication. Large files may take 1–3 minutes. Please wait…</span>
             </div>
 
             <div v-if="recognizeResult" class="recognize-result">
-              <el-divider content-position="left">recognitionresult (can Editafter Save) </el-divider>
+              <el-divider content-position="left">Recognition results (review and edit before saving) </el-divider>
               <el-alert
                 v-if="recognizeWarning"
                 :title="recognizeWarning"
@@ -98,7 +98,7 @@
                   <el-input v-model="currentRecognizeDrug.genericName" />
                 </el-form-item>
                 <el-form-item label="Specification">
-                  <el-input v-model="currentRecognizeDrug.specification" placeholder="for example : 10mg*28tablet" />
+                  <el-input v-model="currentRecognizeDrug.specification" placeholder="For example: 10 mg × 28 tablets" />
                 </el-form-item>
                 <el-form-item label="Unit">
                   <el-input v-model="currentRecognizeDrug.unit" placeholder="tablet/dose/bottle" />
@@ -112,7 +112,7 @@
                     <el-option label="powder" value="POWDER" />
                   </el-select>
                 </el-form-item>
-                <el-form-item label="Medicationcategory">
+                <el-form-item label="Medication category">
                   <el-select v-model="currentRecognizeDrug.category" placeholder="Select">
                     <el-option label="antihypertensive" value="ANTIHYPERTENSIVE" />
                     <el-option label="phosphate binder" value="PHOSPHATE_BINDER" />
@@ -120,7 +120,7 @@
                     <el-option label="vitamin" value="VITAMIN" />
                     <el-option label="erythropoietin" value="ESA" />
                     <el-option label="calcium supplement" value="CALCIUM" />
-                    <el-option label="active vitamin DD" value="VD" />
+                    <el-option label="Active vitamin D" value="VD" />
                     <el-option label="diuretic" value="DIURETIC" />
                     <el-option label="antibiotic" value="ANTIBIOTIC" />
                     <el-option label="Other" value="OTHER" />
@@ -132,8 +132,8 @@
                 <el-form-item label="approval number">
                   <el-input v-model="currentRecognizeDrug.approvalNumber" />
                 </el-form-item>
-                <el-form-item label="DefaultDose">
-                  <el-input v-model="currentRecognizeDrug.defaultDosage" placeholder="for example : each times1tablet, each days1times" />
+                <el-form-item label="Default dose">
+                  <el-input v-model="currentRecognizeDrug.defaultDosage" placeholder="For example: 1 tablet once daily" />
                 </el-form-item>
                 <el-form-item label="Notes">
                   <el-input v-model="currentRecognizeDrug.remark" type="textarea" :rows="2" />
@@ -146,7 +146,7 @@
           <div v-show="activeMenu === 'drugs'">
             <div class="toolbar">
               <el-button type="primary" @click="showDrugDialog()">
-                <el-icon><Plus /></el-icon>AddMedication
+                <el-icon><Plus /></el-icon>Add medication
               </el-button>
             </div>
             <div class="table-wrap">
@@ -165,7 +165,7 @@
                   </template>
                 </el-table-column>
                 <el-table-column v-if="drugColVisible('manufacturer')" prop="manufacturer" label="manufacturer" min-width="140" show-overflow-tooltip />
-                <el-table-column v-if="drugColVisible('defaultDosage')" prop="defaultDosage" label="DefaultDose" min-width="120" show-overflow-tooltip />
+                <el-table-column v-if="drugColVisible('defaultDosage')" prop="defaultDosage" label="Default dose" min-width="120" show-overflow-tooltip />
                 <el-table-column v-if="drugColVisible('isActive')" prop="isActive" label="Status" min-width="80" align="center">
                   <template #default="{ row }">
                     <el-tag :type="row.isActive === 1 ? 'success' : 'info'" size="small">
@@ -214,7 +214,7 @@
             </div>
             <div class="table-wrap">
               <el-table :data="logs" class="app-data-table app-data-table--list" stripe style="width: 100%">
-                <el-table-column v-if="logColVisible('administrationTime')" prop="administrationTime" label="administrationTime" min-width="148" />
+                <el-table-column v-if="logColVisible('administrationTime')" prop="administrationTime" label="Administration time" min-width="148" />
                 <el-table-column v-if="logColVisible('patientName')" prop="patientName" label="Patient" min-width="100" show-overflow-tooltip />
                 <el-table-column v-if="logColVisible('drugName')" prop="medication.drugName" label="Medication" min-width="120" show-overflow-tooltip />
                 <el-table-column v-if="logColVisible('dosage')" prop="dosage" label="Dose" min-width="80" show-overflow-tooltip />
@@ -224,7 +224,7 @@
                   </template>
                 </el-table-column>
                 <el-table-column v-if="logColVisible('prescribedBy')" prop="prescribedBy" label="Clinician" min-width="88" show-overflow-tooltip />
-                <el-table-column v-if="logColVisible('effectEvaluation')" prop="effectEvaluation" label="validresult" min-width="80" show-overflow-tooltip>
+                <el-table-column v-if="logColVisible('effectEvaluation')" prop="effectEvaluation" label="Effect" min-width="80" show-overflow-tooltip>
                   <template #default="{ row }">
                     <el-tag :type="getEffectType(row.effectEvaluation)" size="small">{{ getEffectName(row.effectEvaluation) }}</el-tag>
                   </template>
@@ -259,7 +259,7 @@
               <el-table :data="group.items" class="app-data-table app-data-table--compact" stripe size="small" :fit="false">
                 <el-table-column prop="drugName" label="Medication Name" width="160" show-overflow-tooltip />
                 <el-table-column prop="specification" label="Specification" width="120" show-overflow-tooltip />
-                <el-table-column prop="defaultDosage" label="DefaultDose" width="140" show-overflow-tooltip />
+                <el-table-column prop="defaultDosage" label="Default dose" width="140" show-overflow-tooltip />
                 <el-table-column prop="isActive" label="Status" width="88" align="center">
                   <template #default="{ row }">
                     <el-tag :type="row.isActive === 1 ? 'success' : 'info'" size="small">
@@ -282,7 +282,7 @@
     </el-main>
 
     <!-- MedicationEditdialog -->
-    <el-dialog v-model="drugDialogVisible" :title="editingDrug.id ? 'EditMedication' : 'AddMedication'" width="600px" destroy-on-close>
+    <el-dialog v-model="drugDialogVisible" :title="editingDrug.id ? 'Edit medication' : 'Add medication'" width="600px" destroy-on-close>
       <el-form :model="editingDrug" :disabled="drugSaving" label-width="100px">
         <el-form-item label="Medication Name" required>
           <el-input v-model="editingDrug.drugName" placeholder="Enter Medication Name" />
@@ -291,7 +291,7 @@
           <el-input v-model="editingDrug.genericName" placeholder="Enter Generic Name" />
         </el-form-item>
         <el-form-item label="Specification">
-          <el-input v-model="editingDrug.specification" placeholder="for example : 10mg*28tablet" />
+          <el-input v-model="editingDrug.specification" placeholder="For example: 10 mg × 28 tablets" />
         </el-form-item>
         <el-form-item label="Unit">
           <el-input v-model="editingDrug.unit" placeholder="tablet/dose/bottle" />
@@ -305,7 +305,7 @@
             <el-option label="powder" value="POWDER" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Medicationcategory">
+        <el-form-item label="Medication category">
           <el-select v-model="editingDrug.category" placeholder="Select">
             <el-option label="antihypertensive" value="ANTIHYPERTENSIVE" />
             <el-option label="phosphate binder" value="PHOSPHATE_BINDER" />
@@ -313,7 +313,7 @@
             <el-option label="vitamin" value="VITAMIN" />
             <el-option label="erythropoietin" value="ESA" />
             <el-option label="calcium supplement" value="CALCIUM" />
-            <el-option label="active vitamin DD" value="VD" />
+            <el-option label="Active vitamin D" value="VD" />
             <el-option label="diuretic" value="DIURETIC" />
             <el-option label="antibiotic" value="ANTIBIOTIC" />
             <el-option label="Other" value="OTHER" />
@@ -325,13 +325,13 @@
         <el-form-item label="approval number">
           <el-input v-model="editingDrug.approvalNumber" placeholder="Enter approval number" />
         </el-form-item>
-        <el-form-item label="DefaultDose">
-          <el-input v-model="editingDrug.defaultDosage" placeholder="for example : each times1tablet, each days1times" />
+        <el-form-item label="Default dose">
+          <el-input v-model="editingDrug.defaultDosage" placeholder="For example: 1 tablet once daily" />
         </el-form-item>
         <el-form-item label="Notes">
           <el-input v-model="editingDrug.remark" type="textarea" :rows="2" />
         </el-form-item>
-        <el-form-item label="YesNoEnabled">
+        <el-form-item label="Enabled">
           <el-switch v-model="editingDrug.isActive" :active-value="1" :inactive-value="0" />
         </el-form-item>
       </el-form>
@@ -342,7 +342,7 @@
     </el-dialog>
 
     <!-- medicationrecordEditdialog -->
-    <el-dialog v-model="logDialogVisible" :title="editingLog.id ? 'Editmedicationrecord' : 'Addmedicationrecord'" width="600px" destroy-on-close>
+    <el-dialog v-model="logDialogVisible" :title="editingLog.id ? 'Edit medication record' : 'Add medication record'" width="600px" destroy-on-close>
       <el-form :model="editingLog" :disabled="logSaving" label-width="100px">
         <el-form-item label="Patient" required>
           <el-select v-model="editingLog.patientId" placeholder="Select a patient" filterable>
@@ -350,14 +350,14 @@
           </el-select>
         </el-form-item>
         <el-form-item label="Medication" required>
-          <el-select v-model="editingLog.medicationId" placeholder="SelectMedication" filterable>
+          <el-select v-model="editingLog.medicationId" placeholder="Select a medication" filterable>
             <el-option v-for="drug in activeDrugs" :key="drug.id" :label="drug.drugName" :value="drug.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="Dose">
-          <el-input v-model="editingLog.dosage" placeholder="for example : 1tablet" />
+          <el-input v-model="editingLog.dosage" placeholder="For example: 1 tablet" />
         </el-form-item>
-        <el-form-item label="administrationroute">
+        <el-form-item label="Administration route">
           <el-select v-model="editingLog.adminRoute" placeholder="Select">
             <el-option label="oral" value="ORAL" />
             <el-option label="intravenous" value="IV" />
@@ -365,7 +365,7 @@
             <el-option label="intramuscular" value="IM" />
           </el-select>
         </el-form-item>
-        <el-form-item label="administrationTime">
+        <el-form-item label="Administration time">
           <el-date-picker
             v-model="editingLog.administrationTime"
             type="datetime"
@@ -373,7 +373,7 @@
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="prescribeClinician">
+        <el-form-item label="Prescribing clinician">
           <el-input v-model="editingLog.prescribedBy" placeholder="Enter clinician name" />
         </el-form-item>
         <el-form-item label="effect assessment">
@@ -384,7 +384,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="adverse reaction">
-          <el-input v-model="editingLog.sideEffect" placeholder="for example has adverse reactionPlease Description" />
+          <el-input v-model="editingLog.sideEffect" placeholder="Describe any adverse reaction" />
         </el-form-item>
         <el-form-item label="Notes">
           <el-input v-model="editingLog.remark" type="textarea" :rows="2" />
@@ -433,20 +433,20 @@ const DRUG_COLUMN_DEFS = [
   { key: 'dosageForm', label: 'dosage form' },
   { key: 'category', label: 'category' },
   { key: 'manufacturer', label: 'manufacturer', default: false },
-  { key: 'defaultDosage', label: 'DefaultDose' },
+  { key: 'defaultDosage', label: 'Default dose' },
   { key: 'isActive', label: 'Status' }
 ];
 const { visibleKeys: drugVisibleCols, isVisible: drugColVisible, resetColumns: resetDrugColumns } =
   useTableColumns('medication-drug-list', DRUG_COLUMN_DEFS);
 
 const LOG_COLUMN_DEFS = [
-  { key: 'administrationTime', label: 'administrationTime' },
+  { key: 'administrationTime', label: 'Administration time' },
   { key: 'patientName', label: 'Patient' },
   { key: 'drugName', label: 'Medication' },
   { key: 'dosage', label: 'Dose' },
   { key: 'adminRoute', label: 'route' },
   { key: 'prescribedBy', label: 'Clinician', default: false },
-  { key: 'effectEvaluation', label: 'validresult', default: false },
+  { key: 'effectEvaluation', label: 'Effect', default: false },
   { key: 'sideEffect', label: 'adverse reaction', default: false }
 ];
 const { visibleKeys: logVisibleCols, isVisible: logColVisible, resetColumns: resetLogColumns } =
@@ -556,7 +556,7 @@ const categoryMap = {
   VITAMIN: 'vitamin',
   ESA: 'erythropoietin',
   CALCIUM: 'calcium supplement',
-  VD: 'active vitamin DD',
+  VD: 'Active vitamin D',
   DIURETIC: 'diuretic',
   ANTIBIOTIC: 'antibiotic',
   OTHER: 'Other'
@@ -577,19 +577,19 @@ const effectMap = {
 
 const pageTitle = computed(() => {
   const map = {
-    drugs: 'Medicationdatabasemanagement',
-    logs: 'medicationrecord',
+    drugs: 'Medication catalog',
+    logs: 'Medication records',
     category: 'Browse Categories',
     remind: 'Medication Reminders'
   };
-  return map[activeMenu.value] || 'Medicationmanagement';
+  return map[activeMenu.value] || 'Medication management';
 });
 
 const pageSubtitle = computed(() => {
   const map = {
-    drugs: 'maintainDialysisrelatedMedicationBasicinformation, providemedicationrecordselectuse',
-    logs: 'recordPatienteach timesadministrationcondition and effect assessment',
-    category: 'by MedicationcategorygroupViewdatabasewithinMedication',
+    drugs: 'Manage medication details for use in medication records.',
+    logs: 'Record each dose and review its reported effects.',
+    category: 'Browse medications grouped by category.',
     remind: 'Configure dose times, repeat days, and quantities'
   };
   return map[activeMenu.value] || '';
@@ -604,7 +604,7 @@ const drugsByCategory = computed(() => {
     }
     groups[cat].items.push(drug);
   }
-  return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name, 'en-US'));
 });
 
 function clearDrugDraft(patientId) {
@@ -816,7 +816,7 @@ async function saveDrug() {
 
 async function deleteDrug(row) {
   try {
-    await ElMessageBox.confirm('ConfirmneedDeletethis Medication?', 'Notice', { type: 'warning' });
+    await ElMessageBox.confirm('Delete this medication?', 'Notice', { type: 'warning' });
     const res = await api.deleteMedication(row.id);
     if (res.code === 200) {
       ElMessage.success('Deleted successfully');
@@ -850,7 +850,7 @@ function handleFileRemove(file) {
 async function startRecognize() {
   if (!viewActive || recognizeSaving.value) return;
   if (!selectedFiles.value || selectedFiles.value.length === 0) {
-    ElMessage.warning('Please first Uploadfile');
+    ElMessage.warning('Upload at least one medication file');
     return;
   }
   invalidateUploadResult();
@@ -912,7 +912,7 @@ async function startRecognize() {
   } catch (e) {
     if (!isCurrent()) return;
     if (e.message?.includes('timeout')) {
-      ElMessage.error('recognitionovertime: filetoo large or networkrelativelyslowly, Please laterretry');
+      ElMessage.error('Recognition timed out. Try a smaller file or retry on a faster connection.');
     } else {
       ElMessage.error('Recognition failed: ' + e.message);
     }
@@ -946,7 +946,7 @@ async function saveRecognizedDrug() {
     }));
 
     if (drugs.length === 0) {
-      ElMessage.warning('nohas can Save Medication');
+      ElMessage.warning('No medications to save');
       return;
     }
 
@@ -1055,7 +1055,7 @@ async function saveLog() {
 
 async function deleteLog(row) {
   try {
-    await ElMessageBox.confirm('ConfirmneedDeletethis medicationrecord?', 'Notice', { type: 'warning' });
+    await ElMessageBox.confirm('Delete this medication record?', 'Notice', { type: 'warning' });
     const res = await api.deleteLog(row.id);
     if (res.code === 200) {
       ElMessage.success('Deleted successfully');
@@ -1079,7 +1079,7 @@ function handlePaste(e) {
     const file = item.getAsFile();
     if (!file) continue;
     if (selectedFiles.value.length + added >= 10) {
-      ElMessage.warning('most multiplesupport10imagesimage');
+      ElMessage.warning('You can upload up to 10 images');
       break;
     }
     uploadRef.value?.handleStart(file);

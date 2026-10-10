@@ -35,10 +35,11 @@ From **Care plans**, **Care plan**, or the nurse's **Care-plan follow-up**, open
 Optional report browser verification, using the existing frontend Playwright dependency:
 
 ```bash
+cd frontend && npx playwright install chromium && cd ..
 node demo/tests/executionReport.browser.mjs
 ```
 
-It covers both languages at 1440px and 390px, including draft privacy, identity, review transitions, activity filters, five roles, close/reopen, patient switch and reset/reload. Screenshots are written to `/tmp/care-execution-demo-qa` (override with `DEMO_QA_OUTPUT`). This new script was syntax-checked but not browser-executed in the delivery environment because native Chromium was already verified to be socket-blocked. Pixel layout and real-browser interaction remain an offline verification gate.
+It covers both languages at 1440px and 390px, including draft privacy, identity, review transitions, activity filters, five roles, close/reopen, patient switch and reset/reload. Screenshots are written to `/tmp/care-execution-demo-qa` (override with `DEMO_QA_OUTPUT`). The scripts use the existing frontend Playwright dependency and its installed Chromium by default; set `CHROMIUM_PATH` to use an existing executable. Local launch was retried during the language audit and Chromium still exited before navigation because socket creation is blocked. Hosted CI runs the genuine-browser gate; a local browser pass or screenshots are not claimed.
 
 ## Publish with GitHub Pages
 
@@ -52,6 +53,10 @@ The repository includes a [GitHub Pages workflow](../.github/workflows/demo-page
 Only the static page, scripts, styles, and demo images are uploaded. Backend configuration, SQL files, tests, and the rest of the repository are excluded.
 
 GitHub reference: [Using custom workflows with GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+
+## Language consistency
+
+Both editions share the same display code and select labels from the page language. Care-plan status, event history, entry declarations, revision dialogs, report previews and audit feature names use readable localized labels. Protocol enums, stored values, actor identities and patient-entered notes remain unchanged. Regression coverage checks every role route, navigation, input hints, validation messages, locale-specific timestamps and literal mixed-language medical notes. The browser walkthrough additionally checks these rendered surfaces in both languages at desktop and phone widths.
 
 ## Verify
 

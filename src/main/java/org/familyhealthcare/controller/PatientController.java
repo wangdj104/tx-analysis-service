@@ -31,7 +31,7 @@ public class PatientController {
     @ApiOperation("AddPatient")
     public Result<String> save(@RequestBody Patient patient) {
         specialtyService.savePatient(patient);
-        return Result.ok("Saved successfully");
+        return Result.okMessage("Saved successfully");
     }
 
     @PutMapping("/update")
@@ -39,7 +39,7 @@ public class PatientController {
     public Result<String> update(@RequestBody Patient patient) {
         try {
             boolean ok = specialtyService.updatePatient(patient);
-            return ok ? Result.ok("Updated successfully") : Result.error("The patient does not exist.");
+            return ok ? Result.okMessage("Updated successfully") : Result.error("The patient does not exist.");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -50,7 +50,7 @@ public class PatientController {
     public Result<String> delete(@PathVariable Long id) {
         try {
             boolean ok = patientService.deleteOwned(id);
-            return ok ? Result.ok("Deleted successfully") : Result.error("The patient does not exist.");
+            return ok ? Result.okMessage("Deleted successfully") : Result.error("The patient does not exist.");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }

@@ -182,7 +182,7 @@ public class HealthReportServiceImpl implements HealthReportService {
         }
         sb.append("<h1>").append(titleLabel).append("</h1>");
         sb.append(text("<p style='text-align:center;color:#64748b;'>Patient: ", "<p style='text-align:center;color:#64748b;'>患者：")).append(patientName);
-        sb.append(text(" | ReportDate: ", "｜报告日期：")).append(date).append("</p>");
+        sb.append(text(" | Report date: ", "｜报告日期：")).append(date).append("</p>");
 
         // Patientclinicalinformation (onlyoverallReportdisplay)
         if (isSummaryReport && clinical != null) {

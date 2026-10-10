@@ -35,7 +35,7 @@ public class CareJourneyController {
 
     @GetMapping("/access-grants") public Result<List<Map<String,Object>>> grants(@RequestParam Long patientId){return Result.ok(service.grants(patientId));}
     @PostMapping("/access-grants") public Result<Map<String,Object>> saveGrant(@RequestBody Map<String,Object>body){return Result.ok(service.saveGrant(body));}
-    @DeleteMapping("/access-grants/{id}") public Result<String> revokeGrant(@PathVariable Long id){service.revokeGrant(id);return Result.ok("Access revoked.");}
+    @DeleteMapping("/access-grants/{id}") public Result<String> revokeGrant(@PathVariable Long id){service.revokeGrant(id);return Result.okMessage("Access revoked.");}
 
     @GetMapping("/doctor-schedules") public Result<List<Map<String,Object>>> schedules(@RequestParam(required=false)Long doctorUserId,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE)LocalDate from,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE)LocalDate to){return Result.ok(service.doctorSchedules(doctorUserId,from,to));}
     @GetMapping("/clinicians") public Result<List<Map<String,Object>>> clinicians(){return Result.ok(service.clinicians());}
@@ -43,7 +43,7 @@ public class CareJourneyController {
     @GetMapping("/appointments") public Result<List<Map<String,Object>>> appointments(@RequestParam Long patientId){return Result.ok(service.appointments(patientId));}
     @GetMapping("/appointment-inbox") public Result<List<Map<String,Object>>> appointmentInbox(){return Result.ok(service.appointmentInbox());}
     @PostMapping("/appointments") public Result<Map<String,Object>> saveAppointment(@RequestBody Map<String,Object>body){return Result.ok(service.saveAppointment(body));}
-    @PostMapping("/appointments/{id}/cancel") public Result<String> cancelAppointment(@PathVariable Long id,@RequestBody(required=false)Map<String,String>body){service.cancelAppointment(id,body==null?null:body.get("reason"));return Result.ok("Appointment cancelled.");}
+    @PostMapping("/appointments/{id}/cancel") public Result<String> cancelAppointment(@PathVariable Long id,@RequestBody(required=false)Map<String,String>body){service.cancelAppointment(id,body==null?null:body.get("reason"));return Result.okMessage("Appointment cancelled.");}
     @PostMapping("/appointments/{id}/complete") public Result<Map<String,Object>> completeAppointment(@PathVariable Long id){return Result.ok(service.completeAppointment(id));}
 
     @GetMapping("/visits") public Result<List<Map<String,Object>>> visits(@RequestParam Long patientId){return Result.ok(service.visits(patientId));}
@@ -80,10 +80,10 @@ public class CareJourneyController {
     @PostMapping("/mental-assessments") public Result<Map<String,Object>> saveMental(@RequestBody Map<String,Object>body){return Result.ok(service.saveMentalAssessment(body));}
     @GetMapping("/mental-schedules") public Result<List<Map<String,Object>>> mentalSchedules(@RequestParam Long patientId){return Result.ok(service.mentalSchedules(patientId));}
     @PostMapping("/mental-schedules") public Result<Map<String,Object>> saveMentalSchedule(@RequestBody Map<String,Object>body){return Result.ok(service.saveMentalSchedule(body));}
-    @PostMapping("/mental-schedules/{id}/disable") public Result<String> disableMentalSchedule(@PathVariable Long id){service.disableMentalSchedule(id);return Result.ok("Assessment schedule disabled.");}
+    @PostMapping("/mental-schedules/{id}/disable") public Result<String> disableMentalSchedule(@PathVariable Long id){service.disableMentalSchedule(id);return Result.okMessage("Assessment schedule disabled.");}
 
     @GetMapping("/patient-groups") public Result<List<Map<String,Object>>> groups(){return Result.ok(service.patientGroups());}
     @PostMapping("/patient-groups") public Result<Map<String,Object>> saveGroup(@RequestBody Map<String,Object>body){return Result.ok(service.savePatientGroup(body));}
-    @PostMapping("/patient-groups/{id}/patients/{patientId}") public Result<String> groupMember(@PathVariable Long id,@PathVariable Long patientId){service.addGroupMember(id,patientId);return Result.ok("Patient added to group.");}
+    @PostMapping("/patient-groups/{id}/patients/{patientId}") public Result<String> groupMember(@PathVariable Long id,@PathVariable Long patientId){service.addGroupMember(id,patientId);return Result.okMessage("Patient added to group.");}
     @GetMapping("/operations") public Result<Map<String,Object>> operations(@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE)LocalDate from,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE)LocalDate to){return Result.ok(service.operations(from,to));}
 }

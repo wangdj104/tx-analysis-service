@@ -68,7 +68,7 @@ public Result<String> saveMedication(@RequestBody Medication medication) {
             medication.setUserId(userId);
             medication.setIsActive(1);
             boolean success = medicationService.save(medication);
-            return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
+            return success ? Result.okMessage("Saved successfully") : Result.error("Failed to save");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -86,7 +86,7 @@ public Result<String> saveMedication(@RequestBody Medication medication) {
             medication.setPatientId(existing.getPatientId());
             medication.setUserId(existing.getUserId());
             boolean success = medicationService.updateById(medication);
-            return success ? Result.ok("Updated successfully") : Result.error("Update failed");
+            return success ? Result.okMessage("Updated successfully") : Result.error("Update failed");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -102,7 +102,7 @@ public Result<String> saveMedication(@RequestBody Medication medication) {
             }
             dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
             boolean success = medicationService.removeById(id);
-            return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+            return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -116,7 +116,7 @@ public Result<String> saveMedicationsBatch(@RequestBody List<Medication> medicat
                 return Result.error("Medication list cannot be empty");
             }
             boolean success = medicationService.saveMedicationsBatch(medications);
-            return success ? Result.ok("batchSaved successfully") : Result.error("batchFailed to save");
+            return success ? Result.okMessage("batchSaved successfully") : Result.error("batchFailed to save");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -246,20 +246,20 @@ public Result<String> saveMedicationsBatch(@RequestBody List<Medication> medicat
     @ApiOperation("Addmedicationrecord")
     public Result<String> saveLog(@RequestBody MedicationLog log) {
         boolean success = medicationService.saveLog(log);
-        return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
+        return success ? Result.okMessage("Saved successfully") : Result.error("Failed to save");
     }
 
     @PutMapping("/log/update")
     @ApiOperation("updatemedicationrecord")
     public Result<String> updateLog(@RequestBody MedicationLog log) {
         boolean success = medicationService.updateLog(log);
-        return success ? Result.ok("Updated successfully") : Result.error("Update failed");
+        return success ? Result.okMessage("Updated successfully") : Result.error("Update failed");
     }
 
     @DeleteMapping("/log/delete/{id}")
     @ApiOperation("Deletemedicationrecord")
     public Result<String> deleteLog(@PathVariable Long id) {
         boolean success = medicationService.deleteLog(id);
-        return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+        return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
     }
 }

@@ -10,6 +10,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import static org.familyhealthcare.util.ExportLocalization.text;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
@@ -120,18 +122,18 @@ public class NutritionAssessmentServiceImpl extends ServiceImpl<NutritionAssessm
         // Generate concise, non-diagnostic guidance.
         StringBuilder advice = new StringBuilder();
         if ("DEFICIENT".equals(record.getNutritionStatus())) {
-            advice.append("Nutritional status is deficient. Recommendations: ");
+            advice.append(text("Nutritional status is deficient. Recommendations: ", "营养状况不足。建议："));
             if (record.getAlbumin() != null && record.getAlbumin().compareTo(new BigDecimal("35")) < 0) {
-                advice.append("increase protein intake toward the prescribed target (often about 1.2 g/kg/day); ");
+                advice.append(text("increase protein intake toward the prescribed target (often about 1.2 g/kg/day); ", "按医嘱目标增加蛋白质摄入（通常约为 1.2 g/kg/天）；"));
             }
             if (record.getBmi() != null && record.getBmi().compareTo(new BigDecimal("18.5")) < 0) {
-                advice.append("increase calorie intake toward the prescribed target (often 30–35 kcal/kg/day); ");
+                advice.append(text("increase calorie intake toward the prescribed target (often 30–35 kcal/kg/day); ", "按医嘱目标增加热量摄入（通常为 30–35 kcal/kg/天）；"));
             }
-            advice.append("discuss oral nutrition supplements with a clinician and monitor weight closely.");
+            advice.append(text("discuss oral nutrition supplements with a clinician and monitor weight closely.", "与医生讨论口服营养补充剂，并密切监测体重。"));
         } else if ("AT_RISK".equals(record.getNutritionStatus())) {
-            advice.append("Nutritional status is at risk. Follow the prescribed protein and calorie targets, and monitor albumin and prealbumin regularly.");
+            advice.append(text("Nutritional status is at risk. Follow the prescribed protein and calorie targets, and monitor albumin and prealbumin regularly.", "存在营养风险。请遵循医嘱规定的蛋白质和热量目标，并定期监测白蛋白和前白蛋白。"));
         } else {
-            advice.append("Nutritional status is good. Maintain a balanced diet, follow the prescribed protein target, and review nutrition indicators regularly.");
+            advice.append(text("Nutritional status is good. Maintain a balanced diet, follow the prescribed protein target, and review nutrition indicators regularly.", "营养状况良好。请保持均衡饮食，遵循医嘱规定的蛋白质目标，并定期复查营养指标。"));
         }
         record.setSupplementAdvice(advice.toString());
 

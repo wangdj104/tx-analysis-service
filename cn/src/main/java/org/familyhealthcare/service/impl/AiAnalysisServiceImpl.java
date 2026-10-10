@@ -18,6 +18,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import static org.familyhealthcare.util.ExportLocalization.text;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
@@ -109,9 +111,12 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         if (items.isEmpty()) items.addAll(Arrays.asList("DIALYSIS", "VITALS", "MEDICATION", "NUTRITION", "COMPLICATION"));
         LocalDate from = LocalDate.now().minusDays(days - 1L);
         StringBuilder prompt = new StringBuilder();
-        prompt.append("你是家庭健康管理助手。请根据以下真实记录，使用家属容易理解的规范中文进行分析；不要作出诊断，也不要自行更改处方。\n")
-                .append("患者：").append(patient == null ? "未知" : patient.getName()).append("；检查范围：最近 ").append(days).append(" 天（自 ").append(from).append(" 起）。\n")
-                .append("只分析已提供的数据；数据缺失时请明确说明，不得编造。\n\n");
+        prompt.append(text("Analyze the supplied family-health records. Do not diagnose or independently change prescriptions.\n",
+                        "请分析以下家庭健康记录，不作诊断，也不自行更改处方。\n"))
+                .append(text("Patient: ", "患者：")).append(patient == null ? text("Unknown", "未知") : patient.getName())
+                .append(text("; Review period: last ", "；分析期间：最近 ")).append(days).append(text(" days, from ", " 天，开始于 "))
+                .append(from).append(".\n")
+                .append(text("Analyze only recorded data. State what is missing and do not invent information.\n\n", "仅分析已有数据，明确说明缺失信息，不得编造。\n\n"));
         if (items.contains("DIALYSIS")) {
             List<DialysisRecord> rows = dialysisRecordService.list(new QueryWrapper<DialysisRecord>().eq("patient_id", patientId).ge("record_date", from).orderByDesc("record_date").last("limit 60"));
             prompt.append("【透析与体重】\n").append(JSON.toJSONString(rows)).append("\n");
@@ -133,10 +138,9 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             List<ComplicationRecord> rows = complicationRecordMapper.selectList(new QueryWrapper<ComplicationRecord>().eq("patient_id", patientId).ge("occurrence_date", from).orderByDesc("occurrence_date").last("limit 60"));
             prompt.append("【并发症与不适】\n").append(JSON.toJSONString(rows)).append("\n");
         }
-        prompt.append("\n请按以下结构输出，总字数控制在 800 字以内：\n")
-                .append("1. 总体情况\n2. 需要关注的变化（按紧急程度排序）\n3. 今日可执行的家庭管理事项\n4. 建议复测或复诊的项目与时间\n")
-                .append("如出现明确危险数值，请单独标注“需要尽快处理”。末尾注明：本分析仅供家庭记录参考，不能替代临床诊断。\n");
-        return callDeepSeek(prompt.toString());
+        prompt.append(text("\nUse these sections in no more than 800 words: 1. Overall condition; 2. Changes needing attention, ordered by urgency; 3. Family-care tasks; 4. Measurements or follow-up to discuss. Identify urgent warning signs clearly. End by explaining that this summary supports record review and does not replace professional diagnosis.\n",
+                "\n请按以下结构作答，总字数不超过 800 字：1. 总体情况；2. 需要关注的变化，按紧急程度排序；3. 家庭照护事项；4. 需要讨论的复测或复诊安排。明确指出紧急警示信号，并在末尾说明本分析仅供记录复核，不能代替专业诊断。\n"));
+        return callDeepSeek(prompt.toString(), false);
     }
 
     @Override
@@ -193,37 +197,37 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         if (jsonMatcher.find()) {
             try {
                 JSONObject json = JSON.parseObject(jsonMatcher.group(1));
-                vo.setDwAdjustNeeded(json.getString("是否需要调整"));
-                vo.setDwAdjustAmount(parseDecimal(json.getString("建议调整量")));
-                vo.setDwTargetWeight(parseDecimal(json.getString("建议目标干体重")));
-                vo.setDwAdjustReason(json.getString("调整理由"));
+                vo.setDwAdjustNeeded(normalizeAdjustment(analysisValue(json, "YesNoadjustment needed", "是否需要调整")));
+                vo.setDwAdjustAmount(parseDecimal(analysisValue(json, "recommendationadjustment amount", "建议调整量")));
+                vo.setDwTargetWeight(parseDecimal(analysisValue(json, "recommendationtargetDry Weight", "建议目标干体重")));
+                vo.setDwAdjustReason(analysisValue(json, "adjustment rationale", "调整理由"));
                 // multipledimensionassessment
-                vo.setWeightControlEval(json.getString("体重控制评估"));
-                vo.setDehydrationEval(json.getString("液体清除评估"));
-                vo.setBpControlEval(json.getString("血压控制评估"));
-                vo.setMainRisk(json.getString("主要风险提示"));
-                vo.setDietAdvice(json.getString("饮食建议"));
-                vo.setFluidAdvice(json.getString("液体摄入控制建议"));
-                vo.setExerciseAdvice(json.getString("运动建议"));
-                vo.setMedicationAdvice(json.getString("用药建议"));
-                vo.setFollowUpAdvice(json.getString("复诊复查建议"));
+                vo.setWeightControlEval(analysisValue(json, "Weightcontrol assessment", "体重控制评估"));
+                vo.setDehydrationEval(analysisValue(json, "fluid removal assessment", "液体清除评估"));
+                vo.setBpControlEval(analysisValue(json, "Blood Pressurecontrol assessment", "血压控制评估"));
+                vo.setMainRisk(analysisValue(json, "primaryRiskNotice", "主要风险提示"));
+                vo.setDietAdvice(analysisValue(json, "dietrecommendation", "饮食建议"));
+                vo.setFluidAdvice(analysisValue(json, "fluid intake controlrecommendation", "液体摄入控制建议"));
+                vo.setExerciseAdvice(analysisValue(json, "exerciserecommendation", "运动建议"));
+                vo.setMedicationAdvice(analysisValue(json, "medicationrecommendation", "用药建议"));
+                vo.setFollowUpAdvice(analysisValue(json, "follow-upfollow-up examinationrecommendation", "复诊复查建议"));
                 // enhancefield
-                vo.setComplicationRiskAssessment(json.getString("并发症风险评估"));
-                vo.setMedicationAdviceDetails(json.getString("详细用药建议"));
-                vo.setVitalSignTrendSummary(json.getString("血压趋势摘要"));
+                vo.setComplicationRiskAssessment(analysisValue(json, "complicationRiskassessment", "并发症风险评估"));
+                vo.setMedicationAdviceDetails(analysisValue(json, "medicationDetailedrecommendation", "详细用药建议"));
+                vo.setVitalSignTrendSummary(analysisValue(json, "Blood Pressuretrend summary", "血压趋势摘要"));
                 return;
             } catch (Exception ignored) {
             }
         }
 
         // exitreturnto positivethenmatchtextrow
-        Pattern needPattern = Pattern.compile("是否需要调整[:：]\\s*(.+?)(?:\\n|$)");
-        Pattern amountPattern = Pattern.compile("建议调整量[:：]\\s*([+\\-]?\\d+\\.?\\d*)\\s*kg");
-        Pattern targetPattern = Pattern.compile("建议目标干体重[:：]\\s*(\\d+\\.?\\d*)\\s*kg");
-        Pattern reasonPattern = Pattern.compile("调整理由[:：]\\s*(.+?)(?:\\n|$)");
+        Pattern needPattern = Pattern.compile("(?:YesNoadjustment needed|Adjustment needed|是否需要调整)[:：]\\s*(.+?)(?:\\n|$)");
+        Pattern amountPattern = Pattern.compile("(?:recommendationadjustment amount|Suggested adjustment|建议调整量)[:：]\\s*([+\\-]?\\d+\\.?\\d*)\\s*kg");
+        Pattern targetPattern = Pattern.compile("(?:recommendationtargetDry Weight|Suggested target dry weight|建议目标干体重)[:：]\\s*(\\d+\\.?\\d*)\\s*kg");
+        Pattern reasonPattern = Pattern.compile("(?:adjustment rationale|Rationale|调整理由)[:：]\\s*(.+?)(?:\\n|$)");
 
         Matcher m1 = needPattern.matcher(text);
-        if (m1.find()) vo.setDwAdjustNeeded(m1.group(1).trim());
+        if (m1.find()) vo.setDwAdjustNeeded(normalizeAdjustment(m1.group(1).trim()));
 
         Matcher m2 = amountPattern.matcher(text);
         if (m2.find()) vo.setDwAdjustAmount(new BigDecimal(m2.group(1)));
@@ -233,6 +237,18 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
         Matcher m4 = reasonPattern.matcher(text);
         if (m4.find()) vo.setDwAdjustReason(m4.group(1).trim());
+    }
+
+    private String analysisValue(JSONObject json, String englishKey, String chineseKey) {
+        String value = json.getString(englishKey);
+        return value != null ? value : json.getString(chineseKey);
+    }
+
+    private String normalizeAdjustment(String value) {
+        if (value == null) return null;
+        if ("Yes".equalsIgnoreCase(value.trim()) || "是".equals(value.trim())) return "Yes";
+        if ("No".equalsIgnoreCase(value.trim()) || "否".equals(value.trim())) return "No";
+        return value;
     }
 
     private BigDecimal parseDecimal(String val) {
@@ -332,45 +348,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         sb.append("\n【系统干体重测算参考（用于校验结论，请勿原样照抄）】\n");
         sb.append(buildDryWeightCalcHint(stats, refDry));
 
-        sb.append("\n请按以下结构使用中文回答（正文建议控制在 500 字以内，条理清晰）：\n");
-        sb.append("1. 体重控制情况分析\n");
-        sb.append("2. 液体清除效果评估\n");
-        sb.append("3. 血压控制情况\n");
-        sb.append("4. 存在的问题与风险提示\n");
-        sb.append("5. 具体饮食、液体摄入和治疗建议\n");
-        sb.append("\n");
-        sb.append("======== 强制输出（必须位于全文末尾，标题和格式不可变、不可省略）========\n");
-        sb.append("【干体重调整结论】\n");
-        sb.append("是否需要调整：是 / 否\n");
-        sb.append("建议调整量：+X.XX kg、-X.XX kg 或 0 kg（维持不变）\n");
-        sb.append("建议目标干体重：XX.XX kg（不需要调整时填写当前参考干体重）\n");
-        sb.append("调整理由：用一句话说明依据（结合平均透后体重、透析间期体重增长、超滤达标率等）\n");
-        sb.append("\n干体重调整判断参考：\n");
-        sb.append("- 平均透后体重持续高于参考干体重，且超滤不足较多，通常需要上调干体重；\n");
-        sb.append("- 超滤过量且透后体重明显低于干体重，通常需要下调干体重；\n");
-        sb.append("- 数据波动较大或记录不足时，可建议维持并加强监测，但必须明确填写“是”或“否”；\n");
-        sb.append("- 建议调整量必须给出精确到 0.1 kg 的数值，不得仅填写“适时调整”或“待定”。\n");
-        sb.append("\n======== 结构化数据（必须位于最末尾，并使用 ```json 代码块包裹）========\n");
-        sb.append("```json\n");
-        sb.append("{\n");
-        sb.append("  \"是否需要调整\": \"是/否\",\n");
-        sb.append("  \"建议调整量\": \"+0.5 kg、-0.3 kg 或 0 kg\",\n");
-        sb.append("  \"建议目标干体重\": \"60.50 kg\",\n");
-        sb.append("  \"调整理由\": \"一句话说明依据\",\n");
-        sb.append("  \"体重控制评估\": \"优秀/良好/一般/较差\",\n");
-        sb.append("  \"液体清除评估\": \"优秀/良好/一般/较差\",\n");
-        sb.append("  \"血压控制评估\": \"优秀/良好/一般/较差\",\n");
-        sb.append("  \"主要风险提示\": \"概括一至两个最重要的风险点\",\n");
-        sb.append("  \"饮食建议\": \"具体饮食调整建议\",\n");
-        sb.append("  \"液体摄入控制建议\": \"具体液体摄入控制建议\",\n");
-        sb.append("  \"运动建议\": \"适合的运动类型和强度建议\",\n");
-        sb.append("  \"用药建议\": \"是否需要调整用药，或填写遵医嘱\",\n");
-        sb.append("  \"复诊复查建议\": \"建议复查指标和时间\",\n");
-        sb.append("  \"并发症风险评估\": \"结合并发症历史和透析数据的综合评估\",\n");
-        sb.append("  \"详细用药建议\": \"基于当前用药方案的调整建议\",\n");
-        sb.append("  \"血压趋势摘要\": \"血压变化趋势简要总结\"\n");
-        sb.append("}\n");
-        sb.append("```\n");
+        sb.append(analysisOutputContract());
 
         return sb.toString();
     }
@@ -496,17 +474,11 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
     }
 
     private String formatPeriod(String timeType, String timeValue) {
-        if (timeValue == null || timeValue.isEmpty()) {
-            return "全部历史数据";
-        }
-        switch (timeType != null ? timeType.toLowerCase() : "") {
-            case "year":
-                return timeValue + " 年";
-            case "week":
-                return timeValue + " 周";
-            case "month":
-            default:
-                return timeValue.replace("-", " 年 ") + " 月";
+        if (timeValue == null || timeValue.isEmpty()) return text("All recorded data", "全部历史记录");
+        switch (timeType == null ? "" : timeType.toLowerCase(Locale.ROOT)) {
+            case "year": return text("Year ", "年度：") + timeValue;
+            case "week": return text("Week ", "周：") + timeValue;
+            default: return text("Month ", "月份：") + timeValue;
         }
     }
 
@@ -524,7 +496,28 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         return val.toString();
     }
 
+    private String analysisOutputContract() {
+        StringBuilder contract = new StringBuilder(text(
+                "\nWrite a concise analysis of weight, fluid removal, blood pressure, risks, diet and follow-up. End with the heading 【Dry weight adjustment conclusion】 and four labeled lines: Adjustment needed, Suggested adjustment, Suggested target dry weight, Rationale. Treat any treatment adjustment as a suggestion requiring clinician review.\n",
+                "\n请简洁分析体重、液体清除、血压、风险、饮食与复诊安排。末尾使用标题【干体重调整结论】，包含四行：是否需要调整、建议调整量、建议目标干体重、调整理由。所有治疗调整建议均须医生复核。\n"));
+        contract.append("Use a final ```json block with these exact compatibility keys; localize narrative values, keep Yes/No as protocol values, and use null when a value cannot be determined. Never invent missing measurements or a treatment recommendation.\n");
+        contract.append("{\"YesNoadjustment needed\":null,\"recommendationadjustment amount\":null,\"recommendationtargetDry Weight\":null,\"adjustment rationale\":null,\"Weightcontrol assessment\":null,\"fluid removal assessment\":null,\"Blood Pressurecontrol assessment\":null,\"primaryRiskNotice\":null,\"dietrecommendation\":null,\"fluid intake controlrecommendation\":null,\"exerciserecommendation\":null,\"medicationrecommendation\":null,\"follow-upfollow-up examinationrecommendation\":null,\"complicationRiskassessment\":null,\"medicationDetailedrecommendation\":null,\"Blood Pressuretrend summary\":null}\n");
+        return contract.toString();
+    }
+
+    private String analysisSystemPrompt(boolean structured) {
+        String instruction = "You are a family-health record analysis assistant. Use only the supplied records, identify uncertainty, and do not treat a summary as a diagnosis or an authorized prescription change. Preserve original names, quoted clinical text, units and required medical acronyms. "
+                + text("Write all narrative headings, explanations and JSON text values in English. ", "所有面向读者的标题、说明及 JSON 文本值必须使用简体中文。 ");
+        return instruction + (structured ? analysisOutputContract() : text(
+                "Follow the requested general-health sections. Do not add a dialysis-only conclusion or a JSON block unless requested.",
+                "按请求的家庭健康分析结构作答；不要额外添加仅适用于透析的结论或 JSON 数据块。"));
+    }
+
     private String callDeepSeek(String prompt) {
+        return callDeepSeek(prompt, true);
+    }
+
+    private String callDeepSeek(String prompt, boolean structured) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -532,13 +525,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
             Map<String, Object> systemMsg = new HashMap<>();
             systemMsg.put("role", "system");
-            systemMsg.put("content",
-                    "你是肾内科透析管理助手。回答必须使用中文，并且仅包含一次固定面板“【干体重调整结论】”，"
-                            + "面板必须严格包含四行：是否需要调整、建议调整量、建议目标干体重、调整理由。"
-                            + "建议调整量必须是带符号的具体千克数，例如 +0.5 kg、-0.3 kg 或 0 kg。"
-                            + "最后必须输出一个 ```json 代码块，包含这些字段："
-                            + "是否需要调整、建议调整量、建议目标干体重、调整理由、体重控制评估、液体清除评估、血压控制评估、主要风险提示、"
-                            + "饮食建议、液体摄入控制建议、运动建议、用药建议、复诊复查建议、并发症风险评估、详细用药建议、血压趋势摘要。");
+            systemMsg.put("content", analysisSystemPrompt(structured));
 
             Map<String, Object> userMsg = new HashMap<>();
             userMsg.put("role", "user");
@@ -566,36 +553,21 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             if (json.containsKey("choices") && !json.getJSONArray("choices").isEmpty()) {
                 String content = json.getJSONArray("choices").getJSONObject(0)
                         .getJSONObject("message").getString("content");
-                return ensureDryWeightConclusion(content);
+                return structured ? ensureDryWeightConclusion(content) : content;
             }
-            return "AI 分析失败，未返回有效结果";
+            return text("AI analysis did not return a valid result. Please try again.", "AI 分析未返回有效结果，请重试。");
         } catch (Exception e) {
-            return "AI 分析调用失败：" + e.getMessage();
+            return text("AI analysis could not be completed. Check the service configuration and try again.", "AI 分析调用失败，请检查服务配置后重试。");
         }
     }
 
-    /**
-     * ifmodelnot outputfixedsetpanelblock, trackaddNotice
-     */
+    /** Never turn missing structured output into a clinical recommendation. */
     private String ensureDryWeightConclusion(String content) {
-        if (content == null) {
-            return "";
-        }
-        if (content.contains("【干体重调整结论】")) {
-            return content;
-        }
-        return content + "\n\n【干体重调整结论】\n"
-                + "是否需要调整：需结合临床复核\n"
-                + "建议调整量：0 kg（维持不变）\n"
-                + "建议目标干体重：请参考干体重管理页面的最新设置\n"
-                + "调整理由：AI 未返回结构化结论，请重新分析或人工评估。\n"
-                + "\n```json\n"
-                + "{\n"
-                + "  \"是否需要调整\": \"否\",\n"
-                + "  \"建议调整量\": \"0 kg\",\n"
-                + "  \"建议目标干体重\": \"请参考干体重管理页面的最新设置\",\n"
-                + "  \"调整理由\": \"AI 未返回结构化结论，请重新分析或人工评估\"\n"
-                + "}\n"
-                + "```\n";
+        if (content == null) return "";
+        if (content.contains("【Dry weight adjustment conclusion】") || content.contains("【干体重调整结论】")
+                || content.contains("【Dry Weightadjustment conclusion】")) return content;
+        return content + text(
+                "\n\n【Dry weight adjustment conclusion】\nA structured conclusion is unavailable; clinician review is required. No adjustment amount or target weight has been established.\n",
+                "\n\n【干体重调整结论】\nAI 未返回结构化结论，需要人工复核。尚未确定调整量或目标干体重。\n");
     }
 }

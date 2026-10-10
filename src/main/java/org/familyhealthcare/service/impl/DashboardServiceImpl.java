@@ -22,6 +22,8 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import static org.familyhealthcare.util.ExportLocalization.text;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -221,24 +223,24 @@ public class DashboardServiceImpl implements DashboardService {
         vo.setOver5pctCountMonth(over5);
         vo.setBpAbnormalCountMonth(bpAbnormal);
         vo.setLatestDialysisStatus(recentDialysis == null || recentDialysis.isEmpty()
-                ? "NoneDialysis Records"
+                ? text("No dialysis records", "暂无透析记录")
                 : dehydrationText(recentDialysis.get(0).getDehydrationStatus()));
 
         List<String> highlights = new ArrayList<>();
         if (totalDehydration > 0) {
-            highlights.add("This MonthUltrafiltration on targetrate " + matchRate + "%");
+            highlights.add(text("Ultrafiltration on-target rate this month: " + matchRate + "%", "本月超滤达标率：" + matchRate + "%"));
         }
         if (over5 > 0) {
-            highlights.add("This Month " + over5 + " timesweight gain exceedspastDry Weight 5%");
+            highlights.add(text("Weight gain exceeded 5% of dry weight " + over5 + " times this month", "本月 " + over5 + " 次增重超过干体重的 5%"));
         }
         if (bpAbnormal > 0) {
-            highlights.add("This Month " + bpAbnormal + " timesBlood Pressurenot in targetrangebetween");
+            highlights.add(text("Blood pressure was outside the target range " + bpAbnormal + " times this month", "本月 " + bpAbnormal + " 次血压超出目标范围"));
         }
         if (vo.getAbnormalItemCount() != null && vo.getAbnormalItemCount() > 0) {
-            highlights.add("tiredcount " + vo.getAbnormalItemCount() + " itemExaminationAbnormalneedattention");
+            highlights.add(text(vo.getAbnormalItemCount() + " abnormal test results need attention", "累计 " + vo.getAbnormalItemCount() + " 项检查结果异常需要关注"));
         }
         if (highlights.isEmpty()) {
-            highlights.add("recent periodcoreindicatorstable, keep it uprecordrhythm");
+            highlights.add(text("Recent core indicators are stable. Keep recording regularly.", "近期核心指标较平稳，请继续规律记录。"));
         }
         vo.setHealthHighlights(highlights);
 
@@ -257,13 +259,13 @@ public class DashboardServiceImpl implements DashboardService {
 
         if (riskScore >= 4) {
             vo.setHealthRiskLevel("HIGH");
-            vo.setHealthRiskLabel("needneedheavypointattention");
+            vo.setHealthRiskLabel(text("Needs close attention", "需要重点关注"));
         } else if (riskScore >= 2) {
             vo.setHealthRiskLevel("MEDIUM");
-            vo.setHealthRiskLabel("storein variation");
+            vo.setHealthRiskLabel(text("Some variation", "存在波动"));
         } else {
             vo.setHealthRiskLevel("LOW");
-            vo.setHealthRiskLabel("wholebodystable");
+            vo.setHealthRiskLabel(text("Stable overall", "整体平稳"));
         }
     }
 
@@ -294,10 +296,10 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private String dehydrationText(String status) {
-        if ("TOO_MUCH".equals(status)) return "Excessive ultrafiltration";
-        if ("INSUFFICIENT".equals(status)) return "Insufficient ultrafiltration";
-        if ("MATCH".equals(status)) return "Ultrafiltration on target";
-        return "Statuspendingdetermine";
+        if ("TOO_MUCH".equals(status)) return text("Excessive ultrafiltration", "超滤过量");
+        if ("INSUFFICIENT".equals(status)) return text("Insufficient ultrafiltration", "超滤不足");
+        if ("MATCH".equals(status)) return text("Ultrafiltration on target", "超滤达标");
+        return text("Status not determined", "状态待判定");
     }
 
     private List<Map<String, Object>> buildMonthlyTrend(Long userId, Long patientId) {

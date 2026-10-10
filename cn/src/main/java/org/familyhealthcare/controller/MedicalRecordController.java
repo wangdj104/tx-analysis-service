@@ -186,7 +186,7 @@ public class MedicalRecordController {
                         JSON.toJSONString(params.get("attachments")), MedicalRecordAttachment.class);
             }
             int count = medicalRecordService.saveRecordsBatch(records, itemsList, attachments);
-            return Result.ok("Saved " + count + " records");
+            return Result.okMessage("Saved " + count + " records");
         } catch (Exception e) {
             return Result.error("Failed to save: " + e.getMessage());
         }
@@ -202,7 +202,7 @@ public class MedicalRecordController {
             record.setAttachments(parseAttachments(params.get("attachments")));
 
             boolean success = medicalRecordService.saveRecordWithItems(record, items);
-            return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
+            return success ? Result.okMessage("Saved successfully") : Result.error("Failed to save");
         } catch (Exception e) {
             return Result.error("Failed to save: " + e.getMessage());
         }
@@ -218,7 +218,7 @@ public class MedicalRecordController {
             record.setAttachments(parseAttachments(params.get("attachments")));
 
             boolean success = medicalRecordService.updateRecordWithItems(record, items);
-            return success ? Result.ok("Updated successfully") : Result.error("Update failed");
+            return success ? Result.okMessage("Updated successfully") : Result.error("Update failed");
         } catch (Exception e) {
             return Result.error("Update failed: " + e.getMessage());
         }
@@ -263,14 +263,14 @@ public class MedicalRecordController {
         boolean approved = Boolean.parseBoolean(String.valueOf(params.getOrDefault("approved", false)));
         String note = params.get("note") == null ? null : String.valueOf(params.get("note"));
         boolean success = medicalRecordService.reviewRecord(id, approved, note);
-        return success ? Result.ok(approved ? "Record verified" : "Record rejected") : Result.error("The record does not exist.");
+        return success ? Result.okMessage(approved ? "Record verified" : "Record rejected") : Result.error("The record does not exist.");
     }
 
     @DeleteMapping("/delete/{id}")
     @ApiOperation("DeleteMedical Records")
     public Result<String> delete(@PathVariable Long id) {
         boolean success = medicalRecordService.deleteRecord(id);
-        return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+        return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
     }
 
     @GetMapping("/trend")

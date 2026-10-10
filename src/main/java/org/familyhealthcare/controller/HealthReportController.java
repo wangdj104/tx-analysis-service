@@ -34,7 +34,7 @@ public class HealthReportController {
             }
             byte[] content = healthReportService.generateReport(request, format);
 
-            String filename = "Health Report_" + request.getPatientId();
+            String filename = org.familyhealthcare.util.ExportLocalization.text("Health Report_", "健康报告_") + request.getPatientId();
             HttpHeaders headers = new HttpHeaders();
             if ("pdf".equalsIgnoreCase(format)) {
                 filename += ".pdf";

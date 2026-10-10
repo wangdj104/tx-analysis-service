@@ -1,0 +1,240 @@
+Automated Analysistaskdoes not exist	Automated analysis task does not exist.	自动分析任务不存在。
+BOOTSTRAP_ADMIN_PASSWORD to fewneedneed 12 character	BOOTSTRAP_ADMIN_PASSWORD must contain at least 12 characters.	BOOTSTRAP_ADMIN_PASSWORD 必须至少包含 12 个字符。
+Current Passwordincorrect	The current password is incorrect.	当前密码错误。
+End DatecannotmorninginStart Date	The end date must not precede the start date.	结束日期不能早于开始日期。
+Inventory and Reminderthresholdcannotfor negativecount	Stock quantities and reminder thresholds must not be negative.	库存数量和提醒阈值不能为负数。
+InventoryUnitshould and positivein run prescriptiononecause	The stock unit must match the active prescription.	库存单位必须与当前生效处方一致。
+Notificationchanneldoes not exist or does not belong tocurrentuser	The notification channel does not exist or belongs to another user.	通知渠道不存在或不属于当前用户。
+Notificationchannelformatincorrect	Invalid notification channel format.	通知渠道格式无效。
+Notificationchanneltypecannot be empty	Select a notification channel type.	请选择通知渠道类型。
+Nutrition DiaryFailed to load, Please Confirm nutrition_diary tablestructureUpdated successfully	Nutrition diary could not be loaded. Verify that the nutrition_diary table is up to date.	营养日记加载失败，请确认 nutrition_diary 表结构已完成更新。
+Permission deniedActionsthis Notificationchannel	You do not have permission to manage this notification channel.	您无权管理此通知渠道。
+Please Confirmalready based onClinicianprescriptionverifysolution	Confirm that this plan has been checked against the clinician's prescription.	请确认已根据医生处方核对该方案。
+Please fillwrite200charactertowithin title	Enter a title of no more than 200 characters.	请输入不超过 200 个字符的标题。
+Please fillwriteInventoryUnit	Enter the stock unit.	请输入库存单位。
+Please fillwriteeach Daymedication intakeTime and dosage	Enter each daily medication time and dose.	请填写每日各次服药时间和剂量。
+Please first Sign In	Please sign in first.	请先登录。
+Please first settingsInventoryUnit and initialquantity	Set the stock unit and initial quantity first.	请先设置库存单位和初始数量。
+Please to fewselectoneitemExaminationcontent	Select at least one item to analyze.	请至少选择一项分析内容。
+ReminderTimecannotlater thanappointmentTime	The reminder time must not be after the appointment.	提醒时间不能晚于预约时间。
+ReminderTimeformatshouldfor  HH:mm	Reminder time must use HH:mm.	提醒时间必须使用 HH:mm 格式。
+Reportdoes not belong tocurrentFamily Member	The report does not belong to this family member.	该报告不属于当前家庭成员。
+Restockquantitymustgreater than0	The restock quantity must be greater than zero.	补货数量必须大于零。
+SelectDialysis Date	Select a dialysis date.	请选择透析日期。
+SelectFamily Member	Select a family member.	请选择家庭成员。
+SelectRun Time	Select a valid run time.	请选择有效的运行时间。
+SelectappointmentTime	Select an appointment time.	请选择预约时间。
+SelectcurrentFamily Member Medication	Select a medication belonging to this family member.	请选择属于当前家庭成员的药品。
+SelectcurrentFamily Member appointment	Select an appointment for this family member.	请选择当前家庭成员的预约。
+Selectduplicatestarperiod	Select the repeating weekdays.	请选择重复提醒的星期。
+Selecthas valid follow-upfamily caregiver	Select an available caregiver for follow-up.	请选择有效的跟进照护者。
+SelectscheduleDate	Select a schedule date.	请选择计划日期。
+SelectsymptomoccurTime	Select when the symptoms occurred.	请选择症状发生时间。
+Start Datecannotlater thanEnd Date	The start date must not be after the end date.	开始日期不能晚于结束日期。
+Timecannotduplicate, dosagemustgreater than0	Medication times must be unique and doses must be greater than zero.	服药时间不能重复，剂量必须大于零。
+Username or Passworderror	Incorrect username or password.	用户名或密码错误。
+Usernamealready storein 	The username already exists.	用户名已存在。
+Webhook Addresscannot be empty	Enter a webhook URL.	请输入 Webhook 地址。
+Weekreferencecountexceedrange	The analysis period is outside the supported range.	分析周期超出支持范围。
+You do not have permission to ActionsRole	You do not have permission to manage this role.	您无权管理此角色。
+You do not have permission to Createuser	You do not have permission to create users.	您无权创建用户。
+You do not have permission to DeleteRole	You do not have permission to delete this role.	您无权删除此角色。
+You do not have permission to Deleteuser	You do not have permission to delete users.	您无权删除用户。
+You do not have permission to EditOtheruserinformation	You do not have permission to edit another user's information.	您无权编辑其他用户的信息。
+You do not have permission to ResetPassword	You do not have permission to reset passwords.	您无权重置密码。
+You do not have permission to assignMenu	You do not have permission to assign menus.	您无权分配菜单。
+You do not have permission to assignRole	You do not have permission to assign roles.	您无权分配角色。
+actualdosagemustgreater than0	The actual dose must be greater than zero.	实际剂量必须大于零。
+adminRole MenuPermissioncannot in pageEdit, for example needadjustPlease Manualrefreshdatabase	Administrator menu permissions cannot be edited here. Update the database configuration if changes are required.	管理员菜单权限不能在此编辑，如需调整请更新数据库配置。
+adminRolecannot Edit	The administrator role cannot be edited.	管理员角色不能编辑。
+adminRolecannot Delete	The administrator role cannot be deleted.	管理员角色不能删除。
+adminusercannot Delete	The administrator account cannot be deleted.	管理员账号不能删除。
+backupcopyformat or versionthis not receivesupport	The backup format or version is not supported.	不支持该备份格式或版本。
+backupcopyin Family Memberrelateddoes not exist	A referenced family member is missing from the backup.	备份中缺少所引用的家庭成员。
+backupcopymissingFamily Memberrecord	The backup contains no family member records.	备份中没有家庭成员记录。
+backupcopymissingFamily Memberrelated	The backup is missing a required family member reference.	备份中缺少必需的家庭成员关联。
+batchFailed to save	Failed to save the batch.	批量保存失败。
+batchSaved successfully	Batch saved successfully.	批量保存成功。
+cannotchangerecordbelongFamily Member or type	The family member and record type cannot be changed.	不能更改记录所属家庭成员或类型。
+cannotwill Remindermoveto OtherFamily Member	A reminder cannot be moved to another family member.	不能将提醒移至其他家庭成员。
+decompressafter  backupcopyexceed200MB, Please by Family Membersplitbackupcopy	The expanded backup exceeds 200 MB. Split the backup by family member.	解压后的备份超过 200 MB，请按家庭成员拆分备份。
+down timesfollow-up examinationshouldlater thanthis timesappointment	The next follow-up must be after this appointment.	下次复诊必须晚于本次预约。
+duplicateWeekshouldfor weekoneto weekDay	Repeating weekdays must be Monday through Sunday (1 to 7).	重复提醒的星期必须为周一至周日（1 至 7）。
+not Yeshas valid familyhealthbackupcopyfile	This is not a valid family health backup file.	这不是有效的家庭健康备份文件。
+onlymanagementmembercan ViewauditDaylog	Only administrators can view the audit log.	只有管理员可以查看审计日志。
+onlymanagementmembercan maintainMenu	Only administrators can manage menus.	只有管理员可以管理菜单。
+prescriptionActionsNonevalid	Invalid prescription action.	处方操作无效。
+prescriptionchangePlease Addversionthis , keeporiginalsolution	Create a new prescription version to preserve the original plan.	请新增处方版本，并保留原方案。
+prescriptiondosageUnitmust and MedicationInventoryUnitonecause, Please first verifyInventory	The prescription dose unit must match the medication stock unit. Verify stock settings first.	处方剂量单位必须与药品库存单位一致，请先核对库存设置。
+prescriptionhistorycannotDelete, Please Cancelnot take effectversionthis  or Addstop medicationprescription	Prescription history cannot be deleted. Cancel an inactive version or create a stop-medication order.	处方历史不能删除，请取消尚未生效的版本或新增停药医嘱。
+recordtypeNonevalid	Invalid record type.	记录类型无效。
+responsible forpersonmustYesthis Family Member carecompletemember	The assignee must belong to this family member's care team.	负责人必须是当前家庭成员的照护团队成员。
+runWeekNonevalid	Invalid run frequency.	运行频率无效。
+scheduleInvalid status.	Invalid schedule status.	计划状态无效。
+scheduleTimeformatincorrect	Invalid schedule time format.	计划时间格式无效。
+scheduledoes not exist or does not belong tocurrentFamily Member	The schedule does not exist or belongs to another family member.	计划不存在或不属于当前家庭成员。
+symptomlevelshouldin 0to 10between	Symptom severity must be between 0 and 10.	症状程度必须在 0 到 10 之间。
+take effectprescriptionPlease throughAddchange or stop medicationprescriptionprocess	Change an active prescription by creating a new version or a stop-medication order.	请通过新增版本或停药医嘱调整已生效处方。
+this Datealready has schedule, Please Editoriginalschedule	A schedule already exists for this date. Edit the existing schedule.	该日期已有计划，请编辑原计划。
+this WeekNoneDialysisdata	There are no dialysis records for this period.	此周期没有透析记录。
+Confirmsuccessful	Confirmed successfully.	确认成功。
+resolvesuccessful	Resolved successfully.	处理成功。
+alertExaminationcomplete	Alert check completed.	提醒检查完成。
+Menuassignsuccessful	Menus assigned successfully.	菜单分配成功。
+PasswordUpdated successfully, Please sign in again	Password updated successfully. Please sign in again.	密码更新成功，请重新登录。
+A resolved alert cannot be reopened. Run a new assessment instead.	A resolved alert cannot be reopened. Run a new assessment instead.	已处理的提醒不能重新开启，请发起新的评估。
+An assessment cannot be moved to another patient.	An assessment cannot be moved to another patient.	不能将评估移至其他患者。
+Analysis draft does not exist.	Analysis draft does not exist.	分析草稿不存在。
+Assessment schedule not found.	Assessment schedule not found.	评估计划不存在。
+Blood glucose is required.	Blood glucose is required.	请填写血糖数值。
+Blood glucose must be greater than zero.	Blood glucose must be greater than zero.	血糖数值必须大于零。
+Choose a valid schedule date range.	Choose a valid schedule date range.	请选择有效的计划日期范围。
+Dialysis care is not enabled for this patient.	Dialysis care is not enabled for this patient.	当前患者尚未启用透析照护。
+Dialysis time must use HH:mm.	Dialysis time must use HH:mm.	透析时间必须使用 HH:mm 格式。
+Doctor access is required.	Doctor access is required.	此操作需要医生权限。
+Document the action taken before resolving an alert.	Document the action taken before resolving an alert.	处理提醒前，请记录已采取的措施。
+Emergency event not found.	Emergency event not found.	紧急事件不存在。
+Enter blood pressure or blood glucose.	Enter blood pressure or blood glucose.	请填写血压或血糖。
+Enter both systolic and diastolic blood pressure.	Enter both systolic and diastolic blood pressure.	请同时填写收缩压和舒张压。
+Invalid alert status.	Invalid alert status.	提醒状态无效。
+Invalid note visibility.	Invalid note visibility.	笔记可见性设置无效。
+Invalid review decision.	Invalid review decision.	复核决定无效。
+Invalid source selector.	Invalid source selector.	来源选择无效。
+Kt/V must be between 0 and 10.	Kt/V must be between 0 and 10.	Kt/V 必须在 0 到 10 之间。
+Logo must be a local path, HTTPS URL, or supported image data URL.	Logo must be a local path, HTTPS URL, or supported image data URL.	标志必须使用本地路径、HTTPS 地址或支持的图片数据地址。
+Measurement not found.	Measurement not found.	测量记录不存在。
+Notification acknowledgement was unavailable.	Notification acknowledgement was unavailable.	未收到通知接收确认。
+Only a booked appointment can be rescheduled.	Only a booked appointment can be rescheduled.	只能改期已预约的就诊。
+Only administrators can assign doctors.	Only administrators can assign doctors.	只有管理员可以分配医生。
+Only administrators can change platform branding.	Only administrators can change platform branding.	只有管理员可以更改平台品牌设置。
+Only administrators can perform this action.	Only administrators can perform this action.	只有管理员可以执行此操作。
+Only the patient owner or an administrator can assign specialty roles.	Only the patient owner or an administrator can assign specialty roles.	只有患者档案所有者或管理员可以分配专科角色。
+Only the record owner can manage caregivers.	Only the record owner can manage caregivers.	只有档案所有者可以管理照护者。
+Organization name must not exceed 120 characters.	Organization name must not exceed 120 characters.	机构名称不能超过 120 个字符。
+Ownership text is required and must not exceed 240 characters.	Ownership text is required and must not exceed 240 characters.	请填写不超过 240 个字符的归属说明。
+Page background must be a six-digit hex color.	Page background must be a six-digit hex color.	页面背景必须使用六位十六进制颜色值。
+Password must be 10 to 128 characters long	Password must be 10 to 128 characters long	密码长度必须为 10 至 128 个字符。
+Password must contain letters, numbers, and special characters	Password must contain letters, numbers, and special characters	密码必须包含字母、数字和特殊字符。
+Platform name is required and must not exceed 80 characters.	Platform name is required and must not exceed 80 characters.	请填写不超过 80 个字符的平台名称。
+Preview no more than 93 days at a time.	Preview no more than 93 days at a time.	每次最多预览 93 天。
+Record date is required.	Record date is required.	请填写记录日期。
+Select a patient.	Select a patient.	请选择患者。
+Select a valid measurement type.	Select a valid measurement type.	请选择有效的测量类型。
+Select at least one confirmed dialysis weekday.	Select at least one confirmed dialysis weekday.	请至少选择一个已确认的透析星期。
+Select valid specialty roles.	Select valid specialty roles.	请选择有效的专科角色。
+Session duration must be between 30 and 1440 minutes.	Session duration must be between 30 and 1440 minutes.	单次透析时长必须在 30 到 1440 分钟之间。
+Specialty roles belong to patient records, not user accounts.	Specialty roles belong to patient records, not user accounts.	专科角色应分配给患者档案，而非用户账号。
+Systolic and diastolic blood pressure are required.	Systolic and diastolic blood pressure are required.	请填写收缩压和舒张压。
+The family member record does not exist.	The family member record does not exist.	家庭成员档案不存在。
+The invitation code is invalid, expired, or already used.	The invitation code is invalid, expired, or already used.	邀请码无效、已过期或已使用。
+The review record does not exist or has no patient.	The review record does not exist or has no patient.	复核记录不存在或未关联患者。
+This analysis draft has already been reviewed.	This analysis draft has already been reviewed.	该分析草稿已完成审核。
+This patient is not assigned to you.	This patient is not assigned to you.	当前患者尚未分配给您。
+This status is reserved for collaborative care plans.	This status is reserved for collaborative care plans.	此状态仅用于协作照护计划。
+URR must be between 0 and 100 percent.	URR must be between 0 and 100 percent.	URR 必须在 0% 到 100% 之间。
+Unsupported medical-record source type.	Unsupported medical-record source type.	不支持此医疗记录来源类型。
+Unsupported metric type.	Unsupported metric type.	不支持此指标类型。
+Unsupported review source.	Unsupported review source.	不支持此复核来源。
+You are not signed in. Please sign in first.	You are not signed in. Please sign in first.	您尚未登录，请先登录。
+Your session has expired. Please sign in again.	Your session has expired. Please sign in again.	登录已过期，请重新登录。
+The account does not exist or is disabled.	The account does not exist or is disabled.	账号不存在或已停用。
+Access denied to source record.	Access denied to source record.	您无权访问原始记录。
+This grant is read-only.	This grant is read-only.	此授权仅允许查看。
+This module is outside the authorized visibility scope.	This module is outside the authorized visibility scope.	此模块不在已授权的可见范围内。
+Nurse module scope must explicitly include CARE_PLAN.	Nurse module scope must explicitly include CARE_PLAN.	护理模块范围必须明确包含 CARE_PLAN。
+Only doctors can receive doctor access.	Only doctors can receive doctor access.	只有医生可以获得医生访问权限。
+Only nurses can receive nurse access.	Only nurses can receive nurse access.	只有护理人员可以获得护理访问权限。
+The draft was saved, but no enabled notification channel accepted the message.	The draft was saved, but no enabled notification channel accepted the message.	草稿已保存，但没有已启用的通知渠道接收该消息。
+Failed to sign the DingTalk request. Check the signing secret.	Failed to sign the DingTalk request. Check the signing secret.	钉钉请求签名失败，请检查签名密钥。
+The system could not process the request. Please try again later.	The system could not process the request. Please try again later.	系统暂时无法处理该请求，请稍后重试。
+A required parameter is missing or has an invalid format.	A required parameter is missing or has an invalid format.	必填参数缺失或格式无效。
+You do not have access to this patient or action.	You do not have access to this patient or action.	您无权访问当前患者或执行此操作。
+Invalid access grant.	Invalid access grant.	授权角色或访问级别无效。
+The record owner already has full access.	The record owner already has full access.	患者档案所有者已拥有完整访问权限，无需重复授权。
+The selected user does not exist or is disabled.	The selected user does not exist or is disabled.	所选用户不存在或已被停用。
+Access expiry must be in the future.	Access expiry must be in the future.	授权到期时间必须晚于当前时间。
+Only the patient or guardian owner can manage access.	Only the patient or guardian owner can manage access.	只有患者本人或档案所属监护人可以管理授权。
+Access to this module has not been authorized by the patient.	Access to this module has not been authorized by the patient.	患者尚未授权您访问此模块。
+Clinician access is required.	Clinician access is required.	此操作需要医生权限。
+You can only manage your own schedule.	You can only manage your own schedule.	您只能管理自己的医生排班。
+End time must be after start time.	End time must be after start time.	结束时间必须晚于开始时间。
+The slot length must fit inside the clinician availability.	The slot length must fit inside the clinician availability.	预约时段长度不能超出医生排班范围。
+A valid appointment time is required.	A valid appointment time is required.	请填写有效的预约开始和结束时间。
+Follow-up interval must be between 0 and 3650 days.	Follow-up interval must be between 0 and 3650 days.	复诊周期必须在 0 到 3650 天之间。
+The selected clinician availability is no longer available.	The selected clinician availability is no longer available.	所选医生排班已不可预约，请重新选择。
+The appointment must fit inside the selected clinician availability.	The appointment must fit inside the selected clinician availability.	预约起止时间必须处于所选医生的排班范围内。
+The clinician time slot is already occupied.	The clinician time slot is already occupied.	医生的这个时段已被预约，请选择其他时段。
+Appointment not found.	Appointment not found.	预约记录不存在。
+Only a booked appointment can be cancelled.	Only a booked appointment can be cancelled.	只能取消已预约的就诊。
+Only a booked appointment can be completed.	Only a booked appointment can be completed.	只能将已预约的就诊标记为完成。
+Only the selected clinician can complete this appointment.	Only the selected clinician can complete this appointment.	仅本次预约医生可完成就诊。
+Appointment not found for this patient.	Appointment not found for this patient.	当前患者不存在此预约记录。
+Enter a diagnosis or treatment summary.	Enter a diagnosis or treatment summary.	请填写诊断或治疗小结。
+Visit record not found.	Visit record not found.	就诊记录不存在。
+Visit record not found for this patient.	Visit record not found for this patient.	当前患者不存在此就诊记录。
+Add at least one prescription item.	Add at least one prescription item.	请至少添加一项处方药品。
+Invalid prescription item.	Invalid prescription item.	处方药品信息无效。
+Prescription duration must be between 1 and 3650 days.	Prescription duration must be between 1 and 3650 days.	用药疗程必须在 1 到 3650 天之间。
+Invalid rehabilitation record type.	Invalid rehabilitation record type.	康复记录类型无效。
+Treatment plan not found for this patient.	Treatment plan not found for this patient.	当前患者不存在此治疗计划。
+Completion must be between 0 and 100.	Completion must be between 0 and 100.	完成度必须在 0 到 100 之间。
+Unsupported specialty record type.	Unsupported specialty record type.	不支持所选专项健康记录类型。
+Assessment interval must be between 1 and 3650 days.	Assessment interval must be between 1 and 3650 days.	量表推送间隔必须在 1 到 3650 天之间。
+You can only manage your own groups.	You can only manage your own groups.	您只能管理自己创建的患者分组。
+Group access denied.	Group access denied.	您无权访问此患者分组。
+The end date must not precede the start date.	The end date must not precede the start date.	结束日期不能早于开始日期。
+Patient not found.	Patient not found.	患者不存在。
+Measurement value is required.	Measurement value is required.	请填写指标数值。
+Blood pressure is outside the accepted input range.	Blood pressure is outside the accepted input range.	血压数值超出允许录入范围，请核对后重试。
+SpO2 must be between 0 and 100.	SpO2 must be between 0 and 100.	血氧饱和度必须在 0 到 100 之间。
+The record was not created.	The record was not created.	记录创建失败，请重试。
+Enter a valid date and time.	Enter a valid date and time.	请输入有效的日期和时间。
+Enter a valid date.	Enter a valid date.	请输入有效的日期。
+Annotation is required.	Annotation is required.	请填写医生标注内容。
+Permission denied	Permission denied	没有执行此操作的权限
+Access denied	Access denied	无权访问此功能
+Test message sent. Check the receiving channel.	Test message sent. Check the receiving channel.	测试消息已发送，请在接收端查看。
+Test failed. Check the webhook address, receiver, and network.	Test failed. Check the webhook address, receiver, and network.	测试发送失败，请检查 Webhook 地址、接收端和网络。
+Select an active doctor for the consultation.	Select an active doctor for the consultation.	请选择当前可接诊的医生。
+Only invited consultation participants can send messages or join calls.	Only invited consultation participants can send messages or join calls.	只有本次问诊中受邀的参与者可以发送消息或加入通话。
+Only the patient, initiating caregiver, or selected doctor can close this consultation.	Only the patient, initiating caregiver, or selected doctor can close this consultation.	只有患者、发起问诊的照护者或接诊医生可以结束本次问诊。
+Only a doctor can provide referral advice.	Only a doctor can provide referral advice.	转科建议只能由医生填写。
+The attachment does not belong to this patient.	The attachment does not belong to this patient.	该附件不属于本次问诊的患者。
+Select a patient medical record to attach.	Select a patient medical record to attach.	请选择要共享的患者医疗记录。
+The shared attachment is not available. Ask the sender to upload it again.	The shared attachment is not available. Ask the sender to upload it again.	共享附件暂时无法读取，请联系发送者重新上传。
+Signal target is not another consultation participant.	Signal target is not another consultation participant.	通话对象必须是本次问诊的其他参与者。
+The call signal is too large.	The call signal is too large.	通话连接数据过大，请重新加入通话。
+Invalid consultation status.	Invalid consultation status.	问诊状态无效。
+Invalid family visibility.	Invalid family visibility.	家属可见性设置无效。
+Invalid consultation mode.	Invalid consultation mode.	问诊方式无效。
+Unsupported consultation mode.	Unsupported consultation mode.	不支持所选问诊方式。
+Invalid signal type.	Invalid signal type.	通话连接数据类型无效。
+This consultation is private and is not visible to family caregivers.	This consultation is private and is not visible to family caregivers.	本次问诊为私密问诊，家属无法查看。
+Invalid message type.	Invalid message type.	消息类型无效。
+Consultation is closed.	Consultation is closed.	本次问诊已结束，无法继续发送消息或加入通话。
+Consultation not found.	Consultation not found.	问诊记录不存在。
+Authentication is required.	Authentication is required.	请先登录后再进行此操作。
+Unsupported assessment scale.	Unsupported assessment scale.	不支持所选评估量表。
+Blood glucose unit must be mmol/L or mg/dL.	Blood glucose unit must be mmol/L or mg/dL.	血糖单位必须为 mmol/L 或 mg/dL。
+Assessment answers must be an array of item scores.	Assessment answers must be an array of item scores.	请按题目顺序填写量表各题得分。
+Assessment item scores must be whole numbers.	Assessment item scores must be whole numbers.	量表各题得分必须是整数。
+Invalid request parameter.	Invalid request parameter.	请求参数无效。
+The record does not exist.	The record does not exist.	记录不存在。
+The patient does not exist.	The patient does not exist.	患者不存在。
+The alert does not exist.	The alert does not exist.	提醒不存在。
+Confirm whether both active entries are intended.	Confirm whether both active entries are intended.	请确认这两条启用记录是否均为预期医嘱。
+Do not change treatment in the app; contact the prescribing clinician or pharmacist promptly.	Do not change treatment in the app; contact the prescribing clinician or pharmacist promptly.	请勿在平台内自行变更治疗方案，应尽快联系开方医生或药师。
+NSAIDs may be unsuitable in advanced kidney disease; verify the prescriber plan.	NSAIDs may be unsuitable in advanced kidney disease; verify the prescriber plan.	NSAIDs 可能不适合晚期肾病患者，请核实开方方案。
+Screening is decision support only. A clinician or pharmacist must confirm every medication change.	Screening is decision support only. A clinician or pharmacist must confirm every medication change.	筛查结果仅用于辅助决策，任何用药变更都必须由医生或药师确认。
+Thresholds are screening cues, not treatment targets. The dialysis team must interpret them in clinical context.	Thresholds are screening cues, not treatment targets. The dialysis team must interpret them in clinical context.	阈值仅用于风险筛查，并非治疗目标；应由透析团队结合临床情况解读。
+For emergency communication only. Verify identity, medication list, and allergies with the patient or treating team.	For emergency communication only. Verify identity, medication list, and allergies with the patient or treating team.	仅用于急救沟通。请与患者或诊疗团队核验身份、用药清单和过敏史。
+A critical reading was detected. Repeat the measurement now and contact a clinician promptly if symptoms are present.	A critical reading was detected. Repeat the measurement now and contact a clinician promptly if symptoms are present.	存在严重异常，请立即复测；如伴随明显不适，请按医嘱联系医生或及时就医。
+No recent blood pressure record is available. Consider taking one resting measurement.	No recent blood pressure record is available. Consider taking one resting measurement.	暂无近期血压记录，建议在静息状态下测量一次。
+The latest blood-pressure reading is outside the usual range. Rest, repeat the measurement, and continue recording results.	The latest blood-pressure reading is outside the usual range. Rest, repeat the measurement, and continue recording results.	最近血压超出常用范围，建议休息后复测并持续记录。
+No recent blood glucose record is available. Add one if it is part of the care plan.	No recent blood glucose record is available. Add one if it is part of the care plan.	暂无近期血糖记录；如照护计划包含血糖监测，请补充一次。
+Monitoring coverage is limited. Regular entries will make trend assessments more reliable.	Monitoring coverage is limited. Regular entries will make trend assessments more reliable.	当前监测数据覆盖不足，持续记录后趋势判断会更可靠。
+No urgent items are present. Continue recording measurements, medications, and follow-up visits as planned.	No urgent items are present. Continue recording measurements, medications, and follow-up visits as planned.	当前没有紧急事项，请继续按计划记录、用药和复查。
+Average interdialytic weight gain is above 4% of target dry weight.	Average interdialytic weight gain is above 4% of target dry weight.	平均透析间期体重增幅超过目标干体重的 4%。
+Average ultrafiltration rate is above 13 mL/kg/hour.	Average ultrafiltration rate is above 13 mL/kg/hour.	平均超滤率超过 13 mL/kg/小时。
+Average recorded Kt/V is below 1.2.	Average recorded Kt/V is below 1.2.	已记录的平均 Kt/V 低于 1.2。
+Average recorded URR is below 65%.	Average recorded URR is below 65%.	已记录的平均 URR 低于 65%。

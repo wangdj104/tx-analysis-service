@@ -13,6 +13,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.familyhealthcare.util.ExportLocalization.text;
+
 import java.math.BigDecimal;
 import java.time.*;
 import java.time.format.DateTimeParseException;
@@ -35,11 +37,11 @@ public class ClinicalImportService {
         if (bundleObject instanceof Map) parseFhirBundle(castMap(bundleObject), parsed, warnings);
         Object readingsObject = payload.get("readings");
         if (readingsObject instanceof List) parseDeviceReadings(castList(readingsObject), parsed, warnings);
-        if (parsed.isEmpty() && warnings.isEmpty()) warnings.add("No supported observations were found. Provide a FHIR Bundle or device readings.");
+        if (parsed.isEmpty() && warnings.isEmpty()) warnings.add(text("No supported observations were found. Provide a FHIR Bundle or device readings.", "未找到支持的观测数据，请提供 FHIR Bundle 或设备读数。"));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("items", parsed); out.put("warnings", warnings); out.put("itemCount", parsed.size());
         out.put("requiresConfirmation", true);
-        out.put("supported", Arrays.asList("FHIR Observation", "blood pressure", "blood glucose", "laboratory value", "device reading JSON"));
+        out.put("supported", Arrays.asList("FHIR Observation", text("blood pressure", "血压"), text("blood glucose", "血糖"), text("laboratory value", "化验结果"), text("device reading JSON", "设备读数 JSON")));
         return out;
     }
 
@@ -62,16 +64,16 @@ public class ClinicalImportService {
                     row.setSystolicBp(integer(item.get("systolic"))); row.setDiastolicBp(integer(item.get("diastolic")));
                     row.setBloodGlucose(decimal(item.get("glucose"))); row.setBgUnit(string(item.get("unit")));
                     row.setSourceType(String.valueOf(item.get("sourceType"))); row.setSourceExternalId(externalId);
-                    row.setVerificationStatus("REVIEW_REQUIRED"); row.setRemark("Imported data; verify against the source device or report.");
+                    row.setVerificationStatus("REVIEW_REQUIRED"); row.setRemark(text("Imported data; verify against the source device or report.", "导入数据，请与原始设备或报告核对。"));
                     vitalService.saveOwned(row); created++;
                 } else if ("LAB".equals(kind)) {
                     if (existsMedicalRecord(patientId, String.valueOf(item.get("sourceType")), externalId)) { skipped++; continue; }
                     MedicalRecord record = new MedicalRecord();
                     record.setPatientId(patientId); record.setPatientName(patient.getName());
                     record.setRecordDate(LocalDate.parse(String.valueOf(item.get("date")))); record.setRecordType("OTHER");
-                    record.setHospitalName(string(item.get("organization")) == null ? "Imported clinical data" : string(item.get("organization")));
+                    record.setHospitalName(string(item.get("organization")) == null ? text("Imported clinical data", "导入的临床数据") : string(item.get("organization")));
                     record.setSourceType(String.valueOf(item.get("sourceType"))); record.setSourceExternalId(externalId);
-                    record.setVerificationStatus("REVIEW_REQUIRED"); record.setRemark("Imported data; verify before clinical use.");
+                    record.setVerificationStatus("REVIEW_REQUIRED"); record.setRemark(text("Imported data; verify before clinical use.", "导入数据，临床使用前请核验。"));
                     MedicalRecordItem detail = new MedicalRecordItem();
                     detail.setItemCode(string(item.get("code"))); detail.setItemName(String.valueOf(item.get("display")));
                     detail.setResultValue(String.valueOf(item.get("value"))); detail.setUnit(string(item.get("unit")));
@@ -80,13 +82,13 @@ public class ClinicalImportService {
                 }
             } catch (Exception e) {
                 errors++;
-                messages.add(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                messages.add(org.familyhealthcare.common.MessageLocalizer.localize(e.getMessage() == null ? "The system could not process the request. Please try again later." : e.getMessage()));
             }
         }
         String source = payload.get("bundle") instanceof Map ? "FHIR" : "DEVICE";
         jdbc.update("INSERT INTO clinical_import_batch(user_id,patient_id,source_type,status,item_count,error_count,summary) VALUES(?,?,?,?,?,?,?)",
                 scope.requireUserId(), patientId, source, errors == 0 ? "COMPLETED" : "COMPLETED_WITH_ERRORS", created, errors,
-                "Created " + created + ", skipped duplicates " + skipped + (messages.isEmpty() ? "" : ", first error: " + messages.get(0)));
+                text("Created ", "已创建 ") + created + text(", skipped duplicates ", "，跳过重复记录 ") + skipped + (messages.isEmpty() ? "" : text(", first error: ", "，首条错误：") + messages.get(0)));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("created", created); out.put("skipped", skipped); out.put("errors", errors); out.put("messages", messages);
         out.put("requiresConfirmation", false); out.put("verificationStatus", "REVIEW_REQUIRED");
@@ -95,7 +97,7 @@ public class ClinicalImportService {
 
     private void parseFhirBundle(Map<String, Object> bundle, List<Map<String, Object>> out, List<String> warnings) {
         Object resourceType = bundle.get("resourceType");
-        if (!"Bundle".equals(resourceType)) { warnings.add("The FHIR payload is not a Bundle."); return; }
+        if (!"Bundle".equals(resourceType)) { warnings.add(text("The FHIR payload is not a Bundle.", "FHIR 数据不是 Bundle 资源。")); return; }
         for (Object entryObject : list(bundle.get("entry"))) {
             Map<String, Object> entry = castMap(entryObject);
             Map<String, Object> resource = castMap(entry.get("resource"));
@@ -120,13 +122,13 @@ public class ClinicalImportService {
         boolean bloodPressure = "85354-9".equals(observationCode) || components.containsKey("8480-6") || components.containsKey("8462-4");
         if (bloodPressure) {
             Map<String, Object> sys = castMap(components.get("8480-6")), dia = castMap(components.get("8462-4"));
-            if (sys.isEmpty() || dia.isEmpty()) { warnings.add("Blood-pressure observation " + externalId + " is missing systolic or diastolic data."); return; }
+            if (sys.isEmpty() || dia.isEmpty()) { warnings.add(text("Blood-pressure observation " + externalId + " is missing systolic or diastolic data.", "血压观测记录 " + externalId + " 缺少收缩压或舒张压数据。")); return; }
             Map<String, Object> row = baseImport("VITAL", "FHIR", externalId, date);
             row.put("measureType", "BP"); row.put("systolic", integer(sys.get("value"))); row.put("diastolic", integer(dia.get("value"))); row.put("unit", "mmHg");
             out.add(row); return;
         }
         Map<String, Object> quantity = quantityValue(resource);
-        if (quantity.isEmpty() && resource.get("valueString") == null) { warnings.add("Observation " + externalId + " has no supported scalar value."); return; }
+        if (quantity.isEmpty() && resource.get("valueString") == null) { warnings.add(text("Observation " + externalId + " has no supported scalar value.", "观测记录 " + externalId + " 没有支持的标量值。")); return; }
         String normalizedDisplay = display == null ? observationCode : display;
         boolean glucose = (observationCode != null && Arrays.asList("2339-0", "2345-7", "15074-8").contains(observationCode))
                 || normalizedDisplay != null && normalizedDisplay.toLowerCase(Locale.ROOT).contains("glucose");
@@ -136,7 +138,7 @@ public class ClinicalImportService {
             out.add(row); return;
         }
         Map<String, Object> row = baseImport("LAB", "FHIR", externalId, date);
-        row.put("code", observationCode); row.put("display", normalizedDisplay == null ? "Imported observation" : normalizedDisplay);
+        row.put("code", observationCode); row.put("display", normalizedDisplay == null ? text("Imported observation", "导入的观测记录") : normalizedDisplay);
         row.put("value", quantity.isEmpty() ? resource.get("valueString") : quantity.get("value")); row.put("unit", quantity.get("unit"));
         row.put("referenceRange", referenceRange(resource)); row.put("confidence", BigDecimal.ONE);
         out.add(row);
@@ -153,10 +155,10 @@ public class ClinicalImportService {
             Integer systolic = integer(reading.get("systolic")), diastolic = integer(reading.get("diastolic"));
             BigDecimal glucose = decimal(reading.get("glucose"));
             if (systolic != null || diastolic != null) {
-                if (systolic == null || diastolic == null) { warnings.add("Device reading " + index + " needs both systolic and diastolic values."); continue; }
+                if (systolic == null || diastolic == null) { warnings.add(text("Device reading " + index + " needs both systolic and diastolic values.", "设备读数 " + index + " 必须同时包含收缩压和舒张压。")); continue; }
                 row.put("measureType", glucose == null ? "BP" : "BOTH"); row.put("systolic", systolic); row.put("diastolic", diastolic);
             } else if (glucose != null) row.put("measureType", "BG");
-            else { warnings.add("Device reading " + index + " has no supported measurement."); continue; }
+            else { warnings.add(text("Device reading " + index + " has no supported measurement.", "设备读数 " + index + " 没有支持的测量数据。")); continue; }
             row.put("glucose", glucose); row.put("unit", Optional.ofNullable(string(reading.get("unit"))).orElse("mmol/L")); out.add(row);
         }
     }
@@ -185,7 +187,7 @@ public class ClinicalImportService {
         try { LocalDateTime dt = LocalDateTime.parse(text); return new DateParts(dt.toLocalDate(), hhmm(dt.toLocalTime())); }
         catch (DateTimeParseException ignored) { }
         try { return new DateParts(LocalDate.parse(text.substring(0, Math.min(10, text.length()))), null); }
-        catch (RuntimeException e) { warnings.add("Could not parse observation date '" + text + "'; today's date was used."); return new DateParts(LocalDate.now(), null); }
+        catch (RuntimeException e) { warnings.add(text("Could not parse observation date '" + text + "'; today's date was used.", "无法解析观测日期“" + text + "”，已使用今天的日期。")); return new DateParts(LocalDate.now(), null); }
     }
 
     private String hhmm(LocalTime time) { return String.format("%02d:%02d", time.getHour(), time.getMinute()); }

@@ -51,7 +51,7 @@ public class BpSelfMonitorRecordController {
     public Result<String> update(@RequestBody BpSelfMonitorRecord record) {
         try {
             boolean success = bpSelfMonitorRecordService.updateOwned(record);
-            return success ? Result.ok("Updated successfully") : Result.error("Update failed");
+            return success ? Result.okMessage("Updated successfully") : Result.error("Update failed");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -62,7 +62,7 @@ public class BpSelfMonitorRecordController {
     public Result<String> delete(@PathVariable Long id) {
         try {
             boolean success = bpSelfMonitorRecordService.deleteOwned(id);
-            return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+            return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }

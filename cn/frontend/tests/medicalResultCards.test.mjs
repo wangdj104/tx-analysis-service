@@ -36,13 +36,13 @@ test('phone result cards keep every field labelled, preserve zero and escape ori
   assert.match(html, /&lt;Synthetic test&gt;/)
   assert.doesNotMatch(html, /<Synthetic test>/)
   for (const label of labels) assert.ok(html.includes(`<dt>${label}</dt>`), label)
-  for (const value of ['<dd>0</dd>', 'mmol/L', '0–5', 'high']) assert.ok(html.includes(value), value)
+  for (const value of ['<dd>0</dd>', 'mmol/L', '0–5', cn ? '偏高' : 'high']) assert.ok(html.includes(value), value)
 })
 
 test('all existing results and original abnormal labels remain available without new interpretation', async () => {
   const html = await render([0, -1, 1].map((isAbnormal, i) => ({ itemName: `Synthetic ${i}`, resultValue: `${i}`, unit: 'U/L', referenceRange: '0–10', isAbnormal })))
   assert.equal((html.match(/class="medical-result-card"/g) || []).length, 3)
-  for (const value of [cn ? '正常' : 'Normal', 'low', 'high']) assert.ok(html.includes(value))
+  for (const value of [cn ? '正常' : 'Normal', cn ? '偏低' : 'low', cn ? '偏高' : 'high']) assert.ok(html.includes(value))
 })
 
 test('absent and empty source records show an explicit empty state without stale results', async () => {

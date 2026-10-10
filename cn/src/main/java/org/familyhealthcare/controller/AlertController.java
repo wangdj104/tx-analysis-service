@@ -42,7 +42,7 @@ public class AlertController {
     public Result<String> saveRule(@RequestBody AlertRule rule) {
         try {
             boolean success = alertService.saveRule(rule);
-            return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
+            return success ? Result.okMessage("Saved successfully") : Result.error("Failed to save");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -53,7 +53,7 @@ public class AlertController {
     public Result<String> toggleRuleEnabled(@PathVariable Long id) {
         try {
             boolean success = alertService.toggleRuleEnabled(id);
-            return success ? Result.ok("Operation completed") : Result.error("Operation failed");
+            return success ? Result.okMessage("Operation completed") : Result.error("Operation failed");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -64,7 +64,7 @@ public class AlertController {
     public Result<String> deleteRule(@PathVariable Long id) {
         try {
             boolean success = alertService.deleteRule(id);
-            return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+            return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -89,7 +89,7 @@ public class AlertController {
     public Result<String> acknowledge(@PathVariable Long id) {
         try {
             boolean success = alertService.acknowledge(id);
-            return success ? Result.ok("Confirmsuccessful") : Result.error("Operation failed");
+            return success ? Result.okMessage("Confirmsuccessful") : Result.error("Operation failed");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -101,7 +101,7 @@ public class AlertController {
         try {
             String note = params.get("handlingNote");
             boolean success = alertService.resolve(id, note);
-            return success ? Result.ok("resolvesuccessful") : Result.error("Operation failed");
+            return success ? Result.okMessage("resolvesuccessful") : Result.error("Operation failed");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -118,7 +118,7 @@ public class AlertController {
     public Result<String> deleteRecord(@PathVariable Long id) {
         try {
             boolean success = alertService.deleteRecord(id);
-            return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+            return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -131,7 +131,7 @@ public class AlertController {
     public Result<String> checkThresholds(@PathVariable Long patientId) {
         try {
             alertService.checkThresholds(patientId);
-            return Result.ok("alertExaminationcomplete");
+            return Result.okMessage("alertExaminationcomplete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }

@@ -7,12 +7,12 @@
             <div class="left">
               <div>
                 <h1>Nutrition Assessment</h1>
-                <p class="subtitle">assessmentDialysisPatientNutritionStatus, trackSGAscore and biochemistryindicatorchangetrend</p>
+                <p class="subtitle">Assess nutrition in dialysis patients and track SGA scores and biochemical trends</p>
               </div>
             </div>
             <div class="right">
               <el-button type="primary" @click="showAddDialog">
-                <el-icon><Plus /></el-icon>Addassessment
+                <el-icon><Plus /></el-icon>Add assessment
               </el-button>
             </div>
           </div>
@@ -23,7 +23,7 @@
           <div class="toolbar">
             <div class="list-panel-title">
               <el-icon><FirstAidKit /></el-icon>
-              <span>assessmentrecord</span>
+              <span>Assessment records</span>
               <span v-if="records.length" class="list-count">{{ records.length }} items</span>
             </div>
             <el-button @click="loadData" :loading="loading">
@@ -32,26 +32,26 @@
           </div>
 
           <el-table :data="records" stripe class="app-data-table" v-loading="loading">
-            <el-table-column prop="assessmentDate" label="assessmentDate" width="108" />
-            <el-table-column label="NutritionStatus" width="110" align="center">
+            <el-table-column prop="assessmentDate" label="Assessment date" width="108" />
+            <el-table-column label="Nutrition status" width="110" align="center">
               <template #default="{ row }">
                 <el-tag :type="statusTagType(row.nutritionStatus)" size="small">{{ statusLabel(row.nutritionStatus) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="sgaGrade" label="SGAgrade" width="80" align="center">
+            <el-table-column prop="sgaGrade" label="SGA grade" width="80" align="center">
               <template #default="{ row }">
                 <el-tag :type="sgaTagType(row.sgaGrade)" size="small">{{ row.sgaGrade || '-' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="sgaScore" label="SGAscore" width="80" align="center" />
+            <el-table-column prop="sgaScore" label="SGA score" width="80" align="center" />
             <el-table-column prop="bmi" label="BMI" width="80" align="center" />
             <el-table-column prop="albumin" label="albumin" width="80">
               <template #default="{ row }">{{ row.albumin ? row.albumin + ' g/L' : '-' }}</template>
             </el-table-column>
-            <el-table-column prop="preAlbumin" label="before albumin" width="90">
+            <el-table-column prop="preAlbumin" label="Prealbumin" width="90">
               <template #default="{ row }">{{ row.preAlbumin ? row.preAlbumin + ' mg/L' : '-' }}</template>
             </el-table-column>
-            <el-table-column prop="supplementAdvice" label="add detailsrecommendation" min-width="200" show-overflow-tooltip />
+            <el-table-column prop="supplementAdvice" label="Supplement advice" min-width="200" show-overflow-tooltip />
             <el-table-column label="Actions" width="120" align="center" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="showEditDialog(row)">Edit</el-button>
@@ -66,90 +66,90 @@
     </el-main>
 
     <!-- Add/Editdialog -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'EditNutrition Assessment' : 'AddNutrition Assessment'" :width="isMobile ? '92%' : '680px'" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Edit nutrition assessment' : 'Add nutrition assessment'" :width="isMobile ? '92%' : '680px'" destroy-on-close>
       <el-form :disabled="formSaving" :model="form" label-width="110px" ref="formRef" :rules="rules">
-        <el-form-item label="assessmentDate" prop="assessmentDate">
-          <el-date-picker v-model="form.assessmentDate" type="date" placeholder="selectDate" value-format="YYYY-MM-DD" style="width: 100%" />
+        <el-form-item label="Assessment date" prop="assessmentDate">
+          <el-date-picker v-model="form.assessmentDate" type="date" placeholder="Select a date" value-format="YYYY-MM-DD" style="width: 100%" />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :xs="24" :sm="8">
-            <el-form-item label="Weight(kg)">
+            <el-form-item label="Weight (kg)">
               <el-input-number v-model="form.bodyWeight" :precision="1" :min="0" :max="300" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
-            <el-form-item label="Height(cm)">
+            <el-form-item label="Height (cm)">
               <el-input-number v-model="form.height" :precision="1" :min="0" :max="250" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
             <el-form-item label="BMI">
-              <el-input v-model="form.bmi" disabled placeholder="Automaticcalculate" />
+              <el-input v-model="form.bmi" disabled placeholder="Calculated automatically" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :xs="12" :sm="6">
-            <el-form-item label="SGAscore">
+            <el-form-item label="SGA score">
               <el-input-number v-model="form.sgaScore" :min="1" :max="7" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
-            <el-form-item label="albumin(g/L)">
+            <el-form-item label="Albumin (g/L)">
               <el-input-number v-model="form.albumin" :precision="1" :min="0" :max="100" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
-            <el-form-item label="before albumin(mg/L)">
+            <el-form-item label="Prealbumin (mg/L)">
               <el-input-number v-model="form.preAlbumin" :precision="0" :min="0" :max="500" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
-            <el-form-item label="fluidintake(ml)">
+            <el-form-item label="Fluid intake (ml)">
               <el-input-number v-model="form.fluidIntake" :min="0" :max="5000" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :xs="12" :sm="6">
-            <el-form-item label="Proteinintake(g)">
+            <el-form-item label="Protein intake (g)">
               <el-input-number v-model="form.totalProteinIntake" :precision="1" :min="0" :max="200" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
-            <el-form-item label="Caloriesintake(kcal)">
+            <el-form-item label="Calorie intake (kcal)">
               <el-input-number v-model="form.dailyCalorieIntake" :precision="0" :min="0" :max="5000" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
-            <el-form-item label="potassiumintake(mg)">
+            <el-form-item label="Potassium intake (mg)">
               <el-input-number v-model="form.dailyPotassiumIntake" :precision="0" :min="0" :max="5000" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
-            <el-form-item label="phosphorusintake(mg)">
+            <el-form-item label="Phosphorus intake (mg)">
               <el-input-number v-model="form.dailyPhosphorusIntake" :precision="0" :min="0" :max="5000" controls-position="right" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="Notes">
-          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="Notesinformation" />
+          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="Additional notes" />
         </el-form-item>
 
         <!-- pre-calculateresult -->
         <div v-if="previewResult" class="preview-result">
-          <p class="preview-title">pre-calculateresult</p>
+          <p class="preview-title">Calculation preview</p>
           <el-row :gutter="16">
             <el-col :xs="24" :sm="8">
               <span class="preview-label">BMI: </span>
               <span class="preview-value">{{ previewResult.bmi || '-' }}</span>
             </el-col>
             <el-col :xs="24" :sm="8">
-              <span class="preview-label">NutritionStatus: </span>
+              <span class="preview-label">Nutrition status: </span>
               <el-tag :type="statusTagType(previewResult.nutritionStatus)" size="small">{{ statusLabel(previewResult.nutritionStatus) }}</el-tag>
             </el-col>
             <el-col :xs="24" :sm="8">
-              <span class="preview-label">SGAgrade: </span>
+              <span class="preview-label">SGA grade: </span>
               <el-tag :type="sgaTagType(previewResult.sgaGrade)" size="small">{{ previewResult.sgaGrade || '-' }}</el-tag>
             </el-col>
           </el-row>
@@ -158,7 +158,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">Cancel</el-button>
-        <el-button type="info" @click="handlePreview" :disabled="formSaving" :loading="previewLoading">pre-calculate</el-button>
+        <el-button type="info" @click="handlePreview" :disabled="formSaving" :loading="previewLoading">Preview calculation</el-button>
         <el-button type="primary" @click="handleSave" :loading="saving">Save</el-button>
       </template>
     </el-dialog>
@@ -204,11 +204,11 @@ function emptyForm(patientId = null) {
 const form = reactive(emptyForm());
 
 const rules = {
-  assessmentDate: [{ required: true, message: 'SelectassessmentDate', trigger: 'change' }]
+  assessmentDate: [{ required: true, message: 'Select an assessment date', trigger: 'change' }]
 };
 
-const STATUS_MAP = { GOOD: 'Good', AT_RISK: 'has Risk', DEFICIENT: 'deficient' };
-const SGA_MAP = { A: 'Good', B: 'mildModerateNutritionadverse', C: 'severeNutritionadverse' };
+const STATUS_MAP = { GOOD: 'Good', AT_RISK: 'At risk', DEFICIENT: 'deficient' };
+const SGA_MAP = { A: 'Good', B: 'Mild to moderate malnutrition', C: 'Severe malnutrition' };
 
 function statusLabel(v) { return STATUS_MAP[v] || v; }
 function statusTagType(v) { return { GOOD: 'success', AT_RISK: 'warning', DEFICIENT: 'danger' }[v] || 'info'; }

@@ -123,7 +123,7 @@ test('current item names retain defaults, deduplicate stored names, and remain s
   await view.loadItemNames()
   assert.equal(view.allItemNames.value.filter(name => name === 'Synthetic Z').length, 1)
   assert.ok(view.allItemNames.value.includes('PTH'))
-  assert.deepEqual(view.allItemNames.value, [...view.allItemNames.value].sort((a, b) => a.localeCompare(b, 'zh')))
+  assert.deepEqual(view.allItemNames.value, [...view.allItemNames.value].sort((a, b) => a.localeCompare(b, 'en')))
 })
 
 function sourceSession(){const storage=new Map([['token','source-session'],['userId','7']]);globalThis.localStorage={getItem:key=>storage.get(key)};globalThis.window=new EventTarget()}

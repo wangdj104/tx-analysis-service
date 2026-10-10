@@ -4,6 +4,7 @@ import test, { beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import { ref, reactive, computed, watch, nextTick, effectScope } from 'vue';
 import * as sessions from '../src/utils/authSession.js';
+import { localizeHealthTimelineEntry } from '../src/utils/timelineText.js';
 import { localizePayload, localizeServerText } from '../src/utils/serverText.js';
 import * as navigation from '../src/utils/workspaceNavigation.js';
 import * as access from '../src/utils/workspaceAccess.js';
@@ -203,22 +204,26 @@ function setupMonitoring(getMonitoringSnapshot) {
     ElMessage: { error() {}, success() {} },
     inject: () => ref([]), watch() {},
     useCurrentPatient: () => ({ currentPatientId: ref(1), currentPatientName: ref('test') }),
-    getMonitoringSnapshot, localizeServerText
-  }, ['loadSnapshot', 'days', 'loadedDays', 'snapshot', 'loadError', 'chartOption', 'recentEvents']);
+    getMonitoringSnapshot, localizeServerText, localizeHealthTimelineEntry
+  }, ['loadSnapshot', 'days', 'loadedDays', 'snapshot', 'loadError', 'chartOption', 'recentEvents', 'todayTasks']);
 }
 
-test('Chinese response localization covers menus, timeline summaries, periods and units', () => {
-  const payload = localizePayload({
-    menuName: 'Care Journey', roleName: 'Administrator',
-    title: 'Dialysis Records',
-    summary: 'Pre-dialysis Weight 61.83 kg; Post-dialysis Weight 59.75 kg',
-    period: '2026-09 Monthly overview', unit: 'kg weight gain'
-  });
-  assert.deepEqual(payload, {
-    menuName: '健康照护全流程', roleName: '系统管理员',
-    title: '透析记录', summary: '透析前体重 61.83 kg；透析后体重 59.75 kg',
-    period: '2026-09 月度概览', unit: 'kg 增重'
-  });
+test('Chinese system text translations are explicit presentation helpers, not blanket data rewrites', () => {
+  assert.equal(localizeServerText('Care Journey'), '健康照护全流程');
+  assert.equal(localizeServerText('2026-09 Monthly overview'), '2026-09 月度概览');
+  assert.equal(localizeServerText('kg weight gain'), 'kg 增重');
+  const original = {title: 'Dialysis Records', summary: 'Pre-dialysis Weight 61.83 kg; Post-dialysis Weight 59.75 kg'};
+  assert.deepEqual(localizePayload(original), original);
+});
+
+test('monitoring keeps patient-authored timeline text exact', async () => {
+  const rows = [{id:1, type:'NOTE', sourceType:'MANUAL', title:'Normal',summary:'Blood Pressure is my own note'}, {id:2,type:'CONSULTATION',sourceType:'CONSULTATION',title:'Remote consultation',summary:'Normal'}];
+  const view = setupMonitoring(async () => ({code:200,data:{recentEvents:rows}}));
+  await view.loadSnapshot();
+  assert.equal(view.recentEvents.value[0].title,'Normal');
+  assert.equal(view.recentEvents.value[0].summary,rows[0].summary);
+  assert.equal(view.recentEvents.value[1].title,'远程问诊');
+  assert.equal(view.recentEvents.value[1].summary,'Normal');
 });
 
 test('monitoring view localizes server-generated signal and timeline content', async () => {
@@ -451,3 +456,33 @@ test('entering a narrow route invalidates an already pending specialty bootstrap
 test('cold narrow source menu bootstrap cannot auto-select a different global patient and cancel its locator',async()=>{
  sessions.saveAuthSession({token:'A',userId:'A'});const names=[{id:3,name:'Synthetic selector patient'}];const app=setupApp(async()=>info('A',['family'],[]),async()=>({code:200,data:names}),{path:'/medical-record',fullPath:'/medical-record?tab=list&patientId=1&recordId=18'});await app.loadUserMenus();assert.deepEqual(app.appPatientList.value,names);assert.deepEqual(app.patientList.value,[],'narrow bootstrap does not invoke the automatic shared-patient selector');app.route.fullPath='/care';await nextTick();assert.deepEqual(app.patientList.value,names)
 })
+
+test('Chinese HTTP and transport errors stay Chinese when callers render error.message', async () => {
+  const {onError} = setupRequestInterceptors();
+  for (const [error, expected] of [
+    [{message:'Network Error'}, '网络连接不可用。'],
+    [{message:'timeout of 30000ms exceeded',code:'ECONNABORTED'}, '请求超时，请稍后重试。'],
+    [{message:'Request failed with status code 500',response:{status:500,data:{}}},'服务发生错误，请稍后重试。'],
+    [{message:'Request failed with status code 400',response:{status:400,data:{msg:'Select a patient'}}},'请选择患者']
+  ]) {
+    await assert.rejects(onError(error));
+    assert.equal(error.message, expected);
+  }
+});
+
+test('monitoring does not treat a manual visit as an auto-generated visit summary', async () => {
+  const row = {id:3,type:'VISIT',sourceType:null,title:'Visit summary',summary:'Normal'};
+  const view=setupMonitoring(async()=>({code:200,data:{recentEvents:[row]}}));
+  await view.loadSnapshot();
+  assert.equal(view.recentEvents.value[0].title,row.title);
+  assert.equal(view.recentEvents.value[0].summary,row.summary);
+});
+
+test('monitoring task display translates only generated dialysis titles and preserves drug names and notes',async()=>{
+ const rows=[{id:1,taskType:'DIALYSIS',title:'Dialysisschedule',description:'Normal'}, {id:2,taskType:'MEDICATION',title:'by timemedication intake',dosage:'Normal'}, {id:3,taskType:'MEDICATION',title:'Dialysisschedule'}];
+ const view=setupMonitoring(async()=>({code:200,data:{todayTasks:rows}}));await view.loadSnapshot();
+ assert.equal(view.todayTasks.value[0].title,'透析排班');assert.equal(view.todayTasks.value[0].description,'Normal');
+ assert.equal(view.todayTasks.value[1].title,rows[1].title);assert.equal(view.todayTasks.value[1].dosage,'Normal');
+ assert.equal(view.todayTasks.value[2].title,rows[2].title);
+ assert.equal(view.snapshot.value.todayTasks[0].title,rows[0].title);
+});

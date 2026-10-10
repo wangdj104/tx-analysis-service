@@ -7,7 +7,7 @@
             <div class="left">
               <div>
                 <h1>Data Export</h1>
-                <p class="subtitle">will Dialysis, Blood Pressure, Nutritionetc.Data Exportfor CSVfile, convenientinexternalanalysis and archive</p>
+                <p class="subtitle">Export dialysis, blood pressure, nutrition, and other records as CSV files for analysis and archiving</p>
               </div>
             </div>
           </div>
@@ -18,7 +18,7 @@
           <ExecutionReportPanel v-if="showCareExecution && currentPatientId" :patient-id="currentPatientId"/>
           <p v-else-if="showCareExecution" role="status">Select a patient first</p>
           <el-form v-if="!showCareExecution" :model="form" label-width="110px" ref="formRef" :rules="rules">
-            <el-form-item label="datatype" prop="dataType">
+            <el-form-item label="Data type" prop="dataType">
               <el-select v-model="form.dataType" style="width: 100%">
                 <el-option v-for="opt in dataTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
@@ -27,9 +27,9 @@
               <el-col :xs="24" :sm="8">
                 <el-form-item label="Time dimension" prop="timeType">
                   <el-select v-model="form.timeType" style="width: 100%">
-                    <el-option label="by Month" value="month" />
-                    <el-option label="by week" value="week" />
-                    <el-option label="by Year" value="year" />
+                    <el-option label="Monthly" value="month" />
+                    <el-option label="Weekly" value="week" />
+                    <el-option label="Yearly" value="year" />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -39,7 +39,7 @@
                     v-model="form.timeValue"
                     :type="form.timeType === 'week' ? 'date' : form.timeType"
                     :value-format="form.timeType === 'year' ? 'YYYY' : form.timeType === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'"
-                    placeholder="selectTime"
+                    placeholder="Select a time period"
                     style="width: 100%"
                     :clearable="false"
                   />
@@ -51,7 +51,7 @@
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="handleExport" :loading="exporting">
-                <el-icon><Download /></el-icon>ExportCSV
+                <el-icon><Download /></el-icon>Export CSV
               </el-button>
             </el-form-item>
           </el-form>
@@ -94,15 +94,15 @@ const dataTypeOptions = computed(() => {
   }
   // Complication Tracking
   if (hasMenuName('Complication Tracking')) {
-    options.push({ label: 'complicationrecord', value: 'complication' });
+    options.push({ label: 'Complication records', value: 'complication' });
   }
-  // medicationrecord: needneedMedicationmanagementPermission
+  // Medication records: needneedMedicationmanagementPermission
   if (hasMenu('/medication')) {
-    options.push({ label: 'medicationrecord', value: 'medication' });
+    options.push({ label: 'Medication records', value: 'medication' });
   }
   // Blood GlucoseBlood Pressurerecord
   if (hasMenuName('Blood GlucoseBlood Pressurerecord')) {
-    options.push({ label: 'Blood GlucoseBlood Pressurerecord', value: 'bp_self_monitor' });
+    options.push({ label: 'Blood pressure and glucose records', value: 'bp_self_monitor' });
   }
   return options;
 });
@@ -111,9 +111,9 @@ const DATA_TYPE_LABELS = {
   dialysis: 'Dialysis Records',
   bp_analysis: 'Blood Pressure Pattern Analysis',
   nutrition: 'Nutrition Diary',
-  complication: 'complicationrecord',
-  medication: 'medicationrecord',
-  bp_self_monitor: 'Blood GlucoseBlood Pressurerecord'
+  complication: 'Complication records',
+  medication: 'Medication records',
+  bp_self_monitor: 'Blood pressure and glucose records'
 };
 
 const form = reactive({
@@ -131,7 +131,7 @@ onMounted(() => {
 });
 
 const rules = {
-  dataType: [{ required: true, message: 'Selectdatatype', trigger: 'change' }],
+  dataType: [{ required: true, message: 'Select a data type', trigger: 'change' }],
   timeType: [{ required: true, message: 'Select a time dimension', trigger: 'change' }],
   timeValue: [{ required: true, message: 'Select a time range', trigger: 'change' }]
 };
@@ -152,9 +152,9 @@ async function handleExport() {
     link.download = `${DATA_TYPE_LABELS[form.dataType] || form.dataType}_Data Export.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
-    ElMessage.success('dataalready Export');
+    ElMessage.success('Data exported');
   } catch (e) {
-    ElMessage.error('Exportfailed');
+    ElMessage.error('Export failed');
   } finally { exporting.value = false; }
 }
 </script>

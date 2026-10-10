@@ -20,8 +20,8 @@
           </div>
           <el-table :data="roles" stripe class="app-data-table">
             <el-table-column v-if="roleColVisible('roleCode')" prop="roleCode" label="编码" min-width="108" />
-            <el-table-column v-if="roleColVisible('roleName')" prop="roleName" label="名称" min-width="108" />
-            <el-table-column v-if="roleColVisible('description')" prop="description" label="说明" min-width="160" show-overflow-tooltip />
+            <el-table-column v-if="roleColVisible('roleName')" prop="roleName" label="名称" min-width="108"><template #default="{ row }">{{ localizeRoleName(row) }}</template></el-table-column>
+            <el-table-column v-if="roleColVisible('description')" prop="description" label="说明" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ localizeRoleDescription(row) }}</template></el-table-column>
             <el-table-column v-if="roleColVisible('status')" prop="status" label="状态" width="80" align="center">
               <template #default="{ row }">
                 <el-tag v-if="row.status === 1" type="success" size="small">正常</el-tag>
@@ -87,7 +87,7 @@
         :default-checked-keys="checkedMenuIds"
         :props="{ label: 'menuName', children: 'children' }"
         :disabled="currentRole?.roleCode === 'admin'"
-      />
+      ><template #default="{ data }">{{ localizeMenuName(data) }}</template></el-tree>
       <template #footer>
         <el-button @click="menuDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleAssignMenus" :disabled="currentRole?.roleCode === 'admin'">保存</el-button>
@@ -103,7 +103,7 @@ import { getRoleList, saveRole, deleteRole, getRoleMenus, assignMenus } from '@/
 import { getMenuList } from '@/api/menu.js';
 import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
-import { localizeSpecialtyRole } from '@/utils/specialtyRoleLabels';
+import { localizeRoleName, localizeRoleDescription, localizeMenuName } from '@/utils/serverText';
 
 const ROLE_COLUMN_DEFS = [
   { key: 'roleCode', label: '编码' },
@@ -150,7 +150,7 @@ const rules = {
 async function loadRoles() {
   try {
     const res = await getRoleList();
-    if (res.code === 200) roles.value = (res.data || []).map(localizeSpecialtyRole);
+    if (res.code === 200) roles.value = res.data || [];
   } catch (e) {
     console.error(e);
   }

@@ -79,7 +79,7 @@ request.interceptors.response.use(
     }
 
     const raw = jsonBlob ? JSON.parse(await response.data.text()) : response.data;
-    const res = response.config.executionReport ? raw : localizePayload(raw);
+    const res = response.config.executionReport ? raw : localizePayload(raw, response.config.url);
 
     requireCurrentReport(response.config);
 
@@ -93,7 +93,7 @@ request.interceptors.response.use(
         window.location.href = '/cn/login';
       }
 
-      return Promise.reject(Object.assign(new Error(res.msg || '请求失败'), { code: res.code, ...(response.config.executionReport ? { data: res.data } : {}) }));
+      return Promise.reject(Object.assign(new Error(localizeServerText(res.msg) || '请求失败'), { code: res.code, ...(response.config.executionReport ? { data: res.data } : {}) }));
     }
 
     if (binary) throw new Error('导出未返回有效文件，请重试。');
@@ -139,6 +139,16 @@ request.interceptors.response.use(
       ElMessage.error('网络连接不可用。');
     }
 
+    const statusMessages = {
+      401: '登录状态已过期，请重新登录。', 403: '你没有执行此操作的权限。',
+      404: '请求的资源不存在。', 413: '上传文件过大，请选择较小的文件或联系管理员。',
+      500: '服务发生错误，请稍后重试。'
+    };
+    error.message = ['ECONNABORTED', 'ETIMEDOUT'].includes(error.code)
+      ? '请求超时，请稍后重试。'
+      : error.response
+        ? statusMessages[error.response.status] || localizeServerText(error.response.data?.msg) || '请求失败'
+        : '网络连接不可用。';
     return Promise.reject(error);
   }
 );

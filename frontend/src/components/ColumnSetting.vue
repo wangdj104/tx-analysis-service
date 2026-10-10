@@ -3,17 +3,17 @@
     <template #reference>
       <el-button size="small" :aria-label="iconOnly ? 'Column visibility' : undefined" class="col-setting-btn" :class="{ 'col-setting-btn--icon-only': iconOnly }">
         <el-icon><Setting /></el-icon>
-        <span v-if="!iconOnly">columndisplay</span>
+        <span v-if="!iconOnly">Column visibility</span>
       </el-button>
     </template>
     <div class="col-setting-panel">
-      <p class="col-setting-title">selectneeddisplay column</p>
+      <p class="col-setting-title">Choose columns to display</p>
       <el-checkbox-group v-model="model" class="col-setting-group">
         <el-checkbox v-for="col in columns" :key="col.key" :label="col.key" :value="col.key">
           {{ col.label }}
         </el-checkbox>
       </el-checkbox-group>
-      <el-button size="small" text type="primary" @click="$emit('reset')">restoreDefault</el-button>
+      <el-button size="small" text type="primary" @click="$emit('reset')">Restore defaults</el-button>
     </div>
   </el-popover>
 </template>

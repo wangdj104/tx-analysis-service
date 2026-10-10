@@ -42,11 +42,11 @@
               <el-select v-model="uploadForm.recordType" placeholder="Select" style="max-width: 320px">
                 <el-option label="blood test" value="BLOOD" />
                 <el-option label="urinalysis" value="URINE" />
-                <el-option label="liver function" value="LIVER" />
-                <el-option label="kidney function" value="KIDNEY" />
+                <el-option label="Liver function" value="LIVER" />
+                <el-option label="Kidney function" value="KIDNEY" />
                 <el-option label="bone metabolism" value="BONE" />
                 <el-option label="iron metabolism" value="IRON" />
-                <el-option label="imaging report" value="IMAGE" />
+                <el-option label="Imaging report" value="IMAGE" />
                 <el-option label="Other" value="OTHER" />
               </el-select>
             </el-form-item>
@@ -219,8 +219,8 @@
             <div class="recognize-items-toolbar">
               <span class="recognize-items-count">total {{ currentRecognizeRecord.items.length }} item</span>
               <div class="recognize-items-actions">
-                <el-button :disabled="uploadSaving" size="small" @click="dedupeRecognizedItemsLocal">mergeduplicateitem</el-button>
-                <el-button :disabled="uploadSaving" size="small" type="primary" plain @click="addRecognizedItem">Addonerow</el-button>
+                <el-button :disabled="uploadSaving" size="small" @click="dedupeRecognizedItemsLocal">Merge duplicate items</el-button>
+                <el-button :disabled="uploadSaving" size="small" type="primary" plain @click="addRecognizedItem">Add row</el-button>
               </div>
             </div>
             <el-table :data="currentRecognizeRecord.items" border size="small" max-height="280" class="app-data-table recognize-items-table">
@@ -229,7 +229,7 @@
                   <el-input :disabled="uploadSaving" v-model="row.itemName" size="small" placeholder="Test item name" />
                 </template>
               </el-table-column>
-              <el-table-column prop="resultValue" label="measured value" width="120">
+              <el-table-column prop="resultValue" label="Measured value" width="120">
                 <template #default="{ row }">
                   <el-input :disabled="uploadSaving" v-model="row.resultValue" size="small" />
                 </template>
@@ -310,7 +310,7 @@
             <el-table :data="trendData" class="app-data-table" stripe border size="small">
               <el-table-column prop="recordDate" label="Examination Date" width="120" />
               <el-table-column prop="itemName" label="Test item" min-width="140" />
-              <el-table-column prop="resultValue" label="measured value" width="120" />
+              <el-table-column prop="resultValue" label="Measured value" width="120" />
               <el-table-column prop="unit" label="Unit" width="88" />
               <el-table-column prop="referenceRange" label="Reference Range" width="140" />
               <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
@@ -331,7 +331,7 @@
         <div class="toolbar">
           <el-form :inline="true" :model="filterForm" class="filter-form">
             <el-form-item label="Patient">
-              <el-select v-model="filterForm.patientId" placeholder="AllPatient" filterable clearable style="width: 200px">
+              <el-select v-model="filterForm.patientId" placeholder="All patients" filterable clearable style="width: 200px">
                 <el-option
                   v-for="patient in patientList"
                   :key="patient.id"
@@ -344,16 +344,16 @@
               <el-select v-model="filterForm.recordType" placeholder="Select" clearable>
                 <el-option label="blood test" value="BLOOD" />
                 <el-option label="urinalysis" value="URINE" />
-                <el-option label="liverfeature" value="LIVER" />
-                <el-option label="kidneyfeature" value="KIDNEY" />
+                <el-option label="Liver function" value="LIVER" />
+                <el-option label="Kidney function" value="KIDNEY" />
                 <el-option label="bone metabolism" value="BONE" />
                 <el-option label="iron metabolism" value="IRON" />
-                <el-option label="imagingReport" value="IMAGE" />
+                <el-option label="Imaging report" value="IMAGE" />
                 <el-option label="Other" value="OTHER" />
               </el-select>
             </el-form-item>
             <el-form-item label="Date">
-              <el-date-picker v-model="filterForm.timeValue" type="date" placeholder="selectDate" value-format="YYYY-MM-DD" />
+              <el-date-picker v-model="filterForm.timeValue" type="date" placeholder="Select a date" value-format="YYYY-MM-DD" />
             </el-form-item>
             <el-form-item label="Test item">
               <el-input v-model="filterForm.itemName" placeholder="Search by test item name" clearable />
@@ -432,18 +432,18 @@
     <!-- Upload and Recognizedialog (listpageshortcutentry)  -->
     <el-dialog v-model="uploadDialogVisible" title="Upload report" width="min(800px, 95vw)" :close-on-click-modal="false" destroy-on-close>
       <el-form :disabled="uploadSaving" :model="uploadForm" label-width="100px">
-        <el-form-item label="PatientName" required>
-          <el-input v-model="uploadForm.patientName" placeholder="Enter PatientName" />
+        <el-form-item label="Patient name" required>
+          <el-input v-model="uploadForm.patientName" placeholder="Enter patient name" />
         </el-form-item>
         <el-form-item label="Examination Type">
           <el-select v-model="uploadForm.recordType" placeholder="Select">
             <el-option label="blood test" value="BLOOD" />
             <el-option label="urinalysis" value="URINE" />
-            <el-option label="liverfeature" value="LIVER" />
-            <el-option label="kidneyfeature" value="KIDNEY" />
+            <el-option label="Liver function" value="LIVER" />
+            <el-option label="Kidney function" value="KIDNEY" />
             <el-option label="bone metabolism" value="BONE" />
             <el-option label="iron metabolism" value="IRON" />
-            <el-option label="imagingReport" value="IMAGE" />
+            <el-option label="Imaging report" value="IMAGE" />
             <el-option label="Other" value="OTHER" />
           </el-select>
         </el-form-item>
@@ -470,10 +470,10 @@
           <p v-if="filesProcessing" role="status" aria-live="polite">Preparing photos. Please wait…</p>
           <div v-if="isMobile" class="mobile-upload-actions">
             <el-button type="primary" plain size="small" @click="triggerCameraUpload('dialog')">
-              <el-icon><Camera /></el-icon> take a photoUpload
+              <el-icon><Camera /></el-icon> Take photo
             </el-button>
             <el-button type="info" plain size="small" @click="triggerAlbumUpload('dialog')">
-              <el-icon><Picture /></el-icon> from photo libraryselect
+              <el-icon><Picture /></el-icon> Choose from library
             </el-button>
           </div>
         </el-form-item>
@@ -481,11 +481,11 @@
 
       <div v-if="recognizeLoading" class="recognize-loading">
         <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-        <span>AI positivein recognitionin, largefilecan canneedneed 1~3 minutes, Please please wait...</span>
+        <span>AI is recognizing the report. Large files may take 1–3 minutes. Please wait…</span>
       </div>
 
       <div v-if="recognizeResult" class="recognize-result">
-        <el-divider content-position="left">AI recognitionresult</el-divider>
+        <el-divider content-position="left">AI recognition results</el-divider>
         <el-form :model="recognizedData" label-width="100px">
           <el-form-item label="Examination Date">
             <el-date-picker v-model="recognizedData.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
@@ -505,8 +505,8 @@
         <div class="recognize-items-toolbar">
           <span class="recognize-items-count">total {{ recognizedData.items.length }} item</span>
           <div class="recognize-items-actions">
-            <el-button size="small" @click="dedupeRecognizedItemsLocal">mergeduplicateitem</el-button>
-            <el-button size="small" type="primary" plain @click="addRecognizedItem">Addonerow</el-button>
+            <el-button size="small" @click="dedupeRecognizedItemsLocal">Merge duplicate items</el-button>
+            <el-button size="small" type="primary" plain @click="addRecognizedItem">Add row</el-button>
           </div>
         </div>
         <el-table :data="recognizedData.items" border size="small" max-height="300" class="app-data-table recognize-items-table">
@@ -515,7 +515,7 @@
               <el-input v-model="row.itemName" size="small" placeholder="Test item name" />
             </template>
           </el-table-column>
-          <el-table-column prop="resultValue" label="measured value" width="120">
+          <el-table-column prop="resultValue" label="Measured value" width="120">
             <template #default="{ row }">
               <el-input v-model="row.resultValue" size="small" />
             </template>
@@ -568,7 +568,7 @@
       <el-divider content-position="left">Examination item details</el-divider>
       <el-table :data="currentRecord?.items || []" class="app-data-table medical-result-table" stripe>
         <el-table-column prop="itemName" label="Test item" width="150" />
-        <el-table-column prop="resultValue" label="measured value" width="120" />
+        <el-table-column prop="resultValue" label="Measured value" width="120" />
         <el-table-column prop="unit" label="Unit" width="80" />
         <el-table-column prop="referenceRange" label="Reference Range" width="150" />
         <el-table-column prop="isAbnormal" label="Status" width="100">
@@ -590,7 +590,7 @@
         </article>
       </section>
 
-      <el-divider content-position="left">Attachmentimage</el-divider>
+      <el-divider content-position="left">Attachment images</el-divider>
       <div v-if="detailImageAttachments.length" class="attachment-images">
         <el-image
           v-for="(att, index) in detailImageAttachments"
@@ -637,11 +637,11 @@
               <el-select :disabled="editLocked" v-model="editForm.recordType" placeholder="Select" style="width: 100%">
                 <el-option label="blood test" value="BLOOD" />
                 <el-option label="urinalysis" value="URINE" />
-                <el-option label="liverfeature" value="LIVER" />
-                <el-option label="kidneyfeature" value="KIDNEY" />
+                <el-option label="Liver function" value="LIVER" />
+                <el-option label="Kidney function" value="KIDNEY" />
                 <el-option label="bone metabolism" value="BONE" />
                 <el-option label="iron metabolism" value="IRON" />
-                <el-option label="imagingReport" value="IMAGE" />
+                <el-option label="Imaging report" value="IMAGE" />
                 <el-option label="Other" value="OTHER" />
               </el-select>
             </el-form-item>
@@ -670,7 +670,7 @@
       <div class="recognize-items-toolbar">
         <span class="recognize-items-count">total {{ editItems.length }} item</span>
         <div class="recognize-items-actions">
-          <el-button :disabled="editLocked" size="small" type="primary" plain @click="addEditItem">Addonerow</el-button>
+          <el-button :disabled="editLocked" size="small" type="primary" plain @click="addEditItem">Add row</el-button>
         </div>
       </div>
       <el-table :data="editItems" border size="small" max-height="300" class="app-data-table recognize-items-table">
@@ -679,7 +679,7 @@
             <el-input :disabled="editLocked" v-model="row.itemName" size="small" placeholder="Test item name" />
           </template>
         </el-table-column>
-        <el-table-column prop="resultValue" label="measured value" width="120">
+        <el-table-column prop="resultValue" label="Measured value" width="120">
           <template #default="{ row }">
             <el-input :disabled="editLocked" v-model="row.resultValue" size="small" />
           </template>
@@ -710,7 +710,7 @@
         </el-table-column>
       </el-table>
 
-      <el-divider content-position="left">Attachmentimage</el-divider>
+      <el-divider content-position="left">Attachment images</el-divider>
       <el-upload
         :key="editSession"
         :disabled="editLocked"
@@ -725,10 +725,10 @@
         class="edit-attachment-upload"
       >
         <el-button :disabled="editLocked" type="primary" plain size="small">
-          <el-icon><Upload /></el-icon> UploadnewAttachment
+          <el-icon><Upload /></el-icon> Upload attachment
         </el-button>
         <template #tip>
-          <div class="el-upload__tip">can UploadReportimageasfor Attachmentarchive, support jpg, png, pdf</div>
+          <div class="el-upload__tip">Upload report images or PDFs to archive as attachments. JPG, PNG, and PDF are supported.</div>
         </template>
       </el-upload>
 
@@ -922,7 +922,7 @@ const uploadMode = ref('recognize');
 
 const archiveForm = reactive({
   recordDate: '',
-  hospitalName: 'Huangchuan CountypersonpeopleHospital',
+  hospitalName: "Huangchuan County People's Hospital",
   doctorName: '',
   remark: ''
 });
@@ -967,11 +967,11 @@ const allItemNames = ref([]);
 const recordTypeMap = {
   BLOOD: 'blood test',
   URINE: 'urinalysis',
-  LIVER: 'liverfeature',
-  KIDNEY: 'kidneyfeature',
+  LIVER: 'Liver function',
+  KIDNEY: 'Kidney function',
   BONE: 'bone metabolism',
   IRON: 'iron metabolism',
-  IMAGE: 'imagingReport',
+  IMAGE: 'Imaging report',
   OTHER: 'Other'
 };
 
@@ -1101,7 +1101,7 @@ const trendChartOption = computed(() => {
     xAxis: { type: 'category', data: dates, axisLabel: { rotate: isMobile.value ? 45 : 30, fontSize: 11 } },
     yAxis: { type: 'value', scale: true, name: unit },
     series: [{
-      name: trendForm.itemName || 'measured value',
+      name: trendForm.itemName || 'Measured value',
       type: 'line',
       data: values,
       smooth: true,
@@ -1144,7 +1144,7 @@ function resetUploadState(patientId = currentPatientId.value) {
   uploadForm.recordType = '';
   uploadMode.value = 'recognize';
   archiveForm.recordDate = '';
-  archiveForm.hospitalName = 'Huangchuan CountypersonpeopleHospital';
+  archiveForm.hospitalName = "Huangchuan County People's Hospital";
   archiveForm.doctorName = '';
   archiveForm.remark = '';
   archiveItems.value = [];
@@ -1152,7 +1152,7 @@ function resetUploadState(patientId = currentPatientId.value) {
   activeRecognizeTab.value = '0';
   recognizedData.items = [];
   recognizedData.recordDate = '';
-  recognizedData.hospitalName = 'Huangchuan CountypersonpeopleHospital';
+  recognizedData.hospitalName = "Huangchuan County People's Hospital";
   recognizedData.doctorName = '';
   recognizedData.remark = '';
   recognizeResult.value = false;
@@ -1258,7 +1258,7 @@ function dedupeRecognizedItemsLocal() {
   if (removed > 0) {
     ElMessage.success(`Merged ${removed} duplicate items`);
   } else {
-    ElMessage.info('not sendcurrentcan merge duplicateitem');
+    ElMessage.info('No duplicate items to merge');
   }
 }
 
@@ -1323,7 +1323,7 @@ async function loadTrend() {
     if (res.code === 200) {
       trendData.value = res.data || [];
       if (trendData.value.length === 0) {
-        ElMessage.info('not findto this indicator historyrecord');
+        ElMessage.info('No historical records found for this test item');
       }
     } else {
       ElMessage.error(res.message || 'Query failed');
@@ -1347,20 +1347,16 @@ async function loadItemNames() {
     if (res.code === 200) {
       const dbNames = res.data || [];
       const defaults = [
-        'whitecell', 'red blood cells', 'hemoglobin', 'bloodsmallpanel',
-        'creatinine', 'blood urea nitrogen', 'urineacid',
-        'ALTconvertaminotransferase', 'ASTconvertaminotransferase', 'totalbilirubin',
-        'serum calcium', 'serum phosphorus', 'parathyroid hormone',
-        'ferritin', 'convertferritinfull and level',
-        'potassium', 'sodium', 'chloride',
-        'twooxygentransformcarboncombinestrength', 'albumin',
-        'totalbilefixedalcohol', 'glycerolthreeester',
-        'Blood Glucose', 'glycatedhemoglobin',
-        'PTH', 'β2slightglobuleproteinwhite',
-        'Creverseshouldproteinwhite', 'iron'
+        'White blood cells', 'Red blood cells', 'Hemoglobin', 'Platelets',
+        'Creatinine', 'Blood urea nitrogen', 'Uric acid',
+        'Alanine aminotransferase (ALT)', 'Aspartate aminotransferase (AST)', 'Total bilirubin',
+        'Serum calcium', 'Serum phosphorus', 'Parathyroid hormone',
+        'Ferritin', 'Transferrin saturation', 'Potassium', 'Sodium', 'Chloride',
+        'Carbon dioxide combining power', 'Albumin', 'Total cholesterol', 'Triglycerides',
+        'Blood glucose', 'Glycated hemoglobin', 'PTH', 'Beta-2 microglobulin', 'C-reactive protein', 'Iron'
       ];
       const merged = Array.from(new Set([...dbNames, ...defaults]));
-      allItemNames.value = merged.sort((a, b) => a.localeCompare(b, 'zh'));
+      allItemNames.value = merged.sort((a, b) => a.localeCompare(b, 'en'));
     }
   } catch (e) {
     if (!isCurrent()) return;
@@ -1707,7 +1703,7 @@ async function viewDetail(row) {
 
 async function deleteRecord(row) {
   try {
-    await ElMessageBox.confirm('ConfirmneedDeletethisitemsMedical Records?', 'Notice', { type: 'warning' });
+    await ElMessageBox.confirm('Delete this medical record?', 'Notice', { type: 'warning' });
     const res = await api.deleteRecord(row.id);
     if (res.code === 200) {
       ElMessage.success('Deleted successfully');

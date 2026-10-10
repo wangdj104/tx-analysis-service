@@ -24,6 +24,7 @@ public class NotificationChannelController {
         rows.forEach(row -> {
             row.setWebhookConfigured(row.getWebhookUrl() != null && !row.getWebhookUrl().trim().isEmpty());
             robots.load(row);
+            row.setLastTestResult(org.familyhealthcare.common.MessageLocalizer.localize(row.getLastTestResult()));
             row.setRobotSecretConfigured(row.getRobotSecret() != null && !row.getRobotSecret().trim().isEmpty());
             row.setRobotSecret(null);
         });
@@ -47,7 +48,7 @@ public class NotificationChannelController {
         if (channel.getEnabled() == null) channel.setEnabled(1);
         if (channel.getId() == null) mapper.insert(channel); else mapper.updateById(channel);
         robots.save(channel);
-        return Result.ok("Saved successfully");
+        return Result.okMessage("Saved successfully");
     }
 
     @PostMapping("/test/{id}")
@@ -65,7 +66,7 @@ public class NotificationChannelController {
         channel.setLastTestAt(LocalDateTime.now());
         channel.setLastTestResult(result);
         mapper.updateById(channel);
-        return success ? Result.ok(result) : Result.error(400, result);
+        return success ? Result.okMessage(result) : Result.error(400, result);
     }
 
     @DeleteMapping("/{id}")
@@ -74,6 +75,6 @@ public class NotificationChannelController {
         NotificationChannel channel = mapper.selectById(id);
         if (channel == null || !userId.equals(channel.getUserId())) return Result.error(403, "Permission deniedActionsthis Notificationchannel");
         mapper.deleteById(id);robots.delete(id);
-        return Result.ok("Saved successfully");
+        return Result.okMessage("Saved successfully");
     }
 }

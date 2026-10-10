@@ -18,8 +18,8 @@ public class DoctorWorkspaceController {
     @GetMapping("/reviews") public Result<List<Map<String, Object>>> reviews(@RequestParam(defaultValue = "REVIEW_REQUIRED") String status) { return Result.ok(service.reviews(status)); }
     @GetMapping("/notes") public Result<List<Map<String, Object>>> notes(@RequestParam Long patientId) { return Result.ok(service.notes(patientId)); }
     @GetMapping("/plans") public Result<List<Map<String, Object>>> plans(@RequestParam Long patientId) { return Result.ok(service.plans(patientId)); }
-    @PostMapping("/notes") public Result<String> saveNote(@RequestBody Map<String, Object> body) { service.saveNote(body); return Result.ok("临床笔记已保存。"); }
-    @PostMapping("/plans") public Result<String> savePlan(@RequestBody Map<String, Object> body) { service.savePlan(body); return Result.ok("照护计划已保存。"); }
-    @PostMapping("/reviews") public Result<String> review(@RequestBody Map<String, Object> body) { service.review(body); return Result.ok("复核已完成。"); }
-    @PostMapping("/assignments") public Result<String> assign(@RequestBody Map<String, Object> body) { service.assign(body); return Result.ok("医生分配已保存。"); }
+    @PostMapping("/notes") public Result<String> saveNote(@RequestBody Map<String, Object> body) { service.saveNote(body); return Result.okMessage("临床笔记已保存。"); }
+    @PostMapping("/plans") public Result<String> savePlan(@RequestBody Map<String, Object> body) { service.savePlan(body); return Result.okMessage("照护计划已保存。"); }
+    @PostMapping("/reviews") public Result<String> review(@RequestBody Map<String, Object> body) { service.review(body); return Result.okMessage("复核已完成。"); }
+    @PostMapping("/assignments") public Result<String> assign(@RequestBody Map<String, Object> body) { service.assign(body); return Result.okMessage("医生分配已保存。"); }
 }

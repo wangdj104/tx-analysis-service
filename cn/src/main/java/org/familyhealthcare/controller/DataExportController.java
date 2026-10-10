@@ -31,7 +31,7 @@ public class DataExportController {
             byte[] content = dataExportService.exportCsv(request);
 
             String dataType = request.getDataType() != null ? request.getDataType() : "dialysis";
-            String filename = URLEncoder.encode(dataType + "_Data Export.csv", "UTF-8");
+            String filename = URLEncoder.encode(dataType + org.familyhealthcare.util.ExportLocalization.text("_Data Export.csv", "_数据导出.csv"), "UTF-8");
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(new MediaType("text", "csv"));

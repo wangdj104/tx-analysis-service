@@ -18,8 +18,8 @@ public class DoctorWorkspaceController {
     @GetMapping("/reviews") public Result<List<Map<String, Object>>> reviews(@RequestParam(defaultValue = "REVIEW_REQUIRED") String status) { return Result.ok(service.reviews(status)); }
     @GetMapping("/notes") public Result<List<Map<String, Object>>> notes(@RequestParam Long patientId) { return Result.ok(service.notes(patientId)); }
     @GetMapping("/plans") public Result<List<Map<String, Object>>> plans(@RequestParam Long patientId) { return Result.ok(service.plans(patientId)); }
-    @PostMapping("/notes") public Result<String> saveNote(@RequestBody Map<String, Object> body) { service.saveNote(body); return Result.ok("Clinical note saved."); }
-    @PostMapping("/plans") public Result<String> savePlan(@RequestBody Map<String, Object> body) { service.savePlan(body); return Result.ok("Care plan saved."); }
-    @PostMapping("/reviews") public Result<String> review(@RequestBody Map<String, Object> body) { service.review(body); return Result.ok("Review completed."); }
-    @PostMapping("/assignments") public Result<String> assign(@RequestBody Map<String, Object> body) { service.assign(body); return Result.ok("Doctor assignment saved."); }
+    @PostMapping("/notes") public Result<String> saveNote(@RequestBody Map<String, Object> body) { service.saveNote(body); return Result.okMessage("Clinical note saved."); }
+    @PostMapping("/plans") public Result<String> savePlan(@RequestBody Map<String, Object> body) { service.savePlan(body); return Result.okMessage("Care plan saved."); }
+    @PostMapping("/reviews") public Result<String> review(@RequestBody Map<String, Object> body) { service.review(body); return Result.okMessage("Review completed."); }
+    @PostMapping("/assignments") public Result<String> assign(@RequestBody Map<String, Object> body) { service.assign(body); return Result.okMessage("Doctor assignment saved."); }
 }

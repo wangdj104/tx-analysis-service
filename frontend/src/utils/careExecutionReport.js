@@ -2,6 +2,9 @@ import { formatPlanTime } from './carePlanTime.js'
 
 // Only fixed labels are localized. Clinical free text is never passed through this dictionary.
 const labels = {
+  actorRelation: { SELF: ['Self', '本人'], OWNER: ['Record owner', '记录所有者'], PATIENT: ['Patient', '患者'], FAMILY: ['Family member', '家属'], GUARDIAN: ['Guardian', '监护人'], ASSISTANT: ['Assistant', '协助人'], NURSE: ['Nurse', '护理人员'], DOCTOR: ['Doctor', '医生'], ADMIN: ['Administrator', '管理员'] },
+  sourceType: { MEASUREMENT: ['Health measurement', '健康测量'], MEDICAL_RECORD: ['Medical record', '医疗记录'] },
+  questionTime: { createdAtLocal: ['Created', '创建时间'], updatedAtLocal: ['Updated', '更新时间'], eventAtLocal: ['Event time', '事件时间'] },
   status: { OPEN: ['To do or supplement', '待执行或补充'], NEEDS_HELP: ['Needs help', '遇到困难'], SUBMITTED: ['Submitted awaiting doctor review', '已提交待医生复核'], CONFIRMED: ['Reviewed by doctor', '医生已复核'] },
   eventType: { PLAN_PUBLISHED: ['Plan published', '计划已发布'], REVISION_PUBLISHED: ['Revision published', '修订已发布'], RECEIPT_SUBMITTED: ['Receipt submitted', '回执已提交'], HELP_REQUESTED: ['Help requested', '已记录困难'], FOLLOW_UP_RECORDED: ['Administrative follow-up recorded', '已记录行政跟进'], RECEIPT_RETURNED: ['Receipt returned for supplement', '回执已退回补充'], RECEIPT_CONFIRMED: ['Receipt reviewed by doctor', '回执已由医生复核'], PLAN_CANCELLED: ['Plan cancelled', '计划已取消'], PLAN_CLOSED: ['Plan closed', '计划已关闭'] },
   actorRole: { OWNER: ['Record owner', '记录所有者'], PATIENT: ['Patient', '患者'], FAMILY: ['Family member', '家属'], NURSE: ['Nurse', '护理人员'], DOCTOR: ['Doctor', '医生'] },

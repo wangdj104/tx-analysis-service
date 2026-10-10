@@ -46,7 +46,7 @@ public class BpPatternController {
     public Result<String> delete(@PathVariable Long id) {
         try {
             boolean success = bpPatternAnalysisService.deleteOwned(id);
-            return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+            return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }

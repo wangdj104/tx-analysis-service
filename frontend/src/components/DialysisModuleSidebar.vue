@@ -13,7 +13,7 @@
     >
       <el-menu-item index="data">
         <el-icon><Document /></el-icon>
-        <span>dataentry</span>
+        <span>Data entry</span>
       </el-menu-item>
       <el-menu-item index="analysis">
         <el-icon><TrendCharts /></el-icon>

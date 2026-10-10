@@ -39,7 +39,7 @@ export const test = base.extend({
       const width = mobile ? 390 : 1365
       const videoDir = testInfo.outputPath(`${role}-${mobile ? '390' : 'desktop'}-video`)
       await mkdir(videoDir, { recursive: true })
-      const context = await browser.newContext({ baseURL: process.env.CARE_PLAN_E2E_BASE_URL, viewport: { width, height: 900 }, timezoneId: 'Asia/Shanghai', recordVideo: { dir: videoDir, size: { width, height: 900 } } })
+      const context = await browser.newContext({ baseURL: process.env.CARE_PLAN_E2E_BASE_URL, viewport: { width, height: 900 }, timezoneId: 'Asia/Shanghai', locale: 'zh-CN', recordVideo: { dir: videoDir, size: { width, height: 900 } } })
       contexts.push(context)
       const page = await context.newPage()
       checks.push(pageErrorCounter(page))

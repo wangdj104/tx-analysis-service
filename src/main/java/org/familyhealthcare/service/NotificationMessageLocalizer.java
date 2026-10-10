@@ -53,16 +53,16 @@ public class NotificationMessageLocalizer {
             case "MEASUREMENT_ALERT":
                 return clinicalTemplate(type,content,true);
             case "APPOINTMENT_UPDATED":
-                return content.replace("Appointment scheduled for ", "预约时间为 ").replace(". The shared care calendar has been updated.", "，共享照护日程已同步更新。");
+                return systemTemplate(type, content);
             case "APPOINTMENT_CANCELLED":
                 return "The shared appointment was cancelled.".equals(content) ? "共享预约已取消。" : content;
             case "APPOINTMENT_REMINDER":
-                return content.replace("Upcoming ", "即将开始的 ").replace(" appointment at ", " 问诊时间：").replace(". Open the shared schedule for details.", "。请打开共享日程查看详情。");
+                return systemTemplate(type, content);
             case "APPOINTMENT_RESCHEDULE_REQUIRED":
                 return content.replaceFirst("^The periodic follow-up at (.+) could not be booked because the clinician or time slot is unavailable\\. Please choose another appointment time\\.$", "原定 $1 的周期复诊因医生或预约时段不可用而未能预约，请选择其他就诊时间。");
             case "VISIT_SUMMARY": return "医生已发布诊后小结和后续医嘱，请及时查看。";
             case "PRESCRIPTION_UPDATED":
-                return content.replace("A clinician published prescription version ", "医生已发布处方版本 ").replace(". Review the new dose and frequency before the next intake.", "。下次服药前请核对新的剂量和频次。");
+                return systemTemplate(type, content);
             case "TREATMENT_PLAN": return "医生新增或调整了治疗与康复计划，请及时查看。";
             case "REHAB_ALERT":
                 return clinicalTemplate(type,content,true);
@@ -76,18 +76,50 @@ public class NotificationMessageLocalizer {
             case "MENTAL_ASSESSMENT":
                 return clinicalTemplate(type,content,true);
             case "MENTAL_ASSESSMENT_DUE":
-                return content.replace(" is ready. Results follow your selected privacy setting.", " 已可填写，结果将遵循你选择的隐私设置。");
+                return systemTemplate(type, content);
             case "VACCINATION_REMINDER":
-                return content.replace(" dose ", " 第 ").replace(" is planned for ", " 剂计划日期：").replace(". This is a manually maintained plan; confirm with the vaccination provider.", "。该计划为手工维护，请向接种机构确认。");
+                return systemTemplate(type, content);
             case "INDICATOR_ALERT": return "新的检查结果超出已配置阈值，请在关注中心复核；任何临床处置仍需医生确认。";
             case "MEDICATION_RESTOCK": return content.replaceFirst(" — (.+) remaining$", " — 剩余 $1");
-            case "MEDICATION_REMINDER": return content.replace("As prescribed", "遵医嘱");
+            case "MEDICATION_REMINDER": return content; // Dosage text is authored; missing-dose fallback is localized by the producer.
             case "CARE_FOLLOW_UP": return content.replaceFirst("^The periodic follow-up at (.+) could not be booked because the clinician or time slot is unavailable\\. Please choose another appointment time\\.$", "原定 $1 的周期复诊因医生或预约时段不可用而未能预约，请选择其他就诊时间。");
             case "HEALTH_ANALYSIS_DRAFT": return "自动健康分析草稿已生成，尚未向患者发送临床建议；请在医生工作台中审核或驳回。";
             case "HEALTH_ANALYSIS_REVIEWED": return "The reviewed analysis is available in Chengxin Health.".equals(content) ? "已审核的健康分析可在澄心健康中查看。" : content;
             case "CHANNEL_TEST": return "这是一条测试消息，通知渠道已连接成功。";
             default: return content;
         }
+    }
+
+    /** Match complete producer templates and preserve captured names and source text byte-for-byte. */
+    private String systemTemplate(String type, String content) {
+        java.util.regex.Matcher match;
+        switch (type) {
+            case "APPOINTMENT_UPDATED":
+                match = java.util.regex.Pattern.compile("^Appointment scheduled for ([0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.]+)\\. The shared care calendar has been updated\\.$").matcher(content);
+                if (match.matches()) return "预约时间为 " + match.group(1) + "，共享照护日程已同步更新。";
+                break;
+            case "APPOINTMENT_REMINDER":
+                match = java.util.regex.Pattern.compile("^Upcoming (TEXT|VOICE|VIDEO|IN_PERSON) appointment at ([0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.]+)\\. Open the shared schedule for details\\.$").matcher(content);
+                if (match.matches()) {
+                    String mode = "TEXT".equals(match.group(1)) ? "图文" : "VOICE".equals(match.group(1)) ? "语音" : "VIDEO".equals(match.group(1)) ? "视频" : "线下";
+                    return "即将开始的 " + mode + " 问诊时间：" + match.group(2) + "。请打开共享日程查看详情。";
+                }
+                break;
+            case "PRESCRIPTION_UPDATED":
+                match = java.util.regex.Pattern.compile("^A clinician published prescription version ([0-9]+)\\. Review the new dose and frequency before the next intake\\.$").matcher(content);
+                if (match.matches()) return "医生已发布处方版本 " + match.group(1) + "。下次服药前请核对新的剂量和频次。";
+                break;
+            case "MENTAL_ASSESSMENT_DUE":
+                match = java.util.regex.Pattern.compile("^(PHQ-?9|GAD-?7|WHO-?5) is ready\\. Results follow your selected privacy setting\\.$").matcher(content);
+                if (match.matches()) return match.group(1) + " 已可填写，结果将遵循你选择的隐私设置。";
+                break;
+            case "VACCINATION_REMINDER":
+                match = java.util.regex.Pattern.compile("^(.+) dose ([0-9]+) is planned for ([0-9]{4}-[0-9]{2}-[0-9]{2})\\. This is a manually maintained plan; confirm with the vaccination provider\\.$").matcher(content);
+                if (match.matches()) return match.group(1) + " 第 " + match.group(2) + " 剂计划日期：" + match.group(3) + "。该计划为手工维护，请向接种机构确认。";
+                break;
+            default: break;
+        }
+        return content;
     }
 
     /** Translate only complete, known system templates; clinical notes and unknown content stay verbatim. */

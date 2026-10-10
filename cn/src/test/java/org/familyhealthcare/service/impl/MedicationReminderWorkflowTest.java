@@ -104,4 +104,18 @@ class MedicationReminderWorkflowTest {
         MedicationIntake t = new MedicationIntake(); t.setId(11L); t.setPatientId(2L); t.setUserId(7L);
         t.setMedicationId(3L); t.setReminderId(1L); t.setStatus(status); t.setScheduledAt(at); return t;
     }
+    @Test void onlyMissingDosageUsesLocalizedSystemFallback() {
+        org.familyhealthcare.service.UserLanguagePreferenceService preference = mock(org.familyhealthcare.service.UserLanguagePreferenceService.class);
+        ReflectionTestUtils.setField(service, "languagePreference", preference);
+        when(preference.get(7L)).thenReturn("zh-CN");
+        MedicationIntake intake = task("PENDING", LocalDateTime.now());
+        assertEquals("遵医嘱", ReflectionTestUtils.invokeMethod(service, "reminderDose", intake));
+        intake.setDosage("As prescribed");
+        assertEquals("As prescribed", ReflectionTestUtils.invokeMethod(service, "reminderDose", intake));
+        intake.setDosage("患者原文 Aspirin 100 mg");
+        assertEquals("患者原文 Aspirin 100 mg", ReflectionTestUtils.invokeMethod(service, "reminderDose", intake));
+        intake.setDosage(null); when(preference.get(7L)).thenReturn("en-US");
+        assertEquals("As prescribed", ReflectionTestUtils.invokeMethod(service, "reminderDose", intake));
+    }
+
 }

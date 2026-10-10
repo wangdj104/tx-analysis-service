@@ -36,7 +36,7 @@ public class MedicationReminderController {
     public Result<String> save(@RequestBody MedicationReminder record) {
         try {
             boolean success = medicationReminderService.saveOrUpdateReminder(record);
-            return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
+            return success ? Result.okMessage("Saved successfully") : Result.error("Failed to save");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -47,7 +47,7 @@ public class MedicationReminderController {
     public Result<String> toggleEnabled(@PathVariable Long id) {
         try {
             boolean success = medicationReminderService.toggleEnabled(id);
-            return success ? Result.ok("Operation completed") : Result.error("Operation failed");
+            return success ? Result.okMessage("Operation completed") : Result.error("Operation failed");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -58,7 +58,7 @@ public class MedicationReminderController {
     public Result<String> delete(@PathVariable Long id) {
         try {
             boolean success = medicationReminderService.deleteOwned(id);
-            return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+            return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }

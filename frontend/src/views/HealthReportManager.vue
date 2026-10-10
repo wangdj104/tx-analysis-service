@@ -6,8 +6,8 @@
           <div class="top-bar">
             <div class="left">
               <div>
-                <h1>Health ReportExport</h1>
-                <p class="subtitle">generateoverallhealthdataReport, includeDialysistrendcharttable, Blood Pressureanalysis and Nutrition Diary</p>
+                <h1>Health report export</h1>
+                <p class="subtitle">Generate a comprehensive health report with dialysis trends, blood pressure analysis, and nutrition records</p>
               </div>
             </div>
           </div>
@@ -20,17 +20,17 @@
           <el-form v-if="!showCareExecution" :model="form" label-width="110px" ref="formRef" :rules="rules" :disabled="exporting || previewing">
             <el-row :gutter="16">
               <el-col :xs="24" :sm="8">
-                <el-form-item label="Reporttype" prop="reportType">
+                <el-form-item label="Report type" prop="reportType">
                   <el-select v-model="form.reportType" style="width: 100%">
                     <el-option v-for="opt in reportTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                   </el-select>
                 </el-form-item>
               </el-col>
               <el-col :xs="24" :sm="8">
-                <el-form-item label="Exportformat" prop="format">
+                <el-form-item label="Export format" prop="format">
                   <el-select v-model="form.format" style="width: 100%">
-                    <el-option label="HTMLwebpage" value="html" />
-                    <el-option label="PDFfile" value="pdf" />
+                    <el-option label="HTML page" value="html" />
+                    <el-option label="PDF file" value="pdf" />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -39,9 +39,9 @@
               <el-col :xs="24" :sm="8">
                 <el-form-item label="Time dimension" prop="timeType">
                   <el-select v-model="form.timeType" style="width: 100%">
-                    <el-option label="by Month" value="month" />
-                    <el-option label="by week" value="week" />
-                    <el-option label="by Year" value="year" />
+                    <el-option label="Monthly" value="month" />
+                    <el-option label="Weekly" value="week" />
+                    <el-option label="Yearly" value="year" />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -51,7 +51,7 @@
                     v-model="form.timeValue"
                     :type="form.timeType === 'week' ? 'date' : form.timeType"
                     :value-format="form.timeType === 'year' ? 'YYYY' : form.timeType === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'"
-                    placeholder="selectTime"
+                    placeholder="Select a time period"
                     style="width: 100%"
                     :clearable="false"
                   />
@@ -60,17 +60,17 @@
             </el-row>
             <el-form-item>
               <el-button type="primary" @click="handleExport" :loading="exporting">
-                <el-icon><Download /></el-icon>generateandDownloadReport
+                <el-icon><Download /></el-icon>Generate and download report
               </el-button>
               <el-button @click="handlePreview" :loading="previewing">
-                <el-icon><View /></el-icon>in linePreview
+                <el-icon><View /></el-icon>Preview online
               </el-button>
             </el-form-item>
           </el-form>
 
           <div v-if="!showCareExecution && previewHtml" style="margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
             <div style="padding: 12px 16px; background: var(--surface-subtle); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-weight: 600; color: var(--ink-800);">ReportPreview</span>
+              <span style="font-weight: 600; color: var(--ink-800);">Report preview</span>
               <el-button type="primary" size="small" @click="handleExport" :disabled="exporting || previewing">Download</el-button>
             </div>
             <iframe sandbox="" title="Report preview" :srcdoc="previewHtml" class="report-preview-frame"></iframe>
@@ -136,11 +136,11 @@ const reportTypeOptions = computed(() => {
   const hasBpMonitor = hasMenuName('Blood GlucoseBlood Pressurerecord');
 
   if (hasDialysis || hasBpPattern || hasNutrition || hasBpMonitor) {
-    options.push({ label: hasDialysis ? 'overallReport' : 'overallReport (not containDialysisstatistics) ', value: hasDialysis ? 'summary' : 'summary_no_dialysis' });
+    options.push({ label: hasDialysis ? 'Comprehensive report' : 'Comprehensive report (excluding dialysis statistics)', value: hasDialysis ? 'summary' : 'summary_no_dialysis' });
   }
-  if (hasBpPattern) options.push({ label: 'Blood PressureReport', value: 'bp' });
-  if (hasNutrition) options.push({ label: 'Nutrition DiaryReport', value: 'nutrition' });
-  if (hasBpMonitor) options.push({ label: 'Blood GlucoseBlood PressureReport', value: 'bp_monitor' });
+  if (hasBpPattern) options.push({ label: 'Blood pressure report', value: 'bp' });
+  if (hasNutrition) options.push({ label: 'Nutrition diary report', value: 'nutrition' });
+  if (hasBpMonitor) options.push({ label: 'Blood pressure and glucose report', value: 'bp_monitor' });
   return options;
 });
 
@@ -158,8 +158,8 @@ onMounted(() => {
 });
 
 const rules = {
-  reportType: [{ required: true, message: 'SelectReporttype', trigger: 'change' }],
-  format: [{ required: true, message: 'SelectExportformat', trigger: 'change' }],
+  reportType: [{ required: true, message: 'Select a report type', trigger: 'change' }],
+  format: [{ required: true, message: 'Select an export format', trigger: 'change' }],
   timeType: [{ required: true, message: 'Select a time dimension', trigger: 'change' }],
   timeValue: [{ required: true, message: 'Select a time range', trigger: 'change' }]
 };
@@ -205,9 +205,9 @@ async function handleExport() {
       link.download = `Health Report_${snapshot.patientId}.${ext}`;
       link.click();
     } finally { window.URL.revokeObjectURL(url); }
-    ElMessage.success(snapshot.format === 'pdf' ? 'PDFReportalready Download' : 'HTMLReportalready Download');
+    ElMessage.success(snapshot.format === 'pdf' ? 'PDF report downloaded' : 'HTML report downloaded');
   } catch (e) {
-    if (isCurrentReport(epoch, snapshot)) ElMessage.error('Reportgeneratefailed');
+    if (isCurrentReport(epoch, snapshot)) ElMessage.error('Failed to generate report');
   } finally { if (isCurrentReport(epoch, snapshot)) exporting.value = false; }
 }
 
@@ -227,7 +227,7 @@ async function handlePreview() {
     const html = await blob.text();
     if (isCurrentReport(epoch, snapshot)) previewHtml.value = html;
   } catch (e) {
-    if (isCurrentReport(epoch, snapshot)) ElMessage.error('PreviewFailed to load');
+    if (isCurrentReport(epoch, snapshot)) ElMessage.error('Failed to load preview');
   } finally { if (isCurrentReport(epoch, snapshot)) previewing.value = false; }
 }
 
@@ -294,8 +294,8 @@ function buildWeightOverviewOption(chart) {
       { name: 'Post-dialysis Weight', type: 'line', data: chart.offWeightList || [], smooth: true, itemStyle: { color: '#10b981' } },
       { name: 'Dry Weight', type: 'line', data: chart.dryWeightList || [], lineStyle: { type: 'dashed', color: '#64748b' }, symbol: 'none' },
       { name: 'weight gain', type: 'bar', yAxisIndex: 1, data: chart.weightGainList || [], barMaxWidth: 18, itemStyle: { color: '#38bdf8', borderRadius: [4, 4, 0, 0] } },
-      { name: '3%threshold', type: 'line', yAxisIndex: 1, data: chart.weight3pctList || [], lineStyle: { type: 'dashed', color: '#f59e0b' }, symbol: 'none' },
-      { name: '5%threshold', type: 'line', yAxisIndex: 1, data: chart.weight5pctList || [], lineStyle: { type: 'dashed', color: '#ef4444' }, symbol: 'none' }
+      { name: '3% threshold', type: 'line', yAxisIndex: 1, data: chart.weight3pctList || [], lineStyle: { type: 'dashed', color: '#f59e0b' }, symbol: 'none' },
+      { name: '5% threshold', type: 'line', yAxisIndex: 1, data: chart.weight5pctList || [], lineStyle: { type: 'dashed', color: '#ef4444' }, symbol: 'none' }
     ]
   };
 }
@@ -303,14 +303,14 @@ function buildWeightOverviewOption(chart) {
 function buildOnWeightOption(chart) {
   return lineOption(chart.dateList, [
     { name: 'Pre-dialysis Weight', type: 'line', data: chart.onWeightList || [], smooth: true, itemStyle: { color: '#6366f1' } },
-    { name: 'Dry Weightreference', type: 'line', data: chart.dryWeightList || [], lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' }
+    { name: 'Dry weight reference', type: 'line', data: chart.dryWeightList || [], lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' }
   ]);
 }
 
 function buildOffWeightOption(chart) {
   return lineOption(chart.dateList, [
     { name: 'Post-dialysis Weight', type: 'line', data: chart.offWeightList || [], smooth: true, itemStyle: { color: '#10b981' } },
-    { name: 'Dry Weightreference', type: 'line', data: chart.dryWeightList || [], lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' }
+    { name: 'Dry weight reference', type: 'line', data: chart.dryWeightList || [], lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' }
   ]);
 }
 
@@ -318,8 +318,8 @@ function buildUfOption(chart) {
   return lineOption(chart.dateList, [
     { name: 'interdialytic weight gain', type: 'line', data: chart.weightGainList || [], smooth: true, itemStyle: { color: '#3b82f6' } },
     { name: 'ultrafiltration volume', type: 'line', data: chart.ufAmountList || [], smooth: true, itemStyle: { color: '#10b981' } },
-    { name: '3%threshold', type: 'line', data: chart.weight3pctList || [], lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' },
-    { name: '5%threshold', type: 'line', data: chart.weight5pctList || [], lineStyle: { type: 'dashed', color: '#F56C6C' }, symbol: 'none' }
+    { name: '3% threshold', type: 'line', data: chart.weight3pctList || [], lineStyle: { type: 'dashed', color: '#E6A23C' }, symbol: 'none' },
+    { name: '5% threshold', type: 'line', data: chart.weight5pctList || [], lineStyle: { type: 'dashed', color: '#F56C6C' }, symbol: 'none' }
   ]);
 }
 
@@ -328,7 +328,7 @@ function buildDailyGainOption(chart) {
     ...lineOption(chart.dateList, [
       { name: 'Average daily weight gain', type: 'line', data: chart.dailyWeightGainList || [], smooth: true, areaStyle: { opacity: 0.12 }, itemStyle: { color: '#8b5cf6' } }
     ]),
-    yAxis: { type: 'value', name: 'kg/days' }
+    yAxis: { type: 'value', name: 'kg/day' }
   };
 }
 
@@ -338,8 +338,8 @@ function buildBpOption(chart) {
     ...lineOption(dates, [
       { name: 'systolic', type: 'line', data: chart.systolicBpList || [], smooth: true, itemStyle: { color: '#ef4444' } },
       { name: 'diastolic', type: 'line', data: chart.diastolicBpList || [], smooth: true, itemStyle: { color: '#3b82f6' } },
-      { name: 'idealsystolic', type: 'line', data: dates.map(() => 130), lineStyle: { type: 'dashed', color: '#67C23A' }, symbol: 'none' },
-      { name: 'idealdiastolic', type: 'line', data: dates.map(() => 80), lineStyle: { type: 'dashed', color: '#67C23A' }, symbol: 'none' }
+      { name: 'Target systolic pressure', type: 'line', data: dates.map(() => 130), lineStyle: { type: 'dashed', color: '#67C23A' }, symbol: 'none' },
+      { name: 'Target diastolic pressure', type: 'line', data: dates.map(() => 80), lineStyle: { type: 'dashed', color: '#67C23A' }, symbol: 'none' }
     ]),
     yAxis: { type: 'value', min: 40 }
   };

@@ -6,21 +6,21 @@
           <div class="top-bar">
             <div class="left">
               <div>
-                <h1>Blood GlucoseBlood Pressurerecord</h1>
-                <p class="subtitle">recordDayoftenBlood Pressure, Blood Glucoseself-monitoringdata, trackchangetrend</p>
+                <h1>Blood pressure and glucose records</h1>
+                <p class="subtitle">Record daily blood pressure and glucose readings to track changes over time</p>
               </div>
             </div>
-            <div class="bp-summary" aria-label="recordoverview">
+            <div class="bp-summary" aria-label="Record overview">
               <div class="summary-item">
-                <span class="summary-label">recordcount</span>
+                <span class="summary-label">Record count</span>
                 <strong>{{ records.length }}</strong>
               </div>
               <div class="summary-item">
-                <span class="summary-label">most recent Blood Pressure</span>
+                <span class="summary-label">Latest blood pressure</span>
                 <strong>{{ latestBpText }}</strong>
               </div>
               <div class="summary-item">
-                <span class="summary-label">most recent Blood Glucose</span>
+                <span class="summary-label">Latest blood glucose</span>
                 <strong>{{ latestBgText }}</strong>
               </div>
             </div>
@@ -36,16 +36,16 @@
             <el-radio-group v-model="form.measureType" :disabled="saving" class="measure-switch">
               <el-radio-button value="BP">Blood Pressure</el-radio-button>
               <el-radio-button value="BG">Blood Glucose</el-radio-button>
-              <el-radio-button value="BP_BG">Blood Pressure+Blood Glucose</el-radio-button>
+              <el-radio-button value="BP_BG">Blood pressure + blood glucose</el-radio-button>
             </el-radio-group>
           </div>
 
           <el-form :model="form" :disabled="saving" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
             <div class="form-grid form-grid--meta">
-              <el-form-item label="recordDate" prop="recordDate">
+              <el-form-item label="Record date" prop="recordDate">
                 <el-date-picker v-model="form.recordDate" value-format="YYYY-MM-DD" :clearable="false" />
               </el-form-item>
-              <el-form-item label="recordTime" prop="recordTime">
+              <el-form-item label="Record time" prop="recordTime">
                 <el-time-picker v-model="form.recordTime" format="HH:mm" value-format="HH:mm" placeholder="Optional" />
               </el-form-item>
             </div>
@@ -74,7 +74,7 @@
                   <span>Blood Glucose</span>
                 </div>
                 <div class="field-grid field-grid--two">
-                  <el-form-item label="Blood Glucosevalue" prop="bloodGlucose">
+                  <el-form-item label="Blood glucose value" prop="bloodGlucose">
                     <el-input-number v-model="form.bloodGlucose" :min="0" :max="String(form.bgUnit).trim().toLowerCase() === 'mg/dl' ? 900 : 50" :precision="1" :step="0.1" controls-position="right" />
                   </el-form-item>
                   <el-form-item label="Unit">
@@ -83,10 +83,10 @@
                       <el-option label="mg/dL" value="mg/dL" />
                     </el-select>
                   </el-form-item>
-                  <el-form-item label="measurementperiod">
+                  <el-form-item label="Measurement period">
                     <el-select v-model="form.measurePeriod">
                       <el-option label="Fasting" value="Fasting" />
-                      <el-option label="After Meal2hours" value="After Meal2h" />
+                      <el-option label="Two hours after a meal" value="After Meal2h" />
                       <el-option label="Random" value="Random" />
                     </el-select>
                   </el-form-item>
@@ -95,7 +95,7 @@
             </div>
 
             <el-form-item label="Notes" class="remark-field">
-              <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" placeholder="can recordmeasurementcontext, Before MealAfter Meal, bodyphysical feelingetc." />
+              <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" placeholder="Record the measurement context, meal timing, symptoms, or other observations" />
             </el-form-item>
 
             <div class="form-actions">
@@ -112,7 +112,7 @@
           <div class="toolbar records-toolbar">
             <div class="list-panel-title">
               <el-icon><TrendCharts /></el-icon>
-              <span>monitoringrecord</span>
+              <span>Monitoring records</span>
               <span v-if="records.length" class="list-count">{{ records.length }} items</span>
             </div>
             <div class="records-tools">
@@ -156,7 +156,7 @@
                 <template #default="{ row }">
                   <div class="table-actions">
                     <el-button link type="primary" size="small" @click="handleEdit(row)" :disabled="saving">Edit</el-button>
-                    <el-popconfirm title="Confirm deletionthisitemsrecord?" @confirm="handleDelete(row)">
+                    <el-popconfirm title="Delete this record?" @confirm="handleDelete(row)">
                       <template #reference>
                         <el-button link type="danger" size="small">Delete</el-button>
                       </template>
@@ -235,7 +235,7 @@ const latestBgText = computed(() => {
 
 const formRules = {
   recordDate: [{ required: true, message: 'Select a date', trigger: 'change' }],
-  measureType: [{ required: true, message: 'Selecttype', trigger: 'change' }],
+  measureType: [{ required: true, message: 'Select a measurement type', trigger: 'change' }],
   systolicBp: [{ validator: measurementValidator('bp', 50, 250, true), trigger: 'change' }],
   diastolicBp: [{ validator: measurementValidator('bp', 30, 150, true), trigger: 'change' }],
   bloodGlucose: [{ validator: measurementValidator('bg'), trigger: 'change' }]
@@ -254,7 +254,7 @@ function measurementValidator(kind, min, max, integer = false) {
 
 
 function measureLabel(type) {
-  return type === 'BP' ? 'Blood Pressure' : type === 'BG' ? 'Blood Glucose' : 'Blood Pressure+Blood Glucose';
+  return type === 'BP' ? 'Blood Pressure' : type === 'BG' ? 'Blood Glucose' : 'Blood pressure + blood glucose';
 }
 
 function measureTagType(type) {

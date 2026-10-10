@@ -274,7 +274,7 @@ for (const edition of ['en','zh']) {
     assert.equal(plan.lifecycle,'CANCELLED');
     app.context.location.hash='#plans';app.view.render();
     const html=app.node('content').innerHTML;
-    assert.match(html,/CANCELLED/);
+    assert.match(html,edition==='en'?/Cancelled/:/已取消/);
     assert.ok(html.includes('Fictional visit preparation'));
     for(const action of ['cp-edit','cp-publish','cp-revise','cp-cancel','cp-close']) assert.ok(!html.includes(`data-action="${action}"`),`${action} must not be presented for a terminal draft`);
     assert.throws(()=>app.model.saveCarePlanDraft(app.state,plan.id,body()),/care-plan-state/);
@@ -376,7 +376,7 @@ for(const edition of ['en','zh']) {
     click(app,'cp-cancel',{id:String(plan.id)});submitAction(app,{note:'Fictional revision draft cancelled.'});
     app.context.location.hash='#plans';app.view.render();
     const html=app.node('content').innerHTML;
-    assert.match(html,/CANCELLED/);assert.match(html,/v2/);
+    assert.match(html,edition==='en'?/Cancelled/:/已取消/);assert.match(html,edition==='en'?/v2/:/版本 2/);
     for(const action of ['cp-edit','cp-publish','cp-revise','cp-cancel','cp-close'])assert.ok(!html.includes(`data-action="${action}"`));
     assert.equal(app.state.carePlanRevisions.length,2);
   });
@@ -409,7 +409,7 @@ for(const edition of ['en','zh']) {
     const labels=edition==='en'?['Patient','Doctor','Family','Nurse','Administrator']:['患者','医生','家属','护理','管理员'];
     const events=roles.map((actorRole,index)=>({id:index+1,actorRole,actorName:{en:`Actor ${index}`,zh:`演示成员 ${index}`},eventType:'SUBMITTED',recordedAt:'2026-10-03T08:00:00Z',entryMode:'ASSISTED',evidence:[]}));
     const before=JSON.stringify(events),html=app.view.careEvents(events);
-    for(const label of labels)assert.ok(html.includes(` · ${label} · SUBMITTED`),`${label} must be the rendered human-readable role`);
+    for(const label of labels)assert.ok(html.includes(` · ${label} · ${edition==='en'?'Receipt submitted':'回执已提交'}`),`${label} must be the rendered human-readable role`);
     for(const rawRole of roles)assert.ok(!html.includes(` · ${rawRole} · `),`${rawRole} is a protocol role, not a display label`);
     assert.equal(JSON.stringify(events),before);
     assert.equal(events[0].eventType,'SUBMITTED');assert.equal(events[0].entryMode,'ASSISTED');
@@ -418,7 +418,7 @@ for(const edition of ['en','zh']) {
 
 test('subsequent care app deployment changes the cache key without renaming existing resource aliases',()=>{
   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
-  assert.match(html,/<script src="app\.js\?v=20261002-storage1&amp;careplan=20261003-2&amp;report=20261010-1"/);
+  assert.match(html,/<script src="app\.js\?v=20261002-storage1&amp;careplan=20261003-2&amp;report=20261010-1&amp;language=20261010-1"/);
   assert.match(html,/<script src="model\.js\?v=20261001-r9&amp;careplan=20261003-1&amp;report=20261010-1"/);
   assert.match(html,/style\.css\?v=20261001-1&amp;careplan=20261003-1/);
 });

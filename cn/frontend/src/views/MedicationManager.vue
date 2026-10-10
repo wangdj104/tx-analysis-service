@@ -911,7 +911,7 @@ async function startRecognize() {
     }
   } catch (e) {
     if (!isCurrent()) return;
-    if (e.message?.includes('timeout')) {
+    if (e.code === 'ECONNABORTED' || e.code === 'ETIMEDOUT' || e.message?.includes('timeout')) {
       ElMessage.error('识别超时：文件过大或网络较慢，请稍后重试');
     } else {
       ElMessage.error('识别失败：' + e.message);

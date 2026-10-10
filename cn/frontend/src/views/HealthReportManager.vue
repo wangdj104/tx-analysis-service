@@ -73,7 +73,7 @@
               <span style="font-weight: 600; color: var(--ink-800);">报告预览</span>
               <el-button type="primary" size="small" @click="handleExport" :disabled="exporting || previewing">下载</el-button>
             </div>
-            <iframe sandbox="" title="Report preview" :srcdoc="previewHtml" class="report-preview-frame"></iframe>
+            <iframe sandbox="" title="报告预览" :srcdoc="previewHtml" class="report-preview-frame"></iframe>
           </div>
         </div>
       </div>
@@ -328,7 +328,7 @@ function buildDailyGainOption(chart) {
     ...lineOption(chart.dateList, [
       { name: '日均体重增长', type: 'line', data: chart.dailyWeightGainList || [], smooth: true, areaStyle: { opacity: 0.12 }, itemStyle: { color: '#8b5cf6' } }
     ]),
-    yAxis: { type: 'value', name: 'kg/days' }
+    yAxis: { type: 'value', name: 'kg/天' }
   };
 }
 

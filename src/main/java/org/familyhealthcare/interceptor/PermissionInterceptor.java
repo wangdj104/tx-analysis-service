@@ -1,5 +1,7 @@
 package org.familyhealthcare.interceptor;
 
+import org.familyhealthcare.common.MessageLocalizer;
+
 import org.familyhealthcare.entity.SysMenu;
 import org.familyhealthcare.service.careplan.CarePlanProperties;
 import org.familyhealthcare.service.careplan.CarePlanException;
@@ -87,8 +89,8 @@ public class PermissionInterceptor implements HandlerInterceptor {
         return "monitoring:view".equals(required) && "health-monitoring:view".equals(granted);
     }
     private boolean careError(HttpServletResponse response,int status,String code,String message)throws Exception{
-        Map<String,Object> error=new LinkedHashMap<>();error.put("code",status);error.put("msg",message);error.put("data",Collections.singletonMap("errorCode",code));
+        Map<String,Object> error=new LinkedHashMap<>();error.put("code",status);error.put("msg",MessageLocalizer.localize(message));error.put("data",Collections.singletonMap("errorCode",code));
         response.setStatus(status);response.setContentType("application/json;charset=UTF-8");response.getWriter().write(com.alibaba.fastjson2.JSON.toJSONString(error));return false;
     }
-    private boolean deny(HttpServletResponse response)throws Exception{response.setStatus(403);response.setContentType("application/json;charset=UTF-8");response.getWriter().write("{\"code\":403,\"msg\":\"Access denied\",\"data\":null}");return false;}
+    private boolean deny(HttpServletResponse response)throws Exception{response.setStatus(403);response.setContentType("application/json;charset=UTF-8");response.getWriter().write("{\"code\":403,\"msg\":\""+MessageLocalizer.localize("Access denied")+"\",\"data\":null}");return false;}
 }

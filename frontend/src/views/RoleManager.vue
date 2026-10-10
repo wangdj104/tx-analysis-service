@@ -7,7 +7,7 @@
             <div class="left">
               <div>
                 <h1>Role Management</h1>
-                <p class="subtitle">managementsystemRoleandMenuPermissionconfiguration</p>
+                <p class="subtitle">Manage roles and menu permissions</p>
               </div>
             </div>
           </div>
@@ -15,7 +15,7 @@
         <div class="content-panel">
           <div class="toolbar">
             <el-button v-if="isAdmin" type="primary" @click="showAddDialog">
-              <el-icon><Plus /></el-icon>AddRole
+              <el-icon><Plus /></el-icon>Add role
             </el-button>
           </div>
           <el-table :data="roles" stripe class="app-data-table">
@@ -35,7 +35,7 @@
               <template #default="{ row }">
                 <template v-if="isAdmin">
                   <el-button link type="primary" size="small" @click="showEditDialog(row)">Edit</el-button>
-                  <el-button link type="primary" size="small" @click="showMenuDialog(row)">configurationMenu</el-button>
+                  <el-button link type="primary" size="small" @click="showMenuDialog(row)">Configure menus</el-button>
                   <el-popconfirm title="Confirm deletion?" @confirm="handleDelete(row.id)">
                     <template #reference>
                       <el-button link type="danger" size="small" :disabled="row.roleCode === 'admin'">Delete</el-button>
@@ -51,16 +51,16 @@
     </el-main>
 
     <!-- Add/EditRole -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'EditRole' : 'AddRole'" width="520px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Edit role' : 'Add role'" width="520px" destroy-on-close>
       <el-form :model="form" label-width="90px" :rules="rules" ref="formRef">
-        <el-form-item label="RoleCode" prop="roleCode">
+        <el-form-item label="Role code" prop="roleCode">
           <el-input v-model="form.roleCode" :disabled="isEdit || form.roleCode === 'admin'" placeholder="for example : editor" />
         </el-form-item>
-        <el-form-item label="RoleName" prop="roleName">
-          <el-input v-model="form.roleName" placeholder="for example : Editmember" />
+        <el-form-item label="Role name" prop="roleName">
+          <el-input v-model="form.roleName" placeholder="For example: Editor" />
         </el-form-item>
         <el-form-item label="Description">
-          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="RoleDescription" />
+          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="Role description" />
         </el-form-item>
         <el-form-item label="Status">
           <el-radio-group v-model="form.status">
@@ -76,8 +76,8 @@
     </el-dialog>
 
     <!-- configurationMenuPermission -->
-    <el-dialog v-model="menuDialogVisible" title="configurationMenuPermission" width="520px" destroy-on-close>
-      <el-alert v-if="currentRole?.roleCode === 'admin'" title="adminRole MenuPermissioncannot in pageEdit, for example needadjustPlease Manualrefreshdatabase" type="warning" :closable="false" style="margin-bottom: 16px" />
+    <el-dialog v-model="menuDialogVisible" title="Configure menu permissions" width="520px" destroy-on-close>
+      <el-alert v-if="currentRole?.roleCode === 'admin'" title="Administrator menu permissions cannot be edited here. Database maintenance is required to change them." type="warning" :closable="false" style="margin-bottom: 16px" />
       <el-tree
         ref="menuTreeRef"
         :data="menuTreeData"
@@ -143,8 +143,8 @@ const form = reactive({
 });
 
 const rules = {
-  roleCode: [{ required: true, message: 'Enter RoleCode', trigger: 'blur' }],
-  roleName: [{ required: true, message: 'Enter RoleName', trigger: 'blur' }]
+  roleCode: [{ required: true, message: 'Enter a role code', trigger: 'blur' }],
+  roleName: [{ required: true, message: 'Enter a role name', trigger: 'blur' }]
 };
 
 async function loadRoles() {

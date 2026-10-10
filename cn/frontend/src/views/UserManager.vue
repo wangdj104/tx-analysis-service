@@ -85,7 +85,7 @@
     <!-- assignRole -->
     <el-dialog v-model="roleDialogVisible" title="分配角色" width="400px" destroy-on-close>
       <el-checkbox-group v-model="selectedRoleIds">
-        <el-checkbox v-for="role in roles" :key="role.id" :value="role.id">{{ role.roleName }}</el-checkbox>
+        <el-checkbox v-for="role in roles" :key="role.id" :value="role.id">{{ localizeRoleName(role) }}</el-checkbox>
       </el-checkbox-group>
       <template #footer>
         <el-button @click="roleDialogVisible = false">取消</el-button>
@@ -109,6 +109,7 @@
 </template>
 
 <script setup>
+import { localizeRoleName } from '@/utils/serverText';
 import { ref, reactive, onMounted, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { getUserList, saveUser, updateUser, deleteUser, resetPassword, assignRoles, getUserRoles } from '@/api/user.js';

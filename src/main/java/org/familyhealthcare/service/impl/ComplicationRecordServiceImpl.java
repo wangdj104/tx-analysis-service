@@ -13,6 +13,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import static org.familyhealthcare.util.ExportLocalization.text;
+
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -146,10 +148,10 @@ public class ComplicationRecordServiceImpl extends ServiceImpl<ComplicationRecor
             if (r.getRelatedDialysisId() != null) {
                 m.put("relatedDialysisId", r.getRelatedDialysisId());
                 StringBuilder summary = new StringBuilder();
-                if (r.getDialysisWeightGain() != null) summary.append("weight gain").append(r.getDialysisWeightGain()).append("kg");
+                if (r.getDialysisWeightGain() != null) summary.append(text("Weight gain ", "增重 ")).append(r.getDialysisWeightGain()).append(" kg");
                 if (r.getDialysisSystolicBp() != null || r.getDialysisDiastolicBp() != null) {
                     if (summary.length() > 0) summary.append(" | ");
-                    summary.append("Blood Pressure").append(r.getDialysisSystolicBp() != null ? r.getDialysisSystolicBp() : "-").append("/").append(r.getDialysisDiastolicBp() != null ? r.getDialysisDiastolicBp() : "-");
+                    summary.append(text("Blood pressure ", "血压 ")).append(r.getDialysisSystolicBp() != null ? r.getDialysisSystolicBp() : "-").append("/").append(r.getDialysisDiastolicBp() != null ? r.getDialysisDiastolicBp() : "-");
                 }
                 m.put("dialysisSummary", summary.toString());
             }

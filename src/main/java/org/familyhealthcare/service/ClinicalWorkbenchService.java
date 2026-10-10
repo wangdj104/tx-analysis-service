@@ -294,8 +294,8 @@ public class ClinicalWorkbenchService {
     }
 
     private String recordLabel(MedicalRecord record) {
-        return (record.getRecordDate() == null ? "Date missing" : record.getRecordDate()) + " · "
-                + (record.getHospitalName() == null ? "Facility missing" : record.getHospitalName());
+        return (record.getRecordDate() == null ? org.familyhealthcare.util.ExportLocalization.text("Date missing", "缺少日期") : record.getRecordDate()) + " · "
+                + (record.getHospitalName() == null ? org.familyhealthcare.util.ExportLocalization.text("Facility missing", "缺少医疗机构") : record.getHospitalName());
     }
 
     private String normalizedMedicationName(Medication medication) {

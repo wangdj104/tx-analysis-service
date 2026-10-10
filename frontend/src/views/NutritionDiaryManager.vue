@@ -7,20 +7,20 @@
             <div class="left">
               <div>
                 <h1>Nutrition Diary</h1>
-                <p class="subtitle">recordeach Daydietcondition and bodyphysical feeling, trackNutritionhealthchange</p>
+                <p class="subtitle">Record daily meals and symptoms to track changes in nutritional health</p>
               </div>
             </div>
-            <div class="nutrition-summary" aria-label="recordoverview">
+            <div class="nutrition-summary" aria-label="Record overview">
               <div class="summary-item">
-                <span class="summary-label">recordcount</span>
+                <span class="summary-label">Record count</span>
                 <strong>{{ records.length }}</strong>
               </div>
               <div class="summary-item">
-                <span class="summary-label">most recent Weight</span>
+                <span class="summary-label">Latest weight</span>
                 <strong>{{ latestWeightText }}</strong>
               </div>
               <div class="summary-item">
-                <span class="summary-label">most recent appetite</span>
+                <span class="summary-label">Latest appetite</span>
                 <strong>{{ latestAppetiteText }}</strong>
               </div>
             </div>
@@ -38,10 +38,10 @@
 
           <el-form :model="form" label-position="top" ref="formRef" :rules="formRules" class="entry-form" :disabled="saving">
             <div class="form-grid form-grid--meta">
-              <el-form-item label="recordDate" prop="recordDate">
+              <el-form-item label="Record date" prop="recordDate">
                 <el-date-picker v-model="form.recordDate" value-format="YYYY-MM-DD" :clearable="false" />
               </el-form-item>
-              <el-form-item label="Weight(kg)">
+              <el-form-item label="Weight (kg)">
                 <el-input-number v-model="form.bodyWeight" :precision="1" :min="20" :max="300" controls-position="right" />
               </el-form-item>
             </div>
@@ -56,7 +56,7 @@
                   <el-radio-group v-model="form.appetite" class="appetite-radio">
                     <el-radio-button value="GOOD">Good</el-radio-button>
                     <el-radio-button value="NORMAL">Fair</el-radio-button>
-                    <el-radio-button value="POOR">difference</el-radio-button>
+                    <el-radio-button value="POOR">Poor</el-radio-button>
                   </el-radio-group>
                 </div>
               </section>
@@ -64,7 +64,7 @@
               <section class="metric-section metric-section--meals">
                 <div class="metric-title">
                   <span class="metric-dot"></span>
-                  <span>threemealcondition</span>
+                  <span>Meals</span>
                 </div>
                 <div class="field-grid field-grid--four">
                   <el-checkbox v-model="form.mealBreakfast" label="Breakfast" />
@@ -84,8 +84,8 @@
             <section class="symptoms-section">
               <div class="metric-title">
                 <span class="metric-dot metric-dot--symptom"></span>
-                <span>symptomlabel</span>
-                <span class="text-muted" style="font-size: 12px; font-weight: 400;"> (can multipleselect) </span>
+                <span>Symptoms</span>
+                <span class="text-muted" style="font-size: 12px; font-weight: 400;"> (Select all that apply) </span>
               </div>
               <div class="symptom-tags">
                 <el-check-tag
@@ -99,7 +99,7 @@
             </section>
 
             <el-form-item label="Notes" class="remark-field">
-              <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" placeholder="can recorddietDetails, bodyphysical feelingetc." />
+              <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" placeholder="Record meal details, symptoms, or other observations" />
             </el-form-item>
 
             <div class="form-actions">
@@ -116,7 +116,7 @@
           <div class="toolbar records-toolbar">
             <div class="list-panel-title">
               <el-icon><TrendCharts /></el-icon>
-              <span>Dayrecordrecord</span>
+              <span>Daily records</span>
               <span v-if="records.length" class="list-count">{{ records.length }} items</span>
             </div>
             <div class="records-tools">
@@ -127,7 +127,7 @@
           </div>
 
           <div class="table-wrap">
-            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="NoneDayrecordrecord">
+            <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="NoneDaily records">
               <el-table-column prop="recordDate" label="Date" width="112" />
               <el-table-column label="Weight" width="90">
                 <template #default="{ row }">
@@ -139,7 +139,7 @@
                   <el-tag :type="appetiteTagType(row.appetite)" size="small">{{ appetiteLabel(row.appetite) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="threemeal" width="140">
+              <el-table-column label="Meals" width="140">
                 <template #default="{ row }">
                   <span class="meal-text">{{ mealsText(row) }}</span>
                 </template>
@@ -160,7 +160,7 @@
                 <template #default="{ row }">
                   <div class="table-actions">
                     <el-button link type="primary" size="small" @click="handleEdit(row)" :disabled="saving">Edit</el-button>
-                    <el-popconfirm title="Confirm deletionthisitemsrecord?" @confirm="handleDelete(row)">
+                    <el-popconfirm title="Delete this record?" @confirm="handleDelete(row)">
                       <template #reference>
                         <el-button link type="danger" size="small">Delete</el-button>
                       </template>

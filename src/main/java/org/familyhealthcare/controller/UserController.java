@@ -58,7 +58,7 @@ public class UserController {
             return Result.error("Usernamealready storein ");
         }
         userService.createUser(user);
-        return Result.ok("Created successfully");
+        return Result.okMessage("Created successfully");
     }
 
     @PutMapping("/update")
@@ -72,7 +72,7 @@ public class UserController {
             }
         }
         boolean success = userService.updateUser(user);
-        return success ? Result.ok("Updated successfully") : Result.error("Update failed");
+        return success ? Result.okMessage("Updated successfully") : Result.error("Update failed");
     }
 
     @DeleteMapping("/delete/{id}")
@@ -86,7 +86,7 @@ public class UserController {
             return Result.error("adminusercannot Delete");
         }
         boolean success = userService.deleteUser(id);
-        return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+        return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
     }
 
     @PostMapping("/resetPassword")
@@ -98,7 +98,7 @@ public class UserController {
         Long id = Long.valueOf(params.get("id"));
         String newPassword = params.get("newPassword");
         boolean success = userService.resetPassword(id, newPassword);
-        return success ? Result.ok("Password reset successfully") : Result.error("Password reset failed");
+        return success ? Result.okMessage("Password reset successfully") : Result.error("Password reset failed");
     }
 
     @PostMapping("/changePassword")
@@ -108,7 +108,7 @@ public class UserController {
         if (userId == null) return Result.error(401, "Not signed in");
         try {
             boolean success = userService.changePassword(userId, params.get("currentPassword"), params.get("newPassword"));
-            return success ? Result.ok("PasswordUpdated successfully, Please sign in again") : Result.error("Password update failed");
+            return success ? Result.okMessage("PasswordUpdated successfully, Please sign in again") : Result.error("Password update failed");
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }
@@ -127,7 +127,7 @@ public class UserController {
             roleIds.add(Long.valueOf(o.toString()));
         }
         userRoleService.assignRoles(userId, roleIds);
-        return Result.ok("Role assigned successfully");
+        return Result.okMessage("Role assigned successfully");
     }
 
     @GetMapping("/roles/{userId}")

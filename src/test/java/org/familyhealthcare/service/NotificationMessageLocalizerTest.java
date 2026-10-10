@@ -66,6 +66,23 @@ class NotificationMessageLocalizerTest {
         NotificationMessageLocalizer.Message message = localizer.localize(
                 "MEDICATION_REMINDER", "Medication Reminders", "阿司匹林 · 08:00 · As prescribed", "zh-CN");
         assertEquals("用药提醒", message.getTitle());
-        assertEquals("阿司匹林 · 08:00 · 遵医嘱", message.getContent());
+        assertEquals("阿司匹林 · 08:00 · As prescribed", message.getContent());
     }
+    @Test void knownNotificationTemplatesDoNotRewriteEmbeddedSourceWords() {
+        String content = "As prescribed brand · 2026-09-24T08:00 · As prescribed";
+        assertEquals("As prescribed brand · 2026-09-24T08:00 · As prescribed", localizer.localize("MEDICATION_REMINDER", "", content, "zh-CN").getContent());
+        String dosage = "Medicine · 2026-09-24T08:00 · Patient wrote: As prescribed";
+        assertEquals(dosage, localizer.localize("MEDICATION_REMINDER", "", dosage, "zh-CN").getContent());
+        String vaccine = "Special dose vaccine dose 2 is planned for 2026-09-24. This is a manually maintained plan; confirm with the vaccination provider.";
+        assertEquals("Special dose vaccine 第 2 剂计划日期：2026-09-24。该计划为手工维护，请向接种机构确认。", localizer.localize("VACCINATION_REMINDER", "", vaccine, "zh-CN").getContent());
+        String source = "Patient note: Appointment scheduled for next week. As prescribed";
+        assertEquals(source, localizer.localize("APPOINTMENT_UPDATED", "", source, "zh-CN").getContent());
+        assertEquals("即将开始的 视频 问诊时间：2026-09-24T09:30。请打开共享日程查看详情。", localizer.localize("APPOINTMENT_REMINDER", "", "Upcoming VIDEO appointment at 2026-09-24T09:30. Open the shared schedule for details.", "zh-CN").getContent());
+    }
+
+    @Test void authoredMedicationDosageThatMatchesTheOldFallbackIsPreserved() {
+        String source = "Metformin · 2026-09-24T08:00 · As prescribed";
+        assertEquals(source, localizer.localize("MEDICATION_REMINDER", "Medication Reminders", source, "zh-CN").getContent());
+    }
+
 }

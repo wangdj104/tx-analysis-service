@@ -35,7 +35,7 @@ public class PatientClinicalController {
     public Result<String> save(@RequestBody PatientClinical record) {
         try {
             boolean success = patientClinicalService.saveOrUpdateClinical(record);
-            return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
+            return success ? Result.okMessage("Saved successfully") : Result.error("Failed to save");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
@@ -46,7 +46,7 @@ public class PatientClinicalController {
     public Result<String> delete(@PathVariable Long id) {
         try {
             boolean success = patientClinicalService.deleteOwned(id);
-            return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+            return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }

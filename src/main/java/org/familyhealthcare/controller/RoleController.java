@@ -57,7 +57,7 @@ public class RoleController {
             return Result.error("adminRolecannot Edit");
         }
         boolean success = roleService.saveOrUpdate(role);
-        return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
+        return success ? Result.okMessage("Saved successfully") : Result.error("Failed to save");
     }
 
     @DeleteMapping("/delete/{id}")
@@ -71,7 +71,7 @@ public class RoleController {
             return Result.error("Built-in platform roles cannot be deleted");
         }
         boolean success = roleService.deleteRole(id);
-        return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+        return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
     }
 
     @GetMapping("/menus/{roleId}")
@@ -105,7 +105,7 @@ public class RoleController {
             return Result.error(400, "Platform administration menus can only belong to the administrator role");
         }
         roleService.assignMenus(roleId, menuIds);
-        return Result.ok("Menuassignsuccessful");
+        return Result.okMessage("Menuassignsuccessful");
     }
 
     @GetMapping("/detail/{id}")

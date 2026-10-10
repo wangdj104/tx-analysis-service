@@ -13,6 +13,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.context.i18n.LocaleContext;
+import org.springframework.context.i18n.LocaleContextHolder;
+import static org.familyhealthcare.util.ExportLocalization.text;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
@@ -30,6 +33,7 @@ public class HealthAnalysisAutomationService {
     @Autowired private NotificationDeliveryService delivery;
     @Autowired private NotificationChannelMapper channels;
     @Autowired private DataScopeHelper scope;
+    @Autowired private UserLanguagePreferenceService languagePreference;
 
     public List<HealthAnalysisAutomation> list() {
         List<HealthAnalysisAutomation> rows = mapper.selectList(new QueryWrapper<HealthAnalysisAutomation>()
@@ -83,7 +87,12 @@ public class HealthAnalysisAutomationService {
     }
 
     private AiAnalysisRecord execute(HealthAnalysisAutomation row, boolean scheduled) {
+        LocaleContext previousLocale = LocaleContextHolder.getLocaleContext();
         try {
+            if (scheduled) {
+                String language = languagePreference.get(row.getUserId());
+                LocaleContextHolder.setLocale(Locale.forLanguageTag(language));
+            }
             // Recheck explicit write intent on every run, including jobs without an HTTP request.
             scope.requirePatientAccess(row.getPatientId(), null, true);
             List<String> items = split(row.getAnalysisItems());
@@ -91,16 +100,16 @@ public class HealthAnalysisAutomationService {
             AiAnalysisRecord record = new AiAnalysisRecord();
             record.setUserId(row.getUserId()); record.setPatientId(row.getPatientId());
             record.setTimeType("automation"); record.setTimeValue(LocalDate.now().toString());
-            record.setPeriodLabel("most recent " + row.getAnalysisRangeDays() + "days"); record.setAnalysisContent(content);
+            record.setPeriodLabel(text("Last ", "最近 ") + row.getAnalysisRangeDays() + text(" days", " 天")); record.setAnalysisContent(content);
             record.setReviewStatus("REVIEW_REQUIRED");
-            record.setRemark("Automated Analysis: " + row.getTaskName()); analysisRecords.insert(record);
+            record.setRemark(text("Automated analysis: ", "自动健康分析：") + row.getTaskName()); analysisRecords.insert(record);
             Patient patient = scope.requirePatient(row.getPatientId());
             String title = "Health analysis draft ready · " + (patient == null ? row.getTaskName() : patient.getName());
             String message = "An automated analysis draft is ready for review. No clinical recommendation has been sent; open the Clinical Workbench to approve or reject it.";
             boolean notified = delivery.notifyUser(row.getUserId(), parseIds(row.getNotificationChannelIds()), "HEALTH_ANALYSIS_DRAFT", title, message);
             row.setLastRunAt(LocalDateTime.now()); row.setLastAnalysisRecordId(record.getId());
             row.setLastRunStatus(notified ? "DRAFT_READY" : "DRAFT_READY_NOTIFY_FAILED");
-            row.setLastError(notified ? null : "The draft was saved, but no enabled notification channel accepted the message.");
+            row.setLastError(notified ? null : text("The draft was saved, but no enabled notification channel accepted the message.", "草稿已保存，但没有启用的通知渠道成功接收消息。"));
             if (!scheduled && Integer.valueOf(1).equals(row.getEnabled())) row.setNextRunAt(calculateNextRun(row, LocalDateTime.now()));
             mapper.updateById(row);
             return record;
@@ -108,6 +117,8 @@ public class HealthAnalysisAutomationService {
             markFailure(row, e);
             if (e instanceof RuntimeException) throw (RuntimeException) e;
             throw new IllegalStateException(e.getMessage(), e);
+        } finally {
+            LocaleContextHolder.setLocaleContext(previousLocale);
         }
     }
 
@@ -115,10 +126,10 @@ public class HealthAnalysisAutomationService {
         AiAnalysisRecord record = analysisRecords.selectById(id);
         Long userId = scope.requireUserId();
         if (record == null || !Objects.equals(record.getUserId(), userId)) {
-            throw new IllegalArgumentException("Analysis draft does not exist.");
+            throw new IllegalArgumentException(text("Analysis draft does not exist.", "分析草稿不存在。"));
         }
         if (!"REVIEW_REQUIRED".equals(record.getReviewStatus())) {
-            throw new IllegalArgumentException("This analysis draft has already been reviewed.");
+            throw new IllegalArgumentException(text("This analysis draft has already been reviewed.", "该分析草稿已完成审核。"));
         }
         record.setReviewStatus(approved ? "APPROVED" : "REJECTED");
         record.setReviewedBy(userId);
@@ -142,18 +153,18 @@ public class HealthAnalysisAutomationService {
     }
 
     private void normalize(HealthAnalysisAutomation row) {
-        row.setTaskName(row.getTaskName() == null || row.getTaskName().trim().isEmpty() ? "setperiodHealth Analytics" : row.getTaskName().trim());
+        row.setTaskName(row.getTaskName() == null || row.getTaskName().trim().isEmpty() ? text("Scheduled health analysis", "定期健康分析") : row.getTaskName().trim());
         row.setEnabled(row.getEnabled() == null ? 1 : row.getEnabled());
         row.setFrequencyType(row.getFrequencyType() == null ? "WEEKLY" : row.getFrequencyType().toUpperCase());
-        if (!FREQUENCIES.contains(row.getFrequencyType())) throw new IllegalArgumentException("runWeekNonevalid");
+        if (!FREQUENCIES.contains(row.getFrequencyType())) throw new IllegalArgumentException(text("Invalid run frequency.", "运行周期无效。"));
         try { LocalTime.parse(row.getRunTime(), DateTimeFormatter.ofPattern("HH:mm")); }
-        catch (Exception e) { throw new IllegalArgumentException("SelectRun Time"); }
+        catch (Exception e) { throw new IllegalArgumentException(text("Select a valid run time.", "请选择有效的运行时间。")); }
         row.setIntervalDays(between(row.getIntervalDays(), 1, 30, 1));
         row.setDayOfWeek(between(row.getDayOfWeek(), 1, 7, 1));
         row.setDayOfMonth(between(row.getDayOfMonth(), 1, 28, 1));
         row.setAnalysisRangeDays(between(row.getAnalysisRangeDays(), 1, 365, 30));
         List<String> selected = split(row.getAnalysisItems()).stream().filter(ITEMS::contains).distinct().collect(Collectors.toList());
-        if (selected.isEmpty()) throw new IllegalArgumentException("Please to fewselectoneitemExaminationcontent");
+        if (selected.isEmpty()) throw new IllegalArgumentException(text("Select at least one analysis item.", "请至少选择一项分析内容。"));
         row.setAnalysisItems(String.join(",", selected));
     }
 
@@ -179,16 +190,16 @@ public class HealthAnalysisAutomationService {
         List<Long> ids = parseIds(row.getNotificationChannelIds());
         if (ids.isEmpty()) return;
         long count = channels.selectCount(new QueryWrapper<NotificationChannel>().eq("user_id", userId).in("id", ids));
-        if (count != ids.size()) throw new IllegalArgumentException("Notificationchanneldoes not exist or does not belong tocurrentuser");
+        if (count != ids.size()) throw new IllegalArgumentException(text("The notification channel does not exist or does not belong to you.", "通知渠道不存在或不属于当前用户。"));
         row.setNotificationChannelIds(ids.stream().map(String::valueOf).collect(Collectors.joining(",")));
     }
 
     private HealthAnalysisAutomation requireOwned(Long id, Long userId) {
         HealthAnalysisAutomation row = mapper.selectById(id);
-        if (row == null || !Objects.equals(row.getUserId(), userId)) throw new IllegalArgumentException("Automated Analysistaskdoes not exist");
+        if (row == null || !Objects.equals(row.getUserId(), userId)) throw new IllegalArgumentException(text("The automated analysis task does not exist.", "自动分析任务不存在。"));
         return row;
     }
-    private int between(Integer value,int min,int max,int fallback){int v=value==null?fallback:value;if(v<min||v>max)throw new IllegalArgumentException("Weekreferencecountexceedrange");return v;}
+    private int between(Integer value,int min,int max,int fallback){int v=value==null?fallback:value;if(v<min||v>max)throw new IllegalArgumentException(text("The schedule value is outside the allowed range.", "周期参数超出允许范围。"));return v;}
     private List<String> split(String value){if(value==null||value.trim().isEmpty())return new ArrayList<>();return Arrays.stream(value.split(",")).map(String::trim).filter(s->!s.isEmpty()).map(String::toUpperCase).collect(Collectors.toList());}
-    private List<Long> parseIds(String value){List<Long> ids=new ArrayList<>();if(value==null||value.trim().isEmpty())return ids;try{for(String s:value.split(","))if(!s.trim().isEmpty())ids.add(Long.valueOf(s.trim()));}catch(NumberFormatException e){throw new IllegalArgumentException("Notificationchannelformatincorrect");}return ids.stream().distinct().collect(Collectors.toList());}
+    private List<Long> parseIds(String value){List<Long> ids=new ArrayList<>();if(value==null||value.trim().isEmpty())return ids;try{for(String s:value.split(","))if(!s.trim().isEmpty())ids.add(Long.valueOf(s.trim()));}catch(NumberFormatException e){throw new IllegalArgumentException(text("Invalid notification channel format.", "通知渠道格式无效。"));}return ids.stream().distinct().collect(Collectors.toList());}
 }

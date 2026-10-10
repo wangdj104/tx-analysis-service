@@ -319,8 +319,8 @@
                   </div>
                   <div class="ai-history-right">
                     <div class="ai-history-tags">
-                      <el-tag v-if="item.dwAdjustNeeded" :type="item.dwAdjustNeeded === 'Yes' ? 'warning' : 'success'" size="small">
-                        {{ item.dwAdjustNeeded === 'Yes' ? '建议调整' : '无需调整' }}
+                      <el-tag v-if="item.dwAdjustNeeded" :type="dwAdjustmentTagType(item.dwAdjustNeeded)" size="small">
+                        {{ dwAdjustmentLabel(item.dwAdjustNeeded) }}
                       </el-tag>
                       <el-tag v-if="item.weightControlEval" :type="evalTagType(item.weightControlEval)" size="small">
                         体重{{ evalLabel(item.weightControlEval) }}
@@ -666,6 +666,7 @@
 </template>
 
 <script setup>
+import DOMPurify from 'dompurify';
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -820,7 +821,7 @@ const formPreview = computed(() => {
     statusText,
     weightGain: formatKgText(gain),
     ufAmount: formatKgText(uf),
-    dailyGain: daily == null ? '-' : `${daily.toFixed(2)} kg/days`,
+    dailyGain: daily == null ? '-' : `${daily.toFixed(2)} kg/天`,
     thresholdText: t3 != null && t5 != null ? `${t3.toFixed(2)} / ${t5.toFixed(2)} kg` : '暂无干体重',
     hint
   };
@@ -862,7 +863,7 @@ const listFilterOverride = ref('');
 
 const hasChartData = computed(() => chartDates.value.length > 0);
 
-const listScopeLabel = computed(() => listFilterOverride.value || timeRangeLabel.value);
+const listScopeLabel = computed(() => listFilterOverride.value === 'Allhistory' ? '全部历史' : listFilterOverride.value || timeRangeLabel.value);
 
 const tableMaxHeight = computed(() => (isMobile.value ? undefined : 520));
 
@@ -962,7 +963,7 @@ const dailyGainChartOption = computed(() => ({
   ...commonChartConfig.value,
   title: { show: false },
   xAxis: { type: 'category', data: chartDates.value, axisLabel: { rotate: isMobile.value ? 45 : 30, fontSize: 10 } },
-  yAxis: { type: 'value', name: 'kg/days' },
+  yAxis: { type: 'value', name: 'kg/天' },
   series: [
     { name: '日均体重增长', type: 'line', data: chartDailyGain.value, smooth: true, areaStyle: { opacity: 0.12 }, itemStyle: { color: '#8b5cf6' } }
   ]
@@ -1774,8 +1775,11 @@ async function handleDeleteAnalysis(id) {
 
 function formatAiResult(text) {
   if (!text) return '';
-  const marker = '【干体重调整结论】';
-  const idx = text.indexOf(marker);
+  // Source narrative remains literal; only the presentation markup below is HTML.
+  text = String(text).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const match = /【(?:Dry weight adjustment conclusion|干体重调整结论|Dry Weightadjustment conclusion)】/.exec(text);
+  const marker = match?.[0] || '';
+  const idx = match?.index ?? -1;
   const bodyPart = idx >= 0 ? text.slice(0, idx) : text;
   const conclusionPart = idx >= 0 ? text.slice(idx + marker.length) : '';
 
@@ -1788,17 +1792,29 @@ function formatAiResult(text) {
     const cleanConclusion = conclusionPart.replace(/```json[\s\S]*?```\s*$/, '').trim();
     const lines = cleanConclusion.split('\n').map(l => l.trim()).filter(Boolean);
     const rows = lines.map((line) => {
-      const m = line.match(/^(.+?)[: :]\s*(.+)$/);
+      const m = line.match(/^(.+?)[:：]\s*(.+)$/);
       if (!m) return `<p class="ai-dw-line">${line}</p>`;
       const key = m[1];
       const val = m[2];
-      const highlight = key.includes('adjustment amount') ? ' highlight' : '';
+      const highlight = /adjustment amount|调整幅度|调整量/i.test(key) ? ' highlight' : '';
       return `<div class="ai-dw-line"><span class="ai-dw-key">${key}</span><span class="ai-dw-val${highlight}">${val}</span></div>`;
     }).join('');
     html += `<div class="ai-dw-conclusion"><strong>${marker}</strong>${rows}</div>`;
   }
 
-  return html;
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['br','strong','div','span','p'], ALLOWED_ATTR: ['class'] });
+}
+
+function dwAdjustmentLabel(value) {
+  if (['Yes', '是'].includes(value)) return '建议调整';
+  if (['No', '否'].includes(value)) return '无需调整';
+  return value == null ? '' : String(value);
+}
+
+function dwAdjustmentTagType(value) {
+  if (['Yes', '是'].includes(value)) return 'warning';
+  if (['No', '否'].includes(value)) return 'success';
+  return 'info';
 }
 
 function evalTagType(value) {

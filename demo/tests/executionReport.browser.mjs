@@ -2,12 +2,13 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
+import { assertDemoLanguage } from './helpers/browserLanguage.mjs';
 const root = new URL('../../', import.meta.url);
 const require = createRequire(new URL('frontend/package.json', root));
 const { chromium } = require('playwright');
 const output = process.env.DEMO_QA_OUTPUT || '/tmp/care-execution-demo-qa';
 mkdirSync(output, { recursive: true });
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? {executablePath:process.env.CHROMIUM_PATH} : {}), headless: true, args: ['--no-sandbox'] });
 try {
   for (const edition of ['en', 'zh']) for (const width of [1440, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } }), errors = [], external = [];
@@ -25,7 +26,8 @@ try {
     await click('cp-create');
     await page.locator('[name="title"]').fill('FICTIONAL REPORT BROWSER PLAN');
     await submit(); await click('cp-publish'); await page.locator('[name="confirm"]').check(); await submit();
-    await role('family'); await click('cp-submit'); await submit();
+    const originalNote='Original patient note 原始记录: metformin 500 mg';
+    await role('family'); await click('cp-submit'); await page.locator('[name="note"]').fill(originalNote); await submit();
     await role('doctor'); await click('cp-return'); await page.locator('[name="note"]').fill('FICTIONAL DETAIL REQUEST'); await submit();
     await click('cp-revise'); await click('cp-edit'); await page.locator('[name="title"]').fill('PRIVATE REVISION DRAFT'); await submit();
     await click('care-report-open');
@@ -33,7 +35,9 @@ try {
     assert.ok((await page.locator('[data-report-section="outstanding"]').textContent()).includes('FICTIONAL DETAIL REQUEST'));
     assert.ok(!(await page.locator('.cp-report').textContent()).includes('PRIVATE REVISION DRAFT'));
     await page.locator('[data-action="care-report-range"][data-days="0"]').click();
-    assert.ok((await page.locator('[data-report-section="activity"]').textContent()).includes('ASSISTED'));
+    assert.ok((await page.locator('[data-report-section="activity"]').textContent()).includes(edition==='en'?'Assisted record':'协助记录'));
+    assert.ok((await page.locator('[data-report-section="activity"]').textContent()).includes(originalNote),'Original receipt language must be preserved');
+    await assertDemoLanguage(page,edition,['FICTIONAL REPORT BROWSER PLAN','FICTIONAL DETAIL REQUEST','PRIVATE REVISION DRAFT',originalNote]);
     assert.equal(await page.locator('.cp-report [data-action^="cp-"]').count(), 0);
     await noOverflow(); await page.screenshot({ path:`${output}/${edition}-${width}-report.png`, fullPage:true });
     await page.keyboard.press('Escape'); await page.locator('#detail-dialog').waitFor({ state:'hidden' });
@@ -43,6 +47,7 @@ try {
       await role(value); await click('care-report-open'); await noOverflow();
       assert.ok((await page.locator('.cp-report').textContent()).includes('FICTIONAL REPORT BROWSER PLAN'));
       assert.ok(!(await page.locator('.cp-report').textContent()).includes('PRIVATE REVISION DRAFT'));
+      await assertDemoLanguage(page,edition,['FICTIONAL REPORT BROWSER PLAN','FICTIONAL DETAIL REQUEST',originalNote]);
       await close();
     }
     await role('admin'); assert.equal(await page.locator('[data-action="care-report-open"]').count(), 0);

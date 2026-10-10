@@ -781,7 +781,7 @@ base('390px static-demo smoke: distinct local model, dialog keyboard/focus and r
     await page.locator('[data-role="family"]').click(); await page.locator('[data-page="careplan"]').click()
     await expect(page.locator('[data-plan-id]')).toHaveCount(1)
     await page.locator('[data-action="cp-submit"]').first().click()
-    await expect(dialog).toContainText('ASSISTED')
+    await expect(dialog).toContainText(text('Assisted record', '协助记录'))
     await dialog.locator('#action-submit').click(); await expect(dialog).toBeHidden()
     await expect(page.locator('.cp-plan > .cp-action[data-care-status="SUBMITTED"]')).toHaveCount(1)
     await page.locator('.cp-history > summary').click()

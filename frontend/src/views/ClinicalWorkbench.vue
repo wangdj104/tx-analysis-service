@@ -163,7 +163,7 @@ function hydrateSchedule(){
 }
 function tagType(severity){ return ({CRITICAL:'danger',WARNING:'warning',INFO:'info'}[severity]||'info') }
 function qualityType(type){ return ({REVIEW:'Review required',LOW_CONFIDENCE:'Low confidence',MISSING_CONTEXT:'Missing context',DUPLICATE:'Possible duplicate',DIALYSIS_COMPLETENESS:'Incomplete dialysis data',AI_DRAFT:'AI draft'}[type]||type) }
-function formatDate(value){ if(!value)return 'not set'; const date=new Date(value); return Number.isNaN(date.getTime())?String(value):date.toLocaleString() }
+function formatDate(value){ if(!value)return 'not set'; const date=new Date(value); return Number.isNaN(date.getTime())?String(value):date.toLocaleString('en-US') }
 function formatSla(minutes){ return minutes<60?`${minutes} min`:minutes<1440?`${minutes/60} h`:`${minutes/1440} d` }
 function metric(value,suffix=''){ return value==null?'—':`${value}${suffix}` }
 function openPath(path){ if(path)router.push(path) }

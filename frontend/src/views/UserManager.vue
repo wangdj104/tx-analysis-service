@@ -7,7 +7,7 @@
             <div class="left">
               <div>
                 <h1>User Management</h1>
-                <p class="subtitle">managementsystemuserAccountandRoleassign</p>
+                <p class="subtitle">Manage user accounts and role assignments</p>
               </div>
             </div>
           </div>
@@ -15,7 +15,7 @@
         <div class="content-panel">
           <div class="toolbar">
             <el-button v-if="isAdmin" type="primary" @click="showAddDialog">
-              <el-icon><Plus /></el-icon>Adduser
+              <el-icon><Plus /></el-icon>Add user
             </el-button>
           </div>
           <el-table :data="users" stripe class="app-data-table">
@@ -36,8 +36,8 @@
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="showEditDialog(row)">Edit</el-button>
                 <template v-if="isAdmin">
-                  <el-button link type="primary" size="small" @click="showRoleDialog(row)">assignRole</el-button>
-                  <el-button link type="warning" size="small" @click="showResetDialog(row)">ResetPassword</el-button>
+                  <el-button link type="primary" size="small" @click="showRoleDialog(row)">Assign roles</el-button>
+                  <el-button link type="warning" size="small" @click="showResetDialog(row)">Reset password</el-button>
                   <el-popconfirm title="Confirm deletion?" @confirm="handleDelete(row.id)">
                     <template #reference>
                       <el-button link type="danger" size="small" :disabled="row.username === 'admin'">Delete</el-button>
@@ -52,16 +52,16 @@
     </el-main>
 
     <!-- Add/Edituser -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Edituser' : 'Adduser'" width="520px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Edit user' : 'Add user'" width="520px" destroy-on-close>
       <el-form :model="form" label-width="90px" :rules="rules" ref="formRef">
         <el-form-item label="Username" prop="username">
           <el-input v-model="form.username" :disabled="isEdit" placeholder="Enter your username" />
         </el-form-item>
-        <el-form-item label="realName">
-          <el-input v-model="form.realName" placeholder="Enter realName" />
+        <el-form-item label="Full name">
+          <el-input v-model="form.realName" placeholder="Enter full name" />
         </el-form-item>
         <el-form-item label="Password" prop="password" v-if="!isEdit">
-          <el-input v-model="form.password" type="password" placeholder="to few10, containletters, numbers and special characters" show-password />
+          <el-input v-model="form.password" type="password" placeholder="At least 10 characters, including letters, numbers, and special characters" show-password />
         </el-form-item>
         <el-form-item label="Phone Number">
           <el-input v-model="form.phone" placeholder="Enter Phone Number" />
@@ -83,7 +83,7 @@
     </el-dialog>
 
     <!-- assignRole -->
-    <el-dialog v-model="roleDialogVisible" title="assignRole" width="400px" destroy-on-close>
+    <el-dialog v-model="roleDialogVisible" title="Assign roles" width="400px" destroy-on-close>
       <el-checkbox-group v-model="selectedRoleIds">
         <el-checkbox v-for="role in roles" :key="role.id" :value="role.id">{{ role.roleName }}</el-checkbox>
       </el-checkbox-group>
@@ -94,15 +94,15 @@
     </el-dialog>
 
     <!-- ResetPassword -->
-    <el-dialog v-model="resetDialogVisible" title="ResetPassword" width="400px" destroy-on-close>
+    <el-dialog v-model="resetDialogVisible" title="Reset password" width="400px" destroy-on-close>
       <el-form :model="resetForm" label-width="100px">
         <el-form-item label="New Password" required>
-          <el-input v-model="resetForm.newPassword" type="password" placeholder="to few10, containletters, numbers and special characters" show-password />
+          <el-input v-model="resetForm.newPassword" type="password" placeholder="At least 10 characters, including letters, numbers, and special characters" show-password />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="resetDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="handleResetPassword">ConfirmReset</el-button>
+        <el-button type="primary" @click="handleResetPassword">Confirm reset</el-button>
       </template>
     </el-dialog>
   </el-container>
@@ -159,8 +159,8 @@ const rules = {
   username: [{ required: true, message: 'Enter your username', trigger: 'blur' }],
   password: [
     { required: true, message: 'Enter your password', trigger: 'blur' },
-    { min: 10, message: 'Passwordto few10', trigger: 'blur' },
-    { pattern: /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).+$/, message: 'Passwordneedincludeletters, numbers and special characters', trigger: 'blur' }
+    { min: 10, message: 'Password must contain at least 10 characters', trigger: 'blur' },
+    { pattern: /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).+$/, message: 'Password must include letters, numbers, and special characters', trigger: 'blur' }
   ]
 };
 
@@ -247,7 +247,7 @@ async function handleResetPassword() {
   if (!resetForm.newPassword || resetForm.newPassword.length < 10
       || !/[A-Za-z]/.test(resetForm.newPassword) || !/\d/.test(resetForm.newPassword)
       || !/[^A-Za-z0-9\s]/.test(resetForm.newPassword)) {
-    ElMessage.warning('New Passwordto few10, andneedincludeletters, numbers and special characters');
+    ElMessage.warning('New password must contain at least 10 characters, including letters, numbers, and special characters');
     return;
   }
   const res = await resetPassword(resetForm);

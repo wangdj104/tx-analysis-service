@@ -166,6 +166,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
 import VChart from '@/components/HealthChart.vue'
 import { getMonitoringSnapshot } from '@/api/monitoring'
+import { localizeHealthTimelineEntry } from '@/utils/timelineText'
 import { localizeServerText } from '@/utils/serverText'
 import { acknowledge, checkThresholds, resolve } from '@/api/alert'
 import { actionIntake } from '@/api/familyHealth'
@@ -197,12 +198,12 @@ let snapshotDisposed = false
 
 const metrics = computed(() => snapshot.value.metrics || {})
 const activeAlerts = computed(() => snapshot.value.activeAlerts || [])
-const todayTasks = computed(() => snapshot.value.todayTasks || [])
-const recentEvents = computed(() => (snapshot.value.recentEvents || []).map(event => ({
-  ...event,
-  title: localizeEventText(event.title),
-  summary: localizeEventText(event.summary)
-})))
+const todayTasks = computed(() => (snapshot.value.todayTasks || []).map(task => task.taskType === 'DIALYSIS' && ['Dialysisschedule','Dialysis schedule','Dialysis Schedule'].includes(task.title) ? {...task, title:'透析排班'} : task))
+const recentEvents = computed(() => (snapshot.value.recentEvents || []).map(event => {
+  const sourceType = event.sourceType || (['MEASUREMENT','DIALYSIS','INTAKE','MEDICATION_LOG'].includes(event.type) ? event.type : '')
+  const localized = localizeHealthTimelineEntry({...event, sourceType})
+  return {...event, title: localized.title, summary: localized.summary}
+}))
 const primarySuggestion = computed(() => snapshot.value.careSuggestions?.[0] || '持续记录后，系统将提供更可靠的趋势判断。')
 const statusTone = computed(() => ({ CRITICAL: 'critical', WARNING: 'warning', STABLE: 'stable', NO_DATA: 'empty' }[snapshot.value.overallStatus] || 'empty'))
 const statusIcon = computed(() => snapshot.value.overallStatus === 'STABLE' ? SuccessFilled : WarningFilled)
@@ -378,15 +379,6 @@ function localizeSnapshot(data) {
   return { ...data, statusLabel: statusLabels[data.overallStatus] || data.statusLabel, signals, careSuggestions: suggestions }
 }
 
-function localizeEventText(value) {
-  if (typeof value !== 'string') return value
-  return localizeServerText(value)
-    .replace(/^Blood Pressure & Glucoserecord$/i, '血压与血糖记录')
-    .replace(/^Blood Pressure\s*/i, '血压 ')
-    .replace(/^Blood Glucose\s*/i, '血糖 ')
-    .replace(/^Taken:\s*/i, '已服用：')
-    .replace(/^medicationrecord:\s*/i, '用药记录：');
-}
 
 watch(patientId, () => {
   snapshotRequestEpoch++

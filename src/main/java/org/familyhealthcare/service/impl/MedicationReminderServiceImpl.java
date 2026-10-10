@@ -30,6 +30,9 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
     private static final Logger log = LoggerFactory.getLogger(MedicationReminderServiceImpl.class);
 
     @Autowired
+    private org.familyhealthcare.service.UserLanguagePreferenceService languagePreference;
+
+    @Autowired
     private DataScopeHelper dataScopeHelper;
 
     @Autowired
@@ -195,7 +198,7 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
                 if (notify) {
                     Medication med = medicationMapper.selectById(intake.getMedicationId());
                     if (!delivery.notifyUser(intake.getUserId(), "MEDICATION_REMINDER", "Medication Reminders", med.getDrugName() + " · "
-                            + intake.getScheduledAt() + " · " + (intake.getDosage() == null ? "As prescribed" : intake.getDosage()))) {
+                            + intake.getScheduledAt() + " · " + reminderDose(intake))) {
                         if (!snoozed && due.isBefore(now.minusMinutes(60))) {
                             intake.setStatus("MISSED"); updateTaskStatus(intake, previousStatus);
                         }
@@ -213,4 +216,11 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
         medicationIntakeMapper.update(null, new UpdateWrapper<MedicationIntake>()
                 .eq("id", intake.getId()).eq("status", previousStatus).set("status", intake.getStatus()));
     }
+    /** A stored dosage is clinical source text, even when it matches the old fallback exactly. */
+    private String reminderDose(MedicationIntake intake) {
+        if (intake.getDosage() != null) return intake.getDosage();
+        String language = languagePreference == null ? "en-US" : languagePreference.get(intake.getUserId());
+        return language != null && language.startsWith("zh") ? "遵医嘱" : "As prescribed";
+    }
+
 }

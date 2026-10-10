@@ -35,10 +35,11 @@
 可选真实浏览器报告验收，使用前端已有的 Playwright 依赖：
 
 ```bash
+cd frontend && npx playwright install chromium && cd ..
 node cn/demo/tests/executionReport.browser.mjs
 ```
 
-脚本覆盖中英文 1440px / 390px、草稿隐私、身份、复核状态、日期筛选、五种身份、关闭重开、切换患者及重置刷新。截图默认写入 `/tmp/care-execution-demo-qa`，可用 `DEMO_QA_OUTPUT` 修改。交付环境原生 Chromium 已确认受到 socket 限制，因此新增脚本仅完成语法检查，未执行浏览器验收；像素布局和真实浏览器交互仍需线下核验。
+脚本覆盖中英文 1440px / 390px、草稿隐私、身份、复核状态、日期筛选、五种身份、关闭重开、切换患者及重置刷新。截图默认写入 `/tmp/care-execution-demo-qa`，可用 `DEMO_QA_OUTPUT` 修改。脚本使用根目录 frontend 已有的 Playwright 依赖，默认启动其安装的 Chromium；也可通过 `CHROMIUM_PATH` 指定现有浏览器。本次语言排查重试后，Chromium 仍因禁止创建套接字而在导航前退出，不能宣称本地浏览器验收通过或已生成截图；真实浏览器门禁由托管 CI 执行。
 
 ## 使用 GitHub Pages 发布
 
@@ -74,3 +75,7 @@ node cn/demo/tests/carePlanCollaboration.browser.mjs
 ```
 
 浏览器脚本覆盖双语版 1440px、390px 场景，将合成截图写入 `/tmp/care-plan-demo-qa`（可用 `DEMO_QA_OUTPUT` 指定目录）。它独立于不需要新依赖的 Node 测试。实施环境禁止创建套接字，Chromium 在打开页面前退出，因此未获得真实浏览器截图或通过结果；静态演示验证也不等于后端端到端验收。
+
+## 语言一致性
+
+两种演示共用显示逻辑，按页面语言选择文字。照护状态、事件历史、录入声明、修订弹窗、报告预览和审计功能名称均使用对应语言的可读标签；协议枚举、已存值、操作者身份和用户录入的医疗文字保持原样。回归测试覆盖全部身份的页面与导航、输入提示、校验错误、本地化时间格式，以及中英混合原始记录。浏览器脚本在桌面和手机宽度下检查相应实际渲染内容。

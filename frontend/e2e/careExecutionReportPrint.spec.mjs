@@ -93,8 +93,11 @@ for(const mobile of [false,true]) for(const outputLanguage of ['en','zh-CN']) te
     const careData=(await careResult.json()).data
     expect(careData.metadata.language).toBe(outputLanguage)
     expect(careData.questions.some(row=>row.title===newQuestion)).toBe(true)
+    await expect(popup.locator('html')).toHaveAttribute('lang','en')
+    await expect(popup).toHaveTitle('Visit Summary')
     await expect(popup.locator('.visit-summary')).toContainText(newHistory)
     await expect(popup.locator('.visit-summary')).not.toContainText(oldHistory)
+    await expect(popup.locator('.execution-report')).toHaveAttribute('lang',outputLanguage)
     await expect(popup.locator('.report-body')).toContainText(newQuestion)
     await expect(popup.locator('.report-body')).not.toContainText(oldQuestion)
     await expect(popup.locator('.report-body')).toContainText('Saved successfully')

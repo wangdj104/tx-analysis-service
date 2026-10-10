@@ -11,6 +11,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import static org.familyhealthcare.util.ExportLocalization.text;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -107,15 +109,15 @@ public class BpPatternAnalysisServiceImpl extends ServiceImpl<BpPatternAnalysisM
         // generateanalysissummary
         StringBuilder summary = new StringBuilder();
         if (analysis.getAvgSystolic() != null) {
-            summary.append("Average systolic pressure ").append(analysis.getAvgSystolic()).append(" mmHg, ");
-            summary.append("variationrange ").append(analysis.getMinSystolic()).append("-").append(analysis.getMaxSystolic()).append(" mmHg. ");
+            summary.append(text("Average systolic pressure ", "平均收缩压 ")).append(analysis.getAvgSystolic()).append(text(" mmHg, ", " mmHg，"));
+            summary.append(text("Range ", "变化范围 ")).append(analysis.getMinSystolic()).append("-").append(analysis.getMaxSystolic()).append(text(" mmHg. ", " mmHg。"));
         }
         if (analysis.getStdDeviation() != null && analysis.getStdDeviation().compareTo(BigDecimal.valueOf(15)) > 0) {
-            summary.append("Blood Pressurevariabilityrelativelylarge(standard deviation").append(analysis.getStdDeviation()).append("), needattention. ");
+            summary.append(text("Blood pressure variability is relatively high (standard deviation ", "血压变异较大（标准差 ")).append(analysis.getStdDeviation()).append(text("); review is needed. ", "），需要关注。"));
         }
-        if (orthostaticCount > 0) summary.append("Dialysisinorthostatic hypotensionBlood Pressure ").append(orthostaticCount).append(" times. ");
-        if (lowBpCount > 0) summary.append("lowBlood Pressure(<90) ").append(lowBpCount).append(" times. ");
-        if (highBpCount > 0) summary.append("highBlood Pressure(>140) ").append(highBpCount).append(" times. ");
+        if (orthostaticCount > 0) summary.append(text("Orthostatic hypotension during dialysis: ", "透析中体位性低血压：")).append(orthostaticCount).append(text(" occurrences. ", " 次。"));
+        if (lowBpCount > 0) summary.append(text("Low blood pressure (<90): ", "低血压（<90）：")).append(lowBpCount).append(text(" occurrences. ", " 次。"));
+        if (highBpCount > 0) summary.append(text("High blood pressure (>140): ", "高血压（>140）：")).append(highBpCount).append(text(" occurrences. ", " 次。"));
         analysis.setAnalysisSummary(summary.toString());
 
         baseMapper.insert(analysis);

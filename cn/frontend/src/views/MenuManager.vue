@@ -7,7 +7,7 @@
       </header>
       <section class="content-panel" v-loading="loading">
         <el-table :data="tree" row-key="id" default-expand-all border>
-          <el-table-column prop="menuName" label="菜单名称" min-width="180" />
+          <el-table-column prop="menuName" label="菜单名称" min-width="180"><template #default="{ row }">{{ localizeMenuName(row) }}</template></el-table-column>
           <el-table-column prop="menuCode" label="菜单编码" min-width="190" />
           <el-table-column prop="menuPath" label="路由" min-width="220" show-overflow-tooltip />
           <el-table-column prop="permission" label="权限标识" min-width="210" />
@@ -19,7 +19,7 @@
     </section>
     <el-dialog v-model="visible" :title="form.id ? '编辑菜单' : '新增菜单'" width="620px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="上级菜单"><el-select v-model="form.parentId" style="width:100%"><el-option label="一级菜单" :value="0" /><el-option v-for="item in parentOptions" :key="item.id" :label="item.menuName" :value="item.id" /></el-select></el-form-item>
+        <el-form-item label="上级菜单"><el-select v-model="form.parentId" style="width:100%"><el-option label="一级菜单" :value="0" /><el-option v-for="item in parentOptions" :key="item.id" :label="localizeMenuName(item)" :value="item.id" /></el-select></el-form-item>
         <el-form-item label="菜单名称" prop="menuName"><el-input v-model="form.menuName" /></el-form-item>
         <el-form-item label="菜单编码" prop="menuCode"><el-input v-model="form.menuCode" placeholder="例如：medication-reminder" /></el-form-item>
         <el-form-item label="路由"><el-input v-model="form.menuPath" placeholder="页面路由或含参数路由，例如 /path?tab=x" /></el-form-item>
@@ -33,6 +33,7 @@
   </main>
 </template>
 <script setup>
+import { localizeMenuName } from '@/utils/serverText';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';

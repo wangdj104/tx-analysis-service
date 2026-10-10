@@ -4,8 +4,8 @@
     <section class="dash-top">
       <div class="dash-top__left">
         <p class="dash-top__greet">{{ greetText }}</p>
-        <h1 class="dash-top__title">firstpageoverview</h1>
-        <p class="dash-top__sub">summarizeThis Monthhealthdata, QuickenterPrimary navigation</p>
+        <h1 class="dash-top__title">Health overview</h1>
+        <p class="dash-top__sub">Review this month’s health data and open your main care modules</p>
       </div>
       <el-button type="primary" round :loading="loading" @click="loadSummary">
         <el-icon><Refresh /></el-icon>Refresh data
@@ -15,9 +15,9 @@
     <!-- indicatorcard -->
     <section class="health-hero" :class="`health-hero--${healthRiskTone}`" v-loading="loading">
       <div class="health-hero__main">
-        <span class="health-hero__eyebrow">This MonthhealthStatus</span>
+        <span class="health-hero__eyebrow">This month’s health status</span>
         <div class="health-hero__title-row">
-          <h2>{{ summary.healthRiskLabel || 'etc.pendingdata' }}</h2>
+          <h2>{{ summary.healthRiskLabel || 'Awaiting data' }}</h2>
           <span class="health-hero__badge">{{ healthRiskText }}</span>
         </div>
         <p class="health-hero__sub">{{ primaryHealthHint }}</p>
@@ -65,8 +65,8 @@
       <article v-if="showTrendChart" class="dash-card dash-card--chart">
         <header class="dash-card__head">
           <div>
-            <h2>recent  6 Monthdatatrend</h2>
-            <p>by modulestatisticseach Monthentryamount</p>
+            <h2>Data trends over the last 6 months</h2>
+            <p>Monthly record counts by module</p>
           </div>
         </header>
         <div class="chart-shell">
@@ -78,8 +78,8 @@
           />
           <div v-else class="chart-placeholder">
             <el-icon :size="48" class="chart-placeholder__icon"><TrendCharts /></el-icon>
-            <p>Nonetrenddata</p>
-            <span>entryMedical Records or medicationrecordafter , will in thisdisplaytrend</span>
+            <p>No trend data yet</p>
+            <span>Trends appear here after medical or medication records are added</span>
           </div>
         </div>
       </article>
@@ -88,7 +88,7 @@
         <article v-if="hasMenu('/medical-record')" class="dash-card dash-card--table">
           <header class="dash-card__head">
             <div>
-              <h2><el-icon><WarningFilled /></el-icon> most recent Abnormal Results</h2>
+              <h2><el-icon><WarningFilled /></el-icon> Recent abnormal results</h2>
             </div>
             <router-link to="/medical-record" class="dash-card__link">Medical Records →</router-link>
           </header>
@@ -97,12 +97,12 @@
             size="small"
             class="app-data-table dash-table"
             :max-height="tableMaxHeight"
-            empty-text="NoneAbnormal Results, keep it up"
+            empty-text="No abnormal results recorded"
           >
             <el-table-column prop="recordDate" label="Date" width="100" />
             <el-table-column prop="patientName" label="Patient" width="80" show-overflow-tooltip />
             <el-table-column prop="itemName" label="Test item" min-width="100" show-overflow-tooltip />
-            <el-table-column label="result" min-width="90">
+            <el-table-column label="Result" min-width="90">
               <template #default="{ row }">
                 <span class="result-abnormal">{{ row.resultValue }}{{ row.unit ? ' ' + row.unit : '' }}</span>
               </template>
@@ -113,16 +113,16 @@
         <article v-if="hasMenu('/dialysis')" class="dash-card dash-card--table">
           <header class="dash-card__head">
             <div>
-              <h2><el-icon><Document /></el-icon> most recent Dialysis</h2>
+              <h2><el-icon><Document /></el-icon> Recent dialysis sessions</h2>
             </div>
-            <router-link to="/dialysis" class="dash-card__link">ViewAll →</router-link>
+            <router-link to="/dialysis" class="dash-card__link">View all →</router-link>
           </header>
           <el-table
             :data="summary.recentDialysis || []"
             size="small"
             class="app-data-table dash-table"
             :max-height="280"
-            empty-text="NoneDialysis Records"
+            empty-text="No dialysis records"
           >
             <el-table-column prop="recordDate" label="Date" width="100" />
             <el-table-column prop="onWeight" label="pre-dialysis" width="72" />
@@ -143,11 +143,11 @@
     <!-- bottomsectionDialysisdoublechart (has DialysisPermissionandmainrangenot placetime)  -->
     <section v-if="hasMenu('/dialysis') && showDialysisRow" class="dash-sub-charts" v-loading="loading">
       <article class="dash-card dash-card--mini-chart">
-        <header class="dash-card__head"><h2>This Monthfluid removalStatus</h2></header>
+        <header class="dash-card__head"><h2>This month’s fluid removal status</h2></header>
         <v-chart class="chart-canvas chart-canvas--sm" :option="dehydrationChartOption" autoresize />
       </article>
       <article class="dash-card dash-card--mini-chart">
-        <header class="dash-card__head"><h2>Dry Weightchange</h2></header>
+        <header class="dash-card__head"><h2>Dry weight changes</h2></header>
         <v-chart
           v-if="dryWeightHasData"
           class="chart-canvas chart-canvas--sm"
@@ -155,14 +155,14 @@
           autoresize
         />
         <div v-else class="chart-placeholder chart-placeholder--sm">
-          <span>NoneDry Weightrecord</span>
+          <span>No dry weight records</span>
         </div>
       </article>
     </section>
 
-    <!-- shortcutentry: horizontaltowardcompact -->
+    <!-- Quick links: horizontaltowardcompact -->
     <section v-if="quickLinks.length" class="quick-bar">
-      <span class="quick-bar__label">shortcutentry</span>
+      <span class="quick-bar__label">Quick links</span>
       <div class="quick-bar__links">
         <router-link
           v-for="item in quickLinks"
@@ -231,10 +231,10 @@ const greetText = computed(() => {
     if (raw) {
       const u = JSON.parse(raw);
       const name = u.realName || u.username;
-      if (name) return `yougood, ${name}`;
+      if (name) return `Hello, ${name}`;
     }
   } catch { /* ignore */ }
-  return 'yougood';
+  return 'Hello';
 });
 
 const showTrendChart = computed(() =>
@@ -251,12 +251,12 @@ const visibleMetrics = computed(() => {
   if (hasMenu('/dialysis')) {
     list.push({
       key: 'matchRate',
-      label: 'This MonthUltrafiltration on targetrate',
+      label: 'This month’s ultrafiltration target rate',
       display: s.dialysisMatchRateMonth != null ? Number(s.dialysisMatchRateMonth).toFixed(1) : '-',
       unit: s.dialysisMatchRateMonth != null ? '%' : '',
       icon: TrendCharts,
       tone: 'emerald',
-      hint: s.latestDialysisStatus ? `most recent onetimes: ${s.latestDialysisStatus}` : null
+      hint: s.latestDialysisStatus ? `Latest session: ${s.latestDialysisStatus}` : null
     });
     list.push({
       key: 'over5',
@@ -264,13 +264,13 @@ const visibleMetrics = computed(() => {
       display: s.over5pctCountMonth ?? 0,
       icon: WarningFilled,
       tone: (s.over5pctCountMonth || 0) > 0 ? 'amber' : 'sky',
-      hint: 'by This MonthDialysis Recordsstatistics'
+      hint: 'Based on this month’s dialysis records'
     });
   }
   if (hasMenu('/system/patient')) {
     list.push({
       key: 'patient',
-      label: 'in managePatient',
+      label: 'Patients under care',
       display: s.patientCount ?? 0,
       icon: User,
       tone: 'indigo'
@@ -279,7 +279,7 @@ const visibleMetrics = computed(() => {
   if (hasMenu('/dialysis')) {
     list.push({
       key: 'dialysis',
-      label: 'This MonthDialysis',
+      label: 'Dialysis sessions this month',
       display: s.dialysisCountMonth ?? 0,
       icon: Document,
       tone: 'violet'
@@ -288,14 +288,14 @@ const visibleMetrics = computed(() => {
   if (hasMenu('/medical-record')) {
     list.push({
       key: 'medical',
-      label: 'This MonthMedical Records',
+      label: 'Medical records this month',
       display: s.medicalRecordCountMonth ?? 0,
       icon: FirstAidKit,
       tone: 'emerald'
     });
     list.push({
       key: 'abnormal',
-      label: 'Abnormal Resultsitem',
+      label: 'Abnormal results',
       display: s.abnormalItemCount ?? 0,
       icon: WarningFilled,
       tone: 'amber'
@@ -304,7 +304,7 @@ const visibleMetrics = computed(() => {
   if (hasMenu('/medication')) {
     list.push({
       key: 'medication',
-      label: 'This Monthmedicationrecord',
+      label: 'Medication records this month',
       display: s.medicationLogCountMonth ?? 0,
       icon: Box,
       tone: 'sky'
@@ -314,12 +314,12 @@ const visibleMetrics = computed(() => {
     const dw = s.currentDryWeight;
     list.push({
       key: 'dry',
-      label: 'currentDry Weight',
+      label: 'Current dry weight',
       display: dw != null ? dw : '—',
       unit: dw != null ? 'kg' : '',
       icon: ScaleToOriginal,
       tone: 'rose',
-      hint: s.dryWeightDelta != null ? `relativelyup Month ${formatDelta(s.dryWeightDelta)}` : null,
+      hint: s.dryWeightDelta != null ? `Compared with previous month: ${formatDelta(s.dryWeightDelta)}` : null,
       hintClass: deltaClass.value
     });
   }
@@ -330,7 +330,7 @@ const quickLinks = computed(() => {
   const all = [
     { path: '/dialysis', label: 'Dialysis Management', icon: Document },
     { path: '/medical-record', label: 'Medical Records', icon: FirstAidKit },
-    { path: '/medication', label: 'Medicationmanagement', icon: Box },
+    { path: '/medication', label: 'Medication management', icon: Box },
     { path: '/dry-weight', label: 'Dry Weight', icon: ScaleToOriginal },
     { path: '/system/patient', label: 'Patient', icon: User }
   ];
@@ -372,36 +372,36 @@ const healthRiskTone = computed(() => {
 });
 
 const healthRiskText = computed(() => {
-  const map = { HIGH: 'highattention', MEDIUM: 'needobserve', LOW: 'stable' };
+  const map = { HIGH: 'High attention needed', MEDIUM: 'Needs monitoring', LOW: 'stable' };
   return map[summary.value.healthRiskLevel] || 'stable';
 });
 
 const healthHighlights = computed(() => {
   const list = summary.value.healthHighlights || [];
-  return list.length ? list.slice(0, 4) : ['Noneenoughenoughdata, firstkeepcontinuousrecord'];
+  return list.length ? list.slice(0, 4) : ['Not enough data yet. Keep recording regularly.'];
 });
 
 const healthStatCards = computed(() => {
   const s = summary.value;
   if (hasMenu('/dialysis')) {
     return [
-      { label: 'Ultrafiltration on targetrate', value: formatPercent(s.dialysisMatchRateMonth) },
-      { label: 'averageweight gain', value: formatKg(s.avgWeightGainMonth) },
-      { label: 'Blood PressureAbnormal', value: s.bpAbnormalCountMonth ?? 0 }
+      { label: 'Ultrafiltration target rate', value: formatPercent(s.dialysisMatchRateMonth) },
+      { label: 'Average weight gain', value: formatKg(s.avgWeightGainMonth) },
+      { label: 'Abnormal blood pressure', value: s.bpAbnormalCountMonth ?? 0 }
     ];
   }
   const cards = [];
   if (hasMenu('/medical-record')) {
     cards.push(
-      { label: 'ExaminationAbnormal', value: s.abnormalItemCount ?? 0 },
-      { label: 'This MonthExamination', value: s.medicalRecordCountMonth ?? 0 }
+      { label: 'Abnormal test results', value: s.abnormalItemCount ?? 0 },
+      { label: 'Tests this month', value: s.medicalRecordCountMonth ?? 0 }
     );
   }
   if (hasMenu('/medication')) {
-    cards.push({ label: 'This Monthmedication', value: s.medicationLogCountMonth ?? 0 });
+    cards.push({ label: 'Medication records this month', value: s.medicationLogCountMonth ?? 0 });
   }
   if (!cards.length) {
-    cards.push({ label: 'in managePatient', value: s.patientCount ?? 0 });
+    cards.push({ label: 'Patients under care', value: s.patientCount ?? 0 });
   }
   return cards.slice(0, 3);
 });
@@ -409,22 +409,22 @@ const healthStatCards = computed(() => {
 const primaryHealthHint = computed(() => {
   if (!hasMenu('/dialysis')) {
     if (hasMenu('/medical-record') && (summary.value.abnormalItemCount || 0) > 0) {
-      return 'Current Accountnot openthroughDialysis Management, firstpagewill excellentfirstsummarizeExaminationAbnormal and medicationrecord. ';
+      return 'Dialysis management is not enabled for this account. This overview prioritizes abnormal test results and medication records. ';
     }
-    return 'Current Accountnot openthroughDialysis Management, entryMedical Records and medicationrecordafter , herewillsummarizehealthchange. ';
+    return 'Dialysis management is not enabled for this account. Add medical and medication records to see health changes here. ';
   }
   const latest = summary.value.latestDialysisStatus;
-  if (latest && latest !== 'NoneDialysis Records') {
-    return `most recent onetimesDialysis: ${latest}. excellentfirstattentionThis Monthweight gain, Blood Pressure and ExaminationAbnormalchange. `;
+  if (latest && !['NoneDialysis Records', 'No dialysis records'].includes(latest)) {
+    return `Latest dialysis session: ${latest}. Review changes in weight gain, blood pressure, and abnormal test results this month. `;
   }
-  return 'entryDialysis and Examinationdataafter , herewillAutomaticsummarizeThis MonthkeyRisk. ';
+  return 'Add dialysis and test records to see a summary of this month’s key risks. ';
 });
 
 const trendChartOption = computed(() => {
   const trend = summary.value.monthlyTrend || [];
   const months = trend.map(t => {
     const m = (t.month || '').replace(/^\d{4}-/, '');
-    return m ? `${m}Month` : '';
+    return m ? `Month ${m}` : '';
   });
   const series = [];
   if (hasMenu('/dialysis')) {
@@ -448,7 +448,7 @@ const trendChartOption = computed(() => {
   }
   if (hasMenu('/medication')) {
     series.push({
-      name: 'medicationrecord',
+      name: 'Medication records',
       type: 'line',
       smooth: true,
       symbol: 'circle',
@@ -508,7 +508,7 @@ const dehydrationChartOption = computed(() => {
   const data = total > 0 ? raw.filter(d => d.value > 0) : [{ value: 1, name: 'No records', itemStyle: { color: '#e2e8f0' } }];
   return {
     color: ['#f59e0b', '#ef4444', '#22c55e'],
-    tooltip: { trigger: 'item', formatter: total > 0 ? '{b}: {c} times ({d}%)' : 'This MonthNoneDialysis Records' },
+    tooltip: { trigger: 'item', formatter: total > 0 ? '{b}: {c} times ({d}%)' : 'No dialysis records this month' },
     legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 } },
     series: [{
       type: 'pie',
@@ -1024,7 +1024,7 @@ onMounted(() => {
   padding-bottom: 4px;
 }
 
-/* —— shortcutentry —— */
+/* —— Quick links —— */
 .quick-bar {
   display: flex;
   align-items: center;

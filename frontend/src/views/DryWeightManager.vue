@@ -13,41 +13,41 @@
           </div>
           <el-tabs v-model="activeMenu" class="dw-sub-tabs">
             <el-tab-pane label="Monthly list" name="list" />
-            <el-tab-pane label="trendoverview" name="trend" />
-            <el-tab-pane label="changerecord" name="history" />
-            <el-tab-pane label="useinstructions" name="guide" />
+            <el-tab-pane label="Trend overview" name="trend" />
+            <el-tab-pane label="Change history" name="history" />
+            <el-tab-pane label="How to use" name="guide" />
           </el-tabs>
         </div>
 
         <div class="content-panel" v-loading="dryWeightLoading">
-          <!-- trendoverview -->
+          <!-- Trend overview -->
           <div v-show="activeMenu === 'trend'" class="dw-trend-panel">
             <div v-if="dryWeightList.length === 0" class="dw-empty-wrap">
-              <el-empty description="No data, Please first AddMonthly Dry Weight" />
+              <el-empty description="No data yet. Add a monthly dry weight record first." />
             </div>
             <template v-else>
               <div class="dw-stat-grid">
                 <div class="dw-stat-card">
-                  <span class="dw-stat-label">currentreference</span>
+                  <span class="dw-stat-label">Current reference</span>
                   <span class="dw-stat-value">{{ trendStats.latest }}<small>kg</small></span>
                   <span class="dw-stat-meta">{{ trendStats.latestMonth }}</span>
                 </div>
                 <div class="dw-stat-card" :class="trendStats.deltaClass">
-                  <span class="dw-stat-label">relativelyup Monthchange</span>
+                  <span class="dw-stat-label">Change from previous month</span>
                   <span class="dw-stat-value">{{ trendStats.deltaText }}</span>
-                  <span class="dw-stat-meta">ringcompared with</span>
+                  <span class="dw-stat-meta">Month-over-month change</span>
                 </div>
                 <div class="dw-stat-card">
-                  <span class="dw-stat-label">historyhighest</span>
+                  <span class="dw-stat-label">Highest recorded</span>
                   <span class="dw-stat-value">{{ trendStats.max }}<small>kg</small></span>
                 </div>
                 <div class="dw-stat-card">
-                  <span class="dw-stat-label">historylowest</span>
+                  <span class="dw-stat-label">Lowest recorded</span>
                   <span class="dw-stat-value">{{ trendStats.min }}<small>kg</small></span>
                 </div>
               </div>
               <div class="dw-trend-table-wrap">
-                <p class="dw-section-title">by MonthOrder</p>
+                <p class="dw-section-title">Ordered by month</p>
                 <div class="table-wrap table-wrap--compact">
                   <el-table
                     :data="sortedByMonth"
@@ -63,7 +63,7 @@
                         <span class="num-cell emphasis">{{ formatNum(row.dryWeight) }}</span>
                       </template>
                     </el-table-column>
-                    <el-table-column label="relativelyup Month" width="140" align="right">
+                    <el-table-column label="Previous month" width="140" align="right">
                       <template #default="{ row }">
                         <span :class="monthDeltaClass(row)">{{ monthDeltaText(row) }}</span>
                       </template>
@@ -74,21 +74,21 @@
             </template>
           </div>
 
-          <!-- useinstructions -->
+          <!-- How to use -->
           <div v-show="activeMenu === 'guide'" class="dw-guide-panel">
             <ul class="dw-guide-list">
-              <li><strong>Monthly list: </strong>maintaineach MonthDry Weightreference value, Dialysis RecordscalculatetimewillAutomaticguideusecorrespondingMonthdata. </li>
-              <li><strong>trendoverview: </strong>ViewDry Weightchangeimagelevel and historyhighlowpoint, assistassessmentfluid removaltargetYesNoreasonable. </li>
-              <li><strong>changerecord: </strong>by most recent Updated AtViewmaintainrecord, convenientinverifywhowhattimeadjustpastreference value. </li>
-              <li><strong>recommendation: </strong>each MonthDialysisfillpointpropertyassessmentafter updateonetimes; adjustimagelevelrecommendationsingletimesnot exceed 0.5 kg, andobserve 2～4 weekWeight and Blood Pressurechange. </li>
+              <li><strong>Monthly list: </strong>Maintain a dry weight reference for each month. Dialysis records automatically use the reference for the corresponding month. </li>
+              <li><strong>Trend overview: </strong>Review changes in dry weight and historical highs and lows to help assess fluid removal targets. </li>
+              <li><strong>Change history: </strong>Review records by their latest update to check who adjusted the reference and when. </li>
+              <li><strong>recommendation: </strong>Update after the monthly dialysis assessment. The guidance is to limit each adjustment to 0.5 kg and monitor weight and blood pressure over 2–4 weeks. </li>
             </ul>
           </div>
 
-          <!-- Monthly list / changerecord -->
+          <!-- Monthly list / Change history -->
           <template v-if="activeMenu === 'list' || activeMenu === 'history'">
             <div class="toolbar">
               <el-button type="primary" @click="handleAddDryWeight">
-                <el-icon><Plus /></el-icon>AddMonthly Dry Weight
+                <el-icon><Plus /></el-icon>Add monthly dry weight
               </el-button>
               <el-button @click="loadDryWeights">
                 <el-icon><Refresh /></el-icon>Refresh
@@ -99,7 +99,7 @@
               <div class="list-panel-head">
                 <div class="list-panel-title">
                   <el-icon><ScaleToOriginal /></el-icon>
-                  <span>{{ activeMenu === 'history' ? 'changerecord' : 'Dry WeightMonthly reference' }}</span>
+                  <span>{{ activeMenu === 'history' ? 'Change history' : 'Monthly dry weight reference' }}</span>
                   <span v-if="tableRows.length" class="list-count">{{ tableRows.length }} items</span>
                 </div>
               </div>
@@ -109,11 +109,11 @@
                   <div class="record-card-head">
                     <div class="date-block">
                       <span class="date">{{ row.yearMonth }}</span>
-                      <span class="date-week">{{ activeMenu === 'history' ? 'most recent update' : 'Monthly reference' }}</span>
+                      <span class="date-week">{{ activeMenu === 'history' ? 'Latest update' : 'Monthly reference' }}</span>
                     </div>
                     <span class="dw-weight-badge">{{ formatNum(row.dryWeight) }} <small>kg</small></span>
                   </div>
-                  <p class="dw-updated">updatein {{ formatDateTime(row.updatedAt) }}</p>
+                  <p class="dw-updated">Updated {{ formatDateTime(row.updatedAt) }}</p>
                   <div class="record-actions">
                     <el-button type="primary" plain size="small" @click="handleEditDryWeight(row)">Edit</el-button>
                     <el-popconfirm title="Confirm deletion?" @confirm="handleDeleteDryWeight(row.id)">
@@ -123,7 +123,7 @@
                     </el-popconfirm>
                   </div>
                 </article>
-                <el-empty v-if="!dryWeightLoading && tableRows.length === 0" description="NoneDry Weightrecord" />
+                <el-empty v-if="!dryWeightLoading && tableRows.length === 0" description="No dry weight records" />
               </div>
 
               <div v-else class="table-wrap">
@@ -133,7 +133,7 @@
                   stripe
                   table-layout="fixed"
                   style="width: 720px"
-                  :empty-text="'NoneDry Weightrecord'"
+                  :empty-text="'No dry weight records'"
                   :row-key="rowKey"
                 >
                   <el-table-column v-if="dwColVisible('yearMonth')" prop="yearMonth" label="Month" width="148">
@@ -184,11 +184,11 @@
             v-model="dryWeightForm.yearMonth"
             type="month"
             value-format="YYYY-MM"
-            placeholder="selectMonth"
+            placeholder="Select a month"
             style="width:100%"
           />
         </el-form-item>
-        <el-form-item label="Dry Weight(kg)" prop="dryWeight">
+        <el-form-item label="Dry weight (kg)" prop="dryWeight">
           <el-input-number v-model="dryWeightForm.dryWeight" :precision="2" :step="0.1" style="width:100%" />
         </el-form-item>
       </el-form>
@@ -220,7 +220,7 @@ const activeMenu = ref('list');
 const dryWeightLoading = ref(false);
 const dryWeightList = ref([]);
 const dryWeightDialogVisible = ref(false);
-const dryWeightDialogTitle = ref('AddDry Weight');
+const dryWeightDialogTitle = ref('Add dry weight');
 const dryWeightFormRef = ref(null);
 const dryWeightForm = reactive({
   id: null,
@@ -228,7 +228,7 @@ const dryWeightForm = reactive({
   dryWeight: null
 });
 const dryWeightRules = {
-  yearMonth: [{ required: true, message: 'SelectMonth', trigger: 'change' }],
+  yearMonth: [{ required: true, message: 'Select a month', trigger: 'change' }],
   dryWeight: [{ required: true, message: 'Enter Dry Weight', trigger: 'blur' }]
 };
 
@@ -245,19 +245,19 @@ watch(currentPatientId, () => {
 const pageTitle = computed(() => {
   const map = {
     list: 'Dry Weight Management',
-    trend: 'trendoverview',
-    history: 'changerecord',
-    guide: 'useinstructions'
+    trend: 'Trend overview',
+    history: 'Change history',
+    guide: 'How to use'
   };
   return map[activeMenu.value] || 'Dry Weight Management';
 });
 
 const pageSubtitle = computed(() => {
   const map = {
-    list: 'managementeach MonthDry Weightreference value, Automaticshoulduseto Dialysis Records',
-    trend: 'ViewDry Weightchangetrend and historyhighlowpoint',
-    history: 'by most recent Updated AtViewmaintainrecord',
-    guide: 'Dry WeightModule featuresinstructions and maintainrecommendation'
+    list: 'Manage monthly dry weight references, applied automatically to dialysis records',
+    trend: 'Review dry weight trends and historical highs and lows',
+    history: 'Review records by their latest update',
+    guide: 'Dry weight features and record-maintenance guidance'
   };
   return map[activeMenu.value] || '';
 });
@@ -373,7 +373,7 @@ async function loadDryWeights() {
 }
 
 function handleAddDryWeight() {
-  dryWeightDialogTitle.value = 'AddDry Weight';
+  dryWeightDialogTitle.value = 'Add dry weight';
   Object.assign(dryWeightForm, {
     id: null,
     yearMonth: '',
@@ -383,7 +383,7 @@ function handleAddDryWeight() {
 }
 
 function handleEditDryWeight(row) {
-  dryWeightDialogTitle.value = 'EditDry Weight';
+  dryWeightDialogTitle.value = 'Edit dry weight';
   Object.assign(dryWeightForm, {
     id: row.id,
     yearMonth: row.yearMonth,

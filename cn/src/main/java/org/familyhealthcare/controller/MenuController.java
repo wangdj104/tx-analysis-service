@@ -37,7 +37,7 @@ public class MenuController {
             return Result.error(403, "onlymanagementmembercan maintainMenu");
         }
         boolean success = menuService.saveOrUpdate(menu);
-        return success ? Result.ok("Saved successfully") : Result.error("Failed to save");
+        return success ? Result.okMessage("Saved successfully") : Result.error("Failed to save");
     }
 
     @DeleteMapping("/delete/{id}")
@@ -47,6 +47,6 @@ public class MenuController {
             return Result.error(403, "onlymanagementmembercan maintainMenu");
         }
         boolean success = menuService.removeById(id);
-        return success ? Result.ok("Deleted successfully") : Result.error("Failed to delete");
+        return success ? Result.okMessage("Deleted successfully") : Result.error("Failed to delete");
     }
 }

@@ -187,4 +187,21 @@ class NutritionAssessmentServiceTest {
 
         assertEquals("AT_RISK", result.getNutritionStatus());
     }
+    @Test void generatedAdviceUsesChineseAndKeepsScoresAndTargetsUnchanged() {
+        org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.SIMPLIFIED_CHINESE);
+        try {
+            NutritionAssessment deficient = new NutritionAssessment();
+            deficient.setBmi(new BigDecimal("17.0")); deficient.setAlbumin(new BigDecimal("30")); deficient.setSgaScore(1);
+            service.calculateNutritionStatus(deficient);
+            assertEquals("DEFICIENT", deficient.getNutritionStatus()); assertEquals("C", deficient.getSgaGrade());
+            assertTrue(deficient.getSupplementAdvice().contains("营养状况不足"));
+            assertTrue(deficient.getSupplementAdvice().contains("1.2 g/kg/天"));
+            assertTrue(deficient.getSupplementAdvice().contains("30–35 kcal/kg/天"));
+            NutritionAssessment risk = new NutritionAssessment(); risk.setSgaScore(1); service.calculateNutritionStatus(risk);
+            assertEquals("AT_RISK", risk.getNutritionStatus()); assertTrue(risk.getSupplementAdvice().contains("存在营养风险"));
+            NutritionAssessment good = new NutritionAssessment(); service.calculateNutritionStatus(good);
+            assertEquals("GOOD", good.getNutritionStatus()); assertTrue(good.getSupplementAdvice().contains("营养状况良好"));
+        } finally { org.springframework.context.i18n.LocaleContextHolder.resetLocaleContext(); }
+    }
+
 }
