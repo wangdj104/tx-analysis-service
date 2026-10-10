@@ -158,6 +158,22 @@ export function executionReportTests(edition) {
     }
   });
 
+  test(`${edition}: the queued native close event clears report content, title and range without changing source data`, async () => {
+    const app = demo(edition); seed(app);
+    click(app, 'care-report-open'); click(app, 'care-report-range', { days: '0' });
+    const before = JSON.stringify(app.state);
+    // Native dialog hiding and delivery of its close event happen in separate tasks.
+    app.node('detail-dialog').close();
+    await new Promise(resolve => setImmediate(() => { app.node('detail-dialog').handlers.close(); resolve(); }));
+    assert.equal(app.node('detail-dialog').open, false);
+    assert.equal(app.node('record-detail').innerHTML, '');
+    assert.equal(app.node('detail-title').textContent, '');
+    assert.equal(JSON.stringify(app.state), before);
+    click(app, 'care-report-open');
+    assert.match(app.node('record-detail').innerHTML, /data-days="7"[^>]*aria-pressed="true"/);
+    assert.match(app.node('record-detail').innerHTML, /PUBLISHED REPORT PLAN/);
+  });
+
   test(`${edition}: closing, navigation, patient/role switching, reset and reload discard report content and range`, () => {
     const app = demo(edition); seed(app);
     const open = () => { click(app, 'care-report-open'); assert.match(app.node('record-detail').innerHTML, /PUBLISHED REPORT PLAN/); };

@@ -100,9 +100,9 @@ class GeneratedLanguageWorkflowTest {
         ClinicalWorkbenchService service = new ClinicalWorkbenchService();
         MedicalRecord record = new MedicalRecord(); record.setHospitalName("Date missing");
         LocaleContextHolder.setLocale(Locale.SIMPLIFIED_CHINESE);
-        assertEquals("缺少日期 · Date missing", ReflectionTestUtils.invokeMethod(service, "recordLabel", record));
+        assertEquals("日期缺失 · Date missing", ReflectionTestUtils.invokeMethod(service, "recordLabel", record));
         record.setHospitalName(null);
-        assertEquals("缺少日期 · 缺少医疗机构", ReflectionTestUtils.invokeMethod(service, "recordLabel", record));
+        assertEquals("日期缺失 · 医疗机构缺失", ReflectionTestUtils.invokeMethod(service, "recordLabel", record));
     }
 
     @Test void monitoringFallbacksDoNotTranslateMedicationNamesOrDosages() {

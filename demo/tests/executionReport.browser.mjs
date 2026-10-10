@@ -6,6 +6,7 @@ import { assertDemoLanguage } from './helpers/browserLanguage.mjs';
 const root = new URL('../../', import.meta.url);
 const require = createRequire(new URL('frontend/package.json', root));
 const { chromium } = require('playwright');
+const { expect } = require('@playwright/test');
 const output = process.env.DEMO_QA_OUTPUT || '/tmp/care-execution-demo-qa';
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? {executablePath:process.env.CHROMIUM_PATH} : {}), headless: true, args: ['--no-sandbox'] });
@@ -18,7 +19,14 @@ try {
     const click = action => page.locator(`[data-action="${action}"]`).first().click();
     const submit = async () => { await page.locator('#action-submit').click(); await page.locator('#action-dialog').waitFor({ state:'hidden' }); };
     const role = async value => { await page.locator(`[data-role="${value}"]`).click(); if (value !== 'nurse' && value !== 'admin') await page.locator(`[data-page="${value === 'doctor' ? 'plans' : 'careplan'}"]`).click(); };
-    const close = async () => { await page.locator('#detail-dialog [data-close]').last().click(); await page.locator('#detail-dialog').waitFor({ state:'hidden' }); };
+    const waitForReportClosed = async () => {
+      // Native dialog hiding precedes its queued close event. Await the cleanup itself.
+      await expect(page.locator('#detail-dialog')).toBeHidden({ timeout: 5000 });
+      await expect(page.locator('#record-detail')).toHaveText('', { timeout: 5000 });
+      await expect(page.locator('#record-detail')).toHaveJSProperty('innerHTML', '', { timeout: 5000 });
+      await expect(page.locator('#detail-title')).toHaveText('', { timeout: 5000 });
+    };
+    const close = async () => { await page.locator('#detail-dialog [data-close]').last().click(); await waitForReportClosed(); };
     const noOverflow = async () => assert.ok(await page.evaluate(() => {
       const dialog = document.getElementById('detail-dialog');
       return document.documentElement.scrollWidth <= innerWidth && dialog.scrollWidth <= dialog.clientWidth;
@@ -40,8 +48,7 @@ try {
     await assertDemoLanguage(page,edition,['FICTIONAL REPORT BROWSER PLAN','FICTIONAL DETAIL REQUEST','PRIVATE REVISION DRAFT',originalNote]);
     assert.equal(await page.locator('.cp-report [data-action^="cp-"]').count(), 0);
     await noOverflow(); await page.screenshot({ path:`${output}/${edition}-${width}-report.png`, fullPage:true });
-    await page.keyboard.press('Escape'); await page.locator('#detail-dialog').waitFor({ state:'hidden' });
-    assert.equal(await page.locator('#record-detail').textContent(), '');
+    await page.keyboard.press('Escape'); await waitForReportClosed();
     await click('care-report-open'); assert.equal(await page.locator('[data-days="7"]').getAttribute('aria-pressed'), 'true'); await close();
     for (const value of ['patient','family','nurse']) {
       await role(value); await click('care-report-open'); await noOverflow();
@@ -55,7 +62,7 @@ try {
     assert.ok(!(await page.locator('#record-detail').textContent()).includes('FICTIONAL REPORT BROWSER PLAN')); await close();
     await page.locator('#patient').selectOption('1'); await click('care-report-open');
     await page.evaluate(() => document.getElementById('reset').click());
-    await page.locator('#detail-dialog').waitFor({ state:'hidden' }); assert.equal(await page.locator('#record-detail').textContent(), '');
+    await waitForReportClosed();
     await page.reload(); await role('doctor'); await click('care-report-open');
     assert.ok(!(await page.locator('#record-detail').textContent()).includes('FICTIONAL REPORT BROWSER PLAN'));
     assert.deepEqual(errors, []); assert.deepEqual(external, []);
