@@ -418,7 +418,7 @@ for(const edition of ['en','zh']) {
 
 test('subsequent care app deployment changes the cache key without renaming existing resource aliases',()=>{
   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
-  assert.match(html,/<script src="app\.js\?v=20261002-storage1&amp;careplan=20261003-2"/);
-  assert.match(html,/<script src="model\.js\?v=20261001-r9&amp;careplan=20261003-1"/);
+  assert.match(html,/<script src="app\.js\?v=20261002-storage1&amp;careplan=20261003-2&amp;report=20261010-1"/);
+  assert.match(html,/<script src="model\.js\?v=20261001-r9&amp;careplan=20261003-1&amp;report=20261010-1"/);
   assert.match(html,/style\.css\?v=20261001-1&amp;careplan=20261003-1/);
 });

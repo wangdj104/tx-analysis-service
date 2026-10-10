@@ -21,6 +21,25 @@ Use fictional patient **Aihua Zhang** (patient 1), whose demo family and nurse p
 
 This is static, synthetic coordination. Notification output always says **Demo result only**, and the CSP blocks network connections. No real patient data, clinical recommendations, doses, new uploads, real evidence references, backend persistence, credentials or webhook delivery are added. Legacy internal plans remain separate and are never silently published. The domain model validates 1–50 actions; the compact walkthrough editor intentionally shows two. Timestamps accept explicit offsets and millisecond precision; the production database precision/concurrency contract is verified separately.
 
+## Read-only visit preparation / care execution
+
+From **Care plans**, **Care plan**, or the nurse's **Care-plan follow-up**, open **Visit preparation / Care execution**. The existing **Health report** and **Visit summary** capability cards open the same summary. First publish a fictional collaboration plan with the walkthrough above; legacy internal plans and clinician drafts are not included.
+
+- The summary reads the existing authorized state in this tab and does not create another record, audit event, score, or clinical recommendation
+- Current published revisions and current outstanding actions are shown separately. **Needs help**, **Detail requested by doctor**, and **Awaiting doctor review** reflect existing workflow state; submitted receipts are not treated as completed care
+- **Last 7 days**, **Last 30 days**, and **All tab activity** filter public activity by recorded time. The exact date range is shown with its UTC offset. Current outstanding work remains visible even when its activity falls outside that range
+- Each public event retains its plan/revision/action context, recorded time, actor name and role, and SELF/ASSISTED declaration when present. Draft-save and revision-draft events are excluded, including after publication
+- Closing the dialog or changing role, patient, route, reset or refresh clears the report view and date selection. Reopening uses current state. Administrator access is denied; nursing access still requires both assignment and a separate CARE_PLAN grant
+- This is a **synthetic, read-only walkthrough**, with no uploads, network calls, persistence or authenticated report exports. For server-validated HTML/PDF/actions CSV/events CSV, use **Visit preparation** in the full application at `/care-plans/reports`
+
+Optional report browser verification, using the existing frontend Playwright dependency:
+
+```bash
+node demo/tests/executionReport.browser.mjs
+```
+
+It covers both languages at 1440px and 390px, including draft privacy, identity, review transitions, activity filters, five roles, close/reopen, patient switch and reset/reload. Screenshots are written to `/tmp/care-execution-demo-qa` (override with `DEMO_QA_OUTPUT`). This new script was syntax-checked but not browser-executed in the delivery environment because native Chromium was already verified to be socket-blocked. Pixel layout and real-browser interaction remain an offline verification gate.
+
 ## Publish with GitHub Pages
 
 The repository includes a [GitHub Pages workflow](../.github/workflows/demo-pages.yml).

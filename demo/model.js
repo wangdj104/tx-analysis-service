@@ -220,5 +220,33 @@
     });
   }
 
-  globalThis.HealthDemo = { createState, current, complete, addVital, review, addPlan, addHandover, runFeature, toggleUser, updateBranding, currentConsultation, sendChatMessage, addDemoReply, csv, careAccess, createCarePlanDraft, saveCarePlanDraft, createCarePlanRevision, publishCarePlan, submitCarePlanAction, helpCarePlanAction, followUpCarePlanAction, reviewCarePlanAction, closeCarePlan, cancelCarePlan, visibleCarePlans };
+  // Read-only view of the existing tab-local model, never a separate clinical record.
+  function careExecutionSummary(state, { days = 7 } = {}, now = new Date()) {
+    if (![0,7,30].includes(days)) throw new Error('invalid-report-range');
+    const activityFrom = days ? new Date(now.getTime() - days * 86400000).toISOString() : null;
+    const report = { authorized: careAccess(state,state.patientId,false,now), patient: null, generatedAt: now.toISOString(), activityFrom, plans: [], outstanding: [], activity: [] };
+    if (!report.authorized) return report;
+    report.patient = { id: current(state).id, name: current(state).name };
+    const publicEvents = new Set(['PUBLISHED','REVISED','SUBMITTED','NEEDS_HELP','FOLLOW_UP','RETURNED','CONFIRMED','CLOSED','CANCELLED']);
+    visibleCarePlans(state,now).filter(plan => plan.currentRevisionId).forEach(plan => {
+      const revision = plan.revisions.find(item => item.id === plan.currentRevisionId && item.status === 'PUBLISHED');
+      if (!revision) return;
+      const actions = plan.actions.filter(item => item.revisionId === revision.id).map(item => {
+        const attention = item.status === 'NEEDS_HELP' ? 'NEEDS_HELP' : item.status === 'SUBMITTED' ? 'AWAITING_REVIEW' : item.status === 'OPEN' ? (item.events.some(event => event.eventType === 'RETURNED') ? 'NEEDS_DETAIL' : 'OPEN') : null;
+        const relevantType = { NEEDS_HELP:'NEEDS_HELP', AWAITING_REVIEW:'SUBMITTED', NEEDS_DETAIL:'RETURNED' }[attention];
+        const latest = [...item.events].reverse().find(event => event.eventType === relevantType);
+        return { id:item.id, planId:plan.id, planTitle:revision.title, revisionId:revision.id, revisionNo:revision.revisionNo, ordinal:item.ordinal, instruction:item.instruction, assignedUserId:item.assignedUserId, dueAt:item.dueAt, status:item.status, attention, overdue:item.overdue, firstSubmittedAt:item.firstSubmittedAt, reviewWaitingSince:item.reviewWaitingSince, note:latest?.note || '' };
+      });
+      report.plans.push({ id:plan.id, title:revision.title, instructions:revision.instructions, revisionId:revision.id, revisionNo:revision.revisionNo, publishedAt:revision.publishedAt, lifecycle:plan.lifecycle, actions });
+      if (plan.lifecycle === 'ACTIVE') report.outstanding.push(...actions.filter(item => item.attention));
+      plan.events.filter(event => publicEvents.has(event.eventType) && new Date(event.recordedAt) <= now && (!activityFrom || event.recordedAt >= activityFrom)).forEach(event => {
+        const published = plan.revisions.find(item => item.id === event.revisionId && item.status === 'PUBLISHED');
+        if (published) report.activity.push({ ...event, planTitle:published.title, revisionNo:published.revisionNo });
+      });
+    });
+    report.activity.sort((a,b) => b.recordedAt.localeCompare(a.recordedAt) || b.id-a.id);
+    return JSON.parse(JSON.stringify(report));
+  }
+
+  globalThis.HealthDemo = { createState, current, complete, addVital, review, addPlan, addHandover, runFeature, toggleUser, updateBranding, currentConsultation, sendChatMessage, addDemoReply, csv, careAccess, createCarePlanDraft, saveCarePlanDraft, createCarePlanRevision, publishCarePlan, submitCarePlanAction, helpCarePlanAction, followUpCarePlanAction, reviewCarePlanAction, closeCarePlan, cancelCarePlan, visibleCarePlans, careExecutionSummary };
 })();

@@ -186,7 +186,19 @@ body.large-text .care-primary { grid-column: 1 / -1; }
 .role-switch { flex-wrap: wrap; }
 .role-switch button { min-height: 44px; }
 @media (max-width:720px) {
+  .cp-report-filters .button { flex: 1 1 100%; }
   .cp-plan .actions { display: grid; grid-template-columns: 1fr; }
   .cp-plan .button { width: 100%; }
   .cp-editor-action { padding: 12px; }
 }
+
+/* Read-only care execution summary: no fixed-width data table. */
+.cp-report, .cp-report section, .cp-report-action, .cp-report-event { min-width: 0; overflow-wrap: anywhere; }
+.cp-report > section { margin-top: 22px; }
+.cp-report h4 { margin: 0 0 8px; }
+.cp-report-plan, .cp-report-action, .cp-report-event { padding: 16px 0; border-top: 1px solid var(--line); }
+.cp-report p { margin-bottom: 10px; }
+.cp-report-note { white-space: pre-wrap; }
+.cp-report-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.cp-report-filters [aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--green); font-weight: 700; }
+.cp-report summary { min-height: 44px; padding: 10px 0; cursor: pointer; font-weight: 600; }
