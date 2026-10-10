@@ -8,6 +8,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 
+test('native CI runs the patient readiness regression in its safety guards', async () => {
+  const workflow=await readFile(new URL('../../.github/workflows/ci.yml',import.meta.url),'utf8')
+  const nativeJob=workflow.split('\n  care-plan-mysql:')[1] || ''
+  const guardStep=nativeJob.match(/- name: Check MySQL test safety guards\n([\s\S]*?)(?=\n      - )/)?.[1] || ''
+  assert.match(guardStep,/^          node --test scripts\/tests\/care-report-patient-readiness\.test\.mjs$/m)
+})
+
 for(const [edition, pomPath] of [['.', '../../pom.xml'], ['cn', '../../cn/pom.xml']]) {
   test(`${edition} production jar follows the actual Maven finalName and ignores unrelated jars`, async () => {
     assert.equal(typeof browserRunner.resolveProductionJar,'function','Exact edition jar resolver is required')

@@ -259,9 +259,16 @@ test('real report coalesced App A→B→A retains the same panel but rejects its
   try {
     for(const endpoint of ['preview','export']) {
       await openReport(page)
-      await page.locator('.patient-switcher').getByRole('combobox').press('ArrowDown')
+      // Report readiness is independent of the App's patient-name bootstrap.
+      // A keypress on its initially disabled select cannot open the dropdown.
+      const patientSelect = page.locator('.patient-switcher').getByRole('combobox')
+      await expect(patientSelect).toBeEnabled()
+      await patientSelect.focus();await expect(patientSelect).toBeFocused()
+      await patientSelect.press('ArrowDown')
+      await expect(patientSelect).toHaveAttribute('aria-expanded','true')
       await expect(page.getByRole('option',{name:'Synthetic Empty Report Patient',exact:true})).toBeVisible()
       await page.keyboard.press('Escape')
+      await expect(patientSelect).toHaveAttribute('aria-expanded','false')
       const original = await panel(page).elementHandle()
       const hold = await holdRealReportResponse(page,endpoint)
       try {

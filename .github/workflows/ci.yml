@@ -131,6 +131,7 @@ jobs:
           bash -n scripts/verify-care-plan-mysql.sh
           node --test scripts/tests/care-plan-mysql-guards.test.mjs
           node --test scripts/tests/care-plan-browser-guards.test.mjs
+          node --test scripts/tests/care-report-patient-readiness.test.mjs
           node --test scripts/tests/care-plan-browser-artifacts.test.mjs
           node --test scripts/tests/care-report-artifacts.test.mjs
       - name: Install pinned official browser test dependencies
