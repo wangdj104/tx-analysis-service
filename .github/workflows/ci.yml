@@ -185,6 +185,19 @@ jobs:
             bash scripts/verify-care-plan-mysql.sh
             unset CARE_PLAN_MYSQL_PASSWORD CARE_PLAN_E2E_PASSWORD CARE_PLAN_BROWSER_REQUIRED
           done
+      - name: Collect bounded native test failure diagnostics
+        if: always()
+        run: |
+          python3 scripts/tests/native-diagnostics.test.py
+          python3 scripts/collect-native-diagnostics.py '${{ matrix.directory }}' '${{ runner.temp }}/native-diagnostics-${{ matrix.language }}'
+      - name: Preserve bounded native test failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-diagnostics-${{ matrix.language }}-${{ github.sha }}
+          path: ${{ runner.temp }}/native-diagnostics-${{ matrix.language }}/native-diagnostics.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Generate fresh Task 5 renderer evidence
         id: renderer_evidence
         if: always() && steps.font_preparation.outcome == 'success'
