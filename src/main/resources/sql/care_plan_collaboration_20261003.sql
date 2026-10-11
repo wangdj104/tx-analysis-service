@@ -1,3 +1,9 @@
+-- 用途：补护理计划版本、行动、事件、幂等命令和待发通知结构，保留旧计划原状态。
+-- 前提：已依次执行 init.sql、doctor_workspace_20260921.sql、care_platform_upgrade_20260921.sql。
+-- 重复执行：仍会补回缺失的 nurse 角色、2 个菜单及 nurse/admin 角色菜单绑定，删除过的绑定可能恢复。
+-- 范围：不修复已有列类型，不为账号分配 nurse 角色，不创建患者授权，也不自动发布旧计划。
+-- 风险：DDL 隐式提交；先备份完整数据库和附件并演练恢复，新 DATETIME(6) 由应用明确使用 UTC。
+
 -- Additive MySQL 8.0 migration. Back up the entire database and attachments first.
 -- Apply after init.sql, doctor_workspace_20260921.sql and care_platform_upgrade_20260921.sql.
 -- Existing ACTIVE plans stay workflow_version=0 with NULL collaboration lifecycle.

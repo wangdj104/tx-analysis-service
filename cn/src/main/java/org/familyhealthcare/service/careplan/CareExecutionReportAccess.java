@@ -31,6 +31,7 @@ public class CareExecutionReportAccess {
                                      PlatformTransactionManager transactions) {
         this.jdbc = Objects.requireNonNull(jdbc);
         this.auth = Objects.requireNonNull(auth);
+        // 权限用独立的只读事务重新查，不能拿报告的旧快照当作现在仍有权限。
         this.freshRead = new TransactionTemplate(Objects.requireNonNull(transactions));
         freshRead.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         freshRead.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);

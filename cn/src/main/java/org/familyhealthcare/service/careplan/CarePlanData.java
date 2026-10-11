@@ -33,7 +33,7 @@ final class CarePlanData {
             Object v=m.get(k);if(Arrays.asList("workflowVersion","ordinal","revisionNo").contains(k)&&v instanceof Number)m.put(k,((Number)v).intValue());else restoreIntegers(v);}}
         else if(value instanceof List)for(Object item:(List<?>)value)restoreIntegers(item);
     }
-    /** Cache original command results without copying clinical evidence metadata. */
+    /** 缓存结果不保存证据标题和详情链接，避免后来失去权限的人借重复请求读到旧资料。 */
     static Map<String,Object>cachedResult(Map<String,Object>result){Map<String,Object>copy=object(json(result));stripEvidence(copy);return copy;}
     @SuppressWarnings("unchecked")private static void stripEvidence(Object value){
         if(value instanceof Map){Map<String,Object>m=(Map<String,Object>)value;for(Map.Entry<String,Object>entry:m.entrySet()){
@@ -46,6 +46,7 @@ final class CarePlanData {
         try {byte[] bytes=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));StringBuilder s=new StringBuilder();for(byte b:bytes)s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}
         catch(Exception e){throw new IllegalStateException(e);}
     }
+    // 数据库 DATETIME 不带时区，读写都明确用 UTC，避免跟着服务器时区偏移。
     static Calendar utc() {
         GregorianCalendar calendar=new GregorianCalendar(TimeZone.getTimeZone("UTC"));
         calendar.setGregorianChange(new java.util.Date(Long.MIN_VALUE));return calendar;
@@ -57,7 +58,7 @@ final class CarePlanData {
     static long version(long version){if(version<0)throw CarePlanException.invalid("expectedVersion 必须为非负数。");return version;}
     static CarePlanException conflict(){return new CarePlanException(409,"VERSION_CONFLICT","照护计划已更新，请刷新后重试。");}
     static void transaction(){if(!TransactionSynchronizationManager.isActualTransactionActive())throw new IllegalStateException("A care-plan write requires an active transaction.");}
-    /** Mutation transactions must not inherit a stale REPEATABLE READ snapshot. */
+    /** 写入时要看到刚提交的授权和版本，不能沿用外层事务留下的旧快照。 */
     static void mutationTransaction(JdbcTemplate jdbc){
         transaction();javax.sql.DataSource dataSource=jdbc.getDataSource();Connection connection=DataSourceUtils.getConnection(dataSource);
         try{

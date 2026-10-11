@@ -1,5 +1,8 @@
--- Additive repair for existing installations; no business records are changed.
--- Definitions match init.sql. Safe to run more than once.
+-- 用途：补临床导入、告警事件和用药安全表及 6 条初始安全规则；当前 init.sql 已含这些定义。
+-- 前提：基础表已存在；旧库缺相关表或初始规则时，人工核对后再执行。
+-- 重复执行：已有表会跳过；INSERT IGNORE 仍会补回缺失的 6 条初始用药安全规则，已有同一药物对不覆盖。
+-- 风险：删除过的初始规则可能按默认启用状态（enabled=1）恢复；不修复全部旧字段，DDL 隐式提交，先备份并演练恢复。
+
 CREATE TABLE IF NOT EXISTS clinical_import_batch (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,

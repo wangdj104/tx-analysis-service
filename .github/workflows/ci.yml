@@ -55,7 +55,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: node --test scripts/tests/deployment-config.test.mjs scripts/tests/demo-browser-ci.test.mjs
+      - run: node --test scripts/tests/deployment-config.test.mjs scripts/tests/demo-browser-ci.test.mjs scripts/tests/sql-catalog.test.mjs
       - run: node --check demo/app.js
       - run: node --check cn/demo/app.js
       - run: |

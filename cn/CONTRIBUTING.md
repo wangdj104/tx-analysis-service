@@ -9,7 +9,7 @@
 3. Run `make test` and `make build`.
 4. In the pull request, explain the user problem, implementation, verification, and any database or configuration impact.
 
-Before the first public release, schema changes must update `src/main/resources/sql/init.sql` so new installation remains a single, reliable path. After public releases begin, provide reviewed versioned migrations for deployed databases. Never modify production tables silently at application startup.
+Keep fresh-install definitions and reviewed upgrades consistent, and document dependencies in the [SQL execution catalog](src/main/resources/sql/README.md). A complete new database requires init, doctor workspace, care platform and care-plan collaboration in that order. Existing databases need a complete backup and only applicable upgrades; init is not a reset tool. The current `patient_specialty_roles_20260923.sql` runs on every MySQL/MariaDB application startup, including after a manual run, and has no disable switch in this release. Document this existing write behavior and required schema-scoped privileges; do not add unreviewed startup migrations. Review role-permission cleanup separately because it deletes roles and assignments.
 
 ## Product and security expectations
 

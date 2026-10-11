@@ -20,7 +20,7 @@ public class FamilyBackupService {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DataScopeHelper scope;
     @Autowired private CareMembershipService membership;
-    // Parent rows precede their dependent rows. System accounts and passwords are deliberately outside family data.
+    // 这里只归档列出的家庭记录，账号、授权和协作历史不在其中，不能当作整库备份。
     static final List<String> TABLES=Arrays.asList("patient","patient_clinical","patient_health_target","medication","dialysis_record","medical_record","medical_record_item","medical_record_attachment","dry_weight_monthly","bp_self_monitor_record","bp_pattern_analysis","nutrition_diary","nutrition_assessment","complication_record","ai_analysis_record","health_analysis_automation","alert_rule","alert_record","medication_reminder","medication_log","medication_intake","dialysis_schedule","health_event","care_item","medication_stock","medication_stock_movement","care_intake_action");
 
     @Transactional(readOnly=true) public byte[] exportArchive() throws IOException {
@@ -79,6 +79,7 @@ public class FamilyBackupService {
                 remap(row,"rule_id","alert_rule",ids,false);
                 for(String userColumn:Arrays.asList("user_id","actor_id","assigned_user_id"))if(row.containsKey(userColumn)&&row.get(userColumn)!=null)row.put(userColumn,uid);
                 if(table.equals("patient")){row.put("user_id",uid);row.put("name",String.valueOf(row.get("name"))+" (restoresecondarythis ) ");row.put("deleted",0);}
+                // 恢复的是历史副本，先关提醒和自动分析、取消待处理服药任务并停止有效处方，避免旧安排再次触发。
                 if(table.equals("medication_reminder"))row.put("enabled",0);
                 if(table.equals("health_analysis_automation")) {
                     row.put("enabled",0);

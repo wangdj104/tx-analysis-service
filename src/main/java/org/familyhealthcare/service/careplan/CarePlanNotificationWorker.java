@@ -37,13 +37,14 @@ public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
 
     @Override public void enqueue(long eventId) {
         if(!properties.isEnabled())return;
+        // 待发通知跟业务变更用同一事务落库，业务回滚时不能留下会发出去的通知。
         mutationTransaction(jdbc);
         Context context=context(eventId);
         if(context==null||!EVENTS.contains(context.type))throw CarePlanException.invalid("Unsupported care-plan notification event.");
         for(long recipient:recipients(context))enqueueRecipient(context,recipient,null,properties.now());
     }
 
-    /** No caller transaction may survive into a network operation. */
+    /** 网络发送放在数据库事务外，避免等待外部服务时一直占着业务锁。 */
     public void tick(Instant now) {
         if(!properties.isEnabled())return;
         Objects.requireNonNull(now,"now");
@@ -141,6 +142,7 @@ public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
         if(blocked!=null){update("UPDATE care_plan_notification SET status=?,next_attempt_at=NULL,claim_token=NULL,last_result=?,updated_at=? WHERE id=?",blocked,blocked,now,current.id);return null;}
         String request=current.requestId==null?UUID.randomUUID()+":"+now.toEpochMilli():current.requestId;
         firstAttempt(request); // Corrupt cycle metadata fails closed before any network call.
+        // 发送前先记下尝试，恢复时才能区分尚未发送和结果未知；结果未知不自动重试，避免重复通知。
         update("UPDATE care_plan_notification SET attempt_count=attempt_count+1,request_id=?,last_result='ATTEMPT_STARTED',updated_at=? WHERE id=?",request,now,current.id);
         current.attempts++;current.requestId=request;return current;
     }

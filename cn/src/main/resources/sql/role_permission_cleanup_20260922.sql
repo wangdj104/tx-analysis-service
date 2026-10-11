@@ -1,4 +1,8 @@
--- 清理历史疾病标签角色与重复的 clinician 角色；业务统一使用 admin、doctor、patient、family、user。
+-- 用途：先迁移旧 clinician/疾病标签账号绑定，再删除旧角色与关联并缩减菜单权限。
+-- 前提：基础及医生工作台角色已建立；人工核对实际账号、菜单与角色绑定后执行。
+-- 重复执行：已经删除的行不会恢复，重复执行仍会按条件清理权限；不是纯加表升级。
+-- 风险：涉及真实权限删除，禁止合并进启动迁移；先完整备份及恢复演练，并逐项核对清理结果。
+
 START TRANSACTION;
 
 INSERT IGNORE INTO sys_user_role(user_id, role_id)

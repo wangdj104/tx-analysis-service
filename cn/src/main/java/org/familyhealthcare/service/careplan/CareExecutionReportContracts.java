@@ -49,6 +49,7 @@ public final class CareExecutionReportContracts {
             this.patientId = patientId; this.planId = planId;
             this.fromDate = fromDate; this.toDate = toDate; this.timeZone = timeZone;
             this.language = language; this.format = format;
+            // 先按用户时区取每天的起点再转 UTC，结束取次日且不包含它，才能正确覆盖夏令时的长短日。
             this.rangeStartAt = fromDate.atStartOfDay(timeZone).toInstant();
             this.rangeEndExclusiveAt = toDate.plusDays(1).atStartOfDay(timeZone).toInstant();
         }

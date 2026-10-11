@@ -22,6 +22,8 @@ public class NotificationAudienceService {
     /** Match each outbound event to the recipient's current patient/module authorization. */
     public Set<Long> recipients(Long patientId, String eventType) {
         Set<Long> ids = new LinkedHashSet<>();
+        // 旧成员和旧医生分配可能还在，患者不存在或已删除时不能再对外发送相关信息。
+        if (patientId == null || jdbc.queryForObject("SELECT COUNT(*) FROM patient WHERE id=? AND COALESCE(deleted,0)=0", Integer.class, patientId) == 0) return ids;
         String module = moduleForEvent(eventType);
         for (java.util.Map<String,Object> member : jdbc.queryForList("SELECT user_id,visible_modules FROM care_member WHERE patient_id=?",patientId)) {
             if (includesModule(member.get("visible_modules"),module)) ids.add(((Number)member.get("user_id")).longValue());
@@ -33,6 +35,7 @@ public class NotificationAudienceService {
             if ("ACTIVE".equals(grant.get("status")) && (Boolean.TRUE.equals(unexpired) || unexpired instanceof Number && ((Number)unexpired).intValue()!=0)
                     && includesModule(grant.get("visible_modules"),module)) ids.add(((Number)grant.get("grantee_user_id")).longValue());
         }
+        // 撤销家属共享不应抹掉所有者或当前有效医生的独立权限；停用、删除账号仍统一排除。
         ids.addAll(jdbc.queryForList("SELECT user_id FROM patient WHERE id=? AND COALESCE(deleted,0)=0", Long.class, patientId));
         ids.addAll(assignedDoctors(patientId));
         ids.remove(null);
@@ -86,6 +89,12 @@ public class NotificationAudienceService {
     }
 
     public List<Long> assignedDoctors(Long patientId) {
-        return jdbc.queryForList("SELECT doctor_user_id FROM doctor_patient_assignment WHERE patient_id=? AND status='ACTIVE'", Long.class, patientId);
+        // 分配记录不是永久医生身份：发送前同时核对当前账号、角色和分配，EXISTS 与 DISTINCT 防止重复收件人。
+        return jdbc.queryForList("SELECT DISTINCT d.doctor_user_id FROM doctor_patient_assignment d "
+                + "JOIN patient p ON p.id=d.patient_id JOIN sys_user u ON u.id=d.doctor_user_id "
+                + "WHERE d.patient_id=? AND d.status='ACTIVE' AND COALESCE(p.deleted,0)=0 "
+                + "AND u.status=1 AND COALESCE(u.deleted,0)=0 AND EXISTS (SELECT 1 FROM sys_user_role ur "
+                + "JOIN sys_role r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.role_code='doctor' "
+                + "AND r.status=1 AND COALESCE(r.deleted,0)=0)", Long.class, patientId);
     }
 }

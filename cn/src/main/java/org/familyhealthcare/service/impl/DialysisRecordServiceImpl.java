@@ -106,6 +106,7 @@ public class DialysisRecordServiceImpl extends ServiceImpl<DialysisRecordMapper,
      * Automaticcalculatederived field (intervaldayscountAutomaticinference, Dry Weightfrom Monthly tablequery)
      */
     private void calculateDerivedFields(DialysisRecord record) {
+        // 疗程时长按分钟、URR 按百分数传入，避免把小时或小数比例当作原值校验。
         if (record.getSessionMinutes() != null && (record.getSessionMinutes() < 30 || record.getSessionMinutes() > 1440)) {
             throw new IllegalArgumentException("Session duration must be between 30 and 1440 minutes.");
         }
@@ -121,7 +122,7 @@ public class DialysisRecordServiceImpl extends ServiceImpl<DialysisRecordMapper,
             record.setIntervalDays(inferredDays != null ? inferredDays : 2);
         }
 
-        // dataincompleterecord: onlykeepintervaldayscount, clearemptyhas Weightrelatedderived field, avoidimageresponsestatistics
+        // 缺失记录不继续推算体重结果；这里只清理传入对象，文本导入的脱水量保留。
         if ("INCOMPLETE".equals(record.getRecordType())) {
             record.setWeightGain(null);
             if (!record.isTextImport()) record.setUfAmount(null);

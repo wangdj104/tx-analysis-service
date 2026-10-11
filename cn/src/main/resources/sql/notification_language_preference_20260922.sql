@@ -1,4 +1,8 @@
--- 保存每位接收人最后选择的界面语言，供异步通知使用。
+-- 用途：补用户偏好表，供后台通知读取接收人的界面语言；当前 init.sql 已包含该表。
+-- 前提：基础表已存在；旧库缺少 user_preference 时人工执行。
+-- 重复执行：只创建缺失表，不填用户偏好、不修复已有表的错误定义。
+-- 风险：DDL 隐式提交；先完整备份及恢复演练，后台语言取值仍由应用负责。
+
 CREATE TABLE IF NOT EXISTS `user_preference` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL,

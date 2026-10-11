@@ -1,4 +1,8 @@
--- Apply once to an existing database after a backup. Patient assignments are intentionally not inferred.
+-- 用途：补患者专病角色表与角色/菜单关系，不推断或创建患者的专病分配。
+-- 前提：基础 patient、sys_role、sys_menu 等表已存在；运行账号仅授权应用库所需权限。
+-- 重复执行：当前 MySQL/MariaDB 每次应用启动都会执行，手工跑过也不会关闭；本版本没有关闭开关。
+-- 风险：仍会写入角色及菜单关系，DDL 隐式提交；发布前完整备份并演练恢复，需 CREATE/SELECT/INSERT/UPDATE，外键还可能需 REFERENCES。
+
 CREATE TABLE IF NOT EXISTS `patient_specialty_role` (
   `patient_id` BIGINT NOT NULL,
   `role_id` BIGINT NOT NULL,

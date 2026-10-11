@@ -42,8 +42,7 @@ public class MedicationStockService {
         }return BigDecimal.ZERO;
     }
     public BigDecimal doseFor(MedicationIntake intake) {
-        // 服药任务保存本次打卡的剂量快照，包括普通提醒中修改的剂量。
-        // 历史处方关联不能覆盖任务当前的药品、数量或单位。
+        // 扣库存以本次服药任务保存的剂量和单位为准，不能拿后来修改的处方覆盖；单位对不上就不猜数量。
         List<String> stockUnits=jdbc.queryForList("SELECT unit FROM medication_stock WHERE patient_id=? AND medication_id=?",String.class,intake.getPatientId(),intake.getMedicationId());
         if(stockUnits.isEmpty()||intake.getDosage()==null)return null;
         java.util.regex.Matcher dose=java.util.regex.Pattern.compile("^\\s*(\\d+(?:\\.\\d+)?)\\s*([^\\d]+)\\s*$").matcher(intake.getDosage());

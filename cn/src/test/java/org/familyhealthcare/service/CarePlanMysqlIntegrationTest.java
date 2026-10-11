@@ -131,6 +131,11 @@ class CarePlanMysqlIntegrationTest {
                 // Executes original scripts, including MySQL information_schema,
                 // session @ddl and PREPARE/EXECUTE. No H2 translation or rewritten DDL.
                 for (String script : LEGACY_CHAIN) {
+                    // 医生脚本会提前补审核列，所以在它之后造缺列旧结构，再执行真正的照护平台脚本。
+                    if (db.equals(upgrade) && "sql/care_platform_upgrade_20260921.sql".equals(script)) {
+                        assertLegacyCompatibilityUpgrade(connection);
+                        continue;
+                    }
                     apply(connection, script);
                     if ("sql/init.sql".equals(script)) assertInitializationPrimaryKeys(connection);
                 }
@@ -168,6 +173,139 @@ class CarePlanMysqlIntegrationTest {
             }
         }
         try (Connection connection = connect(upgrade)) { apply(connection, "sql/care-plan-mysql-relationships.sql"); }
+    }
+
+    // These are explicit expected schema contracts, not values inferred from whichever
+    // edition happens to run. The fixture only exists behind requireDisposableNativeMysql.
+    private static final String[][] LEGACY_COMPATIBILITY = {
+            {"bp_self_monitor_record", "source_type", "varchar(20)", "YES", "MANUAL", "measure_period"},
+            {"bp_self_monitor_record", "source_external_id", "varchar(120)", "YES", null, "source_type"},
+            {"bp_self_monitor_record", "verification_status", "varchar(30)", "YES", "VERIFIED", "source_external_id"},
+            {"medical_record", "source_type", "varchar(20)", "YES", "MANUAL", "ai_raw_result"},
+            {"medical_record", "source_external_id", "varchar(120)", "YES", null, "source_type"},
+            {"medical_record", "verification_status", "varchar(30)", "YES", "VERIFIED", "source_external_id"},
+            {"medical_record", "confidence_score", "decimal(5,4)", "YES", null, "verification_status"},
+            {"medical_record", "verified_by", "bigint", "YES", null, "confidence_score"},
+            {"medical_record", "verified_at", "datetime", "YES", null, "verified_by"},
+            {"dialysis_record", "session_minutes", "int", "YES", null, "uf_amount"},
+            {"dialysis_record", "ktv", "decimal(5,2)", "YES", null, "session_minutes"},
+            {"dialysis_record", "urr", "decimal(5,2)", "YES", null, "ktv"},
+            {"dialysis_record", "access_issue", "varchar(255)", "YES", null, "urr"},
+            {"patient_clinical", "dialysis_weekdays", "varchar(32)", "YES", null, "fluid_limit_ml"},
+            {"patient_clinical", "dialysis_time", "varchar(5)", "YES", null, "dialysis_weekdays"},
+            {"alert_record", "source_type", "varchar(30)", "YES", null, "triggered_at"},
+            {"alert_record", "source_id", "bigint", "YES", null, "source_type"},
+            {"alert_record", "dedupe_key", "varchar(160)", "YES", null, "source_id"},
+            {"alert_record", "occurrence_count", "int", "NO", "1", "dedupe_key"},
+            {"alert_record", "last_triggered_at", "datetime", "YES", null, "occurrence_count"},
+            {"alert_record", "acknowledged_by", "bigint", "YES", null, "status"},
+            {"alert_record", "acknowledged_at", "datetime", "YES", null, "acknowledged_by"},
+            {"alert_record", "resolved_by", "bigint", "YES", null, "acknowledged_at"},
+            {"alert_record", "resolved_at", "datetime", "YES", null, "resolved_by"}
+    };
+    private static final String[][] COMPATIBILITY_INDEXES = {
+            {"bp_self_monitor_record", "uk_bp_external", "UNIQUE KEY uk_bp_external(patient_id,source_type,source_external_id)"},
+            {"medical_record", "idx_record_review", "KEY idx_record_review(patient_id,verification_status)"},
+            {"medical_record", "uk_record_external", "UNIQUE KEY uk_record_external(patient_id,source_type,source_external_id)"},
+            {"alert_record", "idx_alert_dedupe", "KEY idx_alert_dedupe(patient_id,dedupe_key,status)"}
+    };
+
+    private void assertLegacyCompatibilityUpgrade(Connection c) throws SQLException {
+        final long syntheticId = 6900L;
+        Map<String, List<String>> retainedColumns = new LinkedHashMap<>();
+        Map<String, List<String>> originalRows = new Snapshot();
+        Map<String, List<String>> originalIndexes = new Snapshot();
+        for (String[] column : LEGACY_COMPATIBILITY) {
+            retainedColumns.computeIfAbsent(column[0], table -> new ArrayList<>());
+        }
+        assertCompatibilityColumns(c);
+        for (String table : retainedColumns.keySet()) {
+            List<String> retained = columns(c, table);
+            for (String[] column : LEGACY_COMPATIBILITY) if (table.equals(column[0])) retained.remove(column[1]);
+            retainedColumns.put(table, retained);
+            originalRows.put(table, rows(c, "SELECT " + identifiers(retained) + " FROM `" + table + "`"));
+            assertEquals("0", scalar(c, "SELECT COUNT(*) FROM `" + table + "` WHERE id=" + syntheticId),
+                    "The compatibility fixture must not adopt any preexisting synthetic row");
+            originalIndexes.put(table, compatibilityIndexes(c, table));
+        }
+        // 删除缺列会自动改变组合索引；明确移除并保存原索引，验收后原样恢复，避免破坏后续夹具。
+        for (String[] index : COMPATIBILITY_INDEXES) {
+            execute(c, "ALTER TABLE `" + index[0] + "` DROP INDEX `" + index[1] + "`");
+        }
+        for (int i = LEGACY_COMPATIBILITY.length - 1; i >= 0; i--) {
+            String[] column = LEGACY_COMPATIBILITY[i];
+            execute(c, "ALTER TABLE `" + column[0] + "` DROP COLUMN `" + column[1] + "`");
+        }
+        int missing = 0;
+        for (String[] column : LEGACY_COMPATIBILITY) {
+            assertFalse(columns(c, column[0]).contains(column[1]), "Fixture must prove missing " + column[0] + "." + column[1]);
+            missing++;
+        }
+        assertEquals(24, missing, "All legacy compatibility columns must actually be missing before the real script");
+        for (String table : retainedColumns.keySet()) {
+            assertEquals(retainedColumns.get(table), columns(c, table), "Only the specified legacy columns may be removed");
+        }
+        // 只在已核实的 disposable CI 库造旧结构；固定 ID 与 7001+ 的护理计划夹具隔离，日期和值均为合成数据。
+        execute(c, "INSERT INTO bp_self_monitor_record(id,patient_id,user_id,record_date,measure_type,systolic_bp,diastolic_bp,remark,created_at,updated_at) VALUES(6900,6900,6900,'2026-09-20','BP',123,78,'Synthetic old BP 引用 😀', '2026-09-20 12:34:56','2026-09-21 13:45:57')");
+        execute(c, "INSERT INTO medical_record(id,patient_name,patient_id,user_id,record_date,record_type,ai_raw_result,remark,created_at,updated_at) VALUES(6900,'Synthetic old patient',6900,6900,'2026-09-20','OTHER',NULL,'Synthetic old medical 引用 😀','2026-09-20 12:34:56','2026-09-21 13:45:57')");
+        execute(c, "INSERT INTO dialysis_record(id,record_date,user_id,patient_id,on_weight,off_weight,uf_amount,remark,created_at,updated_at) VALUES(6900,'2026-09-20',6900,6900,60.25,58.75,1.50,'Synthetic old dialysis 引用 😀','2026-09-20 12:34:56','2026-09-21 13:45:57')");
+        execute(c, "INSERT INTO patient_clinical(id,patient_id,user_id,fluid_limit_ml,remark,created_at,updated_at) VALUES(6900,6900,6900,1200,'Synthetic old schedule 引用 😀','2026-09-20 12:34:56','2026-09-21 13:45:57')");
+        execute(c, "INSERT INTO alert_record(id,patient_id,user_id,alert_type,triggered_value,triggered_at,status,remark,created_at,updated_at) VALUES(6900,6900,6900,'SYNTHETIC','123','2026-09-20 12:34:56','PENDING','Synthetic old alert 引用 😀','2026-09-20 12:34:56','2026-09-21 13:45:57')");
+        Map<String, List<String>> beforeUpgrade = new Snapshot();
+        for (String table : retainedColumns.keySet()) {
+            beforeUpgrade.put(table, rows(c, "SELECT " + identifiers(retainedColumns.get(table)) + " FROM `" + table + "`"));
+        }
+        apply(c, "sql/care_platform_upgrade_20260921.sql");
+        assertCompatibilityColumns(c);
+        for (String table : retainedColumns.keySet()) {
+            assertEquals(beforeUpgrade.get(table), rows(c, "SELECT " + identifiers(retainedColumns.get(table)) + " FROM `" + table + "`"),
+                    "Every preexisting legacy value must survive the platform upgrade: " + table);
+        }
+        for (String[] column : LEGACY_COMPATIBILITY) {
+            assertEquals(column[4], scalar(c, "SELECT `" + column[1] + "` FROM `" + column[0] + "` WHERE id=" + syntheticId),
+                    "Existing rows receive the defined default: " + column[0] + "." + column[1]);
+        }
+        // 再执行必须保留已有非默认值，不能把“列已存在”误写成“可以重新覆盖临床数据”。
+        execute(c, "UPDATE bp_self_monitor_record SET source_type='DEVICE',source_external_id='synthetic-bp-6900',verification_status='REVIEW_REQUIRED' WHERE id=6900");
+        execute(c, "UPDATE medical_record SET source_type='FHIR',source_external_id='synthetic-medical-6900',verification_status='REVIEW_REQUIRED',confidence_score=0.8765,verified_by=6901,verified_at='2026-09-22 01:02:03' WHERE id=6900");
+        execute(c, "UPDATE dialysis_record SET session_minutes=215,ktv=1.23,urr=65.25,access_issue='Synthetic only 引用 😀' WHERE id=6900");
+        execute(c, "UPDATE patient_clinical SET dialysis_weekdays='1,3,5',dialysis_time='09:15' WHERE id=6900");
+        execute(c, "UPDATE alert_record SET source_type='SYNTHETIC',source_id=6901,dedupe_key='synthetic-alert-6900',occurrence_count=3,last_triggered_at='2026-09-22 01:02:03',acknowledged_by=6902,acknowledged_at='2026-09-22 02:03:04',resolved_by=6903,resolved_at='2026-09-22 03:04:05' WHERE id=6900");
+        Map<String, List<String>> first = comparisonSnapshot(snapshot(c), false);
+        apply(c, "sql/care_platform_upgrade_20260921.sql");
+        assertEquals(first, comparisonSnapshot(snapshot(c), false),
+                "Repeat platform upgrade must preserve all rows and structure, including non-default restored values");
+        for (String[] index : COMPATIBILITY_INDEXES) {
+            execute(c, "ALTER TABLE `" + index[0] + "` ADD " + index[2]);
+        }
+        for (String table : retainedColumns.keySet()) {
+            assertEquals(originalIndexes.get(table), compatibilityIndexes(c, table), "All original indexes must be restored: " + table);
+            execute(c, "DELETE FROM `" + table + "` WHERE id=" + syntheticId);
+            assertEquals(originalRows.get(table), rows(c, "SELECT " + identifiers(retainedColumns.get(table)) + " FROM `" + table + "`"),
+                    "Only this stage's synthetic rows may be removed: " + table);
+        }
+    }
+
+    private void assertCompatibilityColumns(Connection c) throws SQLException {
+        for (String[] column : LEGACY_COMPATIBILITY) {
+            try (PreparedStatement ps = c.prepareStatement("SELECT COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,ORDINAL_POSITION FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?")) {
+                ps.setString(1, column[0]); ps.setString(2, column[1]);
+                try (ResultSet rs = ps.executeQuery()) {
+                    assertTrue(rs.next(), "Missing compatibility column " + column[0] + "." + column[1]);
+                    assertEquals(column[2], rs.getString(1), "Compatibility type: " + column[0] + "." + column[1]);
+                    assertEquals(column[3], rs.getString(2), "Compatibility nullability: " + column[0] + "." + column[1]);
+                    assertEquals(column[4], rs.getString(3), "Compatibility default: " + column[0] + "." + column[1]);
+                    int position = rs.getInt(4);
+                    assertEquals(Integer.parseInt(scalar(c, "SELECT ORDINAL_POSITION FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='" + column[0] + "' AND column_name='" + column[5] + "'")) + 1,
+                            position, "Compatibility AFTER dependency: " + column[0] + "." + column[1]);
+                    assertFalse(rs.next());
+                }
+            }
+        }
+    }
+
+    private List<String> compatibilityIndexes(Connection c, String table) throws SQLException {
+        return rows(c, "SELECT INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,COLLATION,SUB_PART,INDEX_TYPE,IS_VISIBLE,EXPRESSION FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='" + table + "'");
     }
 
     @Test @Order(2) void nativeUniqueChecksAndForeignKeysRejectInvalidRows() throws Exception {

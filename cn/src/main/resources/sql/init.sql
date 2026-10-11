@@ -1,14 +1,10 @@
--- ============================================================
--- healthdatamanagementsystem - allamountinitializescriptthis
--- useroute: firsttimesdeploytimeonekeyCreatehas tablestructureandinitializedata
--- runmethod: mysql -u<user> -p<pass> <database> < init.sql
--- ============================================================
+-- 用途：新建空库的基础表和初始字典；完整新库还要按 README 执行医生、照护平台和协作脚本。
+-- 前提：只用于新建空库；使用 mysql 的密码提示或受控凭据，不把密码写进命令行。
+-- 重复执行：CREATE TABLE IF NOT EXISTS 不能修复已有表的全部字段；种子写入也可能覆盖原字典。
+-- 风险：不是重置或通用升级工具；DDL 隐式提交，先做完整数据库与附件备份并演练恢复。
 
--- ============================================================
--- one, systemBasictable
--- ============================================================
-
--- 1. systemusertable
+-- 一、系统基础表
+-- 1. 系统用户表
 CREATE TABLE IF NOT EXISTS `sys_user` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'userID',
   `username` VARCHAR(50) NOT NULL COMMENT 'Username (Sign InAccount) ',
@@ -24,7 +20,7 @@ CREATE TABLE IF NOT EXISTS `sys_user` (
   UNIQUE KEY `uk_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='systemusertable';
 
--- 2. systemRoletable
+-- 2. 系统角色表
 CREATE TABLE IF NOT EXISTS `sys_role` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RoleID',
   `role_code` VARCHAR(50) NOT NULL COMMENT 'RoleCode (onlyoneidentifier) ',
@@ -38,7 +34,7 @@ CREATE TABLE IF NOT EXISTS `sys_role` (
   UNIQUE KEY `uk_role_code` (`role_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='systemRoletable';
 
--- 3. systemMenu/Permissiontable
+-- 3. 系统菜单与权限表
 CREATE TABLE IF NOT EXISTS `sys_menu` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'MenuID',
   `parent_id` BIGINT DEFAULT 0 COMMENT 'parentMenuID, 0for toplevelMenu',
@@ -55,10 +51,10 @@ CREATE TABLE IF NOT EXISTS `sys_menu` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='systemMenu/Permissiontable';
 
 -- ============================================================
--- two, Patient Managementtable
+-- 二、患者管理
 -- ============================================================
 
--- 4. Patientinformationtable
+-- 4. 患者档案表
 CREATE TABLE IF NOT EXISTS `patient` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'PatientID',
   `user_id` BIGINT DEFAULT NULL COMMENT 'owner userID',
@@ -83,10 +79,10 @@ CREATE TABLE IF NOT EXISTS `patient` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patientinformationtable';
 
 -- ============================================================
--- three, Dialysis Managementmodule
+-- 三、透析管理
 -- ============================================================
 
--- 5. Dialysis Recordstable
+-- 5. 透析记录表
 CREATE TABLE IF NOT EXISTS `dialysis_record` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'primary keyID',
   `record_date` DATE NOT NULL COMMENT 'Dialysis Date',
@@ -118,7 +114,7 @@ CREATE TABLE IF NOT EXISTS `dialysis_record` (
   UNIQUE KEY `uk_dialysis_patient_date` (`patient_id`, `record_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Dialysis Recordstable';
 
--- 6. Dry WeightMonthlevelrecordtable
+-- 6. 月度干体重记录表
 CREATE TABLE IF NOT EXISTS `dry_weight_monthly` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'primary keyID',
   `year_month` VARCHAR(7) NOT NULL COMMENT 'Monthcopy, format yyyy-MM',
@@ -134,10 +130,10 @@ CREATE TABLE IF NOT EXISTS `dry_weight_monthly` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Dry WeightMonthlevelrecordtable';
 
 -- ============================================================
--- four, Medical Recordsmodule
+-- 四、病历与附件
 -- ============================================================
 
--- 7. Medical Recordsmaintable
+-- 7. 病历主表
 CREATE TABLE IF NOT EXISTS `medical_record` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `patient_name` VARCHAR(50) NOT NULL COMMENT 'PatientName',
@@ -167,7 +163,7 @@ CREATE TABLE IF NOT EXISTS `medical_record` (
   UNIQUE KEY `uk_record_external` (`patient_id`,`source_type`,`source_external_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Medical Recordsmaintable';
 
--- 8. Examination item detailstable
+-- 8. 检验项目明细表
 CREATE TABLE IF NOT EXISTS `medical_record_item` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `record_id` BIGINT NOT NULL COMMENT 'relatedrecordID',
@@ -183,7 +179,7 @@ CREATE TABLE IF NOT EXISTS `medical_record_item` (
   KEY `idx_item_record` (`record_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Examination item detailstable';
 
--- 9. imagingReportAttachmenttable
+-- 9. 影像报告附件表
 CREATE TABLE IF NOT EXISTS `medical_record_attachment` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `record_id` BIGINT NOT NULL COMMENT 'relatedrecordID',
@@ -197,10 +193,10 @@ CREATE TABLE IF NOT EXISTS `medical_record_attachment` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='imagingReportAttachmenttable';
 
 -- ============================================================
--- five, Medicationmanagementmodule
+-- 五、用药管理
 -- ============================================================
 
--- 10. Medicationinformationtable
+-- 10. 药品信息表
 CREATE TABLE IF NOT EXISTS `medication` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `user_id` BIGINT DEFAULT NULL COMMENT 'owner userID',
@@ -222,7 +218,7 @@ CREATE TABLE IF NOT EXISTS `medication` (
   KEY `idx_patient_id` (`patient_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Medicationinformationtable';
 
--- 11. medicationrecordtable
+-- 11. 用药记录表
 CREATE TABLE IF NOT EXISTS `medication_log` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `patient_name` VARCHAR(50) NOT NULL COMMENT 'PatientName',
@@ -249,10 +245,10 @@ CREATE TABLE IF NOT EXISTS `medication_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='medicationrecordtable';
 
 -- ============================================================
--- six, AI analysismodule
+-- 六、AI 分析
 -- ============================================================
 
--- 12. AI Dialysisanalysisrecordtable
+-- 12. AI 透析分析记录表
 CREATE TABLE IF NOT EXISTS `ai_analysis_record` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `user_id` BIGINT DEFAULT NULL COMMENT 'owner userID',
@@ -294,10 +290,10 @@ CREATE TABLE IF NOT EXISTS `ai_analysis_record` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AIDialysisanalysisrecord';
 
 -- ============================================================
--- seven, extendtable (Patientclinical, indicator dictionary, Medication Reminders, userslightlygood)
+-- 七、临床资料、指标字典与用户偏好
 -- ============================================================
 
--- 13. Patientclinical detailsinformationtable
+-- 13. 患者临床资料表
 CREATE TABLE IF NOT EXISTS `patient_clinical` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `patient_id` BIGINT NOT NULL COMMENT 'related patient.id',
@@ -319,7 +315,7 @@ CREATE TABLE IF NOT EXISTS `patient_clinical` (
   KEY `idx_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patientclinical detailsinformation';
 
--- 14. healthlaboratory test dictionarytable
+-- 14. 健康检验指标字典表
 CREATE TABLE IF NOT EXISTS `health_indicator` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `item_code` VARCHAR(64) NOT NULL COMMENT 'indicatorCode, for example  FERRITIN',
@@ -336,7 +332,7 @@ CREATE TABLE IF NOT EXISTS `health_indicator` (
   KEY `idx_name` (`item_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='healthlaboratory test dictionary';
 
--- 15. Medication Remindersplantable
+-- 15. 用药提醒计划表
 CREATE TABLE IF NOT EXISTS `medication_reminder` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `user_id` BIGINT NOT NULL COMMENT 'userID',
@@ -354,7 +350,7 @@ CREATE TABLE IF NOT EXISTS `medication_reminder` (
   KEY `idx_med` (`medication_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Medication Remindersplan';
 
--- 16. userinterface preferencestable
+-- 16. 用户界面偏好表
 CREATE TABLE IF NOT EXISTS `user_preference` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `user_id` BIGINT NOT NULL COMMENT 'userID',
@@ -365,10 +361,10 @@ CREATE TABLE IF NOT EXISTS `user_preference` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='userinterface preferences';
 
 -- ============================================================
--- eight, RBAC related table (dependency sys_user/sys_role/sys_menu)
+-- 八、用户角色与菜单关联（依赖 sys_user、sys_role、sys_menu）
 -- ============================================================
 
--- 17. userRolerelated table
+-- 17. 用户角色关联表
 CREATE TABLE IF NOT EXISTS `sys_user_role` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'ID',
   `user_id` BIGINT NOT NULL COMMENT 'userID',
@@ -377,7 +373,7 @@ CREATE TABLE IF NOT EXISTS `sys_user_role` (
   UNIQUE KEY `uk_user_role` (`user_id`, `role_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='userRolerelated table';
 
--- 18. RoleMenurelated table
+-- 18. 角色菜单关联表
 CREATE TABLE IF NOT EXISTS `sys_role_menu` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'ID',
   `role_id` BIGINT NOT NULL COMMENT 'RoleID',
@@ -398,7 +394,7 @@ CREATE TABLE IF NOT EXISTS `patient_specialty_role` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patient-specific specialty roles';
 
 -- ============================================================
--- nine, healthmonitoring and Family Caretable
+-- 九、健康监测与家庭照护
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS `complication_record` (
@@ -775,16 +771,16 @@ CREATE TABLE IF NOT EXISTS `notification_robot_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='NotificationBotextendconfiguration';
 
 -- ============================================================
--- 10. Baseline data (does not create a default account)
+-- 十、基础字典与菜单（不创建默认账号）
 -- ============================================================
 
--- 10.1 System roles
+-- 10.1 系统角色
 INSERT INTO `sys_role` (`role_code`, `role_name`, `description`, `status`) VALUES
 ('admin', '系统管理员', '拥有全部权限的系统管理员', 1),
 ('user', '普通用户', '平台普通用户', 1)
 ON DUPLICATE KEY UPDATE `role_code` = `role_code`;
 
--- 10.2 Navigation: top-level domains, task entries, and stable menu codes
+-- 10.2 导航菜单：顶级业务域、任务入口与稳定菜单代码
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`) VALUES
 (28,0,'健康总览','workspace','/monitoring','Monitor','monitoring:view',1,0,1),
 (30,0,'患者中心','patient-center','','UserFilled','patient:view',1,1,1),
@@ -826,12 +822,12 @@ ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)
 VALUES (38,0,'临床工作台','clinical-workbench','/clinical-workbench','FirstAidKit','clinical-workbench:view',1,1,1)
 ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),sort_order=VALUES(sort_order),status=VALUES(status);
--- 10.3 Grant every menu to the administrator role
+-- 10.3 管理员的菜单绑定（不代表患者数据授权）
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
 SELECT r.id, m.id FROM sys_role r, sys_menu m WHERE r.role_code = 'admin'
 ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
 
--- 10.4 Grant business menus to the standard user role (excluding administration)
+-- 10.4 普通用户的业务菜单绑定（不含系统管理）
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
 SELECT r.id, m.id FROM sys_role r, sys_menu m WHERE r.role_code = 'user' AND m.id IN (28,30,8,31,36,38,1,11,12,13,14,15,2,16,17,18,19,3,32,33,34,26,27,20,21,23,35,29,22,24,25)
 ON DUPLICATE KEY UPDATE `role_id` = `role_id`;
@@ -847,7 +843,7 @@ INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
 SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.id IN (1,11,12,13,14,15) WHERE r.role_code='doctor'
 ON DUPLICATE KEY UPDATE role_id=role_id;
 
--- 10.5 Common health indicator dictionary
+-- 10.5 常用健康检验指标字典
 INSERT IGNORE INTO `health_indicator` (`item_code`, `item_name`, `aliases`, `unit`, `ref_range_male`, `category`, `sort_order`) VALUES
 ('FERRITIN', '铁蛋白', '铁蛋白,ferritin,serum ferritin', 'ng/mL', '27-375', 'IRON', 10),
 ('PTH', '甲状旁腺激素', '甲状旁腺激素,parathyroid hormone,intact PTH,iPTH', 'pg/mL', '15-65', 'BONE', 20),

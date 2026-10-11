@@ -2,6 +2,8 @@ package org.familyhealthcare.common;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -10,6 +12,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SystemMessageLocalizationTest {
     @AfterEach void resetLocale() { LocaleContextHolder.resetLocaleContext(); }
+
+    @ParameterizedTest
+    @CsvSource({"en-US,告警规则不能转移到其他患者。", "zh-CN,告警规则不能转移到其他患者。"})
+    void alertPatientMigrationErrorKeepsChineseForBothRequestLocales(String language, String expected) {
+        LocaleContextHolder.setLocale(Locale.forLanguageTag(language));
+        Result<String> result = new GlobalExceptionHandler().handleArgument(
+                new IllegalArgumentException("An alert rule cannot be moved to another patient."));
+        assertEquals(400, result.getCode());
+        assertEquals(expected, result.getMsg());
+    }
 
     @Test void knownSystemMessagesUseReadableEnglishAndChinese() throws Exception {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(

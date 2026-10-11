@@ -1,4 +1,8 @@
--- Idempotent production migration for role-specific workspaces and doctor workflows.
+-- 用途：补医生分配、临床草稿和审核结构，并调整相关角色及菜单。
+-- 前提：基础表已存在；新库先执行 init.sql，旧库先核对结构与角色绑定。
+-- 重复执行：存在检查会跳过已有列和索引，但角色名称、状态、菜单和绑定仍可能更新。
+-- 风险：条件建表不修复全部旧字段；DDL 隐式提交，完整备份及恢复演练后人工执行。
+
 CREATE TABLE IF NOT EXISTS `doctor_patient_assignment` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT, `doctor_user_id` BIGINT NOT NULL, `patient_id` BIGINT NOT NULL,
   `assigned_by` BIGINT DEFAULT NULL, `status` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',

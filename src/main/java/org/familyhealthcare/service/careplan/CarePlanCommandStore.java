@@ -11,8 +11,7 @@ import java.sql.PreparedStatement;
 import java.util.*;
 import java.util.function.Supplier;
 
-/** Atomic actor/key reservation in a caller-owned READ_COMMITTED aggregate transaction.
- * Callers authorize before lookup and again after a replay or uniqueness-lock wait. */
+/** 同一人重复提交同一命令号才复用结果；权限是否仍有效由调用方在等待后重查。 */
 @Service
 @ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CarePlanCommandStore {
@@ -35,10 +34,12 @@ public class CarePlanCommandStore {
             List<Map<String,Object>>rows=jdbc.query("SELECT plan_id,expected_version,payload_hash,result_json FROM care_plan_command WHERE actor_id=? AND command_key=? FOR UPDATE",(rs,i)->CarePlanData.map("planId",CarePlanData.nullableId(rs,"plan_id"),"version",rs.getLong("expected_version"),"hash",rs.getString("payload_hash"),"result",rs.getString("result_json")),actor,normalized);
             if(rows.isEmpty())throw new IllegalStateException("Command reservation was not found",duplicate);
             Map<String,Object>row=rows.get(0);
+            // 命令号只代表同一次请求；改了内容、计划或版本就报冲突，不能套用旧结果。
             if(!hash.equals(row.get("hash"))||version!=CarePlanData.id(row.get("version"))||(plan!=null&&!plan.equals(row.get("planId"))))throw new CarePlanException(409,"COMMAND_CONFLICT","This command key was already used for a different request.");
             if(row.get("planId")==null||row.get("result")==null)throw new IllegalStateException("Incomplete committed care-plan command.");
             return CarePlanData.object((String)row.get("result"));
         }
+        // 先占命令号是为了拦住重复操作；结果没写完整时必须回滚，不能留下永久占位。
         AtomicBoolean completedReservation=new AtomicBoolean(false);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){
             @Override public void beforeCommit(boolean readOnly){

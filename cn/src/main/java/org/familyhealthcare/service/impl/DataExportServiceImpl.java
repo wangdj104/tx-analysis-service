@@ -151,8 +151,24 @@ public class DataExportServiceImpl implements DataExportService {
     @Autowired private org.familyhealthcare.mapper.MedicationIntakeMapper intakeMapper;
 
     private String csvRow(Object... cells) {
-        return java.util.Arrays.stream(cells).map(v -> "\"" + nvl(v).replace("\"", "\"\"") + "\"")
-                .collect(java.util.stream.Collectors.joining(",")) + "\n";
+        return java.util.Arrays.stream(cells).map(v -> {
+            // CSV 引号只保护逗号、引号和换行，不能阻止公式；沿用护理报告的文本保护，真实数值仍保持数值。
+            if (v instanceof Number) return v.toString();
+            String value = nvl(v);
+            if (dangerousCsvText(value)) value = "'" + value;
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }).collect(java.util.stream.Collectors.joining(",")) + "\n";
+    }
+
+    private boolean dangerousCsvText(String value) {
+        boolean leadingControl = false;
+        for (int offset = 0; offset < value.length();) {
+            int cp = value.codePointAt(offset); offset += Character.charCount(cp);
+            if (Character.isISOControl(cp) || Character.getType(cp) == Character.FORMAT) { leadingControl = true; continue; }
+            if (Character.isWhitespace(cp) || Character.isSpaceChar(cp)) continue;
+            return leadingControl || cp == '=' || cp == '+' || cp == '-' || cp == '@';
+        }
+        return leadingControl;
     }
 
     private String exportBpSelfMonitorData(Long patientId, org.familyhealthcare.util.HealthDateRange range) {

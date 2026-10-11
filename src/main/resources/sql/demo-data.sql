@@ -1,3 +1,8 @@
+-- 用途：写入虚构身份和健康记录，仅供隔离本地 Docker 演示。
+-- 前提：已执行新库基础、医生、照护平台及协作脚本；禁止导入生产或任何真实业务库。
+-- 重复执行：固定演示 ID 的 upsert 会改写已有演示记录，不只是补缺失行。
+-- 风险：Docker 演示空卷会自动导入；不能用演示数据修复真实记录，所有身份、联系方式和健康数据均为虚构。
+
 -- ============================================================
 -- Chengxin Health demo data
 -- Use only with the Docker demo profile. Never load this file in production.

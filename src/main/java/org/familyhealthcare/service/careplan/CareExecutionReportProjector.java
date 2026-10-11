@@ -20,7 +20,7 @@ import static org.familyhealthcare.service.careplan.CareExecutionReport.*;
 import static org.familyhealthcare.service.careplan.CareExecutionReportAccess.*;
 import static org.familyhealthcare.service.careplan.CareExecutionReportContracts.*;
 
-/** One immutable, independently scoped database snapshot. This class never calls a clinical command. */
+/** 报告各项统计共用一份数据库快照，避免前后查到不同时间的数据；当前权限由另一套读取另行复核。 */
 @Service
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CareExecutionReportProjector {

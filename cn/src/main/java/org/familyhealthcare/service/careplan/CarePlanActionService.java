@@ -60,13 +60,14 @@ public class CarePlanActionService {
         requireAuthority(operation,actor,patient);
         Map<String,Object>normalized=normalize(operation,body);
         validateReceiptAuthority(operation,actor,patient,normalized);
-        // Lock order is always plan -> action -> command, including a matching command replay.
+        // 都按计划、行动、命令的顺序加锁，避免同时操作时互相卡住；重复提交也沿用这个顺序。
         List<Map<String,Object>>actions=jdbc.query("SELECT revision_id,patient_id,status,lock_version FROM care_plan_action WHERE id=? AND plan_id=? FOR UPDATE",
                 (rs,i)->map("revisionId",rs.getLong("revision_id"),"patientId",rs.getLong("patient_id"),"status",rs.getString("status"),"version",rs.getLong("lock_version")),actionId,planId);
         if(actions.isEmpty()||id(actions.get(0).get("patientId"))!=patient)throw CarePlanException.denied();Map<String,Object>action=actions.get(0);
         String payload=json(map("operation",operation,"planId",planId,"actionId",actionId,"expectedVersion",expectedVersion,"body",normalized));
         Map<String,Object>result=commands.execute(actor,commandKey,payload,planId,expectedVersion,()->{
             requireAuthority(operation,actor,patient);validateReceiptAuthority(operation,actor,patient,normalized);
+            // 页面带来的旧版本不能覆盖别人刚更新的行动，版本不同就先刷新。
             if(id(plan.get("version"))!=expectedVersion)throw conflict();
             long revision=id(action.get("revisionId"));String before=(String)action.get("status");
             if(!"ACTIVE".equals(plan.get("lifecycle"))||!Objects.equals(plan.get("currentRevisionId"),revision))throw conflict();

@@ -81,7 +81,7 @@ class ClinicalSafetyWorkflowTest {
         ReflectionTestUtils.setField(service, "delivery", delivery);
         ReflectionTestUtils.setField(service, "scope", scope);
         when(scope.requireUserId()).thenReturn(7L);
-        Patient patient = new Patient(); patient.setName("Test Patient"); when(scope.requirePatient(2L)).thenReturn(patient);
+        Patient patient = new Patient(); patient.setName("Test Patient"); when(scope.requirePatientAccess(2L, null, true)).thenReturn(patient);
         AiAnalysisRecord draft = new AiAnalysisRecord();
         draft.setId(3L); draft.setUserId(7L); draft.setPatientId(2L); draft.setReviewStatus("REVIEW_REQUIRED"); draft.setAnalysisContent("Clinical draft text");
         when(records.selectById(3L)).thenReturn(draft);

@@ -65,13 +65,14 @@ public class DataScopeHelper {
         }
         List<Map<String,Object>> grants=jdbcTemplate.queryForList(
                 "SELECT patient_id,access_level,visible_modules,status,(expires_at IS NULL OR expires_at>NOW()) AS unexpired FROM care_access_grant WHERE grantee_user_id=?",uid);
-        // An explicit restriction or revocation must not fall back to unrestricted family membership.
+        // 显式授权会替代旧家属关系；已撤销、过期或缩小范围的授权不能借旧关系重新放开。
         for(Map<String,Object> grant:grants)ids.remove(((Number)grant.get("patient_id")).longValue());
         for(Map<String,Object> grant:grants) {
             if(!"ACTIVE".equals(grant.get("status"))||!truth(grant.get("unexpired")))continue;
             if(write&&!Arrays.asList("WRITE","PROXY").contains(String.valueOf(grant.get("access_level"))))continue;
             if(matchesModule(grant.get("visible_modules"),module))ids.add(((Number)grant.get("patient_id")).longValue());
         }
+        // 本人名下患者和医生的有效分配另行加入，不被家属授权的撤销一并抹掉。
         ids.addAll(jdbcTemplate.queryForList("SELECT id FROM patient WHERE user_id=? AND COALESCE(deleted,0)=0",Long.class,uid));
         if(isDoctor(uid))ids.addAll(jdbcTemplate.queryForList(
                 "SELECT patient_id FROM doctor_patient_assignment WHERE doctor_user_id=? AND status='ACTIVE'",Long.class,uid));
@@ -80,7 +81,7 @@ public class DataScopeHelper {
     private boolean matchesModule(Object configured,String module) {
         String value=configured==null?"":configured.toString().trim();
         if(value.isEmpty()||"*".equals(module))return true;
-        if(module==null)return false; // Aggregated/full-record views need a full-record grant.
+        if(module==null)return false; // 整份档案会包含多个模块，只有单模块授权时不能直接查看。
         for(String allowed:value.split(","))if(module.equalsIgnoreCase(allowed.trim()))return true;
         return false;
     }
@@ -102,7 +103,7 @@ public class DataScopeHelper {
         HttpServletRequest request=request();
         if(request==null||request.getMethod()==null||request.getMethod().isEmpty())return false;
         if(Arrays.asList("GET","HEAD","OPTIONS").contains(request.getMethod().toUpperCase(Locale.ROOT)))return false;
-        // These POST endpoints only preview/stream data; importing and recording still require write access.
+        // 预览、导出与报告生成只读数据，不能因为用了 POST 就要求写权限。
         return !Arrays.asList("/dialysis/text-import/preview","/clinical-import/preview","/data-export/csv","/health-report/generate").contains(path());
     }
     private String requestModule() {

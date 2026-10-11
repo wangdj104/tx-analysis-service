@@ -114,6 +114,7 @@ final class SystemMessageCatalog {
         CHINESE.put("Role not found", "角色不存在");
         CHINESE.put("The record does not exist.", "记录不存在。");
         CHINESE.put("Select a patient", "请选择患者");
+        CHINESE.put("An alert rule cannot be moved to another patient.", "告警规则不能转移到其他患者。");
         CHINESE.put("Invalid request parameter.", "请求参数无效。");
         CHINESE.put("Invalid date range", "日期范围无效");
         CHINESE.put("Invalid status.", "状态无效。");

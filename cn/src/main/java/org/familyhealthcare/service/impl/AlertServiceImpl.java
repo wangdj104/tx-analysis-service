@@ -17,6 +17,7 @@ import org.familyhealthcare.util.CurrentUserUtil;
 import org.familyhealthcare.util.DataScopeHelper;
 import org.familyhealthcare.vo.AlertStatsVO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -63,16 +64,31 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
     @Override
     public boolean saveRule(AlertRule rule) {
         Long userId = dataScopeHelper.requireUserId();
+        AlertRule existing = rule.getId() == null ? null : alertRuleMapper.selectById(rule.getId());
+        if (rule.getId() != null && existing == null) return false;
         if (rule.getPatientId() == null) throw new IllegalStateException("Select a patient");
-        dataScopeHelper.requirePatient(rule.getPatientId());
-        rule.setUserId(userId);
+        if (existing != null) {
+            // 只能用数据库里的患者归属核对写权限，不能让请求换个患者来证明可以修改旧规则。
+            if (existing.getPatientId() == null) throw new IllegalStateException("Select a patient");
+            dataScopeHelper.requirePatientAccess(existing.getPatientId(), null, true);
+            if (!java.util.Objects.equals(existing.getPatientId(), rule.getPatientId())) {
+                throw new IllegalArgumentException("An alert rule cannot be moved to another patient.");
+            }
+            rule.setUserId(existing.getUserId());
+        } else {
+            dataScopeHelper.requirePatientAccess(rule.getPatientId(), null, true);
+            rule.setUserId(userId);
+        }
         // AutomaticpopulateindicatorName
         if (rule.getIndicatorCode() != null) {
             HealthIndicator indicator = healthIndicatorService.findByCode(rule.getIndicatorCode());
             if (indicator != null) rule.setIndicatorName(indicator.getItemName());
         }
         if (rule.getEnabled() == null) rule.setEnabled(1);
-        return rule.getId() != null ? alertRuleMapper.updateById(rule) > 0 : alertRuleMapper.insert(rule) > 0;
+        // 把原患者也放进更新条件，避免检查后记录归属变化时仍覆盖到别人的规则；原创建人保持不变。
+        return existing != null ? alertRuleMapper.update(rule, new UpdateWrapper<AlertRule>()
+                .eq("id", existing.getId()).eq("patient_id", existing.getPatientId())) > 0
+                : alertRuleMapper.insert(rule) > 0;
     }
 
     @Override

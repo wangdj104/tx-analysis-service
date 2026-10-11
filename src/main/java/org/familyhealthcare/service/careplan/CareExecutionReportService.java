@@ -33,6 +33,7 @@ public class CareExecutionReportService implements AutoCloseable {
         this.access=Objects.requireNonNull(access);this.projector=Objects.requireNonNull(projector);
         this.renderer=Objects.requireNonNull(renderer);this.json=Objects.requireNonNull(json);this.timeout=Objects.requireNonNull(timeout);
         AtomicInteger threadId=new AtomicInteger();
+        // 取消任务不一定能停下第三方库，所以工作线程和排队数都要设上限，避免越积越多。
         executor=new ThreadPoolExecutor(2,2,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(2),r->{
             Thread thread=new Thread(r,"care-report-"+threadId.incrementAndGet());thread.setDaemon(true);return thread;
         },new ThreadPoolExecutor.AbortPolicy());
@@ -62,6 +63,7 @@ public class CareExecutionReportService implements AutoCloseable {
                 CareExecutionReportProjector.Projection projection=projector.project(actorId,request,initial,budget);
                 budget.checkTime();access.recheck(actorId,request,projection.getManifest(),budget);
                 budget.checkTime();T prepared=render.apply(projection);
+                // 渲染可能耗时，交付前再查一次权限，避免准备期间撤销授权后仍返回资料。
                 budget.checkTime();access.recheck(actorId,request,projection.getManifest(),budget);
                 budget.checkTime();return prepared;
             });

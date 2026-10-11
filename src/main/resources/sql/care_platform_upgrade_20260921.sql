@@ -1,5 +1,7 @@
--- Chengxin Health full care-platform upgrade.
--- Idempotent table creation; safe to run after taking a database backup.
+-- 用途：补照护平台结构及旧版临床导入、透析排班和告警所需的兼容列。
+-- 前提：基础表和医生工作台已存在；新库在 init.sql、doctor_workspace_20260921.sql 后执行。
+-- 重复执行：只检查列或表是否存在，不修复已有列的错误类型；菜单及角色绑定仍可能更新。
+-- 风险：缺列按 AFTER 依赖顺序补齐；DDL 隐式提交，不能用事务代替完整备份及恢复演练。
 
 CREATE TABLE IF NOT EXISTS `health_measurement` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,

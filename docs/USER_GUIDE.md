@@ -280,7 +280,7 @@ Send a channel test, verify outbound HTTPS access, webhook security settings, ch
 
 ### The database is empty after startup
 
-The application does not create tables automatically. On a new MySQL database run `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, then `care_plan_collaboration_20261003.sql`; verify the configured database URL and account permissions. Existing databases require a complete backup and applicable additive upgrades, without rerunning the baseline.
+On a new empty MySQL database, follow the [SQL execution catalog](../src/main/resources/sql/README.md): run `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, then `care_plan_collaboration_20261003.sql`; verify the database URL and schema-scoped permissions. The current `patient_specialty_roles_20260923.sql` also runs on every MySQL/MariaDB application startup, including after a manual run; this release has no disable switch. Other schema upgrades remain operator-run. Existing databases require a complete database/attachment backup, a restore rehearsal and applicable upgrades, without rerunning the baseline; review permission cleanup separately.
 
 ## 13. Suggested product tour
 

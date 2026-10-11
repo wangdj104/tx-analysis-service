@@ -1,5 +1,7 @@
--- Chengxin Health full care-platform upgrade.
--- Idempotent table creation; safe to run after taking a database backup.
+-- 用途：补照护平台结构及旧版临床导入、透析排班和告警所需的兼容列。
+-- 前提：基础表和医生工作台已存在；新库在 init.sql、doctor_workspace_20260921.sql 后执行。
+-- 重复执行：只检查列或表是否存在，不修复已有列的错误类型；菜单及角色绑定仍可能更新。
+-- 风险：缺列按 AFTER 依赖顺序补齐；DDL 隐式提交，不能用事务代替完整备份及恢复演练。
 
 CREATE TABLE IF NOT EXISTS `health_measurement` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
@@ -347,6 +349,60 @@ CREATE TABLE IF NOT EXISTS `notification_delivery_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Auditable notification routing outcomes';
 
 SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='care_member' AND column_name='access_level'),'SELECT 1','ALTER TABLE care_member ADD COLUMN access_level VARCHAR(20) NOT NULL DEFAULT ''WRITE'' AFTER relation_name'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Compatibility upgrades for installations created before clinical import and monitoring were added.
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='bp_self_monitor_record' AND column_name='source_type'),'SELECT 1','ALTER TABLE bp_self_monitor_record ADD COLUMN source_type VARCHAR(20) DEFAULT ''MANUAL'' AFTER measure_period'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='bp_self_monitor_record' AND column_name='source_external_id'),'SELECT 1','ALTER TABLE bp_self_monitor_record ADD COLUMN source_external_id VARCHAR(120) DEFAULT NULL AFTER source_type'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='bp_self_monitor_record' AND column_name='verification_status'),'SELECT 1','ALTER TABLE bp_self_monitor_record ADD COLUMN verification_status VARCHAR(30) DEFAULT ''VERIFIED'' AFTER source_external_id'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='source_type'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN source_type VARCHAR(20) DEFAULT ''MANUAL'' AFTER ai_raw_result'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='source_external_id'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN source_external_id VARCHAR(120) DEFAULT NULL AFTER source_type'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='verification_status'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN verification_status VARCHAR(30) DEFAULT ''VERIFIED'' AFTER source_external_id'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='confidence_score'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN confidence_score DECIMAL(5,4) DEFAULT NULL AFTER verification_status'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='verified_by'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN verified_by BIGINT DEFAULT NULL AFTER confidence_score'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='medical_record' AND column_name='verified_at'),'SELECT 1','ALTER TABLE medical_record ADD COLUMN verified_at DATETIME DEFAULT NULL AFTER verified_by'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dialysis_record' AND column_name='session_minutes'),'SELECT 1','ALTER TABLE dialysis_record ADD COLUMN session_minutes INT DEFAULT NULL AFTER uf_amount'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dialysis_record' AND column_name='ktv'),'SELECT 1','ALTER TABLE dialysis_record ADD COLUMN ktv DECIMAL(5,2) DEFAULT NULL AFTER session_minutes'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dialysis_record' AND column_name='urr'),'SELECT 1','ALTER TABLE dialysis_record ADD COLUMN urr DECIMAL(5,2) DEFAULT NULL AFTER ktv'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dialysis_record' AND column_name='access_issue'),'SELECT 1','ALTER TABLE dialysis_record ADD COLUMN access_issue VARCHAR(255) DEFAULT NULL AFTER urr'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='patient_clinical' AND column_name='dialysis_weekdays'),'SELECT 1','ALTER TABLE patient_clinical ADD COLUMN dialysis_weekdays VARCHAR(32) DEFAULT NULL AFTER fluid_limit_ml'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='patient_clinical' AND column_name='dialysis_time'),'SELECT 1','ALTER TABLE patient_clinical ADD COLUMN dialysis_time VARCHAR(5) DEFAULT NULL AFTER dialysis_weekdays'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='source_type'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN source_type VARCHAR(30) DEFAULT NULL AFTER triggered_at'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='source_id'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN source_id BIGINT DEFAULT NULL AFTER source_type'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='dedupe_key'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN dedupe_key VARCHAR(160) DEFAULT NULL AFTER source_id'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='occurrence_count'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN occurrence_count INT NOT NULL DEFAULT 1 AFTER dedupe_key'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='last_triggered_at'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN last_triggered_at DATETIME DEFAULT NULL AFTER occurrence_count'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='acknowledged_by'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN acknowledged_by BIGINT DEFAULT NULL AFTER status'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='acknowledged_at'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN acknowledged_at DATETIME DEFAULT NULL AFTER acknowledged_by'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='resolved_by'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN resolved_by BIGINT DEFAULT NULL AFTER acknowledged_at'));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='alert_record' AND column_name='resolved_at'),'SELECT 1','ALTER TABLE alert_record ADD COLUMN resolved_at DATETIME DEFAULT NULL AFTER resolved_by'));
 PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`)

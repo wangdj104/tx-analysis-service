@@ -22,6 +22,7 @@ public class PatientSpecialtyMigration implements ApplicationRunner {
         try (Connection connection = dataSource.getConnection()) {
             product = connection.getMetaData().getDatabaseProductName();
         }
+        // 这份脚本只适用于 MySQL/MariaDB，每次启动都会执行；它补角色和菜单关系，不替患者推断专病分配。
         if (!"MySQL".equalsIgnoreCase(product) && !"MariaDB".equalsIgnoreCase(product)) return;
         new ResourceDatabasePopulator(new ClassPathResource("sql/patient_specialty_roles_20260923.sql"))
                 .execute(dataSource);

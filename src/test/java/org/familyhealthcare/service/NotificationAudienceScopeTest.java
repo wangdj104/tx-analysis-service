@@ -13,12 +13,15 @@ class NotificationAudienceScopeTest {
         ds.setURL(ds.getURL()+";DB_CLOSE_DELAY=-1");
         jdbc.execute("CREATE TABLE patient(id BIGINT,user_id BIGINT,deleted INT)");
         jdbc.execute("CREATE TABLE sys_user(id BIGINT,status INT,deleted INT)");
+        jdbc.execute("CREATE TABLE sys_role(id BIGINT,role_code VARCHAR(30),status INT,deleted INT)");
+        jdbc.execute("CREATE TABLE sys_user_role(user_id BIGINT,role_id BIGINT)");
         jdbc.execute("CREATE TABLE care_member(patient_id BIGINT,user_id BIGINT,visible_modules VARCHAR(100))");
         jdbc.execute("CREATE TABLE doctor_patient_assignment(patient_id BIGINT,doctor_user_id BIGINT,status VARCHAR(20))");
         jdbc.execute("CREATE TABLE care_access_grant(patient_id BIGINT,grantee_user_id BIGINT,visible_modules VARCHAR(100),status VARCHAR(20),expires_at TIMESTAMP)");
         jdbc.update("INSERT INTO patient VALUES(1,7,0)");
         jdbc.update("INSERT INTO sys_user VALUES(7,1,0),(8,1,0),(9,1,0),(10,1,0),(11,1,0),(12,0,0)");
         jdbc.update("INSERT INTO doctor_patient_assignment VALUES(1,9,'ACTIVE')");
+        jdbc.update("INSERT INTO sys_role VALUES(2,'doctor',1,0)");jdbc.update("INSERT INTO sys_user_role VALUES(9,2)");
         jdbc.update("INSERT INTO care_member VALUES(1,8,NULL),(1,10,NULL),(1,11,NULL),(1,12,NULL)");
         jdbc.update("INSERT INTO care_access_grant VALUES(1,8,'MEDICATION','ACTIVE',NULL),(1,10,NULL,'REVOKED',NULL),(1,11,NULL,'ACTIVE',TIMESTAMP '2000-01-01 00:00:00')");
         NotificationAudienceService service=new NotificationAudienceService();ReflectionTestUtils.setField(service,"jdbc",jdbc);

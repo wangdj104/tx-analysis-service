@@ -38,12 +38,22 @@ public class HealthAnalysisAutomationService {
     public List<HealthAnalysisAutomation> list() {
         List<HealthAnalysisAutomation> rows = mapper.selectList(new QueryWrapper<HealthAnalysisAutomation>()
                 .eq("user_id", scope.requireUserId()).orderByDesc("updated_at"));
+        List<HealthAnalysisAutomation> accessible = new ArrayList<>();
         for (HealthAnalysisAutomation row : rows) {
-            if (row.getLastAnalysisRecordId() == null) continue;
-            AiAnalysisRecord record = analysisRecords.selectById(row.getLastAnalysisRecordId());
-            if (record != null && Objects.equals(record.getUserId(), row.getUserId())) row.setLastAnalysisContent(record.getAnalysisContent());
+            row.setLastAnalysisContent(null);
+            // 任务属于自己不等于仍有患者权限；综合分析必须有当前完整档案读权限，单个无权任务不能挡住其余任务。
+            if (row.getPatientId() == null) continue;
+            try { scope.requirePatientAccess(row.getPatientId(), null, false); }
+            catch (IllegalStateException denied) { continue; }
+            if (row.getLastAnalysisRecordId() != null) {
+                AiAnalysisRecord record = analysisRecords.selectById(row.getLastAnalysisRecordId());
+                // 旧任务的结果引用也要同时核对作者和患者，避免串到其他患者的正文。
+                if (record != null && Objects.equals(record.getUserId(), row.getUserId())
+                        && Objects.equals(record.getPatientId(), row.getPatientId())) row.setLastAnalysisContent(record.getAnalysisContent());
+            }
+            accessible.add(row);
         }
-        return rows;
+        return accessible;
     }
 
     public HealthAnalysisAutomation save(HealthAnalysisAutomation row) {
@@ -131,12 +141,14 @@ public class HealthAnalysisAutomationService {
         if (!"REVIEW_REQUIRED".equals(record.getReviewStatus())) {
             throw new IllegalArgumentException(text("This analysis draft has already been reviewed.", "该分析草稿已完成审核。"));
         }
+        // 审核会写记录，即使拒绝草稿或不发通知，也必须先有当前完整档案写权限，不能先改字段再校验。
+        if (record.getPatientId() == null) throw new IllegalStateException(text("Select a patient", "请选择患者"));
+        Patient patient = scope.requirePatientAccess(record.getPatientId(), null, true);
         record.setReviewStatus(approved ? "APPROVED" : "REJECTED");
         record.setReviewedBy(userId);
         record.setReviewedAt(LocalDateTime.now());
         analysisRecords.updateById(record);
         if (approved && notify) {
-            Patient patient = scope.requirePatient(record.getPatientId());
             String title = "Reviewed health analysis · " + (patient == null ? "Family member" : patient.getName());
             String content = record.getAnalysisContent() == null ? "The reviewed analysis is available in Chengxin Health."
                     : record.getAnalysisContent().substring(0, Math.min(record.getAnalysisContent().length(), 3500));

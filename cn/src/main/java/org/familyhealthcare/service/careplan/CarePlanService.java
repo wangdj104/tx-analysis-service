@@ -12,7 +12,7 @@ import java.time.Instant;
 import java.util.*;
 import static org.familyhealthcare.service.careplan.CarePlanData.*;
 
-/** Serialized collaborative aggregate mutations; published clinical bodies remain immutable. */
+/** 发布、结束等变更与事件、待发通知一起提交，避免状态已变却丢了通知。 */
 @Service
 @ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CarePlanService {
@@ -65,6 +65,7 @@ public class CarePlanService {
         Map<String,Object>result=commands.execute(actorId,commandKey,payload,planId,expectedVersion,()->{
             auth.requireClinical(actorId,patient);requireVersion(plan,expectedVersion);
             if(!"ACTIVE".equals(plan.get("lifecycle"))||plan.get("currentRevisionId")==null||plan.get("draftRevisionId")!=null)throw conflict();
+            // 发布后的正文保留作历史；修改时另开草稿，避免覆盖已经执行过的依据。
             Map<String,Object>source=jdbc.queryForObject("SELECT draft_json FROM care_plan_revision WHERE id=? AND plan_id=? AND status='PUBLISHED'",(rs,i)->object(rs.getString("draft_json")),plan.get("currentRevisionId"),planId);
             Map<String,Object>normalized=normalize(source);validateReferences(actorId,patient,normalized);
             int number=jdbc.queryForObject("SELECT MAX(revision_no)+1 FROM care_plan_revision WHERE plan_id=?",Integer.class,planId);
@@ -85,6 +86,7 @@ public class CarePlanService {
                 if(!"DRAFT".equals(plan.get("lifecycle"))||normalized.get("currentRevisionId")!=null||normalized.get("supersededActionDigest")!=null)throw conflict();
             }else{
                 if(!"ACTIVE".equals(plan.get("lifecycle")))throw conflict();
+                // 新版会终止旧版未完成行动，先核对用户确认过的旧版和行动清单，避免悄悄替换。
                 Map<String,Object>impact=query.revisionImpact(planId,previous);
                 if(!previous.equals(normalized.get("currentRevisionId"))||!impact.get("digest").equals(normalized.get("supersededActionDigest")))throw conflict();
             }
@@ -141,7 +143,7 @@ public class CarePlanService {
             throw failure;
         }
     }
-    /** A caller catching fresh authorization failure must still roll back a completed command/outbox. */
+    /** 重复命令也要按当前权限返回；即使上层接住拒绝错误，本次变更仍不能提交。 */
     private void authorizeResult(long actor,long patient){
         try{auth.requireClinical(actor,patient);}
         catch(RuntimeException denied){

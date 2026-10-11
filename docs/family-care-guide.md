@@ -42,7 +42,7 @@ Receiving inbound WeCom messages requires a separate custom-application or long-
 
 ## Deployment and verification
 
-For the first deployment, run `src/main/resources/sql/init.sql` once. No upgrade scripts are required. The backend does not create or alter tables automatically. `demo-data.sql` is optional local demo data and must not be imported into production.
+For an empty MySQL database, follow the [SQL execution catalog](../src/main/resources/sql/README.md): init, doctor workspace, care platform, then care-plan collaboration. Existing databases need a complete database/attachment backup and a restore rehearsal before applicable upgrades; do not rerun init as a reset. The current `patient_specialty_roles_20260923.sql` runs at every MySQL/MariaDB application startup, even after manual execution; this release has no disable switch. Other schema upgrades remain operator-run. Review role cleanup separately, and never import `demo-data.sql` or test fixtures into production.
 
 After changes, rebuild and restart the backend, rebuild and publish the frontend, then verify patient isolation, medication idempotency, invitations, notifications, exports, and backup restore.
 
