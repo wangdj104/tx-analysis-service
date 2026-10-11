@@ -36,6 +36,37 @@ public class JwtUtil {
         return createToken(claims, username);
     }
 
+    /** The opaque server-keyed stamp revokes prior sessions when the stored credential changes. */
+    public String generateToken(Long userId, String username, String bcryptPassword) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        claims.put("username", username);
+        claims.put("credentialStamp", credentialStamp(userId, bcryptPassword));
+        return createToken(claims, username);
+    }
+
+    public boolean matchesCredential(String token, Long userId, String bcryptPassword) {
+        try {
+            Claims claims = getClaimsFromToken(token);
+            if (!userId.equals(Long.valueOf(claims.get("userId").toString()))) return false;
+            Object stamp = claims.get("credentialStamp");
+            if (!(stamp instanceof String)) return false;
+            return java.security.MessageDigest.isEqual(((String) stamp).getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    credentialStamp(userId, bcryptPassword).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (RuntimeException invalid) { return false; }
+    }
+
+    private String credentialStamp(Long userId, String bcryptPassword) {
+        if (userId == null || bcryptPassword == null || !bcryptPassword.matches("\\$2[aby]\\$[0-9]{2}\\$[./A-Za-z0-9]{53}"))
+            throw new IllegalArgumentException("A current account credential is required.");
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+            String input = "family-health-credential-v1\n" + userId + "\n" + bcryptPassword;
+            return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(mac.doFinal(input.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.GeneralSecurityException impossible) { throw new IllegalStateException("Credential validation is unavailable."); }
+    }
+
     /**
      * CreateToken
      */

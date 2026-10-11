@@ -8,7 +8,6 @@ import org.familyhealthcare.service.SysMenuService;
 import org.familyhealthcare.service.SysRoleService;
 import org.familyhealthcare.service.SysUserService;
 import org.familyhealthcare.service.UserLanguagePreferenceService;
-import org.familyhealthcare.util.JwtUtil;
 import org.familyhealthcare.vo.LoginVO;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -34,9 +33,6 @@ public class AuthController {
 
     @Autowired
     private SysMenuService menuService;
-
-    @Autowired
-    private JwtUtil jwtUtil;
 
     @Autowired
     private UserLanguagePreferenceService languagePreference;
@@ -65,15 +61,7 @@ public class AuthController {
     @ApiOperation("getcurrentSign Inuserinformation")
     public Result<Map<String, Object>> info(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
-        if (userId == null) {
-            String token = request.getHeader("Authorization");
-            if (token != null && token.startsWith("Bearer ")) {
-                token = token.substring(7);
-                if (jwtUtil.validateToken(token)) {
-                    userId = jwtUtil.getUserIdFromToken(token);
-                }
-            }
-        }
+        // /auth/info 也必须经过认证拦截器，不能以仅验签的兼容分支绕过改密撤销。
         if (userId == null) {
             return Result.error("Not signed in");
         }

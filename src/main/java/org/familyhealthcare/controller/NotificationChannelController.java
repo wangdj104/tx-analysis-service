@@ -44,6 +44,9 @@ public class NotificationChannelController {
             return Result.error(400, "Webhook Addresscannot be empty");
         }
         if (!java.util.Arrays.asList("DINGTALK_WEBHOOK","WECHAT_WEBHOOK","WEBHOOK").contains(channel.getChannelType())) return Result.error(400,"Unsupported notification channel type.");
+        // 包括保留旧 URL 的编辑，也要先验证再写库，避免继续启用历史内网配置。
+        try { delivery.validateWebhookUrl(channel.getWebhookUrl()); }
+        catch (IllegalArgumentException rejected) { return Result.error(400, rejected.getMessage()); }
         channel.setUserId(userId);
         if (channel.getEnabled() == null) channel.setEnabled(1);
         if (channel.getId() == null) mapper.insert(channel); else mapper.updateById(channel);

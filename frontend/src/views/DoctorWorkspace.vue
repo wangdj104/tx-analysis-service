@@ -61,10 +61,12 @@
       <el-form label-position="top"><el-form-item label="Patient"><b>{{ activePatient?.name }}</b></el-form-item><el-form-item label="Plan title"><el-input v-model="planForm.title" maxlength="160"/></el-form-item><el-form-item label="Plan type"><el-select v-model="planForm.planType"><el-option label="Follow-up" value="FOLLOW_UP"/><el-option label="Medication" value="MEDICATION"/><el-option label="Dialysis" value="DIALYSIS"/><el-option label="Nutrition" value="NUTRITION"/></el-select></el-form-item><el-form-item label="Target date"><el-date-picker v-model="planForm.targetDate" value-format="YYYY-MM-DD"/></el-form-item><el-form-item label="Instructions"><el-input v-model="planForm.instructions" type="textarea" :rows="5" maxlength="4000" show-word-limit/></el-form-item></el-form>
       <template #footer><el-button @click="planVisible=false">Cancel</el-button><el-button type="primary" :loading="saving" @click="submitPlan">Save internal plan</el-button></template>
     </el-dialog>
+    <MedicalRecordReviewDialog v-if="medicalReviewTarget" :record-id="medicalReviewTarget.recordId" :patient-id="medicalReviewTarget.patientId" workspace @closed="medicalReviewTarget=null" @reviewed="reviewedMedicalRecord" />
   </main>
 </template>
 
 <script setup>
+import MedicalRecordReviewDialog from '@/components/MedicalRecordReviewDialog.vue';
 import { defineComponent, h, onMounted, onUnmounted, reactive, ref, resolveComponent, watch } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
 import PlanEditor from '@/components/care-plan/PlanEditor.vue';
@@ -110,6 +112,7 @@ const PatientSelect = defineComponent({ props:{ modelValue:[Number,String], disa
 const loading=ref(false),saving=ref(false),tab=ref('patients'),summary=ref({}),patients=ref([]),reviews=ref([]),notes=ref([]),plans=ref([]),selectedPatientId=ref(null),activePatient=ref(null),noteVisible=ref(false),planVisible=ref(false),collaborationEditing=ref(false);
 const noteForm=reactive({noteType:'FOLLOW_UP',visibility:'CARE_TEAM',noteText:''});
 const planForm=reactive({title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});
+const medicalReviewTarget=ref(null);
 let contextEpoch=0, summaryEpoch=0, dialogEpoch=0;
 async function loadAll(){const epoch=++summaryEpoch;loading.value=true;try{const res=await getDoctorSummary();if(epoch!==summaryEpoch)return;summary.value=res.data||{};patients.value=summary.value.patients||[];reviews.value=summary.value.reviewQueue||[];if(!patients.value.some(p=>p.id===selectedPatientId.value))selectedPatientId.value=patients.value[0]?.id||null;await loadPatientContext()}finally{if(epoch===summaryEpoch)loading.value=false}}
 async function loadPatientContext(){const epoch=++contextEpoch;const patientId=selectedPatientId.value;notes.value=[];plans.value=[];if(!patientId)return;const [n,p]=await Promise.all([getDoctorNotes(patientId),getDoctorPlans(patientId)]);if(epoch!==contextEpoch||patientId!==selectedPatientId.value)return;notes.value=n.data||[];plans.value=p.data||[]}
@@ -118,7 +121,9 @@ function openNote(row){if(collaborationEditing.value){ElMessage.warning('Close t
 function openPlan(row){if(collaborationEditing.value){ElMessage.warning('Close the collaboration editor or plan detail before switching patients.');return}dialogEpoch++;activePatient.value=row;selectedPatientId.value=row.id;loadPatientContext();Object.assign(planForm,{title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});planVisible.value=true}
 async function submitNote(){if(saving.value)return;if(!noteForm.noteText.trim()){ElMessage.warning('Enter a clinical note.');return}const epoch=dialogEpoch,patientId=selectedPatientId.value;saving.value=true;try{await saveDoctorNote({patientId,...noteForm});if(epoch!==dialogEpoch||patientId!==selectedPatientId.value||!noteVisible.value)return;ElMessage.success('Clinical note saved.');noteVisible.value=false;await loadPatientContext()}finally{saving.value=false}}
 async function submitPlan(){if(saving.value)return;if(!planForm.title.trim()||!planForm.instructions.trim()){ElMessage.warning('Enter a title and instructions.');return}const epoch=dialogEpoch,patientId=selectedPatientId.value;saving.value=true;try{await saveDoctorPlan({patientId,status:'ACTIVE',...planForm});if(epoch!==dialogEpoch||patientId!==selectedPatientId.value||!planVisible.value)return;ElMessage.success('Internal care plan saved.');planVisible.value=false;await loadAll()}finally{saving.value=false}}
-async function review(item,decision){const {value}=await ElMessageBox.prompt(decision==='APPROVED'?'Optional approval note':'Reason for rejection','Clinical review',{confirmButtonText:decision==='APPROVED'?'Approve':'Reject',cancelButtonText:'Cancel',inputType:'textarea'});await completeDoctorReview({sourceType:item.sourceType,sourceId:item.sourceId,decision,reviewNote:value});ElMessage.success('Review completed.');await loadAll()}
+async function review(item,decision){if(item.sourceType==='MEDICAL_RECORD'){medicalReviewTarget.value={recordId:Number(item.sourceId),patientId:item.patientId};return}const {value}=await ElMessageBox.prompt(decision==='APPROVED'?'Optional approval note':'Reason for rejection','Clinical review',{confirmButtonText:decision==='APPROVED'?'Approve':'Reject',cancelButtonText:'Cancel',inputType:'textarea'});await completeDoctorReview({sourceType:item.sourceType,sourceId:item.sourceId,decision,reviewNote:value});ElMessage.success('Review completed.');await loadAll()}
+async function reviewedMedicalRecord(){medicalReviewTarget.value=null;await loadAll()}
+watch(selectedPatientId,()=>{medicalReviewTarget.value=null},{flush:'sync'});
 function sourceLabel(type){return type==='MEDICAL_RECORD'?'Imported medical record':'AI-assisted analysis'}
 onMounted(loadAll);
 </script>

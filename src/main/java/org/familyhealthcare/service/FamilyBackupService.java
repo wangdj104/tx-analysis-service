@@ -83,7 +83,8 @@ public class FamilyBackupService {
                 if(table.equals("medication_reminder"))row.put("enabled",0);
                 if(table.equals("health_analysis_automation")) {
                     row.put("enabled",0);
-                    for(String field:Arrays.asList("next_run_at","last_run_at","last_run_status","last_error","notification_channel_ids","last_analysis_record_id")) row.put(field,null);
+                    row.put("config_version",0);
+                    for(String field:Arrays.asList("active_run_id","next_run_at","last_run_at","last_run_status","last_error","notification_channel_ids","last_analysis_record_id")) row.put(field,null);
                 }
                 if(table.equals("medication_intake")&&Arrays.asList("PENDING","SNOOZED","MISSED").contains(row.get("status")))row.put("status","CANCELLED");
                 if(table.equals("care_item")){

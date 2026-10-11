@@ -12,13 +12,17 @@ For a new empty database, run these SQL files in order with your authorized migr
 2. `src/main/resources/sql/doctor_workspace_20260921.sql`
 3. `src/main/resources/sql/care_platform_upgrade_20260921.sql`
 4. `src/main/resources/sql/care_plan_collaboration_20261003.sql`
-5. `src/main/resources/sql/patient_specialty_roles_20260923.sql`
+5. `src/main/resources/sql/clinical_integrity_upgrade_20261011.sql`
+6. `src/main/resources/sql/patient_specialty_roles_20260923.sql`
 
-The fifth script also runs automatically at every MySQL/MariaDB application startup. Running it manually does **not** disable that behavior. The runtime account still requires the application's data privileges plus `CREATE`, `SELECT`, `INSERT`, and `UPDATE` for that startup script; table creation with foreign keys can also require `REFERENCES` on the referenced tables. Restrict privileges to the application schema. There is no switch in this release to disable the startup migration. All other schema upgrades remain operator-run.
+The sixth script also runs automatically at every MySQL/MariaDB application startup. Running it manually does **not** disable that behavior. The runtime account still requires the application's data privileges plus `CREATE`, `SELECT`, `INSERT`, and `UPDATE` for that startup script; table creation with foreign keys can also require `REFERENCES` on the referenced tables. Restrict privileges to the application schema. There is no switch in this release to disable the startup migration. All other schema upgrades remain operator-run.
 
 For an existing database, inspect its release/schema and apply only missing applicable upgrades in the dependency order above; do not rerun `init.sql` as a reset. MySQL DDL implicitly commits: a transaction wrapper cannot make schema changes roll back together. Existence checks do not repair an existing column's type/default/nullability or all historical indexes; verify those explicitly before and after upgrading. Older installations may also need `functional_review_repair_20260922.sql` (import/alert/medication-safety tables) and `notification_language_preference_20260922.sql` (user preferences). These are already included in the current fresh baseline. Review `role_permission_cleanup_20260922.sql` separately: it changes role/menu assignments and removes obsolete roles, so it is not a blanket additive upgrade. Never import `demo-data.sql` into production.
 
 No report-specific migration is required beyond the current collaboration schema. Migration creates neither nurse-account assignments nor patient access grants, and does not publish legacy plans. Keep `CARE_PLAN_ENABLED=false` during preparation.
+
+
+The clinical-integrity upgrade is manual only. Check both import tables for duplicate `(patient_id, source_type, source_external_id)` identities as shown in the [SQL execution catalog](../src/main/resources/sql/README.md#2026-10-11-临床一致性升级), stop other writers and do not ignore SQLSTATE 45000/error 1644. It leaves all clinical rows intact and may leave its reserved temporary abort procedure after a failed preflight; the same script safely cleans it on a corrected rerun. Do not use `mysql --force`. DDL may partially commit, so verify structure after any later failure.
 
 ## 2. Configure the existing-database deployment
 

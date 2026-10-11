@@ -60,6 +60,9 @@ public class MedicalRecord {
     @ApiModelProperty("VERIFIED, REVIEW_REQUIRED or REJECTED")
     private String verificationStatus;
 
+    @ApiModelProperty("显示的病历内容版本")
+    private Long contentVersion;
+
     @ApiModelProperty("Overall recognition/import confidence")
     private BigDecimal confidenceScore;
 
@@ -67,6 +70,9 @@ public class MedicalRecord {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime verifiedAt;
+
+    @ApiModelProperty("审核备注，与患者原文分开保存")
+    private String verificationNote;
 
     @ApiModelProperty("Notes")
     private String remark;

@@ -52,7 +52,7 @@ abstract class CarePlanWebTestSupport {
         context.registerBean(org.springframework.jdbc.core.JdbcTemplate.class,()->h.f.jdbc());
         context.registerBean(CarePlanProperties.class,()->h.properties);
         context.registerBean(org.springframework.transaction.PlatformTransactionManager.class,()->new DataSourceTransactionManager(h.f.jdbc().getDataSource()));
-        jwt=mock(JwtUtil.class);when(jwt.validateToken(anyString())).thenAnswer(a->a.getArgument(0).toString().matches("synthetic-[0-9]+"));
+        jwt=mock(JwtUtil.class);when(jwt.matchesCredential(anyString(),anyLong(),nullable(String.class))).thenReturn(true);when(jwt.validateToken(anyString())).thenAnswer(a->a.getArgument(0).toString().matches("synthetic-[0-9]+"));
         when(jwt.getUserIdFromToken(anyString())).thenAnswer(a->Long.parseLong(a.getArgument(0).toString().substring(10)));
         context.registerBean(JwtUtil.class,()->jwt);
         SysUserMapper users=mock(SysUserMapper.class);when(users.selectById(any())).thenAnswer(a->{long id=Long.parseLong(a.getArgument(0).toString());

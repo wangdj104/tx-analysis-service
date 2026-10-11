@@ -39,7 +39,7 @@ public class JwtInterceptor implements HandlerInterceptor {
 
         String path = request.getRequestURI();
 
-        if (path.startsWith("/api/auth/")) {
+        if (path.equals("/api/auth/login")) {
             return true;
         }
 
@@ -66,11 +66,21 @@ public class JwtInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        Long userId = jwtUtil.getUserIdFromToken(token);
+        final Long userId;
+        try { userId = jwtUtil.getUserIdFromToken(token); }
+        catch (RuntimeException malformedIdentity) {
+            writeUnauthorized(response, "Your session has expired. Please sign in again.");
+            return false;
+        }
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null || user.getDeleted() == null || user.getDeleted() != 0
                 || user.getStatus() == null || user.getStatus() != 1) {
             writeUnauthorized(response, "The account does not exist or is disabled.");
+            return false;
+        }
+        // 读取当前账号密文生成凭据戳，改密提交后所有旧令牌在下一次请求立即失效。
+        if (!jwtUtil.matchesCredential(token, userId, user.getPassword())) {
+            writeUnauthorized(response, "Your session has expired. Please sign in again.");
             return false;
         }
         request.setAttribute("userId", userId);

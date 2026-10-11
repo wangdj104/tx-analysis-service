@@ -139,6 +139,7 @@ class CarePlanMysqlIntegrationTest {
                     apply(connection, script);
                     if ("sql/init.sql".equals(script)) assertInitializationPrimaryKeys(connection);
                 }
+                assertClinicalIntegrityUpgrade(connection, db.equals(upgrade));
                 List<String> legacyFields = columns(connection, "doctor_care_plan");
                 if (db.equals(upgrade)) {
                     BCryptPasswordEncoder bcrypt = new BCryptPasswordEncoder();
@@ -173,6 +174,130 @@ class CarePlanMysqlIntegrationTest {
             }
         }
         try (Connection connection = connect(upgrade)) { apply(connection, "sql/care-plan-mysql-relationships.sql"); }
+    }
+
+    private static final String CLINICAL_INTEGRITY_MIGRATION = "sql/clinical_integrity_upgrade_20261011.sql";
+
+    /** Current init plus a deliberately downgraded old schema use the exact offline script. */
+    private void assertClinicalIntegrityUpgrade(Connection c, boolean oldSchema) throws Exception {
+        // Before alteration, verify this edition's actual current init, not a hand-built surrogate.
+        assertClinicalIntegritySchema(c);
+        for (String table : Arrays.asList("medical_record", "bp_self_monitor_record", "health_analysis_automation", "health_analysis_run")) {
+            assertEquals("0", scalar(c, "SELECT COUNT(*) FROM " + table + " WHERE id BETWEEN 6800 AND 6809"),
+                    "Clinical migration fixtures must never adopt an existing row");
+        }
+        List<String> medicalOldColumns = columns(c, "medical_record");
+        medicalOldColumns.removeAll(Arrays.asList("content_version", "verification_note"));
+        List<String> automationOldColumns = columns(c, "health_analysis_automation");
+        automationOldColumns.removeAll(Arrays.asList("config_version", "active_run_id"));
+        if (oldSchema) {
+            assertEquals("0", scalar(c, "SELECT COUNT(*) FROM health_analysis_run"), "Only an empty synthetic journal may be downgraded");
+            execute(c, "DROP TABLE health_analysis_run");
+            execute(c, "ALTER TABLE medical_record DROP COLUMN verification_note, DROP COLUMN content_version, DROP INDEX uk_record_external");
+            execute(c, "ALTER TABLE bp_self_monitor_record DROP INDEX uk_bp_external");
+            execute(c, "ALTER TABLE health_analysis_automation DROP COLUMN active_run_id, DROP COLUMN config_version");
+        }
+        execute(c, "INSERT INTO medical_record(id,patient_name,patient_id,user_id,record_date,record_type,source_type,source_external_id,verification_status,verified_by,verified_at,remark) VALUES(6800,'Synthetic migration patient',6800,6800,'2026-10-10','OTHER','FHIR','synthetic-medical-6800','VERIFIED',6801,'2026-10-10 12:34:56','Original patient text Review: historical text 引用 😀')");
+        execute(c, "INSERT INTO bp_self_monitor_record(id,patient_id,user_id,record_date,measure_type,systolic_bp,diastolic_bp,source_type,source_external_id,remark) VALUES(6800,6800,6800,'2026-10-10','BP',123,78,'FHIR','synthetic-bp-6800','Original monitoring text 引用 😀')");
+        execute(c, "INSERT INTO health_analysis_automation(id,user_id,patient_id,task_name,analysis_items,next_run_at,last_run_status,last_error,last_analysis_record_id) VALUES(6800,6800,6800,'Synthetic retained task','BP','2026-10-12 08:00:00','FAILED','Synthetic retained failure',6800)");
+        List<String> medicalBefore = rows(c, "SELECT " + identifiers(medicalOldColumns) + " FROM medical_record");
+        List<String> automationBefore = rows(c, "SELECT " + identifiers(automationOldColumns) + " FROM health_analysis_automation");
+        List<String> bpBefore = rows(c, "SELECT * FROM bp_self_monitor_record");
+        if (oldSchema) {
+            // Missing prerequisite must fail before even creating a temporary management routine.
+            execute(c, "RENAME TABLE health_analysis_automation TO clinical_integrity_automation_fixture");
+            Map<String,List<String>> missingPrerequisite = comparisonSnapshot(snapshot(c), false);
+            List<String> routinesBefore = clinicalIntegrityRoutines(c);
+            assertClinicalMigrationError(c, "42S02", 1146);
+            assertEquals(missingPrerequisite, comparisonSnapshot(snapshot(c), false), "Missing prerequisite must not mutate any table");
+            assertEquals(routinesBefore, clinicalIntegrityRoutines(c), "Prerequisite SELECT must precede all routine DDL");
+            execute(c, "RENAME TABLE clinical_integrity_automation_fixture TO health_analysis_automation");
+            // Each import table independently blocks every clinical DDL. Only test-owned rows are corrected.
+            execute(c, "INSERT INTO bp_self_monitor_record(id,patient_id,user_id,record_date,measure_type,source_type,source_external_id,remark) VALUES(6801,6800,6800,'2026-10-10','BP','FHIR','synthetic-bp-6800','Synthetic retained duplicate BP')");
+            Map<String,List<String>> duplicateBp = comparisonSnapshot(snapshot(c), false);
+            assertClinicalMigrationError(c, "45000", 1644);
+            assertEquals(duplicateBp, comparisonSnapshot(snapshot(c), false), "Duplicate BP must preserve all clinical rows and structure");
+            assertEquals("1", scalar(c, "SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='clinical_integrity_abort_20261011'"));
+            execute(c, "DELETE FROM bp_self_monitor_record WHERE id=6801");
+            execute(c, "INSERT INTO medical_record(id,patient_name,patient_id,user_id,record_date,record_type,source_type,source_external_id,remark) VALUES(6801,'Synthetic duplicate patient',6800,6800,'2026-10-10','OTHER','FHIR','synthetic-medical-6800','Synthetic retained duplicate medical')");
+            Map<String,List<String>> duplicateMedical = comparisonSnapshot(snapshot(c), false);
+            assertClinicalMigrationError(c, "45000", 1644);
+            assertEquals(duplicateMedical, comparisonSnapshot(snapshot(c), false), "Duplicate medical row must preserve all clinical rows and structure");
+            execute(c, "DELETE FROM medical_record WHERE id=6801");
+            // A missing key is repaired; a historical two-column key is replaced atomically.
+            execute(c, "ALTER TABLE medical_record ADD UNIQUE KEY uk_record_external(patient_id,source_external_id)");
+            assertEquals("0", scalar(c, "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='bp_self_monitor_record' AND index_name='uk_bp_external'"));
+            assertEquals("patient_id,source_external_id", scalar(c, "SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='medical_record' AND index_name='uk_record_external'"));
+        }
+        apply(c, CLINICAL_INTEGRITY_MIGRATION);
+        assertClinicalIntegritySchema(c);
+        assertEquals(medicalBefore, rows(c, "SELECT " + identifiers(medicalOldColumns) + " FROM medical_record"), "Original patient text and all old medical values must survive");
+        assertEquals(automationBefore, rows(c, "SELECT " + identifiers(automationOldColumns) + " FROM health_analysis_automation"), "Old task settings/results must survive");
+        assertEquals(bpBefore, rows(c, "SELECT * FROM bp_self_monitor_record"), "All original monitor values must survive");
+        assertEquals("1", scalar(c, "SELECT content_version FROM medical_record WHERE id=6800"));
+        assertNull(scalar(c, "SELECT verification_note FROM medical_record WHERE id=6800"));
+        // Exercise SQL uniqueness with a valid same ID from another source, and a real 1062 same-source collision.
+        execute(c, "INSERT INTO bp_self_monitor_record(id,patient_id,user_id,record_date,measure_type,source_type,source_external_id) VALUES(6802,6800,6800,'2026-10-10','BP','DEVICE','synthetic-bp-6800')");
+        execute(c, "INSERT INTO medical_record(id,patient_name,patient_id,user_id,record_date,record_type,source_type,source_external_id) VALUES(6802,'Synthetic second source',6800,6800,'2026-10-10','OTHER','DEVICE','synthetic-medical-6800')");
+        expectMysqlError(c, 1062, "INSERT INTO bp_self_monitor_record(id,patient_id,user_id,record_date,measure_type,source_type,source_external_id) VALUES(6803,6800,6800,'2026-10-10','BP','FHIR','synthetic-bp-6800')");
+        expectMysqlError(c, 1062, "INSERT INTO medical_record(id,patient_name,patient_id,user_id,record_date,record_type,source_type,source_external_id) VALUES(6803,'Synthetic duplicate source',6800,6800,'2026-10-10','OTHER','FHIR','synthetic-medical-6800')");
+        execute(c, "UPDATE medical_record SET content_version=7,verification_note='Synthetic retained review note 引用 😀' WHERE id=6800");
+        execute(c, "INSERT INTO health_analysis_run(id,automation_id,claim_token,state,scheduled,scheduled_for,settings_json,claimed_at,updated_at,analysis_record_id,last_error,notification_outcomes) VALUES(6800,6800,'synthetic-retained-run-6800','NOTIFY_UNKNOWN',1,'2026-10-10 08:00:00','{\"task\":\"Synthetic retained settings 引用 😀\"}','2026-10-10 08:00:01','2026-10-10 08:00:02',6800,'Synthetic uncertain delivery','{\"synthetic\":\"UNKNOWN\"}')");
+        execute(c, "UPDATE health_analysis_automation SET config_version=7,active_run_id=6800 WHERE id=6800");
+        Map<String,List<String>> beforeRepeat = comparisonSnapshot(snapshot(c), false);
+        apply(c, CLINICAL_INTEGRITY_MIGRATION);
+        assertEquals(beforeRepeat, comparisonSnapshot(snapshot(c), false), "Rerun must preserve every table, row, key, review note and run journal field");
+        assertEquals(Collections.emptyList(), clinicalIntegrityRoutines(c), "Success removes only its reserved temporary abort procedure");
+        // Keep these synthetic non-default fields populated for the existing complete dump/restore acceptance.
+    }
+
+    private void assertClinicalIntegritySchema(Connection c) throws SQLException {
+        for (String[] expected : new String[][]{
+                {"medical_record","content_version","bigint","NO","1"},
+                {"medical_record","verification_note","text","YES",null},
+                {"health_analysis_automation","config_version","bigint","NO","0"},
+                {"health_analysis_automation","active_run_id","bigint","YES",null},
+                {"health_analysis_run","id","bigint","NO",null},
+                {"health_analysis_run","automation_id","bigint","NO",null},
+                {"health_analysis_run","claim_token","varchar(64)","NO",null},
+                {"health_analysis_run","state","varchar(30)","NO",null},
+                {"health_analysis_run","scheduled","tinyint","NO","0"},
+                {"health_analysis_run","scheduled_for","datetime","YES",null},
+                {"health_analysis_run","settings_json","longtext","NO",null},
+                {"health_analysis_run","analysis_record_id","bigint","YES",null},
+                {"health_analysis_run","last_error","varchar(500)","YES",null},
+                {"health_analysis_run","notification_outcomes","longtext","YES",null}}) {
+            try(PreparedStatement ps=c.prepareStatement("SELECT COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?")) {
+                ps.setString(1,expected[0]);ps.setString(2,expected[1]);
+                try(ResultSet rs=ps.executeQuery()) {
+                    assertTrue(rs.next(), "Missing current clinical field " + expected[0]+"."+expected[1]);
+                    assertEquals(expected[2],rs.getString(1));assertEquals(expected[3],rs.getString(2));assertEquals(expected[4],rs.getString(3));assertFalse(rs.next());
+                }
+            }
+        }
+        for(String field:Arrays.asList("claimed_at","updated_at")) {
+            String definition=scalar(c,"SELECT CONCAT(COLUMN_TYPE,':',IS_NULLABLE,':',COLUMN_DEFAULT) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='health_analysis_run' AND column_name='"+field+"'");
+            assertNotNull(definition);
+            assertEquals("datetime:no:current_timestamp",definition.toLowerCase(Locale.ROOT).replace("()",""));
+        }
+        for(String[] index:new String[][]{{"bp_self_monitor_record","uk_bp_external","patient_id,source_type,source_external_id"},{"medical_record","uk_record_external","patient_id,source_type,source_external_id"},{"health_analysis_run","uq_health_run_token","claim_token"}}) {
+            assertEquals(index[2],scalar(c,"SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='"+index[0]+"' AND index_name='"+index[1]+"' AND non_unique=0 AND sub_part IS NULL"));
+        }
+        assertEquals("automation_id,id",scalar(c,"SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='health_analysis_run' AND index_name='idx_health_run_automation'"));
+        assertEquals("state,updated_at",scalar(c,"SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='health_analysis_run' AND index_name='idx_health_run_recovery'"));
+        assertEquals("0",scalar(c,"SELECT COUNT(*) FROM information_schema.referential_constraints WHERE constraint_schema=DATABASE() AND table_name='health_analysis_run'"),"Journal must survive task deletion");
+    }
+
+    private List<String> clinicalIntegrityRoutines(Connection c) throws SQLException {
+        return rows(c,"SELECT ROUTINE_NAME,ROUTINE_TYPE,ROUTINE_DEFINITION FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='clinical_integrity_abort_20261011'");
+    }
+
+    private void assertClinicalMigrationError(Connection c, String sqlState, int code) {
+        RuntimeException failure=assertThrows(RuntimeException.class,()->apply(c,CLINICAL_INTEGRITY_MIGRATION));
+        Throwable cause=failure;
+        while(cause!=null && !(cause instanceof SQLException)) cause=cause.getCause();
+        assertNotNull(cause,"Native MySQL failure must retain the vendor cause");
+        assertEquals(sqlState,((SQLException)cause).getSQLState());assertEquals(code,((SQLException)cause).getErrorCode());
     }
 
     // These are explicit expected schema contracts, not values inferred from whichever
@@ -675,6 +800,16 @@ class CarePlanMysqlIntegrationTest {
         try (NativeServices services = new NativeServices(true)) {
             CareExecutionReportMysqlAssertions.verify(services.source,services);
         }
+    }
+
+    @Test @Order(9) void clinicalIntegrityUsesActualMysqlServices() throws Exception {
+        DataSource dataSource=new AbstractDataSource() {
+            @Override public Connection getConnection() throws SQLException { return connect(upgrade); }
+            @Override public Connection getConnection(String ignoredUser,String ignoredPassword) throws SQLException { return getConnection(); }
+        };
+        ClinicalImportDialysisMysqlAssertions.verify(dataSource);
+        MedicalRecordMysqlAssertions.verify(dataSource);
+        HealthAutomationMysqlAssertions.verify(dataSource);
     }
 
     @Test @Order(10) void restorePreservesAllPlanRelationships() throws Exception {

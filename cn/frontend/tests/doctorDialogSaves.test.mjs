@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 
 function deferred() {
   let resolve, reject
@@ -11,7 +11,7 @@ function deferred() {
 function setup(overrides = {}) {
   const messages = [], savedNotes = [], savedPlans = []
   const bindings = {
-    ref, reactive, defineComponent: value => value, onMounted() {},
+    ref, reactive, watch, defineComponent: value => value, onMounted() {},
     ElMessage: { success: text => messages.push(text), warning() {} },
     getDoctorSummary: async () => ({ data: { patients: [{ id: 1 }, { id: 2 }] } }),
     getDoctorNotes: async patientId => ({ data: [{ patientId }] }),

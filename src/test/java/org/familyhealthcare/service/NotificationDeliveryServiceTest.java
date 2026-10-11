@@ -15,15 +15,15 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 class NotificationDeliveryServiceTest {
     @Test void dingTalkUsesSignedTextAndRejectsBusinessErrors() {
-        NotificationDeliveryService service=new NotificationDeliveryService();
-        MockRestServiceServer server=MockRestServiceServer.bindTo((RestTemplate)ReflectionTestUtils.getField(service,"client")).build();
+        NotificationDeliveryService service=WebhookTestFixture.service();
+        MockRestServiceServer server=MockRestServiceServer.bindTo(WebhookTestFixture.client(service)).build();
         NotificationChannel c=new NotificationChannel();c.setChannelType("DINGTALK_WEBHOOK");c.setWebhookUrl("https://oapi.dingtalk.com/robot/send?access_token=test");c.setRobotSecret("SECtest");c.setRobotKeyword("familyhealth");
         server.expect(request->{assertTrue(request.getURI().getRawQuery().contains("timestamp="));assertTrue(request.getURI().getRawQuery().contains("sign="));}).andExpect(content().json("{\"msgtype\":\"text\",\"text\":{\"content\":\"familyhealth\\nattentionitem\\nbringExaminationsingle\"}}")).andRespond(withSuccess("{\"errcode\":0}",MediaType.APPLICATION_JSON));
         service.send(c,"attentionitem","bringExaminationsingle");server.verify();server.reset();server.expect(request->{}).andRespond(withSuccess("{\"errcode\":310000}",MediaType.APPLICATION_JSON));assertThrows(IllegalStateException.class,()->service.send(c,"attentionitem","bringExaminationsingle"));
     }
     @Test void sendsRealWechatPayloadAndChecksBusinessResponse() {
-        NotificationDeliveryService service = new NotificationDeliveryService();
-        RestTemplate client = (RestTemplate) ReflectionTestUtils.getField(service,"client");
+        NotificationDeliveryService service = WebhookTestFixture.service();
+        RestTemplate client = WebhookTestFixture.client(service);
         MockRestServiceServer server = MockRestServiceServer.bindTo(client).build();
         NotificationChannel channel = new NotificationChannel(); channel.setChannelType("WECHAT_WEBHOOK"); channel.setWebhookUrl("https://example.test/robot");
         server.expect(requestTo(channel.getWebhookUrl())).andExpect(method(HttpMethod.POST))
@@ -35,21 +35,21 @@ class NotificationDeliveryServiceTest {
     }
 
     @Test void genericWebhookFailureIsNotReportedAsSuccess() {
-        NotificationDeliveryService service = new NotificationDeliveryService();
-        MockRestServiceServer server = MockRestServiceServer.bindTo((RestTemplate)ReflectionTestUtils.getField(service,"client")).build();
+        NotificationDeliveryService service = WebhookTestFixture.service();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(WebhookTestFixture.client(service)).build();
         NotificationChannel channel = new NotificationChannel();channel.setChannelType("WEBHOOK");channel.setWebhookUrl("https://example.test/hook");
         server.expect(requestTo(channel.getWebhookUrl())).andExpect(content().json("{\"title\":\"t\",\"content\":\"c\"}")).andRespond(withServerError());
         assertThrows(RuntimeException.class,()->service.send(channel,"t","c"));server.verify();
     }
 
     @Test void oneSuccessfulChannelCountsAsDeliveredEvenWhenAnotherFails() {
-        NotificationDeliveryService service = new NotificationDeliveryService();
+        NotificationDeliveryService service = WebhookTestFixture.service();
         NotificationChannelMapper mapper = mock(NotificationChannelMapper.class);
-        NotificationChannel good = new NotificationChannel();good.setChannelType("WEBHOOK");good.setWebhookUrl("https://example.test/good");
-        NotificationChannel bad = new NotificationChannel();bad.setChannelType("WEBHOOK");bad.setWebhookUrl("https://example.test/bad");
+        NotificationChannel good = new NotificationChannel();good.setId(1L);good.setChannelType("WEBHOOK");good.setWebhookUrl("https://example.test/good");
+        NotificationChannel bad = new NotificationChannel();bad.setId(2L);bad.setChannelType("WEBHOOK");bad.setWebhookUrl("https://example.test/bad");
         when(mapper.selectList(any())).thenReturn(Arrays.asList(good,bad));
         ReflectionTestUtils.setField(service,"mapper",mapper);
-        MockRestServiceServer server=MockRestServiceServer.bindTo((RestTemplate)ReflectionTestUtils.getField(service,"client")).build();
+        MockRestServiceServer server=MockRestServiceServer.bindTo(WebhookTestFixture.client(service)).build();
         server.expect(requestTo(good.getWebhookUrl())).andRespond(withSuccess("{}",MediaType.APPLICATION_JSON));
         server.expect(requestTo(bad.getWebhookUrl())).andRespond(withServerError());
         assertTrue(service.notifyUser(7L,"EMERGENCY","Help","Location"));

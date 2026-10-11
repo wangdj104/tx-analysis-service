@@ -12,13 +12,16 @@
 2. `src/main/resources/sql/doctor_workspace_20260921.sql`
 3. `src/main/resources/sql/care_platform_upgrade_20260921.sql`
 4. `src/main/resources/sql/care_plan_collaboration_20261003.sql`
-5. `src/main/resources/sql/patient_specialty_roles_20260923.sql`
+5. `src/main/resources/sql/clinical_integrity_upgrade_20261011.sql`
+6. `src/main/resources/sql/patient_specialty_roles_20260923.sql`
 
-第五个脚本在每次 MySQL/MariaDB 应用启动时还会自动执行。手动执行**不会**关闭此行为。运行账号除业务数据权限外，仍需启动脚本用到的 `CREATE`、`SELECT`、`INSERT`、`UPDATE`；创建外键还可能需要被引用表的 `REFERENCES` 权限。权限限定在应用库中。本版本没有关闭自动专病迁移的开关，其他结构升级由运维执行。
+第六个脚本在每次 MySQL/MariaDB 应用启动时还会自动执行。手动执行**不会**关闭此行为。运行账号除业务数据权限外，仍需启动脚本用到的 `CREATE`、`SELECT`、`INSERT`、`UPDATE`；创建外键还可能需要被引用表的 `REFERENCES` 权限。权限限定在应用库中。本版本没有关闭自动专病迁移的开关，其他结构升级由运维执行。
 
 已有库应先核对版本与结构，再按依赖顺序补充适用升级，不能重跑 `init.sql` 当作重置。较旧系统还可能需要 `functional_review_repair_20260922.sql`（导入、告警、用药安全表）及 `notification_language_preference_20260922.sql`（用户偏好）；当前新库基线已包含这些内容。`role_permission_cleanup_20260922.sql` 会改动角色和菜单分配并删除旧角色，须独立审查，不能当作通用纯增量脚本直接执行。生产环境禁止导入 `demo-data.sql`。
 
 执行报告不需要当前协作结构之外的新迁移。迁移不会为护理账号分配患者、授予患者权限或发布旧计划。准备期间保留 `CARE_PLAN_ENABLED=false`。
+
+2026-10-11 临床一致性升级应先按 [SQL 目录](../src/main/resources/sql/README.md#2026-10-11-临床一致性升级) 检查历史来源 ID 重复；SQLSTATE 45000（错误 1644）是重复预检阻止升级的错误；并发唯一键冲突 1062 同样不能忽略，禁止自动删除患者行或忽略错误继续。DDL 可能部分生效，维护者核对结构后再决定恢复或重跑。
 
 ## 2. 配置现有数据库部署
 

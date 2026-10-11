@@ -9,6 +9,7 @@ import org.familyhealthcare.util.DataScopeHelper;
 import org.familyhealthcare.util.PdfConvertResult;
 import org.familyhealthcare.service.AiOcrService;
 import org.familyhealthcare.service.MedicalRecordService;
+import org.familyhealthcare.service.MedicalRecordReviewContract;
 import org.familyhealthcare.service.PatientService;
 import org.familyhealthcare.util.PdfToImageUtil;
 import org.familyhealthcare.util.WordExtractUtil;
@@ -257,12 +258,18 @@ public class MedicalRecordController {
         catch(NumberFormatException invalid){throw new IllegalArgumentException("Invalid source selector.");}
     }
 
+    @GetMapping("/{id}/review-preview")
+    @ApiOperation("Read the exact medical-record snapshot without attachment bytes")
+    public Result<MedicalRecord> reviewPreview(@PathVariable Long id) {
+        return Result.ok(medicalRecordService.getReviewPreview(id));
+    }
+
     @PostMapping("/{id}/review")
     @ApiOperation("Confirm or reject an imported/OCR medical record")
     public Result<String> review(@PathVariable Long id, @RequestBody Map<String, Object> params) {
         boolean approved = Boolean.parseBoolean(String.valueOf(params.getOrDefault("approved", false)));
         String note = params.get("note") == null ? null : String.valueOf(params.get("note"));
-        boolean success = medicalRecordService.reviewRecord(id, approved, note);
+        boolean success = medicalRecordService.reviewRecord(id, approved, note, MedicalRecordReviewContract.expectedVersion(params));
         return success ? Result.okMessage(approved ? "Record verified" : "Record rejected") : Result.error("The record does not exist.");
     }
 

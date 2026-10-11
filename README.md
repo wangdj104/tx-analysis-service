@@ -109,7 +109,7 @@ Password: Demo@123456
 
 Change all secrets before exposing a deployment to any network. The Docker demo is intended for evaluation, not production.
 
-On an empty MySQL volume, Compose runs `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, `care_plan_collaboration_20261003.sql`, then `demo-data.sql`. Existing volumes are not reinitialized; apply required upgrades manually after a backup. Do not delete a volume containing records to force initialization.
+On an empty MySQL volume, Compose runs `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, `care_plan_collaboration_20261003.sql`, then `demo-data.sql`. The current init already includes the clinical-integrity schema; the clinical-integrity upgrade stays manual and is not mounted into Compose. Existing volumes are not reinitialized; apply required upgrades manually after a backup. Do not delete a volume containing records to force initialization.
 
 ## Bilingual production deployment
 
@@ -156,11 +156,12 @@ mysql -u root -p family_health < src/main/resources/sql/init.sql
 mysql -u root -p family_health < src/main/resources/sql/doctor_workspace_20260921.sql
 mysql -u root -p family_health < src/main/resources/sql/care_platform_upgrade_20260921.sql
 mysql -u root -p family_health < src/main/resources/sql/care_plan_collaboration_20261003.sql
+mysql -u root -p family_health < src/main/resources/sql/clinical_integrity_upgrade_20261011.sql
 ```
 
-New databases require all four scripts in this order: [base schema](src/main/resources/sql/init.sql), [doctor workspace](src/main/resources/sql/doctor_workspace_20260921.sql), [care platform](src/main/resources/sql/care_platform_upgrade_20260921.sql), then [care-plan collaboration](src/main/resources/sql/care_plan_collaboration_20261003.sql). `init.sql` alone does not contain the care-journey tables. Existing installations apply only the applicable idempotent upgrade scripts after backing up data; do not rerun the baseline as a reset. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
+New databases require all five scripts in this order: [base schema](src/main/resources/sql/init.sql), [doctor workspace](src/main/resources/sql/doctor_workspace_20260921.sql), [care platform](src/main/resources/sql/care_platform_upgrade_20260921.sql), [care-plan collaboration](src/main/resources/sql/care_plan_collaboration_20261003.sql), then [clinical integrity](src/main/resources/sql/clinical_integrity_upgrade_20261011.sql). `init.sql` alone does not contain the care-journey tables. Existing installations apply only the applicable idempotent upgrade scripts after backing up data; do not rerun the baseline as a reset. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
 
-The additive [patient specialty role upgrade](src/main/resources/sql/patient_specialty_roles_20260923.sql) runs on MySQL/MariaDB application startup. Back up the database before deploying this release; the runtime account needs `CREATE`, `SELECT`, `INSERT` and `UPDATE` for this startup script (and `REFERENCES` when creating its foreign keys), restricted to the application schema. You may apply it manually after the four scripts above, but it still executes at every MySQL/MariaDB startup; this release has no disable switch. Existing patients are not assigned a specialty role automatically. Assign the dialysis specialty role in the patient editor to enable dialysis navigation for an individual patient.
+The additive [patient specialty role upgrade](src/main/resources/sql/patient_specialty_roles_20260923.sql) runs on MySQL/MariaDB application startup. Back up the database before deploying this release; the runtime account needs `CREATE`, `SELECT`, `INSERT` and `UPDATE` for this startup script (and `REFERENCES` when creating its foreign keys), restricted to the application schema. You may apply it manually after the five scripts above, but it still executes at every MySQL/MariaDB startup; this release has no disable switch. Existing patients are not assigned a specialty role automatically. Assign the dialysis specialty role in the patient editor to enable dialysis navigation for an individual patient.
 
 The additive care-plan collaboration migration retains legacy `ACTIVE` plans as internal `workflow_version=0` records. It does not publish them, create tasks or notifications, assign nurse roles to accounts, or grant `CARE_PLAN` access. Back up the complete database and attachment storage before applying it to an existing installation; apply this script without rerunning `init.sql`. New collaboration timestamps use UTC `DATETIME(6)` with explicit application conversion. Schema installation alone does not enable the collaboration workflow. H2 tests are compatibility checks; release acceptance still requires the original migration on MySQL 8.0 and a complete synthetic backup/restore drill. Retain published history when disabling this subsystem; do not drop its tables as a rollback.
 
@@ -226,7 +227,7 @@ Webhook URLs and bot secrets are sensitive. They are masked in API responses and
 
 ## Database policy
 
-- New installations run the base schema, doctor-workspace, care-platform and care-plan collaboration migrations in the documented order.
+- New installations run the base schema, doctor-workspace, care-platform, care-plan collaboration and `clinical_integrity_upgrade_20261011.sql` migrations in the documented order.
 - `demo-data.sql` is strictly optional and must never be used in production.
 - The specialty-role migration is the explicit startup exception: it creates/checks its table and updates role/menu data on every MySQL/MariaDB startup, including after manual application. All other migrations are operator-run; see the [operator handoff](docs/OFFLINE_DEPLOYMENT.md).
 - `init.sql` is not an upgrade or reset tool for a populated database. Back up data before any manual database operation.

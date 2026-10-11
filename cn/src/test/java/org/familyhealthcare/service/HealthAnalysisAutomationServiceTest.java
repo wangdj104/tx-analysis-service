@@ -48,7 +48,14 @@ class HealthAnalysisAutomationServiceTest {
         for (HealthAnalysisAutomation row : new HealthAnalysisAutomation[]{chinese, english}) {
             row.setFrequencyType("DAILY"); row.setAnalysisRangeDays(30); row.setAnalysisItems("VITALS"); row.setTaskName("Original name 原文");
         }
-        org.mockito.Mockito.when(mapper.selectList(org.mockito.ArgumentMatchers.any())).thenReturn(java.util.Arrays.asList(chinese, english));
+        HealthAnalysisRunStore store = org.mockito.Mockito.mock(HealthAnalysisRunStore.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "runStore", store);
+        org.mockito.Mockito.when(store.candidates()).thenReturn(java.util.Arrays.asList(chinese, english));
+        org.mockito.Mockito.when(store.claim(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
+            HealthAnalysisAutomation settings = ((Long)call.getArgument(0)) == 1L ? chinese : english;
+            org.familyhealthcare.entity.HealthAnalysisRun run = new org.familyhealthcare.entity.HealthAnalysisRun(); run.setId(settings.getId()); run.setAutomationId(settings.getId()); run.setScheduled(1); run.setState("CLAIMED");
+            return new HealthAnalysisRunStore.Claim(run, settings, null);
+        });
         org.mockito.Mockito.when(languages.get(9L)).thenReturn("zh-CN");
         org.mockito.Mockito.when(languages.get(10L)).thenReturn("en-US");
         java.util.List<String> observed = new java.util.ArrayList<>();
@@ -57,7 +64,7 @@ class HealthAnalysisAutomationServiceTest {
             return "Original clinical text Normal 原文";
         });
         java.util.List<org.familyhealthcare.entity.AiAnalysisRecord> saved = new java.util.ArrayList<>();
-        org.mockito.Mockito.when(records.insert(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> { saved.add(call.getArgument(0)); return 1; });
+        org.mockito.Mockito.when(store.saveDraft(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenAnswer(call -> { org.familyhealthcare.entity.AiAnalysisRecord r=call.getArgument(1); saved.add(r); return r; });
         org.springframework.context.i18n.LocaleContext before = new org.springframework.context.i18n.SimpleLocaleContext(java.util.Locale.JAPAN);
         org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(before);
         try {

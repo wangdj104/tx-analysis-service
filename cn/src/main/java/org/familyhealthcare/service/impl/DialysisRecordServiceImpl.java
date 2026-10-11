@@ -62,7 +62,7 @@ public class DialysisRecordServiceImpl extends ServiceImpl<DialysisRecordMapper,
     @Override
     @org.springframework.transaction.annotation.Transactional
     public boolean updateRecord(DialysisRecord record) {
-        DialysisRecord existing = getById(record.getId());
+        DialysisRecord existing = baseMapper.selectOne(new QueryWrapper<DialysisRecord>().eq("id", record.getId()).last("FOR UPDATE"));
         if (existing == null) {
             return false;
         }
@@ -70,21 +70,53 @@ public class DialysisRecordServiceImpl extends ServiceImpl<DialysisRecordMapper,
         if (record.getPatientId() != null) {
             dataScopeHelper.requirePatient(record.getPatientId());
         }
-        Long patientId = record.getPatientId() != null ? record.getPatientId() : existing.getPatientId();
-        LocalDate recordDate = record.getRecordDate() != null ? record.getRecordDate() : existing.getRecordDate();
-        requirePatientAndUniqueDate(patientId, recordDate, record.getId());
-        calculateDerivedFields(record);
+        Long previousPatientId = existing.getPatientId();
+        boolean preserveUf = sameDecimal(record.getOnWeight(), existing.getOnWeight())
+                && sameDecimal(record.getOffWeight(), existing.getOffWeight())
+                && (record.getRecordType() == null || Objects.equals(record.getRecordType(), existing.getRecordType()));
+        mergeInputs(existing, record);
+        requirePatientAndUniqueDate(existing.getPatientId(), existing.getRecordDate(), existing.getId());
+        // Derived fields are recomputed from merged inputs; missing derivations must reach SQL NULL.
+        existing.setWeightGain(null);
+        if (!preserveUf) existing.setUfAmount(null);
+        existing.setDailyWeightGain(null);
+        existing.setDehydrationStatus(null);
+        existing.setWeight3pct(null);
+        existing.setWeight5pct(null);
+        calculateDerivedFields(existing, preserveUf, false);
         boolean saved;
         try {
-            saved = updateById(record);
+            saved = baseMapper.updateEffectiveRecord(existing) > 0;
         } catch (DuplicateKeyException e) {
-            throw duplicateDate(recordDate);
+            throw duplicateDate(existing.getRecordDate());
         }
         if (saved) {
-            if (existing.getPatientId() != null) scheduleService.list(existing.getPatientId());
-            if (record.getPatientId() != null && !java.util.Objects.equals(existing.getPatientId(), record.getPatientId())) scheduleService.list(record.getPatientId());
+            if (previousPatientId != null) scheduleService.list(previousPatientId);
+            if (existing.getPatientId() != null && !Objects.equals(previousPatientId, existing.getPatientId())) scheduleService.list(existing.getPatientId());
         }
         return saved;
+    }
+
+    private boolean sameDecimal(BigDecimal patch, BigDecimal stored) {
+        return patch == null || stored != null && patch.compareTo(stored) == 0;
+    }
+
+    /** Null input retains the existing patch convention. Owners and derived fields are server-owned. */
+    private void mergeInputs(DialysisRecord effective, DialysisRecord patch) {
+        if (patch.getPatientId() != null) effective.setPatientId(patch.getPatientId());
+        if (patch.getRecordDate() != null) effective.setRecordDate(patch.getRecordDate());
+        if (patch.getLastOffWeight() != null) effective.setLastOffWeight(patch.getLastOffWeight());
+        if (patch.getOnWeight() != null) effective.setOnWeight(patch.getOnWeight());
+        if (patch.getOffWeight() != null) effective.setOffWeight(patch.getOffWeight());
+        if (patch.getIntervalDays() != null) effective.setIntervalDays(patch.getIntervalDays());
+        if (patch.getSessionMinutes() != null) effective.setSessionMinutes(patch.getSessionMinutes());
+        if (patch.getKtv() != null) effective.setKtv(patch.getKtv());
+        if (patch.getUrr() != null) effective.setUrr(patch.getUrr());
+        if (patch.getAccessIssue() != null) effective.setAccessIssue(patch.getAccessIssue());
+        if (patch.getSystolicBp() != null) effective.setSystolicBp(patch.getSystolicBp());
+        if (patch.getDiastolicBp() != null) effective.setDiastolicBp(patch.getDiastolicBp());
+        if (patch.getRecordType() != null) effective.setRecordType(patch.getRecordType());
+        if (patch.getRemark() != null) effective.setRemark(patch.getRemark());
     }
 
     private void requirePatientAndUniqueDate(Long patientId, LocalDate recordDate, Long excludedId) {
@@ -106,6 +138,10 @@ public class DialysisRecordServiceImpl extends ServiceImpl<DialysisRecordMapper,
      * Automaticcalculatederived field (intervaldayscountAutomaticinference, Dry Weightfrom Monthly tablequery)
      */
     private void calculateDerivedFields(DialysisRecord record) {
+        calculateDerivedFields(record, false, true);
+    }
+
+    private void calculateDerivedFields(DialysisRecord record, boolean preserveUf, boolean inferMissingInterval) {
         // 疗程时长按分钟、URR 按百分数传入，避免把小时或小数比例当作原值校验。
         if (record.getSessionMinutes() != null && (record.getSessionMinutes() < 30 || record.getSessionMinutes() > 1440)) {
             throw new IllegalArgumentException("Session duration must be between 30 and 1440 minutes.");
@@ -117,7 +153,7 @@ public class DialysisRecordServiceImpl extends ServiceImpl<DialysisRecordMapper,
             throw new IllegalArgumentException("URR must be between 0 and 100 percent.");
         }
         // 1. Automaticinferenceintervaldayscount (based onmost recent oneitemsrecord Datedifference) —— datamissingrecordalsoreference and , keepTimeordercolumncontinuous
-        if (record.getIntervalDays() == null && !record.isTextImport()) {
+        if (inferMissingInterval && record.getIntervalDays() == null && !record.isTextImport()) {
             Integer inferredDays = inferIntervalDays(record);
             record.setIntervalDays(inferredDays != null ? inferredDays : 2);
         }
@@ -125,7 +161,7 @@ public class DialysisRecordServiceImpl extends ServiceImpl<DialysisRecordMapper,
         // 缺失记录不继续推算体重结果；这里只清理传入对象，文本导入的脱水量保留。
         if ("INCOMPLETE".equals(record.getRecordType())) {
             record.setWeightGain(null);
-            if (!record.isTextImport()) record.setUfAmount(null);
+            if (!record.isTextImport() && !preserveUf) record.setUfAmount(null);
             record.setDailyWeightGain(null);
             record.setDehydrationStatus(null);
             record.setWeight3pct(null);
@@ -147,7 +183,7 @@ public class DialysisRecordServiceImpl extends ServiceImpl<DialysisRecordMapper,
         }
 
         // 4. ultrafiltration volume = this timespre-dialysis - this timespost-dialysis
-        if (onWeight != null && offWeight != null && (!record.isTextImport() || record.getUfAmount() == null)) {
+        if (!preserveUf && onWeight != null && offWeight != null && (!record.isTextImport() || record.getUfAmount() == null)) {
             record.setUfAmount(onWeight.subtract(offWeight).setScale(2, RoundingMode.HALF_UP));
         }
 

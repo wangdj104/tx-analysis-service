@@ -18,6 +18,8 @@
         <article><span>透析次数</span><strong>{{ overview.dialysisQuality?.sessionCount || 0 }}</strong><small>近 {{ overview.dialysisQuality?.rangeDays || 90 }} 天</small></article>
       </section>
 
+      <AutomationRunStatus :patient-id="patientId" :refresh-key="overview" @acknowledged="load" />
+
       <section class="workbench-panel">
         <el-tabs v-model="activeTab" class="workbench-tabs">
           <el-tab-pane label="关注中心" name="attention">
@@ -117,21 +119,25 @@
         </el-tabs>
       </section>
     </template>
+    <MedicalRecordReviewDialog v-if="medicalReviewTarget" :record-id="medicalReviewTarget.recordId" :patient-id="medicalReviewTarget.patientId" @closed="medicalReviewTarget=null" @reviewed="reviewedMedicalRecord" />
   </main>
 </template>
 
 <script setup>
+import MedicalRecordReviewDialog from '@/components/MedicalRecordReviewDialog.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
 import { platformBranding } from '@/utils/platformBranding'
-import { getClinicalWorkbenchOverview, getDialysisQuality, reviewMedicalRecord, reviewAnalysisDraft, generateDialysisSchedule, previewClinicalImport, commitClinicalImport } from '@/api/clinicalWorkbench'
+import AutomationRunStatus from '@/components/AutomationRunStatus.vue'
+import { getClinicalWorkbenchOverview, getDialysisQuality, reviewAnalysisDraft, generateDialysisSchedule, previewClinicalImport, commitClinicalImport } from '@/api/clinicalWorkbench'
 
 const router = useRouter()
 const { currentPatientId: patientId, currentPatientName } = useCurrentPatient()
 const loading = ref(false), activeTab = ref('attention'), overview = ref({}), dialysisDays = ref(90)
 const schedulePreview = ref([]), importMode = ref('FHIR'), importText = ref(''), importPreview = ref(null), lastImportBody = ref(null)
+const medicalReviewTarget = ref(null)
 const submitting = ref(false)
 let loadEpoch = 0, importEpoch = 0, scheduleEpoch = 0
 let scheduleSnapshot = ''
@@ -170,11 +176,9 @@ function formatSla(minutes){ return minutes<60?`${minutes} 分钟`:minutes<1440?
 function metric(value,suffix=''){ return value==null?'—':`${value}${suffix}` }
 function openPath(path){ if(path)router.push(path) }
 function openQualitySource(item){ router.push(item.sourceType==='dialysis'?'/dialysis':'/medical-record') }
-async function reviewRecord(item,approved){
-  const action=approved?'核验通过':'驳回'
-  await ElMessageBox.confirm(`确认要将这条医疗记录${action}吗？`, '需要人工审核', {type:approved?'success':'warning'})
-  await reviewMedicalRecord(item.sourceId,approved,`在临床工作台${action}`); ElMessage.success(`记录已${action}。`); await load()
-}
+function reviewRecord(item){ medicalReviewTarget.value = { recordId: Number(item.sourceId), patientId: patientId.value } }
+async function reviewedMedicalRecord(){ medicalReviewTarget.value = null; await load() }
+watch(patientId, () => { medicalReviewTarget.value = null }, { flush: 'sync' })
 async function reviewDraft(item,approved,notify){
   const verb=approved?(notify?'批准并发送审核后的内容':'批准此草稿'):'驳回此草稿'
   await ElMessageBox.confirm(`确认要${verb}吗？`, 'AI 分析审核', {type:notify?'warning':'info'})

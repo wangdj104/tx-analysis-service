@@ -203,18 +203,18 @@ class CarePlanNotificationTest {
         error(503,()->off.retry(ADMIN,100L,true));verifyNoInteractions(jdbc);
     }
     @Test void deliveryServiceClassifiesExplicitFailuresAndAmbiguousTransportWithoutChangingBooleanApi() {
-        NotificationDeliveryService service=new NotificationDeliveryService();NotificationChannelMapper mapper=mock(NotificationChannelMapper.class);ReflectionTestUtils.setField(service,"mapper",mapper);
+        NotificationDeliveryService service=WebhookTestFixture.service();NotificationChannelMapper mapper=mock(NotificationChannelMapper.class);ReflectionTestUtils.setField(service,"mapper",mapper);
         NotificationChannel c=new NotificationChannel();c.setId(100L);c.setUserId(7L);c.setEnabled(1);c.setChannelType("WEBHOOK");c.setWebhookUrl("https://example.test/synthetic");
-        when(mapper.selectById(100L)).thenReturn(c);MockRestServiceServer server=MockRestServiceServer.bindTo((RestTemplate)ReflectionTestUtils.getField(service,"client")).build();
+        when(mapper.selectById(100L)).thenReturn(c);MockRestServiceServer server=MockRestServiceServer.bindTo(WebhookTestFixture.client(service)).build();
         server.expect(requestTo(c.getWebhookUrl())).andRespond(withSuccess("{}",MediaType.APPLICATION_JSON));assertEquals("DELIVERED",classified(service));server.verify();server.reset();
         server.expect(requestTo(c.getWebhookUrl())).andRespond(withBadRequest());assertEquals("FAILED",classified(service));server.verify();server.reset();
         server.expect(requestTo(c.getWebhookUrl())).andRespond(withException(new java.net.SocketTimeoutException("secret URL and clinical data")));assertEquals("UNKNOWN",classified(service));server.verify();
         when(mapper.selectById(100L)).thenReturn(null);assertEquals("NO_CHANNEL",classified(service));
     }
     @Test void deliveryServiceClassifiesPermanentAndUncertainFailuresConservatively() {
-        NotificationDeliveryService service=new NotificationDeliveryService();NotificationChannelMapper mapper=mock(NotificationChannelMapper.class);ReflectionTestUtils.setField(service,"mapper",mapper);
+        NotificationDeliveryService service=WebhookTestFixture.service();NotificationChannelMapper mapper=mock(NotificationChannelMapper.class);ReflectionTestUtils.setField(service,"mapper",mapper);
         NotificationChannel c=new NotificationChannel();c.setId(100L);c.setUserId(7L);c.setEnabled(1);c.setChannelType("WEBHOOK");c.setWebhookUrl("https://example.test/synthetic");when(mapper.selectById(100L)).thenReturn(c);
-        MockRestServiceServer server=MockRestServiceServer.bindTo((RestTemplate)ReflectionTestUtils.getField(service,"client")).build();
+        MockRestServiceServer server=MockRestServiceServer.bindTo(WebhookTestFixture.client(service)).build();
         server.expect(requestTo(c.getWebhookUrl())).andRespond(withServerError());assertEquals("UNKNOWN",classified(service));server.verify();server.reset();
         server.expect(requestTo(c.getWebhookUrl())).andRespond(withBadRequest());assertFalse(classifiedRetryable(service));server.verify();server.reset();
         c.setWebhookUrl("invalid configuration");assertFalse(classifiedRetryable(service));
@@ -223,12 +223,12 @@ class CarePlanNotificationTest {
         server.expect(requestTo(c.getWebhookUrl())).andRespond(withStatus(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS).headers(timing));assertFalse(classifiedRetryable(service));server.verify();
     }
     @Test void actualDingTalkCarePlanBodyNeverIncludesConfiguredText() {
-        NotificationDeliveryService service=new NotificationDeliveryService();NotificationChannelMapper mapper=mock(NotificationChannelMapper.class);
+        NotificationDeliveryService service=WebhookTestFixture.service();NotificationChannelMapper mapper=mock(NotificationChannelMapper.class);
         RobotChannelConfigService robots=mock(RobotChannelConfigService.class);ReflectionTestUtils.setField(service,"mapper",mapper);ReflectionTestUtils.setField(service,"robots",robots);
         NotificationChannel channel=new NotificationChannel();channel.setId(100L);channel.setUserId(7L);channel.setEnabled(1);channel.setChannelType("DINGTALK_WEBHOOK");channel.setWebhookUrl("https://example.test/synthetic-robot");
         String configured="Synthetic Patient Private diagnosis Secret action 181/109";
         when(mapper.selectById(100L)).thenReturn(channel);doAnswer(call->{channel.setRobotKeyword(configured);return null;}).when(robots).load(channel);
-        MockRestServiceServer server=MockRestServiceServer.bindTo((RestTemplate)ReflectionTestUtils.getField(service,"client")).build();
+        MockRestServiceServer server=MockRestServiceServer.bindTo(WebhookTestFixture.client(service)).build();
         server.expect(requestTo(channel.getWebhookUrl())).andExpect(content().json("{\"msgtype\":\"text\",\"text\":{\"content\":\"Care plan update\\nOpen your care plan after signing in. /care-plans/100\"}}"))
             .andRespond(withSuccess("{\"errcode\":0}",MediaType.APPLICATION_JSON));
         CarePlanNotificationTransport.ExistingChannels adapter=new CarePlanNotificationTransport.ExistingChannels(service);
@@ -244,11 +244,11 @@ class CarePlanNotificationTest {
     }
     @Test void slowProviderBatchUsesEachJobsActualFirstAttemptClock() {
         for(long channel=101;channel<=102;channel++)db("INSERT INTO notification_channel(id,user_id,channel_type,channel_name,webhook_url,enabled) VALUES(?,7,'WEBHOOK','Synthetic batch channel','https://example.test/synthetic',1)",channel);
-        NotificationDeliveryService service=new NotificationDeliveryService();NotificationChannelMapper mapper=mock(NotificationChannelMapper.class);ReflectionTestUtils.setField(service,"mapper",mapper);
+        NotificationDeliveryService service=WebhookTestFixture.service();NotificationChannelMapper mapper=mock(NotificationChannelMapper.class);ReflectionTestUtils.setField(service,"mapper",mapper);
         Map<Long,NotificationChannel> channels=new LinkedHashMap<>();Map<Long,List<Instant>> starts=new LinkedHashMap<>();Map<Long,List<Instant>> claims=new LinkedHashMap<>();
         for(long id=100;id<=102;id++){NotificationChannel channel=new NotificationChannel();channel.setId(id);channel.setUserId(7L);channel.setEnabled(1);channel.setChannelType("WEBHOOK");channel.setWebhookUrl("https://example.test/synthetic/"+id);channels.put(id,channel);starts.put(id,new ArrayList<>());claims.put(id,new ArrayList<>());}
         when(mapper.selectById(anyLong())).thenAnswer(call->channels.get((Long)call.getArgument(0)));
-        MockRestServiceServer server=MockRestServiceServer.bindTo((RestTemplate)ReflectionTestUtils.getField(service,"client")).build();
+        MockRestServiceServer server=MockRestServiceServer.bindTo(WebhookTestFixture.client(service)).build();
         server.expect(org.springframework.test.web.client.ExpectedCount.manyTimes(),request->{}).andRespond(request->{
             long channel=Long.parseLong(request.getURI().getPath().substring(request.getURI().getPath().lastIndexOf('/')+1));Instant started=f.now();starts.get(channel).add(started);
             Map<String,Object> row=f.jdbc().queryForMap("SELECT * FROM care_plan_notification WHERE channel_id=?",channel);claims.get(channel).add(time(row,"claimed_at"));

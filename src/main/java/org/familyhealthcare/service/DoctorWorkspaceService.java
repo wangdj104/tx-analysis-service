@@ -17,6 +17,7 @@ import java.util.Map;
 @Service
 public class DoctorWorkspaceService {
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private MedicalRecordService medicalRecordService;
     @Autowired(required=false) private CarePlanProperties carePlanProperties;
     @Autowired(required=false) private CarePlanQueryService carePlanQuery;
 
@@ -110,10 +111,8 @@ public class DoctorWorkspaceService {
         if (!java.util.Arrays.asList("APPROVED", "REJECTED").contains(decision)) throw new IllegalArgumentException("Invalid review decision.");
         Long patientId;
         if ("MEDICAL_RECORD".equals(sourceType)) {
-            patientId = reviewPatient("medical_record", sourceId);
-            requireAssigned(patientId);
-            String verified = "APPROVED".equals(decision) ? "VERIFIED" : "REJECTED";
-            jdbc.update("UPDATE medical_record SET verification_status=?,verified_by=?,verified_at=NOW() WHERE id=?", verified, currentUserId(), sourceId);
+            patientId = medicalRecordService.reviewRecordForDoctor(sourceId, "APPROVED".equals(decision),
+                    body.get("reviewNote") == null ? null : String.valueOf(body.get("reviewNote")), MedicalRecordReviewContract.expectedVersion(body));
         } else if ("AI_ANALYSIS".equals(sourceType)) {
             patientId = reviewPatient("ai_analysis_record", sourceId);
             requireAssigned(patientId);

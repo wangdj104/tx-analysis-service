@@ -5,13 +5,9 @@ import org.familyhealthcare.service.careplan.CarePlanNotificationTransport.Deliv
 import org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryAttempt;
 import org.familyhealthcare.mapper.NotificationChannelMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import java.net.URI;
 import java.util.*;
 
@@ -21,14 +17,17 @@ public class NotificationDeliveryService {
     @Autowired private RobotChannelConfigService robots;
     @Autowired private UserLanguagePreferenceService languagePreference;
     @Autowired private NotificationMessageLocalizer localizer;
-    private final RestTemplate client;
+    private final WebhookTargetPolicy targetPolicy;
+    private final WebhookTransport transport;
 
-    public NotificationDeliveryService() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5000);
-        factory.setReadTimeout(5000);
-        client = new RestTemplate(factory);
+    public NotificationDeliveryService() { this(new WebhookTargetPolicy(), new WebhookTransport()); }
+
+    public NotificationDeliveryService(WebhookTargetPolicy targetPolicy, WebhookTransport transport) {
+        this.targetPolicy=java.util.Objects.requireNonNull(targetPolicy);
+        this.transport=java.util.Objects.requireNonNull(transport);
     }
+
+    public void validateWebhookUrl(String value) { targetPolicy.validate(value); }
 
     public void send(NotificationChannel channel, String title, String content) {
         send(channel,title,content,true);
@@ -39,8 +38,8 @@ public class NotificationDeliveryService {
         URI uri;
         try { uri = URI.create(channel.getWebhookUrl()); }
         catch (Exception e) { throw new InvalidNotificationConfiguration("Configure a valid webhook URL."); }
-        if (uri.getHost() == null || !("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme())))
-            throw new InvalidNotificationConfiguration("The webhook URL must begin with http:// or https://.");
+        if (uri.getHost() == null || !"https".equalsIgnoreCase(uri.getScheme()))
+            throw new InvalidNotificationConfiguration(WebhookTargetPolicy.REJECTION);
         boolean ding="DINGTALK_WEBHOOK".equals(channel.getChannelType());
         if(ding){if(channel.getId()!=null)robots.load(channel);try{uri=dingTalkUri(uri,channel.getRobotSecret(),System.currentTimeMillis());}catch(IllegalArgumentException invalid){throw new InvalidNotificationConfiguration("Invalid notification signing configuration.");}}
         Map<String, Object> body = new LinkedHashMap<>();
@@ -50,13 +49,24 @@ public class NotificationDeliveryService {
         } else if ("WEBHOOK".equals(channel.getChannelType())) {
             body.put("title", title); body.put("content", content);
         } else throw new InvalidNotificationConfiguration("Unsupported notification channel type.");
-        HttpHeaders headers = new HttpHeaders(); headers.setContentType(MediaType.APPLICATION_JSON);
-        ResponseEntity<String> response = client.postForEntity(uri, new HttpEntity<>(body, headers), String.class);
+        final WebhookTargetPolicy.Target target;
+        try { target=targetPolicy.validate(uri.toString()); }
+        catch (IllegalArgumentException invalid) { throw new InvalidNotificationConfiguration(WebhookTargetPolicy.REJECTION); }
+        ResponseEntity<String> response = transport.post(target, body);
         if (!response.getStatusCode().is2xxSuccessful()) throw new IllegalStateException("Notification delivery failed: HTTP " + response.getStatusCodeValue());
         if (ding || "WECHAT_WEBHOOK".equals(channel.getChannelType())) {
-            JSONObject result = JSON.parseObject(response.getBody());
-            if(result==null||result.getInteger("errcode")==null)throw new IllegalStateException("Notification acknowledgement was unavailable.");
-            if(!Integer.valueOf(0).equals(result.getInteger("errcode")))throw new KnownProviderRejection("The bot rejected the message. Check the webhook URL, keyword, and signature settings.");
+            final com.fasterxml.jackson.databind.JsonNode acknowledgement;
+            try {
+                acknowledgement = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                        .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                        .readTree(response.getBody());
+            } catch (java.io.IOException malformed) { throw new IllegalStateException("Notification acknowledgement was unavailable."); }
+            com.fasterxml.jackson.databind.JsonNode code=acknowledgement==null?null:acknowledgement.get("errcode");
+            // Protocol integers only: coercion could truncate a fraction or wrap an overflow into success.
+            if (acknowledgement==null || !acknowledgement.isObject() || code==null || !code.isIntegralNumber() || !code.canConvertToInt())
+                throw new IllegalStateException("Notification acknowledgement was unavailable.");
+            if(code.intValue()!=0)throw new KnownProviderRejection("The bot rejected the message. Check the webhook URL, keyword, and signature settings.");
         }
     }
 
@@ -82,19 +92,41 @@ public class NotificationDeliveryService {
     }
 
     public boolean notifyUser(Long userId, Collection<Long> channelIds, String eventType, String title, String content) {
-        boolean success = false;
+        return notifyUserOutcomes(userId,channelIds,eventType,title,content).containsValue(DeliveryOutcome.DELIVERED);
+    }
+
+    /** Each channel is attempted once. An uncertain response must never be flattened into a retryable failure. */
+    public Map<Long,DeliveryOutcome> notifyUserOutcomes(Long userId,Collection<Long> channelIds,String eventType,String title,String content) {
+        return notifyUserOutcomes(userId,channelIds,eventType,title,content,(id,outcome)->{});
+    }
+
+    /** Journal observers run between channels; failed persistence aborts subsequent external attempts. */
+    public Map<Long,DeliveryOutcome> notifyUserOutcomes(Long userId,Collection<Long> channelIds,String eventType,String title,String content,
+            java.util.function.BiConsumer<Long,DeliveryOutcome> observer) {
+        java.util.Objects.requireNonNull(observer,"A delivery result observer is required");
         QueryWrapper<NotificationChannel> query = new QueryWrapper<NotificationChannel>().eq("user_id", userId).eq("enabled", 1);
         if (channelIds != null && !channelIds.isEmpty()) query.in("id", channelIds);
         List<NotificationChannel> channels = mapper.selectList(query);
-        if (channels.isEmpty()) return false;
+        Map<Long,DeliveryOutcome> outcomes=new LinkedHashMap<>();
         NotificationMessageLocalizer.Message message = localized(userId, eventType, title, content);
         for (NotificationChannel channel : channels) {
-            try { send(channel, message.getTitle(), message.getContent()); success = true; }
-            catch (Exception e) {
-                org.slf4j.LoggerFactory.getLogger(getClass()).warn("Notification delivery failed, channelId={}", channel.getId(), e);
+            try { send(channel, message.getTitle(), message.getContent()); outcomes.put(channel.getId(),DeliveryOutcome.DELIVERED); }
+            catch (RuntimeException error) { outcomes.put(channel.getId(),classify(error));
+                // Provider URLs, query tokens, response bodies and message content must not enter logs.
+                org.slf4j.LoggerFactory.getLogger(getClass()).warn("Notification delivery did not complete, channelId={}, outcome={}",channel.getId(),outcomes.get(channel.getId()));
             }
+            observer.accept(channel.getId(),outcomes.get(channel.getId()));
         }
-        return success;
+        return outcomes;
+    }
+
+    private DeliveryOutcome classify(RuntimeException error) {
+        if (error instanceof InvalidNotificationConfiguration || error instanceof KnownProviderRejection) return DeliveryOutcome.FAILED;
+        if (error instanceof org.springframework.web.client.RestClientResponseException) {
+            int status=((org.springframework.web.client.RestClientResponseException)error).getRawStatusCode();
+            return status>=400 && status<500 && status!=408 ? DeliveryOutcome.FAILED : DeliveryOutcome.UNKNOWN;
+        }
+        return DeliveryOutcome.UNKNOWN;
     }
 
     /** Compatibility API preserves the four outcome values; retryability is an independent fact. */

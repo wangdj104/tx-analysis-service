@@ -280,7 +280,7 @@ Send a channel test, verify outbound HTTPS access, webhook security settings, ch
 
 ### The database is empty after startup
 
-新建空 MySQL 库按 [SQL 执行目录](../src/main/resources/sql/README.md) 依次运行 `init.sql`、`doctor_workspace_20260921.sql`、`care_platform_upgrade_20260921.sql`、`care_plan_collaboration_20261003.sql`，核对数据库连接与限定于应用库的账号权限。当前 `patient_specialty_roles_20260923.sql` 在每次 MySQL/MariaDB 应用启动自动执行，手工跑过仍会再执行，本版本没有关闭开关。其他结构升级由操作人员处理。已有库先完整备份数据库和附件并演练恢复，再应用适用增量脚本，不重跑基础脚本；权限清理须单独审核。
+新建空 MySQL 库按 [SQL 执行目录](../src/main/resources/sql/README.md) 依次运行 `init.sql`、`doctor_workspace_20260921.sql`、`care_platform_upgrade_20260921.sql`、`care_plan_collaboration_20261003.sql`、`clinical_integrity_upgrade_20261011.sql`，核对数据库连接与限定于应用库的账号权限。当前 `patient_specialty_roles_20260923.sql` 在每次 MySQL/MariaDB 应用启动自动执行，手工跑过仍会再执行，本版本没有关闭开关。其他结构升级由操作人员处理。已有库先完整备份数据库和附件并演练恢复，再应用适用增量脚本，不重跑基础脚本；权限清理须单独审核。
 
 ## 13. Suggested product tour
 

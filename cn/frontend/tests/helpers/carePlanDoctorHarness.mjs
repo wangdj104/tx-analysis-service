@@ -14,7 +14,7 @@ export async function flush() { for(let i=0;i<12;i++){await Promise.resolve();aw
 export function findNode(node, testId) { if(node.props?.['data-testid']===testId)return node; for(const child of node.children||[]){const found=findNode(child,testId);if(found)return found} }
 export function textOf(node) { return (node.text||'')+(node.children||[]).map(textOf).join(' ') }
 export async function fixture(t, name, props, transport, slots) {
-  const file=name==='DoctorWorkspace'?'views/DoctorWorkspace.vue':`components/care-plan/${name}.vue`
+  const file=name.includes('/')?`${name}.vue`:name==='DoctorWorkspace'?'views/DoctorWorkspace.vue':`components/care-plan/${name}.vue`
   assert.ok(fs.existsSync(new URL(`../../src/${file}`,import.meta.url)),`${name} care-plan component exists`)
   const storage = new Map([['token','synthetic-token'],['userId','51']]), writes=[]
   globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>{writes.push([k,v]);storage.set(k,String(v))},removeItem:k=>storage.delete(k),key:i=>[...storage.keys()][i],get length(){return storage.size}}
@@ -25,17 +25,26 @@ export async function fixture(t, name, props, transport, slots) {
   const authUrl=new URL(`../../src/utils/authSession.js`,import.meta.url).href
   const apiUrl=dataModule(source('api/carePlan.js').replace(/import request from ['"]@\/utils\/request['"]/g,`const request = (...args) => globalThis.${slot}(...args)`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`))
   const doctorApiUrl=dataModule(source('api/doctorWorkspace.js').replace(/import request from ['"]@\/utils\/request['"]/g,`const request = (...args) => globalThis.${slot}(...args)`))
+  const medicalApiUrl=dataModule((fs.existsSync(new URL('../../src/api/medicalReview.js',import.meta.url))?source('api/medicalReview.js'):'').replace(/import request from ['"]@\/utils\/request['"]/g,`const request = (...args) => globalThis.${slot}(...args)`))
+  const clinicalApiUrl=dataModule(source('api/clinicalWorkbench.js').replace(/import request from ['"]@\/utils\/request['"]/g,`const request = (...args) => globalThis.${slot}(...args)`))
+  const automationApiUrl=dataModule(source('api/healthAutomation.js').replace(/import request from ['"]@\/utils\/request['"]/g,`const request = (...args) => globalThis.${slot}(...args)`))
+  const patientUrl=dataModule(`import {ref} from '${vueUrl}';const patient=ref(1);export const useCurrentPatient=()=>({currentPatientId:patient,currentPatientName:ref('Synthetic patient')});`)
+  const brandingUrl=dataModule(`export const platformBranding={platformName:'Synthetic platform'};`)
   const timeUrl=new URL('../../src/utils/carePlanTime.js',import.meta.url).href
   const composableUrl=dataModule(source('composables/useCarePlan.js').replace(/from ['"]vue['"]/g,`from '${vueUrl}'`).replace(/from ['"]@\/api\/carePlan['"]/g,`from '${apiUrl}'`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`).replace(/from ['"]@\/utils\/carePlanTime['"]/g,`from '${timeUrl}'`))
   const urls=compiledUrls
   async function compile(componentName){
     if(urls[componentName])return urls[componentName]
-    const filename=componentName==='DoctorWorkspace'?'views/DoctorWorkspace.vue':`components/care-plan/${componentName}.vue`,id=`doctor-${componentName}`,{descriptor}=parse(source(filename),{filename})
+    const filename=componentName.includes('/')?`${componentName}.vue`:componentName==='DoctorWorkspace'?'views/DoctorWorkspace.vue':`components/care-plan/${componentName}.vue`,id=`doctor-${componentName}`,{descriptor}=parse(source(filename),{filename})
     const script=compileScript(descriptor,{id}),template=compileTemplate({source:descriptor.template.content,filename,id,compilerOptions:{bindingMetadata:script.bindings,hoistStatic:false}})
     assert.deepEqual(template.errors,[],`${componentName} compiles`)
     let code=script.content.replace(/export default/,'const __component =')+'\n'+template.code.replace('export function render','function render')+'\n__component.render=render; export default __component;'
     code=code.replace(/from ['"]vue['"]/g,`from '${vueUrl}'`).replace(/from ['"]vue-router['"]/g,`from '${routerUrl}'`).replace(/from ['"]@\/api\/carePlan['"]/g,`from '${apiUrl}'`).replace(/from ['"]@\/composables\/useCarePlan['"]/g,`from '${composableUrl}'`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`).replace(/from ['"]@\/utils\/carePlanTime['"]/g,`from '${timeUrl}'`)
-    code=code.replace(/from ['"]@\/api\/doctorWorkspace['"]/g,`from '${doctorApiUrl}'`).replace(/import \{ ElMessage, ElMessageBox \} from ['"]element-plus['"];?/g,`const ElMessage={success(){},warning(){}}; const ElMessageBox={prompt:async()=>({value:''})};`)
+    code=code.replace(/from ['"]@\/api\/clinicalWorkbench['"]/g,`from '${clinicalApiUrl}'`).replace(/from ['"]@\/composables\/useCurrentPatient['"]/g,`from '${patientUrl}'`).replace(/from ['"]@\/utils\/platformBranding['"]/g,`from '${brandingUrl}'`)
+    code=code.replace(/from ['"]@\/api\/medicalReview['"]/g,`from '${medicalApiUrl}'`)
+    code=code.replace(/from ['"]@\/api\/healthAutomation['"]/g,`from '${automationApiUrl}'`)
+    for(const match of code.matchAll(/from ['"]@\/components\/(MedicalRecordReviewDialog|AutomationRunStatus)\.vue['"]/g))code=code.replace(match[0],`from '${await compile('components/'+match[1])}'`)
+    code=code.replace(/from ['"]@\/api\/doctorWorkspace['"]/g,`from '${doctorApiUrl}'`).replace(/import \{ (?:ElMessage, ElMessageBox|ElMessageBox, ElMessage) \} from ['"]element-plus['"];?/g,`const ElMessage={success(){},warning(){}}; const ElMessageBox={prompt:async()=>({value:''})};`)
     for(const match of code.matchAll(/from ['"]@\/components\/care-plan\/(\w+)\.vue['"]/g))code=code.replace(match[0],`from '${await compile(match[1])}'`)
     for(const match of code.matchAll(/from ['"]\.\/(\w+)\.vue['"]/g))code=code.replace(match[0],`from '${await compile(match[1])}'`)
     urls[componentName]=dataModule(code);return urls[componentName]
@@ -43,7 +52,7 @@ export async function fixture(t, name, props, transport, slots) {
   const node=(tag,text='')=>({tag,tagName:tag.toUpperCase(),text,children:[],props:{},parent:null,style:{},addEventListener(){},removeEventListener(){},getRootNode(){return {}},getAttribute(k){return this.props[k]},setAttribute(k,v){this.props[k]=v},removeAttribute(k){delete this.props[k]},get options(){return this.children}})
   const renderer=createRenderer({createElement:tag=>node(tag),createText:s=>node('#text',s),createComment:s=>node('#comment',s),setText:(n,s)=>{n.text=s},setElementText:(n,s)=>{n.text=s;n.children=[]},parentNode:n=>n.parent,nextSibling:n=>n.parent?.children[n.parent.children.indexOf(n)+1]||null,patchProp:(n,k,o,v)=>{n.props[k]=v;if(k==='value')n.value=v},insert:(n,p,a)=>{if(n.parent){const i=n.parent.children.indexOf(n);if(i>=0)n.parent.children.splice(i,1)}n.parent=p;const i=a?p.children.indexOf(a):-1;p.children.splice(i<0?p.children.length:i,0,n)},remove:n=>{if(n.parent)n.parent.children.splice(n.parent.children.indexOf(n),1)}})
   const root=node('root'),component=(await import(await compile(name))).default,events=[]
-  let currentProps={...props,onSaved:data=>events.push(['saved',data]),onClosed:()=>events.push(['closed']),onChanged:data=>events.push(['changed',data]),onOpen:id=>events.push(['open',id])}
+  let currentProps={...props,onSaved:data=>events.push(['saved',data]),onClosed:()=>events.push(['closed']),onChanged:data=>events.push(['changed',data]),onOpen:id=>events.push(['open',id]),onReviewed:data=>events.push(['reviewed',data])}
   const app=renderer.createApp({render(){return null}})
   // Give the real router hooks a matched record in this component-only harness.
   // Navigation behavior is exercised separately by carePlanRouteGuards.test.mjs.

@@ -28,6 +28,8 @@ public class PermissionInterceptor implements HandlerInterceptor {
         RULES.put("/api/patient", "patient:manage"); RULES.put("/api/patient-clinical", "patient:manage");
         RULES.put("/api/monitoring", "monitoring:view"); RULES.put("/api/family-health", "family-health:view");
         RULES.put("/api/dialysis", "dialysis:view"); RULES.put("/api/dry-weight", "dry-weight:view"); RULES.put("/api/ai-analysis", "dialysis:ai:view");
+        // 实际控制器挂载在 /api/ai；旧路径别名不能代替真实入口的菜单权限。
+        RULES.put("/api/ai", "dialysis:ai:view");
         RULES.put("/api/medical-record", "medical:view"); RULES.put("/api/health-indicator", "medical:view");
         RULES.put("/api/medication-reminder", "medication:reminder:view"); RULES.put("/api/medication", "medication:view");
         RULES.put("/api/bp-self-monitor", "bp-self-monitor:view"); RULES.put("/api/complication", "complication:view");

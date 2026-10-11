@@ -157,7 +157,8 @@ class DataScopeAuthorizationTest {
         when(tasks.selectById(5L)).thenReturn(task);when(analysis.analyzeHealthSnapshot(1L,7,Collections.singletonList("DIALYSIS"))).thenReturn("Draft");
         ReflectionTestUtils.setField(automations,"mapper",tasks);ReflectionTestUtils.setField(automations,"analysisRecords",records);ReflectionTestUtils.setField(automations,"aiAnalysis",analysis);ReflectionTestUtils.setField(automations,"scope",scope);
         assertThrows(IllegalStateException.class,()->CurrentUserUtil.runAsUser(11L,()->automations.runNow(5L)));
-        verifyNoInteractions(analysis,records);assertEquals("FAILED",task.getLastRunStatus());
+        // Authorization is checked before claiming or changing runtime state.
+        verifyNoInteractions(analysis,records);assertNull(task.getLastRunStatus());verify(tasks,never()).updateById(any());
     }
 
     private void grant(String level,String module){jdbc.update("INSERT INTO care_access_grant(patient_id,grantee_user_id,access_level,visible_modules,status) VALUES(1,11,?,?,'ACTIVE')",level,module);}

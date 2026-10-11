@@ -31,6 +31,7 @@ async function fixture(t, initial='/care-plans/17', transport=server()){
   const api=file=>moduleUrl(source(file).replace(/import request from ['"]@\/utils\/request['"];?/g,`const request=(...args)=>globalThis.${slot}(...args)`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`))
   const careApiUrl=api('api/carePlan.js'),doctorApiUrl=api('api/doctorWorkspace.js')
   const composableUrl=moduleUrl(source('composables/useCarePlan.js').replace(/from ['"]vue['"]/g,`from '${vueUrl}'`).replace(/from ['"]@\/api\/carePlan['"]/g,`from '${careApiUrl}'`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`).replace(/from ['"]@\/utils\/carePlanTime['"]/g,`from '${timeUrl}'`))
+  const medicalApiUrl=moduleUrl(source('api/medicalReview.js').replace(/import request from ['"]@\/utils\/request['"]/g,`const request=(...args)=>globalThis.${slot}(...args)`))
   const urls={}
   async function compile(name){
     if(urls[name])return urls[name]
@@ -39,6 +40,8 @@ async function fixture(t, initial='/care-plans/17', transport=server()){
     assert.deepEqual(template.errors,[],`${name} compiles`)
     let code=script.content.replace('export default','const __component =')+'\n'+template.code.replace('export function render','function render')+'\n__component.render=render;export default __component;'
     code=code.replace(/from ['"]vue['"]/g,`from '${vueUrl}'`).replace(/from ['"]vue-router['"]/g,`from '${routerUrl}'`).replace(/from ['"]@\/api\/carePlan['"]/g,`from '${careApiUrl}'`).replace(/from ['"]@\/api\/doctorWorkspace['"]/g,`from '${doctorApiUrl}'`).replace(/from ['"]@\/composables\/useCarePlan['"]/g,`from '${composableUrl}'`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`).replace(/from ['"]@\/utils\/carePlanTime['"]/g,`from '${timeUrl}'`).replace(/import \{ ElMessage, ElMessageBox \} from ['"]element-plus['"];?/g,`const ElMessage={success(){},warning(){}};const ElMessageBox={prompt:async()=>({value:''})};`)
+    code=code.replace(/from ['"]@\/api\/medicalReview['"]/g,`from '${medicalApiUrl}'`)
+    for(const match of code.matchAll(/from ['"]@\/components\/(MedicalRecordReviewDialog)\.vue['"]/g))code=code.replace(match[0],`from '${await compile('components/'+match[1])}'`)
     for(const match of code.matchAll(/from ['"]@\/components\/care-plan\/(\w+)\.vue['"]/g))code=code.replace(match[0],`from '${await compile(match[1])}'`)
     for(const match of code.matchAll(/from ['"]\.\/(\w+)\.vue['"]/g))code=code.replace(match[0],`from '${await compile(match[1])}'`)
     return urls[name]=moduleUrl(code)

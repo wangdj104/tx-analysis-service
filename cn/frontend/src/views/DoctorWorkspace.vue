@@ -61,10 +61,12 @@
       <el-form label-position="top"><el-form-item label="患者"><b>{{ activePatient?.name }}</b></el-form-item><el-form-item label="计划标题"><el-input v-model="planForm.title" maxlength="160"/></el-form-item><el-form-item label="计划类型"><el-select v-model="planForm.planType"><el-option label="随访" value="FOLLOW_UP"/><el-option label="用药" value="MEDICATION"/><el-option label="透析" value="DIALYSIS"/><el-option label="营养" value="NUTRITION"/></el-select></el-form-item><el-form-item label="目标日期"><el-date-picker v-model="planForm.targetDate" value-format="YYYY-MM-DD"/></el-form-item><el-form-item label="执行说明"><el-input v-model="planForm.instructions" type="textarea" :rows="5" maxlength="4000" show-word-limit/></el-form-item></el-form>
       <template #footer><el-button @click="planVisible=false">取消</el-button><el-button type="primary" :loading="saving" @click="submitPlan">保存内部计划</el-button></template>
     </el-dialog>
+    <MedicalRecordReviewDialog v-if="medicalReviewTarget" :record-id="medicalReviewTarget.recordId" :patient-id="medicalReviewTarget.patientId" workspace @closed="medicalReviewTarget=null" @reviewed="reviewedMedicalRecord" />
   </main>
 </template>
 
 <script setup>
+import MedicalRecordReviewDialog from '@/components/MedicalRecordReviewDialog.vue';
 import { defineComponent, h, onMounted, onUnmounted, reactive, ref, resolveComponent, watch } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
 import PlanEditor from '@/components/care-plan/PlanEditor.vue';
@@ -110,6 +112,7 @@ const PatientSelect = defineComponent({ props:{ modelValue:[Number,String], disa
 const loading=ref(false),saving=ref(false),tab=ref('patients'),summary=ref({}),patients=ref([]),reviews=ref([]),notes=ref([]),plans=ref([]),selectedPatientId=ref(null),activePatient=ref(null),noteVisible=ref(false),planVisible=ref(false),collaborationEditing=ref(false);
 const noteForm=reactive({noteType:'FOLLOW_UP',visibility:'CARE_TEAM',noteText:''});
 const planForm=reactive({title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});
+const medicalReviewTarget=ref(null);
 let contextEpoch=0, summaryEpoch=0, dialogEpoch=0;
 async function loadAll(){const epoch=++summaryEpoch;loading.value=true;try{const res=await getDoctorSummary();if(epoch!==summaryEpoch)return;summary.value=res.data||{};patients.value=summary.value.patients||[];reviews.value=summary.value.reviewQueue||[];if(!patients.value.some(p=>p.id===selectedPatientId.value))selectedPatientId.value=patients.value[0]?.id||null;await loadPatientContext()}finally{if(epoch===summaryEpoch)loading.value=false}}
 async function loadPatientContext(){const epoch=++contextEpoch;const patientId=selectedPatientId.value;notes.value=[];plans.value=[];if(!patientId)return;const [n,p]=await Promise.all([getDoctorNotes(patientId),getDoctorPlans(patientId)]);if(epoch!==contextEpoch||patientId!==selectedPatientId.value)return;notes.value=n.data||[];plans.value=p.data||[]}
@@ -118,7 +121,9 @@ function openNote(row){if(collaborationEditing.value){ElMessage.warning('先关�
 function openPlan(row){if(collaborationEditing.value){ElMessage.warning('先关闭协作编辑器或计划详情，再切换患者。');return}dialogEpoch++;activePatient.value=row;selectedPatientId.value=row.id;loadPatientContext();Object.assign(planForm,{title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});planVisible.value=true}
 async function submitNote(){if(saving.value)return;if(!noteForm.noteText.trim()){ElMessage.warning('请输入临床笔记。');return}const epoch=dialogEpoch,patientId=selectedPatientId.value;saving.value=true;try{await saveDoctorNote({patientId,...noteForm});if(epoch!==dialogEpoch||patientId!==selectedPatientId.value||!noteVisible.value)return;ElMessage.success('临床笔记已保存。');noteVisible.value=false;await loadPatientContext()}finally{saving.value=false}}
 async function submitPlan(){if(saving.value)return;if(!planForm.title.trim()||!planForm.instructions.trim()){ElMessage.warning('请输入计划标题和执行说明。');return}const epoch=dialogEpoch,patientId=selectedPatientId.value;saving.value=true;try{await saveDoctorPlan({patientId,status:'ACTIVE',...planForm});if(epoch!==dialogEpoch||patientId!==selectedPatientId.value||!planVisible.value)return;ElMessage.success('内部照护计划已保存。');planVisible.value=false;await loadAll()}finally{saving.value=false}}
-async function review(item,decision){const {value}=await ElMessageBox.prompt(decision==='APPROVED'?'可选的通过说明':'请输入驳回原因','临床复核',{confirmButtonText:decision==='APPROVED'?'通过':'驳回',cancelButtonText:'取消',inputType:'textarea'});await completeDoctorReview({sourceType:item.sourceType,sourceId:item.sourceId,decision,reviewNote:value});ElMessage.success('复核已完成。');await loadAll()}
+async function review(item,decision){if(item.sourceType==='MEDICAL_RECORD'){medicalReviewTarget.value={recordId:Number(item.sourceId),patientId:item.patientId};return}const {value}=await ElMessageBox.prompt(decision==='APPROVED'?'可选的通过说明':'请输入驳回原因','临床复核',{confirmButtonText:decision==='APPROVED'?'通过':'驳回',cancelButtonText:'取消',inputType:'textarea'});await completeDoctorReview({sourceType:item.sourceType,sourceId:item.sourceId,decision,reviewNote:value});ElMessage.success('复核已完成。');await loadAll()}
+async function reviewedMedicalRecord(){medicalReviewTarget.value=null;await loadAll()}
+watch(selectedPatientId,()=>{medicalReviewTarget.value=null},{flush:'sync'});
 function sourceLabel(type){return type==='MEDICAL_RECORD'?'导入的医疗记录':'AI 辅助分析'}
 function statusLabel(value){return {ACTIVE:'执行中',DRAFT:'草稿',COMPLETED:'已完成',CANCELLED:'已取消'}[value]||value}
 function planTypeLabel(value){return {FOLLOW_UP:'随访计划',MEDICATION:'用药计划',DIALYSIS:'透析计划',NUTRITION:'营养计划'}[value]||value}

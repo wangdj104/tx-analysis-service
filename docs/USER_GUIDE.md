@@ -280,7 +280,7 @@ Send a channel test, verify outbound HTTPS access, webhook security settings, ch
 
 ### The database is empty after startup
 
-On a new empty MySQL database, follow the [SQL execution catalog](../src/main/resources/sql/README.md): run `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, then `care_plan_collaboration_20261003.sql`; verify the database URL and schema-scoped permissions. The current `patient_specialty_roles_20260923.sql` also runs on every MySQL/MariaDB application startup, including after a manual run; this release has no disable switch. Other schema upgrades remain operator-run. Existing databases require a complete database/attachment backup, a restore rehearsal and applicable upgrades, without rerunning the baseline; review permission cleanup separately.
+On a new empty MySQL database, follow the [SQL execution catalog](../src/main/resources/sql/README.md): run `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, `care_plan_collaboration_20261003.sql`, then the manual `clinical_integrity_upgrade_20261011.sql`; verify the database URL and schema-scoped permissions. The current `patient_specialty_roles_20260923.sql` also runs on every MySQL/MariaDB application startup, including after a manual run; this release has no disable switch. Other schema upgrades remain operator-run. Existing databases require a complete database/attachment backup, a restore rehearsal and applicable upgrades, without rerunning the baseline; review permission cleanup separately.
 
 ## 13. Suggested product tour
 

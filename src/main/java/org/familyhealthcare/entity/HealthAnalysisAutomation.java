@@ -28,10 +28,14 @@ public class HealthAnalysisAutomation {
     private String notificationChannelIds;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss") private LocalDateTime nextRunAt;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss") private LocalDateTime lastRunAt;
+    private Long configVersion;
+    private Long activeRunId;
     private String lastRunStatus;
     private String lastError;
     private Long lastAnalysisRecordId;
     @TableField(exist = false) private String lastAnalysisContent;
+    @TableField(exist = false) private Long uncertainRunId;
+    @TableField(exist = false) private String uncertainRunState;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss") private LocalDateTime createdAt;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss") private LocalDateTime updatedAt;
 }

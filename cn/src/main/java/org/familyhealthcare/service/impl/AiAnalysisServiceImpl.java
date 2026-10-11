@@ -44,6 +44,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
     private String apiModel;
 
     @Autowired
+    @org.springframework.beans.factory.annotation.Qualifier("aiAnalysisRestTemplate")
     private RestTemplate restTemplate;
 
     @Autowired
@@ -549,15 +550,33 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             }
 
             String response = restTemplate.postForObject(url, entity, String.class);
-            JSONObject json = JSON.parseObject(response);
-            if (json.containsKey("choices") && !json.getJSONArray("choices").isEmpty()) {
-                String content = json.getJSONArray("choices").getJSONObject(0)
-                        .getJSONObject("message").getString("content");
-                return structured ? ensureDryWeightConclusion(content) : content;
-            }
-            return text("AI analysis did not return a valid result. Please try again.", "AI 分析未返回有效结果，请重试。");
-        } catch (Exception e) {
-            return text("AI analysis could not be completed. Check the service configuration and try again.", "AI 分析调用失败，请检查服务配置后重试。");
+            try {
+                JSONObject json = JSON.parseObject(response);
+                if (json == null || !(json.get("choices") instanceof com.alibaba.fastjson2.JSONArray))
+                    throw new AiAnalysisException(AiAnalysisException.Reason.INVALID_RESPONSE);
+                com.alibaba.fastjson2.JSONArray choices = (com.alibaba.fastjson2.JSONArray) json.get("choices");
+                if (choices.isEmpty() || !(choices.get(0) instanceof JSONObject))
+                    throw new AiAnalysisException(AiAnalysisException.Reason.INVALID_RESPONSE);
+                Object message = ((JSONObject) choices.get(0)).get("message");
+                if (!(message instanceof JSONObject)) throw new AiAnalysisException(AiAnalysisException.Reason.INVALID_RESPONSE);
+                Object value = ((JSONObject) message).get("content");
+                if (value == null) throw new AiAnalysisException(AiAnalysisException.Reason.EMPTY_RESULT);
+                if (!(value instanceof String)) throw new AiAnalysisException(AiAnalysisException.Reason.INVALID_RESPONSE);
+                String content = (String) value;
+                if (content.trim().isEmpty()) throw new AiAnalysisException(AiAnalysisException.Reason.EMPTY_RESULT);
+                return content;
+            } catch (AiAnalysisException failure) { throw failure; }
+            catch (RuntimeException malformed) { throw new AiAnalysisException(AiAnalysisException.Reason.INVALID_RESPONSE); }
+
+        } catch (AiAnalysisException failure) {
+            throw failure;
+        } catch (org.springframework.web.client.RestClientResponseException failure) {
+            int status = failure.getRawStatusCode();
+            throw new AiAnalysisException(AiAnalysisException.Reason.HTTP_FAILURE, status == 408 || status >= 500 || status < 400);
+        } catch (org.springframework.web.client.ResourceAccessException failure) {
+            throw new AiAnalysisException(AiAnalysisException.Reason.TRANSPORT_FAILURE, true);
+        } catch (RuntimeException failure) {
+            throw new AiAnalysisException(AiAnalysisException.Reason.TRANSPORT_FAILURE, true);
         }
     }
 

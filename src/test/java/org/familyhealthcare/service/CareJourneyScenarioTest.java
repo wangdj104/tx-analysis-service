@@ -224,17 +224,19 @@ class CareJourneyScenarioTest {
         assertNotNull(read);
     }
 
-    @Test void clinicianGroupsAndReviewsUseConsistentVerifiedStatus() {
-        DoctorWorkspaceService doctors=new DoctorWorkspaceService();ReflectionTestUtils.setField(doctors,"jdbc",jdbc);
+    @Test void clinicianGroupsAndReviewsUseConsistentVerifiedStatus() throws Exception {
+        try(org.springframework.context.support.GenericApplicationContext medicalContext=MedicalRecordPersistenceHarness.create(jdbc.getDataSource())) {
+        DoctorWorkspaceService doctors=medicalContext.getBean(DoctorWorkspaceService.class);
         login(9,"doctor");Long group=id(service.savePatientGroup(map("groupName","Routine follow-up")));service.addGroupMember(group,1L);service.addGroupMember(group,1L);
         assertEquals(1,((Number)service.patientGroups().get(0).get("patient_count")).intValue());
         jdbc.update("INSERT INTO medical_record(id,patient_name,patient_id,user_id,record_date,verification_status) VALUES(900,'Patient',1,7,CURRENT_DATE,'REVIEW_REQUIRED')");
         assertEquals(1,doctors.reviews("REVIEW_REQUIRED").size());
-        doctors.review(map("sourceType","MEDICAL_RECORD","sourceId",900,"decision","APPROVED"));
+        doctors.review(map("sourceType","MEDICAL_RECORD","sourceId",900,"decision","APPROVED","expectedContentVersion",1L));
         assertEquals("VERIFIED",jdbc.queryForObject("SELECT verification_status FROM medical_record WHERE id=900",String.class));
         doctors.saveNote(map("patientId",1L,"noteText","Reviewed"));doctors.savePlan(map("patientId",1L,"title","Plan","instructions","Follow up"));
         assertEquals(1,doctors.notes(1L).size());assertEquals(1,doctors.plans(1L).size());assertEquals(1,((Number)doctors.summary().get("assignedPatients")).intValue());
-        assertThrows(IllegalArgumentException.class,()->doctors.review(map("sourceType","MEDICAL_RECORD","sourceId",999,"decision","APPROVED")));
+        assertThrows(IllegalArgumentException.class,()->doctors.review(map("sourceType","MEDICAL_RECORD","sourceId",999,"decision","APPROVED","expectedContentVersion",1L)));
+        }
     }
 
     private void login(long id,String role){MockHttpServletRequest request=new MockHttpServletRequest();request.setAttribute("userId",id);request.setAttribute("roleCodes",Collections.singletonList(role));RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));}

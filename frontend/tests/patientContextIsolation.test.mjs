@@ -81,7 +81,7 @@ for (const action of ['openNote', 'openPlan']) {
   test(`${action}: selecting a new patient clears the previous clinical notes and plans`, async () => {
     const pending = deferred()
     const script = fs.readFileSync(new URL('../src/views/DoctorWorkspace.vue', import.meta.url), 'utf8').match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import.*$/gm, '')
-    const bindings = { ref, reactive, defineComponent: value => value, onMounted() {},
+    const bindings = { ref, reactive, watch, defineComponent: value => value, onMounted() {},
       getDoctorNotes: () => pending.promise, getDoctorPlans: () => pending.promise }
     const view = new Function(...Object.keys(bindings), script + '\nreturn {selectedPatientId, notes, plans, openNote, openPlan, noteVisible, planVisible}')(...Object.values(bindings))
     view.selectedPatientId.value = 1

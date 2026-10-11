@@ -148,7 +148,7 @@ class PatientSecurityBoundaryTest {
     }
     private HealthAnalysisAutomationService automation(HealthAnalysisAutomationMapper tasks,AiAnalysisRecordMapper records,NotificationDeliveryService delivery) {
         HealthAnalysisAutomationService service = new HealthAnalysisAutomationService(); ReflectionTestUtils.setField(service,"mapper",tasks); ReflectionTestUtils.setField(service,"analysisRecords",records);
-        ReflectionTestUtils.setField(service,"scope",f.scope); ReflectionTestUtils.setField(service,"delivery",delivery); return service;
+        ReflectionTestUtils.setField(service,"scope",f.scope); ReflectionTestUtils.setField(service,"delivery",delivery); ReflectionTestUtils.setField(service,"runStore",mock(HealthAnalysisRunStore.class)); return service;
     }
     private AlertRule rule(Long id,Long patient,Long author) { AlertRule r = new AlertRule(); r.setId(id); r.setPatientId(patient); r.setUserId(author); return r; }
     private HealthAnalysisAutomation task(Long id,Long patient,Long last) { HealthAnalysisAutomation r = new HealthAnalysisAutomation(); r.setId(id); r.setUserId(11L); r.setPatientId(patient); r.setLastAnalysisRecordId(last); return r; }

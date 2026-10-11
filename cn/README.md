@@ -107,7 +107,7 @@ docker compose up --build
 
 将服务暴露到任何网络前，请更换全部密钥。Docker 演示仅用于评估，不应用于生产环境。
 
-空 MySQL 数据卷会按顺序执行 `init.sql`、`doctor_workspace_20260921.sql`、`care_platform_upgrade_20260921.sql`、`care_plan_collaboration_20261003.sql`、`demo-data.sql`。已有数据卷不会再次初始化，应先备份再手动应用升级脚本，切勿删除有数据的卷来强制初始化。`cn/docker-compose.yml` 仅供独立中文版使用，双语部署请使用根目录编排。
+空 MySQL 数据卷会按顺序执行 `init.sql`、`doctor_workspace_20260921.sql`、`care_platform_upgrade_20260921.sql`、`care_plan_collaboration_20261003.sql`、`demo-data.sql`。当前 init 已包含临床一致性结构，临床一致性升级仅人工执行，不挂载为 Compose 自动初始化脚本。已有数据卷不会再次初始化，应先备份再手动应用升级脚本，切勿删除有数据的卷来强制初始化。`cn/docker-compose.yml` 仅供独立中文版使用，双语部署请使用根目录编排。
 
 ## 中英文生产部署
 
@@ -149,9 +149,10 @@ mysql -u root -p family_health < src/main/resources/sql/init.sql
 mysql -u root -p family_health < src/main/resources/sql/doctor_workspace_20260921.sql
 mysql -u root -p family_health < src/main/resources/sql/care_platform_upgrade_20260921.sql
 mysql -u root -p family_health < src/main/resources/sql/care_plan_collaboration_20261003.sql
+mysql -u root -p family_health < src/main/resources/sql/clinical_integrity_upgrade_20261011.sql
 ```
 
-新库必须依次执行[基础表](src/main/resources/sql/init.sql)、[医生工作台](src/main/resources/sql/doctor_workspace_20260921.sql)、[照护平台](src/main/resources/sql/care_platform_upgrade_20260921.sql)、[照护计划协作](src/main/resources/sql/care_plan_collaboration_20261003.sql)四个脚本，不能仅执行 `init.sql`。已有库先备份，再应用适用的幂等升级脚本，不要把基础脚本当作重置工具。[demo-data.sql](src/main/resources/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
+新库必须依次执行[基础表](src/main/resources/sql/init.sql)、[医生工作台](src/main/resources/sql/doctor_workspace_20260921.sql)、[照护平台](src/main/resources/sql/care_platform_upgrade_20260921.sql)、[照护计划协作](src/main/resources/sql/care_plan_collaboration_20261003.sql)、[临床一致性](src/main/resources/sql/clinical_integrity_upgrade_20261011.sql)五个脚本，不能仅执行 `init.sql`。已有库先备份，再应用适用的幂等升级脚本，不要把基础脚本当作重置工具。[demo-data.sql](src/main/resources/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
 
 照护计划协作增量升级保留旧 `ACTIVE` 计划为内部 `workflow_version=0` 记录，不自动发布、不创建行动项或通知、不为账号分配护理角色、不授予 `CARE_PLAN` 权限。已有库升级前应备份完整数据库和附件存储，仅执行该增量脚本，不重跑 `init.sql`。新协作时间采用 UTC `DATETIME(6)`，由应用显式转换。仅安装表结构不会启用协作功能。H2 测试仅验证兼容层；发布验收仍须在 MySQL 8.0 执行原始脚本，并用合成数据演练完整备份恢复。停用子系统时保留已发布历史，不能通过删表回滚。
 
@@ -211,11 +212,11 @@ Vite 通常监听 `http://localhost:5174`，将 `/api` 代理到 `http://localho
 
 平台可通过企业微信或钉钉机器人 Webhook 及浏览器通知主动发送消息。Webhook 地址和机器人密钥属于敏感信息，API 返回时会脱敏，严禁提交到版本库。
 
-新安装必须按顺序执行基础表、医生工作台、照护平台和照护计划协作脚本；`demo-data.sql` 只用于本地演示。专病角色迁移是明确的启动例外：每次 MySQL/MariaDB 启动都会创建／检查其表并更新角色和菜单数据，手动执行后仍会再次运行。其他迁移由运维执行，详见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。对已有数据库执行人工操作前必须备份数据；后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
+新安装必须按顺序执行基础表、医生工作台、照护平台、照护计划协作和 `clinical_integrity_upgrade_20261011.sql` 临床一致性脚本；`demo-data.sql` 只用于本地演示。专病角色迁移是明确的启动例外：每次 MySQL/MariaDB 启动都会创建／检查其表并更新角色和菜单数据，手动执行后仍会再次运行。其他迁移由运维执行，详见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。对已有数据库执行人工操作前必须备份数据；后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
 
 ## 测试与构建
 
-患者专病角色升级脚本为 [`patient_specialty_roles_20260923.sql`](src/main/resources/sql/patient_specialty_roles_20260923.sql)。MySQL/MariaDB 服务启动时会自动执行幂等升级；发布前请备份数据库，运行账号须具备此脚本用到的 `CREATE`、`SELECT`、`INSERT`、`UPDATE`，创建外键时还可能需要 `REFERENCES`，权限限定于应用库。可在上述四个脚本后手动执行，但本版本没有禁用其启动执行的开关。现有患者不会自动获得透析专病角色，需在患者编辑页选择“透析患者”。
+患者专病角色升级脚本为 [`patient_specialty_roles_20260923.sql`](src/main/resources/sql/patient_specialty_roles_20260923.sql)。MySQL/MariaDB 服务启动时会自动执行幂等升级；发布前请备份数据库，运行账号须具备此脚本用到的 `CREATE`、`SELECT`、`INSERT`、`UPDATE`，创建外键时还可能需要 `REFERENCES`，权限限定于应用库。可在上述五个脚本后手动执行，但本版本没有禁用其启动执行的开关。现有患者不会自动获得透析专病角色，需在患者编辑页选择“透析患者”。
 
 ```bash
 mvn clean test

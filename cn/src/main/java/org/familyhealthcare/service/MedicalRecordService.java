@@ -61,5 +61,9 @@ public interface MedicalRecordService extends IService<MedicalRecord> {
     int saveRecordsBatch(List<MedicalRecord> records, List<List<MedicalRecordItem>> itemsList,
                          List<MedicalRecordAttachment> sharedAttachments);
 
-    boolean reviewRecord(Long id, boolean approved, String note);
+    MedicalRecord getReviewPreview(Long id);
+
+    boolean reviewRecord(Long id, boolean approved, String note, Long expectedContentVersion);
+
+    Long reviewRecordForDoctor(Long id, boolean approved, String note, Long expectedContentVersion);
 }

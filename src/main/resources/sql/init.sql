@@ -151,6 +151,8 @@ CREATE TABLE IF NOT EXISTS `medical_record` (
   `confidence_score` DECIMAL(5,4) DEFAULT NULL COMMENT 'overall import or recognition confidence',
   `verified_by` BIGINT DEFAULT NULL COMMENT 'reviewing user',
   `verified_at` DATETIME DEFAULT NULL COMMENT 'review time',
+  `content_version` BIGINT NOT NULL DEFAULT 1 COMMENT 'medical-record content snapshot version',
+  `verification_note` TEXT DEFAULT NULL COMMENT 'review note separate from patient remark',
   `remark` VARCHAR(500) COMMENT 'Notes',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Created At',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated At',
@@ -942,10 +944,22 @@ CREATE TABLE IF NOT EXISTS health_analysis_automation (
  day_of_week INT DEFAULT 1, day_of_month INT DEFAULT 1, run_time VARCHAR(5) NOT NULL DEFAULT '08:00',
  analysis_range_days INT NOT NULL DEFAULT 30, analysis_items VARCHAR(255) NOT NULL,
  notification_channel_ids VARCHAR(500), next_run_at DATETIME, last_run_at DATETIME,
+ config_version BIGINT NOT NULL DEFAULT 0, active_run_id BIGINT,
  last_run_status VARCHAR(30), last_error VARCHAR(500), last_analysis_record_id BIGINT,
  created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
  KEY idx_health_auto_due (enabled,next_run_at), KEY idx_health_auto_user (user_id), KEY idx_health_auto_patient (patient_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Automated health analysis tasks';
+
+CREATE TABLE IF NOT EXISTS health_analysis_run (
+ id BIGINT PRIMARY KEY AUTO_INCREMENT, automation_id BIGINT NOT NULL,
+ claim_token VARCHAR(64) NOT NULL, state VARCHAR(30) NOT NULL,
+ scheduled TINYINT NOT NULL DEFAULT 0, scheduled_for DATETIME,
+ settings_json LONGTEXT NOT NULL, claimed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ analysis_record_id BIGINT, last_error VARCHAR(500), notification_outcomes LONGTEXT,
+ UNIQUE KEY uq_health_run_token (claim_token),
+ KEY idx_health_run_automation (automation_id,id), KEY idx_health_run_recovery (state,updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Durable health analysis operation journal';
 
 CREATE TABLE IF NOT EXISTS `operation_audit_log` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,

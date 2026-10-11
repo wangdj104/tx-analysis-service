@@ -11,6 +11,7 @@ final class SystemMessageCatalog {
     private static final Map<String, String> CHINESE = new LinkedHashMap<>();
     private static final Map<String, String[]> FIELDS = new LinkedHashMap<>();
     static {
+        CHINESE.put("The webhook URL must use HTTPS and resolve only to public addresses.", "Webhook 地址必须使用 HTTPS，且只能解析到公网地址。");
         ENGLISH.put("Automated Analysistaskdoes not exist", "Automated analysis task does not exist.");
         ENGLISH.put("BOOTSTRAP_ADMIN_PASSWORD to fewneedneed 12 character", "BOOTSTRAP_ADMIN_PASSWORD must contain at least 12 characters.");
         ENGLISH.put("Current Passwordincorrect", "The current password is incorrect.");

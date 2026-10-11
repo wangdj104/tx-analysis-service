@@ -24,12 +24,12 @@
       </el-form>
       <template #footer><el-button @click="visible=false">取消</el-button><el-button type="primary" :loading="saving" @click="submit">保存</el-button></template>
     </el-dialog>
-    <el-dialog v-model="resultVisible" title="最新分析草稿" width="min(760px,96vw)"><el-alert title="此草稿尚未通过临床审核，分享前请在临床工作台完成审核。" type="warning" :closable="false" show-icon/><pre class="analysis-result">{{resultContent}}</pre></el-dialog>
+    <el-dialog v-model="resultVisible" title="最新分析草稿" width="min(760px,96vw)"><el-alert title="此草稿使用运行开始时的设置，尚未通过临床审核，分享前请在临床工作台完成审核。" type="warning" :closable="false" show-icon/><pre class="analysis-result">{{resultContent}}</pre></el-dialog>
   </main>
 </template>
 <script setup>
 import{onMounted,reactive,ref,watch}from'vue'
-import{ElMessage}from'element-plus'
+import{ElMessage,ElMessageBox}from'element-plus'
 import{useCurrentPatient}from'@/composables/useCurrentPatient'
 import{listNotificationChannels}from'@/api/notificationChannel'
 import{deleteHealthAutomation,listHealthAutomations,runHealthAutomation,saveHealthAutomation}from'@/api/healthAutomation'
@@ -43,12 +43,26 @@ function reset(){Object.assign(form,{id:null,taskName:'每周健康回顾',frequ
 function openCreate(){if(saving.value||!patientId.value)return;reset();visible.value=true}
 function edit(row){if(saving.value||runningId.value!=null||Number(row.patientId)!==Number(patientId.value))return;Object.assign(form,{...row,analysisItems:(row.analysisItems||'').split(',').filter(Boolean),channelIds:(row.notificationChannelIds||'').split(',').filter(Boolean).map(Number)});visible.value=true}
 async function submit(){if(saving.value||!patientId.value)return;if(!form.taskName?.trim()){ElMessage.warning('请输入任务名称。');return}if(!form.analysisItems.length){ElMessage.warning('请至少选择一个分析主题。');return}if(!form.runTime){ElMessage.warning('请选择运行时间。');return}const selected=patientId.value;saving.value=true;try{await saveHealthAutomation({...form,patientId:selected,analysisItems:form.analysisItems.join(','),notificationChannelIds:form.channelIds.join(',')});ElMessage.success('自动任务已保存。');if(selected===patientId.value){visible.value=false;await load()}}catch{}finally{saving.value=false}}
-async function runNow(row){if(runningId.value!=null||saving.value)return;runningId.value=row.id;try{await runHealthAutomation(row.id);ElMessage.success('草稿已生成并进入待审核队列。');await load()}catch{}finally{runningId.value=null}}
+async function runNow(row){
+  if(runningId.value!=null||saving.value)return
+  const selected=patientId.value,taskId=row.id
+  if(row.patientId!=null&&Number(row.patientId)!==Number(selected))return
+  runningId.value=taskId
+  try{
+    const uncertain=['UNKNOWN','NOTIFY_UNKNOWN'].includes(row.lastRunStatus),observedRunId=row.uncertainRunId,observedState=row.uncertainRunState
+    if(uncertain&&(observedRunId==null||observedState!==row.lastRunStatus)){ElMessage.warning('运行状态已改变，请刷新后重新确认。');await load();return}
+    if(uncertain)await ElMessageBox.confirm(observedState==='NOTIFY_UNKNOWN'?'草稿已保存，但通知结果不确定。确认后保留原稿并解除阻塞，不会再次生成或发送通知。继续吗？':'上次 AI 请求可能已完成，但未保存草稿。确认后将发起一次新请求，可能重复处理。继续吗？','确认中断运行',{type:'warning'})
+    if(selected!==patientId.value)return
+    await runHealthAutomation(taskId,uncertain,uncertain?observedRunId:null,uncertain?observedState:null)
+    ElMessage.success(observedState==='NOTIFY_UNKNOWN'?'已保留原草稿；未重新发送通知。':'草稿已生成并进入待审核队列。')
+    await load()
+  }catch{await load()}finally{runningId.value=null}
+}
 async function remove(row){if(runningId.value!=null||saving.value)return;runningId.value=row.id;try{await deleteHealthAutomation(row.id);ElMessage.success('已删除');await load()}catch{}finally{runningId.value=null}}
 function showResult(row){resultContent.value=row.lastAnalysisContent||'暂无结果';resultVisible.value=true}
 function cycleText(row){if(row.frequencyType==='DAILY')return`每 ${row.intervalDays} 天 ${row.runTime}`;if(row.frequencyType==='WEEKLY')return`每${weekdays[(row.dayOfWeek||1)-1]} ${row.runTime}`;return`每月 ${row.dayOfMonth} 日 ${row.runTime}`}
 function itemsText(value){const set=(value||'').split(',');return itemOptions.filter(x=>set.includes(x.value)).map(x=>x.label).join(', ')}
-function statusText(value){return({DRAFT_READY:'草稿待审核',DRAFT_READY_NOTIFY_FAILED:'草稿待审核，通知发送失败',SUCCESS:'已完成',SUCCESS_NOTIFY_FAILED:'已完成，通知发送失败',FAILED:'运行失败'}[value]||'尚未运行')}
+function statusText(value){return({CLAIMED:'运行已认领',GENERATING:'正在生成草稿',NOTIFYING:'正在发送草稿通知',DRAFT_READY_NOTIFY_PARTIAL:'草稿待审核，部分通知失败',PREVIOUS_SETTINGS_RUNNING:'正在完成旧设置的运行',PREVIOUS_SETTINGS_COMPLETE:'旧设置的运行已结束',RUNNING:'运行中',RECOVERING:'正在恢复',DRAFT_SAVED:'草稿已保存，通知待发送',UNKNOWN:'AI 结果不确定，需确认',NOTIFY_UNKNOWN:'草稿已保存，通知结果需确认',DRAFT_READY_NOTIFY_UNCERTAIN:'草稿已保留，通知结果不确定',DRAFT_READY:'草稿待审核',DRAFT_READY_NOTIFY_FAILED:'草稿待审核，通知发送失败',SUCCESS:'已完成',SUCCESS_NOTIFY_FAILED:'已完成，通知发送失败',FAILED:'运行失败'}[value]||'尚未运行')}
 watch(patientId,()=>{loadVersion++;rows.value=[];resultContent.value='';resultVisible.value=false;visible.value=false;reset();load()});onMounted(load)
 </script>
 <style scoped>

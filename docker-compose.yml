@@ -11,6 +11,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
+      # Current init contains clinical integrity fields; its old-database upgrade is manual only.
       - ./src/main/resources/sql/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./src/main/resources/sql/doctor_workspace_20260921.sql:/docker-entrypoint-initdb.d/02-doctor-workspace.sql:ro
       - ./src/main/resources/sql/care_platform_upgrade_20260921.sql:/docker-entrypoint-initdb.d/03-care-platform.sql:ro

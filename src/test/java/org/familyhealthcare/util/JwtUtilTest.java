@@ -87,4 +87,18 @@ class JwtUtilTest {
         assertNotEquals(jwtUtil.getUsernameFromToken(token1), jwtUtil.getUsernameFromToken(token2));
         assertNotEquals(jwtUtil.getUserIdFromToken(token1), jwtUtil.getUserIdFromToken(token2));
     }
+    @Test void credentialStampIsOpaqueBoundToUserAndRequiresTheServerSecret() throws Exception {
+        String bcrypt=new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode("SyntheticStrong!123");
+        String token=jwtUtil.generateToken(7L,"synthetic",bcrypt);
+        assertTrue(jwtUtil.matchesCredential(token,7L,bcrypt));assertFalse(jwtUtil.matchesCredential(token,8L,bcrypt));
+        assertFalse(jwtUtil.matchesCredential(token,7L,new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode("SyntheticOther!123")));
+        String payload=new String(java.util.Base64.getUrlDecoder().decode(token.split("\\.")[1]),java.nio.charset.StandardCharsets.UTF_8);
+        assertFalse(payload.contains(bcrypt));assertFalse(payload.contains("SyntheticStrong!123"));
+        assertFalse(jwtUtil.matchesCredential(jwtUtil.generateToken(7L,"synthetic"),7L,bcrypt));
+        JwtUtil other=new JwtUtil();setPrivateField(other,"secret","another-synthetic-server-secret-1234567890123456789");setPrivateField(other,"expiration",3600000L);
+        String otherToken=other.generateToken(7L,"synthetic",bcrypt);
+        com.fasterxml.jackson.databind.JsonNode first=new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
+        com.fasterxml.jackson.databind.JsonNode second=new com.fasterxml.jackson.databind.ObjectMapper().readTree(new String(java.util.Base64.getUrlDecoder().decode(otherToken.split("\\.")[1]),java.nio.charset.StandardCharsets.UTF_8));
+        assertNotEquals(first.get("credentialStamp").asText(),second.get("credentialStamp").asText());
+    }
 }

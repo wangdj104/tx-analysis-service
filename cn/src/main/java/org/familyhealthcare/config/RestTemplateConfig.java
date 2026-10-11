@@ -24,6 +24,7 @@ public class RestTemplateConfig {
     @Value("${rest-template.connection-timeout}")// from configurationfileinreadconnectionovertimeTime
     private int connectionTimeout;
     @Bean
+    @org.springframework.context.annotation.Primary
     public RestTemplate restTemplate() {
         // use SimpleClientHttpRequestFactory settingsovertimeTime
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -45,4 +46,29 @@ public class RestTemplateConfig {
         restTemplate.setMessageConverters(messageConverters);
         return restTemplate;
     }
+    @Bean(destroyMethod = "close")
+    public org.apache.http.impl.client.CloseableHttpClient aiAnalysisHttpClient() {
+        return org.apache.http.impl.client.HttpClients.custom()
+                .disableAutomaticRetries().disableRedirectHandling().build();
+    }
+
+    /** AI 超时小于运行认领恢复窗口，不改变 OCR 等共享客户端的配置。 */
+    @Value("${deepseek.connect-timeout:5000}") private int aiConnectTimeout;
+    @Value("${deepseek.read-timeout:30000}") private int aiReadTimeout;
+    @Bean("aiAnalysisRestTemplate")
+    public RestTemplate aiAnalysisRestTemplate(org.apache.http.impl.client.CloseableHttpClient client) {
+        org.springframework.http.client.HttpComponentsClientHttpRequestFactory factory = new org.springframework.http.client.HttpComponentsClientHttpRequestFactory(client);
+        factory.setConnectionRequestTimeout(aiConnectTimeout > 0 ? Math.min(aiConnectTimeout, 10000) : 5000);
+        factory.setConnectTimeout(aiConnectTimeout > 0 ? Math.min(aiConnectTimeout, 10000) : 5000);
+        factory.setReadTimeout(aiReadTimeout > 0 ? Math.min(aiReadTimeout, 120000) : 30000);
+        RestTemplate template = new RestTemplate(factory);
+        template.setErrorHandler(new org.springframework.web.client.DefaultResponseErrorHandler() {
+            @Override public boolean hasError(org.springframework.http.client.ClientHttpResponse response) throws java.io.IOException {
+                int status = response.getRawStatusCode();
+                return status < 200 || status >= 300;
+            }
+        });
+        return template;
+    }
+
 }

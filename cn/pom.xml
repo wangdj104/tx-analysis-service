@@ -24,6 +24,8 @@
     </properties>
 
     <dependencies>
+        <!-- DNS-approved addresses are pinned in the actual webhook connection. -->
+        <dependency><groupId>org.apache.httpcomponents</groupId><artifactId>httpclient</artifactId><version>4.5.14</version></dependency>
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>

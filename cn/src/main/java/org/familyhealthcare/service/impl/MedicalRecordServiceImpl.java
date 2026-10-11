@@ -9,6 +9,11 @@ import org.familyhealthcare.mapper.MedicalRecordItemMapper;
 import org.familyhealthcare.mapper.MedicalRecordMapper;
 import org.familyhealthcare.service.HealthIndicatorService;
 import org.familyhealthcare.service.MedicalRecordService;
+import org.familyhealthcare.service.MedicalRecordReviewAccess;
+import org.familyhealthcare.service.MedicalRecordReviewContract;
+import org.familyhealthcare.entity.MedicalRecordReviewAttachment;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.familyhealthcare.util.CurrentUserUtil;
 import org.familyhealthcare.util.DataScopeHelper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -37,6 +42,9 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
     private org.familyhealthcare.service.careplan.CarePlanAuthorizationService carePlanAuthorization;
 
     @Autowired
+    private MedicalRecordReviewAccess reviewAccess;
+
+    @Autowired
     private MedicalRecordItemMapper itemMapper;
 
     @Autowired
@@ -62,6 +70,11 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
         record.setUserId(userId);
         syncPatient(record);
         applySourceDefaults(record, items);
+        record.setVerificationStatus("MANUAL".equals(record.getSourceType()) ? "VERIFIED" : "REVIEW_REQUIRED");
+        record.setContentVersion(1L);
+        record.setVerifiedBy(null);
+        record.setVerifiedAt(null);
+        record.setVerificationNote(null);
         boolean saved = this.save(record);
         if (saved && items != null && !items.isEmpty()) {
             for (MedicalRecordItem item : items) {
@@ -80,21 +93,24 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean updateRecordWithItems(MedicalRecord record, List<MedicalRecordItem> items) {
-        MedicalRecord existing = this.getById(record.getId());
+        MedicalRecord existing = baseMapper.selectForUpdate(record.getId());
         if (existing == null) {
             return false;
         }
         dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
+        record.setUserId(existing.getUserId());
+        record.setContentVersion(existing.getContentVersion());
         syncPatient(record);
         if (record.getSourceType() == null) record.setSourceType(existing.getSourceType());
         if (record.getSourceExternalId() == null) record.setSourceExternalId(existing.getSourceExternalId());
         applySourceDefaults(record, items);
-        if (!"MANUAL".equals(record.getSourceType())) {
-            record.setVerificationStatus("REVIEW_REQUIRED");
-            record.setVerifiedBy(null);
-            record.setVerifiedAt(null);
-        }
+        record.setVerificationStatus(existing.getVerificationStatus());
+        record.setVerifiedBy(existing.getVerifiedBy());
+        record.setVerifiedAt(existing.getVerifiedAt());
+        record.setVerificationNote(existing.getVerificationNote());
         boolean updated = this.updateById(record);
+        if (updated && baseMapper.invalidateReview(record.getId(), existing.getContentVersion()) != 1)
+            throw new MedicalRecordReviewContract.Conflict();
         if (updated) {
             // Deletelegacy Examinationitem
             itemMapper.delete(new QueryWrapper<MedicalRecordItem>().eq("record_id", record.getId()));
@@ -285,13 +301,7 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
             }
             att.setRecordId(recordId);
             fillAttachmentDefaults(att, recordId);
-            try {
-                attachmentMapper.insert(att);
-            } catch (Exception e) {
-                // databasetableNone file_content columntimeonlySaveelementdata
-                att.setFileContent(null);
-                attachmentMapper.insert(att);
-            }
+            attachmentMapper.insert(att);
         }
     }
 
@@ -319,12 +329,7 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
                 if (att.getId() == null && att.getFileContent() != null && !att.getFileContent().isEmpty()) {
                     att.setRecordId(recordId);
                     fillAttachmentDefaults(att, recordId);
-                    try {
-                        attachmentMapper.insert(att);
-                    } catch (Exception e) {
-                        att.setFileContent(null);
-                        attachmentMapper.insert(att);
-                    }
+                    attachmentMapper.insert(att);
                 }
             }
         }
@@ -383,18 +388,42 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
     }
 
     @Override
-    public boolean reviewRecord(Long id, boolean approved, String note) {
-        MedicalRecord record = getById(id);
-        if (record == null) return false;
-        dataScopeHelper.requirePatientOrOwner(record.getPatientId(), record.getUserId());
-        record.setVerificationStatus(approved ? "VERIFIED" : "REJECTED");
-        record.setVerifiedBy(dataScopeHelper.requireUserId());
-        record.setVerifiedAt(LocalDateTime.now());
-        if (note != null && !note.trim().isEmpty()) {
-            record.setRemark((record.getRemark() == null || record.getRemark().trim().isEmpty() ? "" : record.getRemark() + "\n")
-                    + "Review: " + note.trim());
-        }
-        return updateById(record);
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
+    public MedicalRecord getReviewPreview(Long id) {
+        MedicalRecord record = baseMapper.selectById(id);
+        if (record == null) throw new IllegalArgumentException("The record does not exist.");
+        reviewAccess.requireCurrent(record, false, false);
+        record.setItems(itemMapper.selectList(new QueryWrapper<MedicalRecordItem>().eq("record_id", id)));
+        record.setAttachments(listAttachmentsMeta(id).stream().map(MedicalRecordReviewAttachment::new)
+                .collect(java.util.stream.Collectors.toList()));
+        // Re-read the actual current source binding and authority outside this content snapshot.
+        reviewAccess.requireCurrent(record, false, false);
+        return record;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean reviewRecord(Long id, boolean approved, String note, Long expectedContentVersion) {
+        return reviewLocked(id, approved, note, expectedContentVersion, false) != null;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long reviewRecordForDoctor(Long id, boolean approved, String note, Long expectedContentVersion) {
+        MedicalRecord reviewed = reviewLocked(id, approved, note, expectedContentVersion, true);
+        if (reviewed == null) throw new IllegalArgumentException("The record does not exist.");
+        return reviewed.getPatientId();
+    }
+
+    private MedicalRecord reviewLocked(Long id, boolean approved, String note, Long version, boolean workspace) {
+        MedicalRecordReviewContract.requireVersion(version);
+        MedicalRecord record = baseMapper.selectForUpdate(id);
+        if (record == null) return null;
+        reviewAccess.requireCurrent(record, true, workspace);
+        if (baseMapper.reviewVersion(id, version, approved ? "VERIFIED" : "REJECTED",
+                dataScopeHelper.requireUserId(), LocalDateTime.now(), note) != 1)
+            throw new MedicalRecordReviewContract.Conflict();
+        return record;
     }
 
     private String truncateField(String value, int maxLen) {

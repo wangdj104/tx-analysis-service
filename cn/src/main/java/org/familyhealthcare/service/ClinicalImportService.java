@@ -1,17 +1,13 @@
 package org.familyhealthcare.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import org.familyhealthcare.entity.BpSelfMonitorRecord;
-import org.familyhealthcare.entity.MedicalRecord;
-import org.familyhealthcare.entity.MedicalRecordItem;
 import org.familyhealthcare.entity.Patient;
-import org.familyhealthcare.mapper.BpSelfMonitorRecordMapper;
-import org.familyhealthcare.mapper.MedicalRecordMapper;
 import org.familyhealthcare.util.DataScopeHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.dao.DuplicateKeyException;
 
 import static org.familyhealthcare.util.ExportLocalization.text;
 
@@ -23,10 +19,7 @@ import java.util.*;
 @Service
 public class ClinicalImportService {
     @Autowired private DataScopeHelper scope;
-    @Autowired private BpSelfMonitorRecordService vitalService;
-    @Autowired private BpSelfMonitorRecordMapper vitalMapper;
-    @Autowired private MedicalRecordService medicalRecordService;
-    @Autowired private MedicalRecordMapper medicalRecordMapper;
+    @Autowired private ClinicalImportRowWriter rowWriter;
     @Autowired private JdbcTemplate jdbc;
 
     public Map<String, Object> preview(Long patientId, Map<String, Object> payload) {
@@ -45,7 +38,7 @@ public class ClinicalImportService {
         return out;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Map<String, Object> commit(Long patientId, Map<String, Object> payload) {
         Patient patient = scope.requirePatient(patientId);
         Map<String, Object> preview = preview(patientId, payload);
@@ -54,31 +47,16 @@ public class ClinicalImportService {
         List<String> messages = new ArrayList<>();
         for (Map<String, Object> item : items) {
             try {
-                String kind = String.valueOf(item.get("kind"));
-                String externalId = string(item.get("externalId"));
-                if ("VITAL".equals(kind)) {
-                    if (existsVital(patientId, externalId)) { skipped++; continue; }
-                    BpSelfMonitorRecord row = new BpSelfMonitorRecord();
-                    row.setPatientId(patientId); row.setRecordDate(LocalDate.parse(String.valueOf(item.get("date"))));
-                    row.setRecordTime(string(item.get("time"))); row.setMeasureType(String.valueOf(item.get("measureType")));
-                    row.setSystolicBp(integer(item.get("systolic"))); row.setDiastolicBp(integer(item.get("diastolic")));
-                    row.setBloodGlucose(decimal(item.get("glucose"))); row.setBgUnit(string(item.get("unit")));
-                    row.setSourceType(String.valueOf(item.get("sourceType"))); row.setSourceExternalId(externalId);
-                    row.setVerificationStatus("REVIEW_REQUIRED"); row.setRemark(text("Imported data; verify against the source device or report.", "导入数据，请与原始设备或报告核对。"));
-                    vitalService.saveOwned(row); created++;
-                } else if ("LAB".equals(kind)) {
-                    if (existsMedicalRecord(patientId, String.valueOf(item.get("sourceType")), externalId)) { skipped++; continue; }
-                    MedicalRecord record = new MedicalRecord();
-                    record.setPatientId(patientId); record.setPatientName(patient.getName());
-                    record.setRecordDate(LocalDate.parse(String.valueOf(item.get("date")))); record.setRecordType("OTHER");
-                    record.setHospitalName(string(item.get("organization")) == null ? text("Imported clinical data", "导入的临床数据") : string(item.get("organization")));
-                    record.setSourceType(String.valueOf(item.get("sourceType"))); record.setSourceExternalId(externalId);
-                    record.setVerificationStatus("REVIEW_REQUIRED"); record.setRemark(text("Imported data; verify before clinical use.", "导入数据，临床使用前请核验。"));
-                    MedicalRecordItem detail = new MedicalRecordItem();
-                    detail.setItemCode(string(item.get("code"))); detail.setItemName(String.valueOf(item.get("display")));
-                    detail.setResultValue(String.valueOf(item.get("value"))); detail.setUnit(string(item.get("unit")));
-                    detail.setReferenceRange(string(item.get("referenceRange"))); detail.setAiConfidence(decimal(item.get("confidence")));
-                    medicalRecordService.saveRecordWithItems(record, Collections.singletonList(detail)); created++;
+                // The proxied row writer returns only after its independent transaction commits.
+                if (rowWriter.write(patientId, patient.getName(), item)) created++;
+                else skipped++;
+            } catch (DuplicateKeyException e) {
+                // A racing writer may win the exact source identity after our preflight check.
+                // Inspect only after the failed row transaction has rolled back.
+                if (rowWriter.exists(patientId, item)) skipped++;
+                else {
+                    errors++;
+                    messages.add(org.familyhealthcare.common.ChineseMessageLocalizer.localize(e.getMessage() == null ? "The system could not process the request. Please try again later." : e.getMessage()));
                 }
             } catch (Exception e) {
                 errors++;
@@ -88,7 +66,7 @@ public class ClinicalImportService {
         String source = payload.get("bundle") instanceof Map ? "FHIR" : "DEVICE";
         jdbc.update("INSERT INTO clinical_import_batch(user_id,patient_id,source_type,status,item_count,error_count,summary) VALUES(?,?,?,?,?,?,?)",
                 scope.requireUserId(), patientId, source, errors == 0 ? "COMPLETED" : "COMPLETED_WITH_ERRORS", created, errors,
-                text("Created ", "已创建 ") + created + text(", skipped duplicates ", "，跳过重复记录 ") + skipped + (messages.isEmpty() ? "" : text(", first error: ", "，首条错误：") + messages.get(0)));
+                text("Created ", "已创建 ") + created + text(", skipped duplicates ", "，跳过重复记录 ") + skipped + text(", errors ", "，错误 ") + errors);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("created", created); out.put("skipped", skipped); out.put("errors", errors); out.put("messages", messages);
         out.put("requiresConfirmation", false); out.put("verificationStatus", "REVIEW_REQUIRED");
@@ -161,16 +139,6 @@ public class ClinicalImportService {
             else { warnings.add(text("Device reading " + index + " has no supported measurement.", "设备读数 " + index + " 没有支持的测量数据。")); continue; }
             row.put("glucose", glucose); row.put("unit", Optional.ofNullable(string(reading.get("unit"))).orElse("mmol/L")); out.add(row);
         }
-    }
-
-    private boolean existsVital(Long patientId, String externalId) {
-        return externalId != null && vitalMapper.selectCount(new QueryWrapper<BpSelfMonitorRecord>()
-                .eq("patient_id", patientId).in("source_type", "FHIR", "DEVICE").eq("source_external_id", externalId)) > 0;
-    }
-
-    private boolean existsMedicalRecord(Long patientId, String source, String externalId) {
-        return externalId != null && medicalRecordMapper.selectCount(new QueryWrapper<MedicalRecord>()
-                .eq("patient_id", patientId).eq("source_type", source).eq("source_external_id", externalId)) > 0;
     }
 
     private Map<String, Object> baseImport(String kind, String source, String id, DateParts date) {

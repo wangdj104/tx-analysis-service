@@ -34,13 +34,19 @@ public class HealthAnalysisAutomationService {
     @Autowired private NotificationChannelMapper channels;
     @Autowired private DataScopeHelper scope;
     @Autowired private UserLanguagePreferenceService languagePreference;
+    @Autowired private HealthAnalysisRunStore runStore;
 
     public List<HealthAnalysisAutomation> list() {
+        runStore.recoverUncertain();
         List<HealthAnalysisAutomation> rows = mapper.selectList(new QueryWrapper<HealthAnalysisAutomation>()
                 .eq("user_id", scope.requireUserId()).orderByDesc("updated_at"));
         List<HealthAnalysisAutomation> accessible = new ArrayList<>();
         for (HealthAnalysisAutomation row : rows) {
             row.setLastAnalysisContent(null);
+            org.familyhealthcare.entity.HealthAnalysisRun run = runStore.current(row.getId());
+            if (run != null && ("UNKNOWN".equals(run.getState()) || "NOTIFY_UNKNOWN".equals(run.getState()))) {
+                row.setUncertainRunId(run.getId()); row.setUncertainRunState(run.getState());
+            }
             // 任务属于自己不等于仍有患者权限；综合分析必须有当前完整档案读权限，单个无权任务不能挡住其余任务。
             if (row.getPatientId() == null) continue;
             try { scope.requirePatientAccess(row.getPatientId(), null, false); }
@@ -59,16 +65,17 @@ public class HealthAnalysisAutomationService {
     public HealthAnalysisAutomation save(HealthAnalysisAutomation row) {
         Long userId = scope.requireUserId();
         scope.requirePatient(row.getPatientId());
+        Long expected = null;
         if (row.getId() != null) {
             HealthAnalysisAutomation old = requireOwned(row.getId(), userId);
+            expected = row.getConfigVersion();
+            if (expected == null || !Objects.equals(expected, old.getConfigVersion())) throw new HealthAnalysisRunConflictException();
             row.setUserId(old.getUserId());
-            row.setLastRunAt(old.getLastRunAt()); row.setLastRunStatus(old.getLastRunStatus());
-            row.setLastError(old.getLastError()); row.setLastAnalysisRecordId(old.getLastAnalysisRecordId());
-        } else row.setUserId(userId);
+        } else { row.setUserId(userId); row.setConfigVersion(0L); row.setActiveRunId(null); row.setLastRunAt(null); row.setLastRunStatus(null); row.setLastError(null); row.setLastAnalysisRecordId(null); }
         normalize(row);
         validateChannels(row, userId);
         row.setNextRunAt(Integer.valueOf(1).equals(row.getEnabled()) ? calculateNextRun(row, LocalDateTime.now()) : null);
-        if (row.getId() == null) mapper.insert(row); else mapper.updateById(row);
+        if (row.getId() == null) mapper.insert(row); else runStore.updateConfiguration(row, expected);
         return mapper.selectById(row.getId());
     }
 
@@ -76,60 +83,91 @@ public class HealthAnalysisAutomationService {
         mapper.deleteById(requireOwned(id, scope.requireUserId()).getId());
     }
 
-    public AiAnalysisRecord runNow(Long id) {
-        HealthAnalysisAutomation row = requireOwned(id, scope.requireUserId());
-        return execute(row, false);
+    public AiAnalysisRecord runNow(Long id) { return runNow(id, false, null, null); }
+
+    public AiAnalysisRecord runNow(Long id, boolean acknowledge, Long observedRunId, String observedState) {
+        Long userId = scope.requireUserId();
+        HealthAnalysisAutomation row = requireOwned(id, userId);
+        scope.requirePatientAccess(row.getPatientId(), null, true);
+        runStore.recoverUncertain();
+        HealthAnalysisRunStore.Claim claim = runStore.claim(id, userId, false, acknowledge, observedRunId, observedState, this::calculateNextRun);
+        if (claim.existingDraftId != null) return requireDraft(claim);
+        return execute(claim);
     }
 
     @Scheduled(cron = "20 * * * * ?")
     public void runDueTasks() {
-        List<HealthAnalysisAutomation> due = mapper.selectList(new QueryWrapper<HealthAnalysisAutomation>()
-                .eq("enabled", 1).le("next_run_at", LocalDateTime.now()).orderByAsc("next_run_at").last("limit 20"));
-        for (HealthAnalysisAutomation row : due) {
+        runStore.recoverUncertain();
+        for (HealthAnalysisAutomation row : runStore.candidates()) {
             try {
-                row.setNextRunAt(calculateNextRun(row, LocalDateTime.now()));
-                mapper.updateById(row);
-                CurrentUserUtil.runAsUser(row.getUserId(), () -> execute(row, true));
-            } catch (Exception e) {
-                markFailure(row, e);
+                CurrentUserUtil.runAsUser(row.getUserId(), () -> {
+                    HealthAnalysisRunStore.Claim claim = runStore.claim(row.getId(), row.getUserId(), true, false, null, null, this::calculateNextRun);
+                    return execute(claim);
+                });
+            } catch (HealthAnalysisRunConflictException overlap) {
+                // Another executor claimed, edited, acknowledged or deleted this task.
+            } catch (RuntimeException failure) {
+                org.slf4j.LoggerFactory.getLogger(getClass()).warn("Automated analysis did not finish, taskId={}", row.getId());
             }
         }
     }
 
-    private AiAnalysisRecord execute(HealthAnalysisAutomation row, boolean scheduled) {
+    private AiAnalysisRecord requireDraft(HealthAnalysisRunStore.Claim claim) {
+        Long id = claim.existingDraftId == null ? claim.run.getAnalysisRecordId() : claim.existingDraftId;
+        AiAnalysisRecord record = analysisRecords.selectById(id);
+        if (record == null || !Objects.equals(record.getUserId(), claim.settings.getUserId()) || !Objects.equals(record.getPatientId(), claim.settings.getPatientId()))
+            throw new HealthAnalysisRunConflictException();
+        scope.requirePatientAccess(record.getPatientId(), null, true);
+        return record;
+    }
+
+    private AiAnalysisRecord execute(HealthAnalysisRunStore.Claim claim) {
+        HealthAnalysisAutomation row = claim.settings;
         LocaleContext previousLocale = LocaleContextHolder.getLocaleContext();
         try {
-            if (scheduled) {
-                String language = languagePreference.get(row.getUserId());
-                LocaleContextHolder.setLocale(Locale.forLanguageTag(language));
-            }
-            // Recheck explicit write intent on every run, including jobs without an HTTP request.
+            if (Integer.valueOf(1).equals(claim.run.getScheduled())) LocaleContextHolder.setLocale(Locale.forLanguageTag(languagePreference.get(row.getUserId())));
             scope.requirePatientAccess(row.getPatientId(), null, true);
-            List<String> items = split(row.getAnalysisItems());
-            String content = aiAnalysis.analyzeHealthSnapshot(row.getPatientId(), row.getAnalysisRangeDays(), items);
-            AiAnalysisRecord record = new AiAnalysisRecord();
-            record.setUserId(row.getUserId()); record.setPatientId(row.getPatientId());
-            record.setTimeType("automation"); record.setTimeValue(LocalDate.now().toString());
-            record.setPeriodLabel(text("Last ", "最近 ") + row.getAnalysisRangeDays() + text(" days", " 天")); record.setAnalysisContent(content);
-            record.setReviewStatus("REVIEW_REQUIRED");
-            record.setRemark(text("Automated analysis: ", "自动健康分析：") + row.getTaskName()); analysisRecords.insert(record);
-            Patient patient = scope.requirePatient(row.getPatientId());
+            AiAnalysisRecord record;
+            if ("DRAFT_SAVED".equals(claim.run.getState())) {
+                record = requireDraft(claim);
+            } else {
+                runStore.advance(claim, "CLAIMED", "GENERATING");
+                String content = aiAnalysis.analyzeHealthSnapshot(row.getPatientId(), row.getAnalysisRangeDays(), split(row.getAnalysisItems()));
+                if (content == null || content.trim().isEmpty()) throw new AiAnalysisException(AiAnalysisException.Reason.EMPTY_RESULT);
+                record = new AiAnalysisRecord();
+                record.setUserId(row.getUserId()); record.setPatientId(row.getPatientId());
+                record.setTimeType("automation"); record.setTimeValue(LocalDate.now().toString());
+                record.setPeriodLabel(text("Last ", "最近 ") + row.getAnalysisRangeDays() + text(" days", " 天")); record.setAnalysisContent(content);
+                record.setReviewStatus("REVIEW_REQUIRED");
+                record.setRemark(text("Automated analysis: ", "自动健康分析：") + row.getTaskName());
+                runStore.saveDraft(claim, record);
+            }
+            // Recheck authorization after generation and before notification, outside a transaction.
+            Patient patient = scope.requirePatientAccess(row.getPatientId(), null, true);
+            runStore.advance(claim, "DRAFT_SAVED", "NOTIFYING");
             String title = "Health analysis draft ready · " + (patient == null ? row.getTaskName() : patient.getName());
             String message = "An automated analysis draft is ready for review. No clinical recommendation has been sent; open the Clinical Workbench to approve or reject it.";
-            boolean notified = delivery.notifyUser(row.getUserId(), parseIds(row.getNotificationChannelIds()), "HEALTH_ANALYSIS_DRAFT", title, message);
-            row.setLastRunAt(LocalDateTime.now()); row.setLastAnalysisRecordId(record.getId());
-            row.setLastRunStatus(notified ? "DRAFT_READY" : "DRAFT_READY_NOTIFY_FAILED");
-            row.setLastError(notified ? null : text("The draft was saved, but no enabled notification channel accepted the message.", "草稿已保存，但没有启用的通知渠道成功接收消息。"));
-            if (!scheduled && Integer.valueOf(1).equals(row.getEnabled())) row.setNextRunAt(calculateNextRun(row, LocalDateTime.now()));
-            mapper.updateById(row);
+            Map<Long, org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryOutcome> outcomes = delivery.notifyUserOutcomes(row.getUserId(), parseIds(row.getNotificationChannelIds()), "HEALTH_ANALYSIS_DRAFT", title, message, (channel, outcome) -> runStore.recordNotificationOutcome(claim, channel, outcome));
+            boolean uncertain = outcomes.containsValue(org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryOutcome.UNKNOWN);
+            boolean sent = outcomes.containsValue(org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryOutcome.DELIVERED);
+            boolean allSent = !outcomes.isEmpty() && outcomes.values().stream().allMatch(x -> x == org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryOutcome.DELIVERED);
+            String status = uncertain ? "NOTIFY_UNKNOWN" : allSent ? "DRAFT_READY" : sent ? "DRAFT_READY_NOTIFY_PARTIAL" : "DRAFT_READY_NOTIFY_FAILED";
+            String error = uncertain ? text("The draft was saved, but notification delivery is uncertain. Confirmation is required.", "草稿已保存，但通知结果不确定，需要确认。") : allSent ? null : text("The draft was saved, but some notification channels did not accept the message.", "草稿已保存，但部分通知渠道未成功接收消息。");
+            runStore.finish(claim, uncertain ? "NOTIFY_UNKNOWN" : "COMPLETE", status, error, com.alibaba.fastjson2.JSON.toJSONString(outcomes), this::calculateNextRun);
             return record;
-        } catch (Exception e) {
-            markFailure(row, e);
-            if (e instanceof RuntimeException) throw (RuntimeException) e;
-            throw new IllegalStateException(e.getMessage(), e);
-        } finally {
-            LocaleContextHolder.setLocaleContext(previousLocale);
-        }
+        } catch (RuntimeException failure) {
+            try {
+                org.familyhealthcare.entity.HealthAnalysisRun current = runStore.current(row.getId());
+                if (current != null && Objects.equals(current.getId(), claim.run.getId()) && Objects.equals(current.getClaimToken(), claim.run.getClaimToken())) {
+                    if ("CLAIMED".equals(current.getState())) runStore.failBeforeGeneration(claim);
+                    else if ("GENERATING".equals(current.getState())) runStore.fail(claim, !(failure instanceof AiAnalysisException) || ((AiAnalysisException) failure).isOutcomeUncertain());
+                    else if ("NOTIFYING".equals(current.getState())) runStore.finish(claim, "NOTIFY_UNKNOWN", "NOTIFY_UNKNOWN", text("Notification delivery is uncertain; confirmation is required.", "通知结果不确定，需要确认。"), null, this::calculateNextRun);
+                }
+            } catch (RuntimeException journalUnavailable) {
+                // The durable stage is retained and recovered conservatively after the lease expires.
+            }
+            throw failure;
+        } finally { LocaleContextHolder.setLocaleContext(previousLocale); }
     }
 
     public AiAnalysisRecord reviewAnalysis(Long id, boolean approved, boolean notify) {
@@ -155,13 +193,6 @@ public class HealthAnalysisAutomationService {
             delivery.notifyUser(userId, "HEALTH_ANALYSIS_REVIEWED", title, content);
         }
         return record;
-    }
-
-    private void markFailure(HealthAnalysisAutomation row, Exception e) {
-        row.setLastRunAt(LocalDateTime.now()); row.setLastRunStatus("FAILED");
-        String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-        row.setLastError(message.substring(0, Math.min(message.length(), 500)));
-        mapper.updateById(row);
     }
 
     private void normalize(HealthAnalysisAutomation row) {

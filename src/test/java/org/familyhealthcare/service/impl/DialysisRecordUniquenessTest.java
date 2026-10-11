@@ -46,7 +46,7 @@ class DialysisRecordUniquenessTest {
     @Test
     void editRejectsChangingARecordToAnotherExistingDate() {
         DialysisRecord existing = row(8L, 11L, "2026-09-03");
-        when(mapper.selectById(8L)).thenReturn(existing);
+        when(mapper.selectOne(any())).thenReturn(existing);
         when(mapper.selectCount(any())).thenReturn(1L);
         DialysisRecord update = row(8L, 11L, "2026-09-07");
 
@@ -54,7 +54,7 @@ class DialysisRecordUniquenessTest {
                 () -> service.updateRecord(update));
 
         assertEquals("2026-09-07  already has a dialysis record. Edit the existing record instead of creating a duplicate.", error.getMessage());
-        verify(mapper, never()).updateById(any());
+        verify(mapper, never()).updateEffectiveRecord(any());
     }
 
     @Test

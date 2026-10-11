@@ -48,4 +48,15 @@ class PermissionInterceptorTest {
         MockHttpServletRequest anonymous=new MockHttpServletRequest("GET","/api/patient/specialty-menu-scope");
         assertFalse(interceptor.preHandle(anonymous,new MockHttpServletResponse(),new Object()));
     }
+    @Test void currentAndLegacyAiRootsRespectRouteBoundaries()throws Exception {
+        PermissionInterceptor interceptor=new PermissionInterceptor();SysMenuMapper mapper=mock(SysMenuMapper.class);ReflectionTestUtils.setField(interceptor,"menuMapper",mapper);
+        when(mapper.selectMenusByUserId(7L)).thenReturn(Collections.emptyList());
+        for(String path:new String[]{"/api/ai","/api/ai/analyze","/api/ai-analysis","/api/ai-analysis/history"}){
+            MockHttpServletRequest request=new MockHttpServletRequest("GET",path);request.setAttribute("userId",7L);
+            MockHttpServletResponse response=new MockHttpServletResponse();assertFalse(interceptor.preHandle(request,response,new Object()),path);assertEquals(403,response.getStatus());
+        }
+        for(String path:new String[]{"/api/ai-adjacent","/api/ai-analysis-adjacent"}){
+            MockHttpServletRequest request=new MockHttpServletRequest("GET",path);request.setAttribute("userId",7L);assertTrue(interceptor.preHandle(request,new MockHttpServletResponse(),new Object()),path);
+        }
+    }
 }

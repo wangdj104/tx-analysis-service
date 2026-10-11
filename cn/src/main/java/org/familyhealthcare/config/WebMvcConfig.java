@@ -33,15 +33,17 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         && clazz.getPackage().getName().startsWith("org.familyhealthcare.controller"));
     }
 
+    @org.springframework.context.annotation.Bean
+    public SensitiveResponseFilter sensitiveResponseFilter() { return new SensitiveResponseFilter(); }
+
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // Exact report routes are private even when authentication or the feature gate rejects them.
+        // 在认证之前设置，避免导出失败或登录失效时的响应被浏览器及代理缓存。
         registry.addInterceptor(new org.springframework.web.servlet.HandlerInterceptor() {
             @Override public boolean preHandle(javax.servlet.http.HttpServletRequest request,
                     javax.servlet.http.HttpServletResponse response,Object handler) {
                 if(handler instanceof org.springframework.web.method.HandlerMethod
-                        && org.familyhealthcare.controller.CareExecutionReportController.class.isAssignableFrom(
-                            ((org.springframework.web.method.HandlerMethod)handler).getBeanType())) {
+                        && isSensitiveResponse(((org.springframework.web.method.HandlerMethod)handler).getBeanType())) {
                     response.setHeader("Cache-Control","no-store, private");
                     response.setHeader("X-Content-Type-Options","nosniff");
                 }
@@ -51,7 +53,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(jwtInterceptor)
                 .addPathPatterns("/**")
                 .excludePathPatterns(
-                        "/api/auth/**",
+                        "/api/auth/login",
                         "/api/platform-branding/public",
                         "/api/health",
                         "/swagger-resources/**",
@@ -64,5 +66,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 );
         registry.addInterceptor(permissionInterceptor).addPathPatterns("/**");
         registry.addInterceptor(auditLogInterceptor).addPathPatterns("/**");
+    }
+    private boolean isSensitiveResponse(Class<?> type) {
+        return org.familyhealthcare.controller.CareExecutionReportController.class.isAssignableFrom(type)
+                || org.familyhealthcare.controller.DataExportController.class.isAssignableFrom(type)
+                || org.familyhealthcare.controller.HealthReportController.class.isAssignableFrom(type)
+                || org.familyhealthcare.controller.FamilyBackupController.class.isAssignableFrom(type);
     }
 }

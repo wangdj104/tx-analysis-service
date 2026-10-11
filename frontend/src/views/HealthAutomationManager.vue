@@ -29,7 +29,7 @@
 </template>
 <script setup>
 import{onMounted,reactive,ref,watch}from'vue'
-import{ElMessage}from'element-plus'
+import{ElMessage,ElMessageBox}from'element-plus'
 import{useCurrentPatient}from'@/composables/useCurrentPatient'
 import{listNotificationChannels}from'@/api/notificationChannel'
 import{deleteHealthAutomation,listHealthAutomations,runHealthAutomation,saveHealthAutomation}from'@/api/healthAutomation'
@@ -43,12 +43,26 @@ function reset(){Object.assign(form,{id:null,taskName:'Weekly health review',fre
 function openCreate(){if(saving.value||!patientId.value)return;reset();visible.value=true}
 function edit(row){if(saving.value||runningId.value!=null||Number(row.patientId)!==Number(patientId.value))return;Object.assign(form,{...row,analysisItems:(row.analysisItems||'').split(',').filter(Boolean),channelIds:(row.notificationChannelIds||'').split(',').filter(Boolean).map(Number)});visible.value=true}
 async function submit(){if(saving.value||!patientId.value)return;if(!form.taskName?.trim()){ElMessage.warning('Enter a task name.');return}if(!form.analysisItems.length){ElMessage.warning('Select at least one topic.');return}if(!form.runTime){ElMessage.warning('Choose a run time.');return}const selected=patientId.value;saving.value=true;try{await saveHealthAutomation({...form,patientId:selected,analysisItems:form.analysisItems.join(','),notificationChannelIds:form.channelIds.join(',')});ElMessage.success('Automation saved.');if(selected===patientId.value){visible.value=false;await load()}}catch{}finally{saving.value=false}}
-async function runNow(row){if(runningId.value!=null||saving.value)return;runningId.value=row.id;try{await runHealthAutomation(row.id);ElMessage.success('Draft created and queued for review.');await load()}catch{}finally{runningId.value=null}}
+async function runNow(row){
+  if(runningId.value!=null||saving.value)return
+  const selected=patientId.value,taskId=row.id
+  if(row.patientId!=null&&Number(row.patientId)!==Number(selected))return
+  runningId.value=taskId
+  try{
+    const uncertain=['UNKNOWN','NOTIFY_UNKNOWN'].includes(row.lastRunStatus),observedRunId=row.uncertainRunId,observedState=row.uncertainRunState
+    if(uncertain&&(observedRunId==null||observedState!==row.lastRunStatus)){ElMessage.warning('The run state changed. Refresh and confirm again.');await load();return}
+    if(uncertain)await ElMessageBox.confirm(observedState==='NOTIFY_UNKNOWN'?'The draft was saved, but notification delivery is uncertain. Confirmation keeps the existing draft and unblocks this task without generating or sending again. Continue?':'The previous AI request may have completed without a saved draft. Confirmation starts one new request and may repeat processing. Continue?','Confirm interrupted run',{type:'warning'})
+    if(selected!==patientId.value)return
+    await runHealthAutomation(taskId,uncertain,uncertain?observedRunId:null,uncertain?observedState:null)
+    ElMessage.success(observedState==='NOTIFY_UNKNOWN'?'Existing draft kept; notifications were not sent again.':'Draft created and queued for review.')
+    await load()
+  }catch{await load()}finally{runningId.value=null}
+}
 async function remove(row){if(runningId.value!=null||saving.value)return;runningId.value=row.id;try{await deleteHealthAutomation(row.id);ElMessage.success('Deleted');await load()}catch{}finally{runningId.value=null}}
 function showResult(row){resultContent.value=row.lastAnalysisContent||'No result';resultVisible.value=true}
 function cycleText(row){if(row.frequencyType==='DAILY')return`Every ${row.intervalDays} day(s) at ${row.runTime}`;if(row.frequencyType==='WEEKLY')return`Every ${weekdays[(row.dayOfWeek||1)-1]} at ${row.runTime}`;return`Day ${row.dayOfMonth} of each month at ${row.runTime}`}
 function itemsText(value){const set=(value||'').split(',');return itemOptions.filter(x=>set.includes(x.value)).map(x=>x.label).join(', ')}
-function statusText(value){return({DRAFT_READY:'Draft ready for review',DRAFT_READY_NOTIFY_FAILED:'Draft ready; notification failed',SUCCESS:'Completed',SUCCESS_NOTIFY_FAILED:'Completed; notification failed',FAILED:'Run failed'}[value]||'Not run yet')}
+function statusText(value){return({CLAIMED:'Run claimed',GENERATING:'Generating draft',NOTIFYING:'Sending draft notice',DRAFT_SAVED:'Draft saved; notice pending',UNKNOWN:'AI result uncertain; confirmation required',NOTIFY_UNKNOWN:'Draft saved; notification needs confirmation',DRAFT_READY_NOTIFY_UNCERTAIN:'Draft kept; notification uncertain',DRAFT_READY_NOTIFY_PARTIAL:'Draft ready; some notifications failed',DRAFT_READY:'Draft ready for review',DRAFT_READY_NOTIFY_FAILED:'Draft ready; notification failed',SUCCESS:'Completed',SUCCESS_NOTIFY_FAILED:'Completed; notification failed',FAILED:'Run failed'}[value]||'Not run yet')}
 watch(patientId,()=>{loadVersion++;rows.value=[];resultContent.value='';resultVisible.value=false;visible.value=false;reset();load()});onMounted(load)
 </script>
 <style scoped>

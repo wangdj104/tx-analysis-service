@@ -12,6 +12,7 @@ const expectedCategories = {
   'doctor_workspace_20260921.sql': '旧库升级',
   'care_platform_upgrade_20260921.sql': '旧库升级',
   'care_plan_collaboration_20261003.sql': '旧库升级',
+  'clinical_integrity_upgrade_20261011.sql': '旧库升级',
   'functional_review_repair_20260922.sql': '旧库升级',
   'notification_language_preference_20260922.sql': '旧库升级',
   'patient_specialty_roles_20260923.sql': '专病角色',
@@ -97,7 +98,7 @@ for (const edition of editions) {
   test(`${edition} catalog explains actual startup, dependencies and destructive boundaries`, () => {
     const catalog = read(sqlPath(edition, 'README.md'))
     const order = ['init.sql', 'doctor_workspace_20260921.sql', 'care_platform_upgrade_20260921.sql',
-      'care_plan_collaboration_20261003.sql', 'patient_specialty_roles_20260923.sql']
+      'care_plan_collaboration_20261003.sql', 'clinical_integrity_upgrade_20261011.sql', 'patient_specialty_roles_20260923.sql']
     for (const [index, file] of order.entries()) assert.match(catalog, new RegExp(`${index + 1}\\. \\x60${file.replaceAll('.', '\\.')}\\x60`))
     for (const expression of [/每次.*启动/, /没有.*关闭.*开关/, /DDL.*隐式提交/, /完整数据库.*附件/, /恢复演练/,
       /CREATE TABLE IF NOT EXISTS.*不能.*已有.*字段/, /删除.*角色/, /禁止.*生产/, /固定.*演示.*ID/, /隔离.*测试/]) {
@@ -212,5 +213,70 @@ for (const edition of editions) {
       assert.match(text, /不.*(?:患者授权|患者权限|授予.*CARE_PLAN)/)
       assert.match(text, /不.*(?:自动发布|自动.*发布)/)
     }
+  })
+}
+
+for (const edition of editions) {
+  test(`${edition} clinical integrity upgrade fails closed before clinical DDL and is manual only`, () => {
+    assert.ok(existsSync(path.join(root, sqlPath(edition, 'clinical_integrity_upgrade_20261011.sql'))), 'Manual clinical integrity migration is missing')
+    const source = read(sqlPath(edition, 'clinical_integrity_upgrade_20261011.sql'))
+    const prerequisite = source.indexOf('FROM health_analysis_automation WHERE 1=0')
+    const firstDdl = source.search(/^(?:CREATE|ALTER|DROP) /m)
+    assert.ok(prerequisite >= 0 && prerequisite < firstDdl, 'Automation schema must be checked before any DDL')
+    assert.match(source, /SIGNAL SQLSTATE '45000'/)
+    const duplicateGate = source.indexOf('EXECUTE clinical_integrity_preflight')
+    assert.ok(duplicateGate > prerequisite)
+    for (const table of ['bp_self_monitor_record', 'medical_record']) {
+      assert.match(source, new RegExp(`FROM ${table}[\\s\\S]*?GROUP BY patient_id,source_type,source_external_id[\\s\\S]*?HAVING COUNT\\(\\*\\)>1`))
+    }
+    const tableMutation = source.search(/ALTER TABLE|CREATE TABLE/)
+    assert.ok(duplicateGate < tableMutation, 'Duplicates must SIGNAL before clinical table or index changes')
+    assert.doesNotMatch(source, /DELETE FROM|TRUNCATE|UPDATE medical_record|UPDATE bp_self_monitor_record/i)
+    assert.match(source, /UNIQUE KEY uk_bp_external\(patient_id,source_type,source_external_id\)/)
+    assert.match(source, /UNIQUE KEY uk_record_external\(patient_id,source_type,source_external_id\)/)
+    assert.match(source, /ADD COLUMN content_version BIGINT NOT NULL DEFAULT 1/)
+    assert.match(source, /ADD COLUMN verification_note TEXT/)
+    for (const key of ['config_version', 'active_run_id', 'notification_outcomes', 'settings_json', 'claim_token']) assert.ok(source.includes(key), key)
+    for (const file of ['docker-compose.yml', 'docker-compose.production.yml']) {
+      const composePath = file === 'docker-compose.production.yml' ? file : path.join(edition, file)
+      assert.doesNotMatch(read(composePath), /clinical_integrity_upgrade_20261011\.sql:[^\n]*docker-entrypoint/)
+    }
+    for (const filename of readdirSync(path.join(root, edition, 'src/main/java/org/familyhealthcare/config'))) {
+      assert.doesNotMatch(read(path.join(edition, 'src/main/java/org/familyhealthcare/config', filename)), /ClassPathResource\("sql\/clinical_integrity_upgrade_20261011\.sql"\)/)
+    }
+    const native = read(path.join(edition, 'src/test/java/org/familyhealthcare/service/CarePlanMysqlIntegrationTest.java'))
+    assert.match(native, /assertClinicalIntegrityUpgrade\(connection, db\.equals\(upgrade\)\)/)
+    assert.match(native, /ClinicalImportDialysisMysqlAssertions\.verify\(/)
+    assert.match(native, /MedicalRecordMysqlAssertions\.verify\(/)
+    assert.match(native, /HealthAutomationMysqlAssertions\.verify\(/)
+  })
+}
+test('clinical integrity upgrade has identical English and Chinese SQL contracts', () => {
+  assert.ok(existsSync(path.join(root, sqlPath('.', 'clinical_integrity_upgrade_20261011.sql'))), 'Clinical integrity migration is missing')
+  assert.equal(read(sqlPath('.', 'clinical_integrity_upgrade_20261011.sql')), read(sqlPath('cn', 'clinical_integrity_upgrade_20261011.sql')))
+})
+
+for (const edition of editions) {
+  test(`${edition} clinical journal fresh-install and upgrade definitions are identical`, () => {
+    const definition = source => source.match(/CREATE TABLE IF NOT EXISTS health_analysis_run \([\s\S]*?;/)?.[0]
+    const init = definition(read(sqlPath(edition, 'init.sql')))
+    const upgrade = definition(read(sqlPath(edition, 'clinical_integrity_upgrade_20261011.sql')))
+    assert.ok(init && upgrade, 'Fresh and old schemas must both define the persistent run journal')
+    assert.equal(canonicalStatement(init), canonicalStatement(upgrade))
+  })
+}
+for (const edition of editions) {
+  test(`${edition} new medical fields preserve the existing 24-column legacy AFTER contract`, () => {
+    const source = read(sqlPath(edition, 'init.sql'))
+    const medical = source.match(/CREATE TABLE IF NOT EXISTS `medical_record` \([\s\S]*?;/)?.[0]
+    assert.ok(medical)
+    const columns = [...medical.matchAll(/^\s*`(\w+)`\s+\w+/gm)].map(match => match[1])
+    for (const definition of compatibilityDefinitions.filter(value => value.startsWith('medical_record.'))) {
+      const column = definition.split(' ')[0].split('.')[1]
+      const predecessor = definition.match(/AFTER (\w+)$/)[1]
+      assert.equal(columns.indexOf(column), columns.indexOf(predecessor) + 1, `${column} must follow ${predecessor}`)
+    }
+    assert.equal(columns.indexOf('content_version'), columns.indexOf('verified_at') + 1)
+    assert.equal(columns.indexOf('verification_note'), columns.indexOf('content_version') + 1)
   })
 }

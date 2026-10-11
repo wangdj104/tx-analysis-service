@@ -41,7 +41,7 @@ public class SysUserServiceImpl implements SysUserService {
             throw new RuntimeException("The account is disabled.");
         }
 
-        return jwtUtil.generateToken(user.getId(), user.getUsername());
+        return jwtUtil.generateToken(user.getId(), user.getUsername(), user.getPassword());
     }
 
     @Override
