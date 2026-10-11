@@ -11,6 +11,102 @@ import { constants } from 'node:fs'
 import { access, open } from 'node:fs/promises'
 import { assertDirectoryAncestors, digest } from './package-care-plan-browser-artifacts.mjs'
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
+// 公开诊断仅保留固定阶段、原因标签及白名单机器元数据。
+// 不复制原始消息、堆栈、路径、参数或子进程输出。
+export const browserDiagnosticStages = Object.freeze([
+  'environment-guard','report-font','mysql-guards','service-identity','artifact-directory',
+  'backend-build','production-jar','production-jar-list','production-jar-isolation',
+  'frontend-source-list','frontend-stage','frontend-build','backend-classpath','backend-launch',
+  'backend-readiness','static-server','browser-tests','artifact-inventory','recording-probe',
+  'recording-thumbnail','recording-conversion','artifact-evidence','static-server-stop','backend-stop','frontend-cleanup'
+])
+const diagnosticNames = new Set(['Error','AssertionError','TypeError','RangeError','SyntaxError','AbortError','TimeoutError'])
+const diagnosticCodes = new Set(['ERR_ASSERTION','ENOENT','EACCES','EPERM','EEXIST','ENOTDIR','EISDIR','ELOOP','ENOSPC','EMFILE','EADDRINUSE','ECONNREFUSED','ECONNRESET','ETIMEDOUT','ERR_INVALID_ARG_TYPE','ERR_OUT_OF_RANGE'])
+const diagnosticSignals = new Set(['SIGTERM','SIGKILL','SIGINT','SIGABRT','SIGSEGV','SIGPIPE'])
+const diagnosticReasons = new Map([
+  ...['CARE_PLAN_TEST_ONLY','CARE_PLAN_BROWSER_REQUIRED','CI','GITHUB_ACTIONS','host','port','database','distinct databases','user','generated database password','container ID','project','generated login password','isolated backend port','isolated web port'].map(label=>[
+    `care-plan browser guard: ${label}`,`environment-${label.toLowerCase().replaceAll('_','-').replaceAll(' ','-')}`]),
+  ['Report font requires actual CI contract','font-ci-contract'],
+  ['Report font requires absolute runner temp','font-runner-temp'],
+  ['Report font path must match the owned CI face','font-path'],
+  ['Report font directory must be owned and non-symlink','font-directory'],
+  ['Report font must be an owned readable regular TTF','font-file'],
+  ['Report font must be TrueType face, not a collection','font-signature'],
+  ['Report font preparation metadata must be owned and bounded','font-metadata-file'],
+  ['Report font preparation metadata keys invalid','font-metadata-keys'],
+  ['Report font preparation metadata hash invalid','font-metadata-hash'],
+  ['Report font preparation metadata counts invalid','font-metadata-counts'],
+  ['Report font preparation metadata version invalid','font-metadata-version'],
+  ['Report font hash differs from complete-face preparation','font-hash-mismatch'],
+  ['Invalid production jar edition','jar-edition'],
+  ['Expected regular production jar is required','jar-file'],
+  ['Test launcher/external overrides/fixture must never enter the production artifact','jar-fixture-contamination'],
+  ['A test-only class entered the production artifact','jar-test-class-contamination'],
+  ['Official disposable MySQL8 service required','service-image'],
+  ['Declared disposable empty-password service required','service-password-contract'],
+  ['Local-only service root required','service-root-host'],
+  ['Actual socket-local MySQL8 service identity required','service-socket-identity'],
+  ['Actual Spring application stopped before readiness','backend-stopped'],
+  ['Actual Spring health readiness failed; no browser acceptance was executed','backend-readiness-timeout'],
+  ['Artifact directory must not be a symlink','artifact-directory-symlink'],
+  ['Acceptance artifacts cannot contain symlinks','artifact-symlink'],
+  ['Invalid declared frontend source path','frontend-source-path'],
+  ['Declared frontend source ancestor must not be a symlink','frontend-source-ancestor'],
+  ['Declared frontend source must not be a symlink','frontend-source-symlink'],
+  ['Declared frontend build input must be a file','frontend-source-file'],
+  ['Clean build stage contains an environment file','frontend-environment-file'],
+  ['Genuine Playwright videos are required','missing-videos'],
+  ['Successful workflow screenshots are required','missing-screenshots'],
+  ['Recording must contain actual decoded frames and positive duration','recording-invalid'],
+  ['Unexpected artifact type','artifact-type'],
+  ['Subprocess command failed','command-failed'],
+  ['Genuine recording probe failed','recording-probe-failed'],
+  ['Disposable service identity verification failed','capture-command-failed'],
+  ['Captured command exceeded output limit','capture-limit-exceeded']
+])
+function diagnosticError(error) {
+  const message=typeof error?.message==='string'?error.message.split('\n',1)[0]:''
+  const result={name:diagnosticNames.has(error?.name)?error.name:'Error',reason:diagnosticReasons.get(message)||'unclassified'}
+  if(diagnosticCodes.has(error?.code))result.code=error.code
+  if(Number.isInteger(error?.exitCode) && error.exitCode>=0 && error.exitCode<=255)result.exitCode=error.exitCode
+  if(diagnosticSignals.has(error?.signal))result.signal=error.signal
+  return result
+}
+function commandFailure(message,exitCode,signal) {return Object.assign(new Error(message),{exitCode,signal})}
+export function createBrowserDiagnostics() {
+  const state={version:1,status:'running',stage:null,completedStages:[],failure:null,bootFailure:null,backendFailure:null}
+  return {
+    async run(stage,operation) {
+      assert.ok(browserDiagnosticStages.includes(stage),'Invalid browser diagnostic stage')
+      if(!state.failure)state.stage=stage
+      try {
+        const result=await operation()
+        if(!state.completedStages.includes(stage))state.completedStages.push(stage)
+        return result
+      } catch(error) {
+        if(!state.failure)state.failure={stage,error:diagnosticError(error)}
+        state.status='failed'
+        throw error
+      }
+    },
+    bootFailure(value) {const safe=safeBootDiagnostic(value);if(safe)state.bootFailure=safe},
+    backendFailure(error) {if(state.stage!=='backend-stop' && !state.backendFailure)state.backendFailure=diagnosticError(error)},
+    complete() {if(!state.failure)state.status='passed'},
+    snapshot() {return structuredClone(state)}
+  }
+}
+export async function writeBrowserDiagnostics(project,diagnostics) {
+  const directory=join(project,'target'),path=join(directory,'care-plan-browser-diagnostics.json')
+  await assertDirectoryAncestors(directory)
+  await mkdir(directory,{recursive:true})
+  await assertDirectoryAncestors(path)
+  const metadata=await lstat(directory)
+  assert.ok(metadata.isDirectory() && !metadata.isSymbolicLink() && metadata.uid===process.getuid(),'Diagnostic directory must be owned and non-symlink')
+  const data=JSON.stringify(diagnostics.snapshot())
+  assert.ok(Buffer.byteLength(data)<=16384,'Browser diagnostic exceeds size limit')
+  // 全新 CI 检出仅执行一次浏览器验收；禁止覆盖或接管已有诊断文件。
+  await writeFile(path,data,{flag:'wx',mode:0o600})
+}
 export function validateBrowserEnvironment(env) {
   const guard = (ok, label) => assert.ok(ok, `care-plan browser guard: ${label}`)
   for (const key of ['CARE_PLAN_TEST_ONLY','CARE_PLAN_BROWSER_REQUIRED','CI','GITHUB_ACTIONS']) guard(env[key]==='true',key)
@@ -65,17 +161,17 @@ export async function validateReportFontEnvironment(input) {
   return {path,sha256}
 }
 
-async function run(command, args, cwd, env, {background=false}={}) {
+async function run(command, args, cwd, env, {background=false,onBootFailure=()=>{}}={}) {
   const child = spawn(command,args,{cwd,env,stdio:background?['ignore','ignore','pipe']:'inherit'})
   if(background) {
     let buffer=''
     child.stderr.on('data',data=>{
       buffer+=data.toString();if(buffer.length>8192){buffer='';return}
       let newline
-      while((newline=buffer.indexOf('\n'))>=0){const safe=safeBootDiagnostic(buffer.slice(0,newline).trim());if(safe)console.error(safe);buffer=buffer.slice(newline+1)}
+      while((newline=buffer.indexOf('\n'))>=0){const safe=safeBootDiagnostic(buffer.slice(0,newline).trim());if(safe){console.error(safe);onBootFailure(safe)};buffer=buffer.slice(newline+1)}
     })
   }
-  const done = new Promise((yes,no)=>{ child.once('error',no); child.once('exit',(code,signal)=>code===0?yes():no(new Error(`${command} failed (${code??signal})`))) })
+  const done = new Promise((yes,no)=>{ child.once('error',no); child.once('exit',(code,signal)=>code===0?yes():no(commandFailure('Subprocess command failed',code,signal))) })
   if (background) { done.catch(()=>{}); return {child,done} }
   await done
 }
@@ -94,17 +190,17 @@ export async function resolveProductionJar(project, edition) {
 async function probeVideo(video, env) {
   const child=spawn('ffprobe',['-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=codec_name,width,height,nb_read_frames','-show_entries','format=duration','-of','json',video],{cwd:root,env,stdio:['ignore','pipe','inherit']})
   let output='';child.stdout.on('data',data=>{output+=data;if(output.length>16384)child.kill('SIGTERM')})
-  await new Promise((yes,no)=>{child.once('error',no);child.once('exit',code=>code===0?yes():no(new Error('Genuine recording probe failed')))})
+  await new Promise((yes,no)=>{child.once('error',no);child.once('exit',(code,signal)=>code===0?yes():no(commandFailure('Genuine recording probe failed',code,signal)))})
   const data=JSON.parse(output),stream=data.streams?.[0]
   assert.ok(stream?.width>0 && stream?.height>0 && Number(stream.nb_read_frames)>0 && Number(data.format?.duration)>0,'Recording must contain actual decoded frames and positive duration')
   return {width:stream.width,height:stream.height,decodedFrames:Number(stream.nb_read_frames),durationSeconds:Number(data.format.duration)}
 }
-async function capture(command,args,env) {
-  const child=spawn(command,args,{cwd:root,env,stdio:['ignore','pipe','pipe']});let stdout=''
-  child.stdout.on('data',data=>{stdout+=data;if(stdout.length>65536)child.kill('SIGTERM')})
+export async function capture(command,args,env) {
+  const child=spawn(command,args,{cwd:root,env,stdio:['ignore','pipe','pipe']});let stdout='',overflow=false
+  child.stdout.on('data',data=>{stdout+=data;if(stdout.length>65536){overflow=true;child.kill('SIGTERM')}})
   // Refusal details can contain credentials/container configuration; never print raw stderr.
   child.stderr.resume()
-  await new Promise((yes,no)=>{child.once('error',no);child.once('exit',code=>code===0?yes():no(new Error('Disposable service identity verification failed')))})
+  await new Promise((yes,no)=>{child.once('error',no);child.once('exit',(code,signal)=>!overflow && code===0?yes():no(commandFailure(overflow?'Captured command exceeded output limit':'Disposable service identity verification failed',code,signal)))})
   return stdout.trim()
 }
 async function verifyService(env) {
@@ -192,53 +288,81 @@ async function artifactFiles(directory) {
   }
   return files
 }
-export async function main(input=process.env) {
-  const contract=validateBrowserEnvironment(input)
-  const font=await validateReportFontEnvironment(input)
+export async function main(input=process.env,diagnostics=createBrowserDiagnostics()) {
+  const stage=(name,operation)=>diagnostics.run(name,operation)
+  const contract=await stage('environment-guard',()=>validateBrowserEnvironment(input))
+  const font=await stage('report-font',()=>validateReportFontEnvironment(input))
   const env=environment(input),project=resolve(root,contract.project),frontend=join(project,'frontend')
   console.log(`Verified complete report font SHA-256: ${font.sha256}`)
-  await run('bash',[join(root,'scripts/verify-care-plan-mysql.sh'),'--check-guards'],root,env)
-  env.CARE_PLAN_BROWSER_SERVER_UUID=await verifyService(env)
+  await stage('mysql-guards',()=>run('bash',[join(root,'scripts/verify-care-plan-mysql.sh'),'--check-guards'],root,env))
+  env.CARE_PLAN_BROWSER_SERVER_UUID=await stage('service-identity',()=>verifyService(env))
   const outputs=join(frontend,'test-results')
-  try {assert.ok(!(await lstat(outputs)).isSymbolicLink(),'Artifact directory must not be a symlink')}catch(error){if(error.code!=='ENOENT')throw error}
-  await mkdir(outputs,{recursive:true})
+  await stage('artifact-directory',async()=>{
+    try {assert.ok(!(await lstat(outputs)).isSymbolicLink(),'Artifact directory must not be a symlink')}catch(error){if(error.code!=='ENOENT')throw error}
+    await mkdir(outputs,{recursive:true})
+  })
   // Build the real application and the real edition. Never use a dev/mock frontend.
-  await run('mvn',['-B','-DskipTests','package','org.apache.maven.plugins:maven-dependency-plugin:3.8.1:build-classpath','-Dmdep.includeScope=test','-Dmdep.outputFile=target/care-plan-browser-classpath.txt'],project,env)
-  const productionJar=await resolveProductionJar(project,contract.project)
-  const jarEntries=await capture('jar',['tf',productionJar],env)
-  assert.ok(!/CarePlanBrowserApplication|SyntheticExternalServices|care-plan-e2e-fixture\.sql/.test(jarEntries),'Test launcher/external overrides/fixture must never enter the production artifact')
-  const entries=new Set(jarEntries.split(/\r?\n/)),testClasses=join(project,'target/test-classes')
-  for(const file of (await artifactFiles(testClasses)).filter(file=>file.endsWith('.class'))) {
-    const name=relative(testClasses,file)
-    assert.ok(!entries.has(name) && !entries.has('BOOT-INF/classes/'+name),'A test-only class entered the production artifact')
-  }
-  const tracked=(await capture('git',['-C',root,'ls-files','-z','--',relative(root,frontend)+'/'],env)).split('\0').filter(Boolean).map(name=>relative(frontend,join(root,name)))
-  const cleanFrontend=await createCleanFrontendBuild(frontend,tracked)
-  try {
-  await run('npm',['run','build'],cleanFrontend,env)
-  const dependencies=(await readFile(join(project,'target/care-plan-browser-classpath.txt'),'utf8')).trim()
-  const app=await run('java',['-Duser.timezone=UTC','-cp',[join(project,'target/test-classes'),join(project,'target/classes'),dependencies].join(':'),'org.familyhealthcare.service.CarePlanBrowserApplication'],project,env,{background:true})
-  let server
-  try {
-    await waitReady(`http://127.0.0.1:${contract.backendPort}/api/health`,app)
-    server=await staticServer(join(cleanFrontend,'dist'),join(project,'demo'),contract.project,contract.browserPort,contract.backendPort)
-    await run('npm',['run','test:e2e'],frontend,{...env,CARE_PLAN_E2E_BASE_URL:`http://127.0.0.1:${contract.browserPort}`,CARE_PLAN_E2E_LANGUAGE:contract.project==='cn'?'cn':'en'})
-    const files=await artifactFiles(outputs),videos=files.filter(f=>f.endsWith('.webm')),screenshots=files.filter(f=>f.endsWith('.png'))
-    assert.ok(videos.length>0,'Genuine Playwright videos are required');assert.ok(screenshots.length>0,'Successful workflow screenshots are required')
-    const recordingEvidence=[]
-    for(const video of videos) {
-      recordingEvidence.push(await probeVideo(video,env))
-      await run('ffmpeg',['-v','error','-y','-i',video,'-frames:v','1',video.replace(/\.webm$/,'.first-frame.png')],root,env)
-      await run('ffmpeg',['-v','error','-y','-i',video,'-c:v','libx264','-preset','fast','-pix_fmt','yuv420p','-movflags','+faststart',video.replace(/\.webm$/,'.mp4')],root,env)
+  await stage('backend-build',()=>run('mvn',['-B','-DskipTests','package','org.apache.maven.plugins:maven-dependency-plugin:3.8.1:build-classpath','-Dmdep.includeScope=test','-Dmdep.outputFile=target/care-plan-browser-classpath.txt'],project,env))
+  const productionJar=await stage('production-jar',()=>resolveProductionJar(project,contract.project))
+  const jarEntries=await stage('production-jar-list',()=>capture('jar',['tf',productionJar],env))
+  await stage('production-jar-isolation',async()=>{
+    assert.ok(!/CarePlanBrowserApplication|SyntheticExternalServices|care-plan-e2e-fixture\.sql/.test(jarEntries),'Test launcher/external overrides/fixture must never enter the production artifact')
+    const entries=new Set(jarEntries.split(/\r?\n/)),testClasses=join(project,'target/test-classes')
+    for(const file of (await artifactFiles(testClasses)).filter(file=>file.endsWith('.class'))) {
+      const name=relative(testClasses,file)
+      assert.ok(!entries.has(name) && !entries.has('BOOT-INF/classes/'+name),'A test-only class entered the production artifact')
     }
-    // No traces, HAR, storageState, dumps, request headers or login responses are uploaded.
-    assert.ok(files.every(f=>/\.(webm|png|mp4)$/.test(f) || ['.last-run.json','acceptance-evidence.json'].includes(relative(outputs,f))),'Unexpected artifact type')
-    await writeFile(join(outputs,'acceptance-evidence.json'),JSON.stringify({language:contract.project==='cn'?'cn':'en',actualSpring:true,actualMySQL:true,builtVue:true,videoCount:videos.length,screenshotCount:screenshots.length,recordings:recordingEvidence,trace:false},null,2))
-    console.log('Actual Spring / native MySQL / built Vue browser assertions and genuine recording probes passed')
-  } finally {
-    if(server)await new Promise(yes=>server.close(yes))
-    app.child.kill('SIGTERM'); await Promise.race([app.done.catch(()=>{}),new Promise(yes=>setTimeout(yes,5000))]);if(app.child.exitCode==null)app.child.kill('SIGKILL')
-  }
-  } finally {await rm(cleanFrontend,{recursive:true,force:true})}
+  })
+  const tracked=await stage('frontend-source-list',async()=>(await capture('git',['-C',root,'ls-files','-z','--',relative(root,frontend)+'/'],env)).split('\0').filter(Boolean).map(name=>relative(frontend,join(root,name))))
+  const cleanFrontend=await stage('frontend-stage',()=>createCleanFrontendBuild(frontend,tracked))
+  try {
+    await stage('frontend-build',()=>run('npm',['run','build'],cleanFrontend,env))
+    const dependencies=await stage('backend-classpath',async()=>(await readFile(join(project,'target/care-plan-browser-classpath.txt'),'utf8')).trim())
+    const app=await stage('backend-launch',()=>run('java',['-Duser.timezone=UTC','-cp',[join(project,'target/test-classes'),join(project,'target/classes'),dependencies].join(':'),'org.familyhealthcare.service.CarePlanBrowserApplication'],project,env,{background:true,onBootFailure:diagnostics.bootFailure}))
+    let server,stopping=false
+    app.done.catch(error=>{if(!stopping)diagnostics.backendFailure(error)})
+    try {
+      await stage('backend-readiness',()=>waitReady(`http://127.0.0.1:${contract.backendPort}/api/health`,app))
+      server=await stage('static-server',()=>staticServer(join(cleanFrontend,'dist'),join(project,'demo'),contract.project,contract.browserPort,contract.backendPort))
+      await stage('browser-tests',()=>run('npm',['run','test:e2e'],frontend,{...env,CARE_PLAN_E2E_BASE_URL:`http://127.0.0.1:${contract.browserPort}`,CARE_PLAN_E2E_LANGUAGE:contract.project==='cn'?'cn':'en'}))
+      const {files,videos,screenshots}=await stage('artifact-inventory',async()=>{
+        const files=await artifactFiles(outputs),videos=files.filter(f=>f.endsWith('.webm')),screenshots=files.filter(f=>f.endsWith('.png'))
+        assert.ok(videos.length>0,'Genuine Playwright videos are required');assert.ok(screenshots.length>0,'Successful workflow screenshots are required')
+        return {files,videos,screenshots}
+      })
+      const recordingEvidence=[]
+      for(const video of videos) {
+        recordingEvidence.push(await stage('recording-probe',()=>probeVideo(video,env)))
+        await stage('recording-thumbnail',()=>run('ffmpeg',['-v','error','-y','-i',video,'-frames:v','1',video.replace(/\.webm$/,'.first-frame.png')],root,env))
+        await stage('recording-conversion',()=>run('ffmpeg',['-v','error','-y','-i',video,'-c:v','libx264','-preset','fast','-pix_fmt','yuv420p','-movflags','+faststart',video.replace(/\.webm$/,'.mp4')],root,env))
+      }
+      await stage('artifact-evidence',async()=>{
+        // No traces, HAR, storageState, dumps, request headers or login responses are uploaded.
+        assert.ok(files.every(f=>/\.(webm|png|mp4)$/.test(f) || ['.last-run.json','acceptance-evidence.json'].includes(relative(outputs,f))),'Unexpected artifact type')
+        await writeFile(join(outputs,'acceptance-evidence.json'),JSON.stringify({language:contract.project==='cn'?'cn':'en',actualSpring:true,actualMySQL:true,builtVue:true,videoCount:videos.length,screenshotCount:screenshots.length,recordings:recordingEvidence,trace:false},null,2))
+      })
+      console.log('Actual Spring / native MySQL / built Vue browser assertions and genuine recording probes passed')
+    } finally {
+      if(server)await stage('static-server-stop',()=>new Promise(yes=>server.close(yes)))
+      stopping=true
+      await stage('backend-stop',async()=>{
+        app.child.kill('SIGTERM'); await Promise.race([app.done.catch(()=>{}),new Promise(yes=>setTimeout(yes,5000))]);if(app.child.exitCode==null)app.child.kill('SIGKILL')
+      })
+    }
+  } finally {await stage('frontend-cleanup',()=>rm(cleanFrontend,{recursive:true,force:true}))}
+  diagnostics.complete()
 }
-if(process.argv[1] && import.meta.url===pathToFileURL(resolve(process.argv[1])).href) main().catch(()=>{console.error('Care-plan browser acceptance failed; inspect sanitized command/test output');process.exitCode=1})
+if(process.argv[1] && import.meta.url===pathToFileURL(resolve(process.argv[1])).href) {
+  const diagnostics=createBrowserDiagnostics()
+  main(process.env,diagnostics).catch(()=>{
+    console.error('Care-plan browser acceptance failed; inspect bounded stage diagnostics')
+    process.exitCode=1
+  }).finally(async()=>{
+    // 即使在产生浏览器输出前初始化失败，也只发布固定标签和机器元数据。
+    console.error('CARE_PLAN_BROWSER_DIAGNOSTICS '+JSON.stringify(diagnostics.snapshot()))
+    if(process.env.CI==='true' && process.env.GITHUB_ACTIONS==='true' && ['.','cn'].includes(process.env.CARE_PLAN_MYSQL_PROJECT)) {
+      try {await writeBrowserDiagnostics(resolve(root,process.env.CARE_PLAN_MYSQL_PROJECT),diagnostics)}
+      catch {console.error('Browser diagnostic file unavailable; bounded console diagnostic was emitted');process.exitCode=1}
+    }
+  })
+}
