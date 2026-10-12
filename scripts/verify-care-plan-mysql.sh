@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# CI-only synthetic MySQL 8.0 acceptance. Never sources application/.env settings.
+# CI-only synthetic MySQL 8.0 / explicitly selected 5.7.18 acceptance.
+# Never sources application/.env settings.
 set -euo pipefail
 set +x
 umask 077
@@ -7,6 +8,12 @@ refuse() { printf 'care-plan MySQL guard: %s\n' "$1" >&2; exit 64; }
 [[ $# -le 1 ]] || refuse 'unsupported arguments'
 [[ $# -eq 0 || "$1" == '--check-guards' ]] || refuse 'unsupported argument'
 [[ ${CARE_PLAN_TEST_ONLY:-} == true ]] || refuse 'CARE_PLAN_TEST_ONLY=true is required'
+# A legacy server is an explicit acceptance target, never an automatic fallback.
+mysql_version=${CARE_PLAN_MYSQL_VERSION-8.0}
+case $mysql_version in
+  8.0|5.7.18) ;;
+  *) refuse 'CARE_PLAN_MYSQL_VERSION must be 8.0 or exactly 5.7.18' ;;
+esac
 [[ -z ${CARE_PLAN_BROWSER_REQUIRED:-} || ${CARE_PLAN_BROWSER_REQUIRED:-} == true ]] || refuse 'CARE_PLAN_BROWSER_REQUIRED must be true when set'
 case ${CARE_PLAN_MYSQL_HOST:-} in
   127.0.0.1|localhost|::1) ;;
@@ -41,7 +48,7 @@ command -v mvn >/dev/null || { echo 'Required Maven is unavailable' >&2; exit 1;
 # Validate the selected service before administering anything. Root is used only
 # inside this throwaway container over its Unix socket, never over mapped TCP.
 service_image=$(docker inspect --format '{{.Config.Image}}' "$container")
-[[ $service_image == mysql:8.0 || $service_image == mysql:8.0@sha256:* ]] || refuse 'container image must be the official mysql:8.0 test service'
+[[ $service_image == "mysql:$mysql_version" || ( $service_image == "mysql:$mysql_version@sha256:"* && ${service_image##*@sha256:} =~ ^[a-f0-9]{64}$ ) ]] || refuse "container image must be the official mysql:$mysql_version test service"
 service_env=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container")
 [[ $'\n'$service_env$'\n' == *$'\nMYSQL_ALLOW_EMPTY_PASSWORD=yes\n'* ]] || refuse 'container is not the declared disposable test service'
 root_host_lines=0
@@ -56,11 +63,25 @@ done <<< "$service_env"
 unset service_env
 admin() { docker exec -i "$container" mysql --user=root --protocol=socket --batch --skip-column-names; }
 identity=$(printf 'SELECT CURRENT_USER(), VERSION();\n' | admin)
-[[ $identity == root@localhost$'\t'8.0.* ]] || refuse 'socket identity/version is not root@localhost on MySQL 8.0'
+case $mysql_version in
+  8.0) [[ $identity == root@localhost$'\t'8.0.* ]] || refuse 'socket identity/version is not root@localhost on MySQL 8.0' ;;
+  5.7.18) [[ $identity == root@localhost$'\t'5.7.18 ]] || refuse 'socket identity/version is not root@localhost on exactly MySQL 5.7.18' ;;
+esac
 nonlocal_roots=$(printf "SELECT COUNT(*) FROM mysql.user WHERE User='root' AND Host<>'localhost';\n" | admin)
 [[ $nonlocal_roots == 0 ]] || refuse 'disposable service contains a non-local root account'
-partial_revokes=$(printf 'SELECT @@GLOBAL.partial_revokes;\n' | admin)
-[[ $partial_revokes == 0 ]] || refuse 'escaped exact-schema grants require partial_revokes=OFF in the disposable service'
+# MySQL 5.7 has no partial_revokes variable and always uses the legacy escaped
+# schema-name grant semantics. Querying this 8.0-only variable would fail there.
+if [[ $mysql_version == 8.0 ]]; then
+  partial_revokes=$(printf 'SELECT @@GLOBAL.partial_revokes;\n' | admin)
+  [[ $partial_revokes == 0 ]] || refuse 'escaped exact-schema grants require partial_revokes=OFF in the disposable service'
+fi
+# The migrations need trigger creation even when this disposable service has
+# binary logging enabled. Configure only this identity-verified test container
+# through its root socket; never grant SUPER or any global privilege to the
+# ephemeral TCP user. The entire service is discarded after the CI job.
+printf 'SET GLOBAL log_bin_trust_function_creators=1;\n' | admin >/dev/null
+trust_creators=$(printf 'SELECT @@GLOBAL.log_bin_trust_function_creators;\n' | admin)
+[[ $trust_creators == 1 ]] || refuse 'disposable trigger support requires log_bin_trust_function_creators=1'
 
 printf 'Native MySQL service: %s; image identity: ' "${identity#*$'\t'}"
 docker inspect --format '{{.Image}}' "$container"

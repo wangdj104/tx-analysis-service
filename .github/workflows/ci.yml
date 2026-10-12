@@ -214,6 +214,95 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  care-plan-mysql57:
+    # Legacy compatibility is native and mandatory for both editions. This EOL
+    # image is confined to an empty, disposable runner service, never deployment.
+    name: Care plan MySQL 5.7.18 (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - directory: '.'
+            language: en
+          - directory: cn
+            language: cn
+    services:
+      mysql:
+        # Official linux/amd64 schema-v2 manifest verified at registry-1.docker.io
+        # on 2026-10-12; config MYSQL_VERSION=5.7.18-1debian8. Runtime is checked too.
+        image: mysql:5.7.18@sha256:d178dffba8d81afedc251498e227607934636e06228ac63d58b72f9e9ec271a6
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_ROOT_HOST: 'localhost'
+        ports:
+          - '127.0.0.1:13306:3306'
+        options: >-
+          --health-cmd="mysqladmin ping --protocol=socket --user=root --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check native MySQL version and isolation guards
+        run: |
+          bash -n scripts/verify-care-plan-mysql.sh
+          node --test scripts/tests/care-plan-mysql-guards.test.mjs
+          node --test scripts/tests/mysql57-upgrade.test.mjs
+          python3 scripts/tests/native-diagnostics.test.py
+      - name: Prepare complete official report font for native rendering assertions
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends fonts-wqy-microhei python3-fonttools
+          /usr/bin/python3 scripts/tests/care-report-font.test.py
+          /usr/bin/python3 scripts/prepare-care-report-font.py
+      - name: Verify two native MySQL 5.7.18 fresh, upgrade, constraints, concurrency and restore passes
+        env:
+          CARE_PLAN_TEST_ONLY: 'true'
+          CARE_PLAN_MYSQL_VERSION: '5.7.18'
+          CARE_PLAN_MYSQL_HOST: '127.0.0.1'
+          CARE_PLAN_MYSQL_PORT: '13306'
+          CARE_PLAN_MYSQL_PROJECT: ${{ matrix.directory }}
+          CARE_PLAN_MYSQL_CONTAINER_ID: ${{ job.services.mysql.id }}
+        run: |
+          set -euo pipefail
+          set +x
+          printf 'Native MySQL 5.7.18 acceptance checkout: '
+          git rev-parse HEAD
+          for pass in 1 2; do
+            prefix="care_plan_test_${{ matrix.language }}_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_${pass}"
+            export CARE_PLAN_MYSQL_DATABASE="${prefix}_fresh"
+            export CARE_PLAN_MYSQL_UPGRADE_DATABASE="${prefix}_upgrade"
+            export CARE_PLAN_MYSQL_RESTORE_DATABASE="${prefix}_restore"
+            export CARE_PLAN_MYSQL_USER="care_plan_test_${{ matrix.language }}_${pass}"
+            password=$(openssl rand -hex 24)
+            echo "::add-mask::$password"
+            export CARE_PLAN_MYSQL_PASSWORD="$password"
+            unset password
+            bash scripts/verify-care-plan-mysql.sh
+            unset CARE_PLAN_MYSQL_PASSWORD
+          done
+      - name: Collect bounded MySQL 5.7.18 native diagnostics
+        if: always()
+        run: python3 scripts/collect-native-diagnostics.py '${{ matrix.directory }}' '${{ runner.temp }}/native-diagnostics-mysql57-${{ matrix.language }}'
+      - name: Preserve bounded MySQL 5.7.18 native diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-diagnostics-mysql57-${{ matrix.language }}-${{ github.sha }}
+          path: ${{ runner.temp }}/native-diagnostics-mysql57-${{ matrix.language }}/native-diagnostics.json
+          if-no-files-found: error
+          retention-days: 14
+
   care-plan-mysql:
     # Release gate: required native acceptance, never an H2/optional fallback.
     # Both languages and both fresh/upgrade passes use this exact checkout.

@@ -104,7 +104,7 @@ final class CareExecutionReportMysqlAssertions {
             CareExecutionReportProjector.Projection projection=h.reportProjector.project(OWNER,directRequest,h.reportAccess.inspect(OWNER,directRequest),CareExecutionReportBudget.start(REQUEST_TIMEOUT));
             assertEquals(1,projection.getReport().getCurrentSummary().getTotal());
             assertFalse(observer.bodyIds().contains(caller),"REQUIRES_NEW must suspend the caller's RC connection");
-            assertEquals("READ-COMMITTED",h.jdbc.queryForObject("SELECT @@SESSION.transaction_isolation",String.class));
+            assertEquals("READ-COMMITTED",h.jdbc.queryForObject((NativeMysqlTestVersion.is57()?"SELECT @@SESSION.tx_isolation":"SELECT @@SESSION.transaction_isolation"),String.class));
             return null;
         });
         observer.assertBodyAndFreshReads();observer.end();
@@ -307,7 +307,7 @@ final class CareExecutionReportMysqlAssertions {
                     String normalized=sql.toLowerCase(Locale.ROOT).replaceAll("\\s+"," ").trim();
                     if(reader()){
                         String isolation;boolean readOnly;
-                        try(Statement state=connection.createStatement();ResultSet rs=state.executeQuery("SELECT @@SESSION.transaction_isolation,@@SESSION.transaction_read_only")){assertTrue(rs.next());isolation=rs.getString(1);readOnly=rs.getBoolean(2);}
+                        try(Statement state=connection.createStatement();ResultSet rs=state.executeQuery((NativeMysqlTestVersion.is57()?"SELECT @@SESSION.tx_isolation,@@SESSION.tx_read_only":"SELECT @@SESSION.transaction_isolation,@@SESSION.transaction_read_only"))){assertTrue(rs.next());isolation=rs.getString(1);readOnly=rs.getBoolean(2);}
                         queries.add(new Query(normalized,id,isolation,readOnly,connection.getAutoCommit(),statement.getQueryTimeout()));
                         if(normalized.startsWith("select id,name,utc_timestamp(6) as snapshot_at from patient")){
                             assertEquals("REPEATABLE-READ",isolation);assertTrue(readOnly);assertTrue(connection.isReadOnly());assertFalse(connection.getAutoCommit());assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
@@ -329,7 +329,7 @@ final class CareExecutionReportMysqlAssertions {
             assertTrue(bodyQueries().get(0).sql.startsWith("select id,name,utc_timestamp(6) as snapshot_at from patient"),"Database UTC currentAsOf must be selected in the very first real table read, not a later snapshot query");
             Set<String> fresh=new HashSet<>();for(Query q:queries){
                 // Direct caller diagnostic SELECTs are intentionally not report statements.
-                if(q.sql.equals("select connection_id()")||q.sql.equals("select @@session.transaction_isolation"))continue;
+                if(q.sql.equals("select connection_id()")||q.sql.equals("select @@session.transaction_isolation")||q.sql.equals("select @@session.tx_isolation"))continue;
                 assertTrue(q.readOnly,"Actual MySQL session must acknowledge read-only at report query execution");assertFalse(q.autoCommit);assertTrue(q.timeout>0&&q.timeout<=30,"Every report statement has a finite remaining query timeout");
                 if("READ-COMMITTED".equals(q.isolation))fresh.add(q.id);else assertEquals("REPEATABLE-READ",q.isolation);
             }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
-const job = workflow.split('  ui-seventeen-browser:')[1]?.split('\n  care-plan-mysql:')[0] || ''
+const job = workflow.split('  ui-seventeen-browser:')[1]?.split(/\n  [a-z0-9-]+:/)[0] || ''
 const steps = job.split(/^      - /m).slice(1)
 const root = '${{ runner.temp }}/ui-seventeen/'
 const sha = '${{ github.sha }}'

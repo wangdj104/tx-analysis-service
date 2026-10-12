@@ -14,6 +14,9 @@
 
 | 文件 | 分类 | 用途、前提和重复执行影响 |
 | --- | --- | --- |
+| [mysql57_preflight_20261012.sql](mysql57_preflight_20261012.sql) | 只读检查 | 本次 MySQL 5.7.18 升级前保存结构、重复/归属聚合计数和旧计划状态基线；不写数据 |
+| [mysql57_schema_upgrade_20261012.sql](mysql57_schema_upgrade_20261012.sql) | 旧库升级 | 本次 5.7.18/8.0 定向、可重跑路径；严格预检后补 7 表、9 列、3 外键与 8 校验触发器，修复两组旧唯一范围、4 二级索引、附件可空性；包含 nurse/menu 绑定，详见专节 |
+| [mysql57_postcheck_20261012.sql](mysql57_postcheck_20261012.sql) | 只读检查 | 本次升级后的结构、触发器正文、约束数据和旧计划状态核对；历史内容保留仍须对照基线/完整备份 |
 | [init.sql](init.sql) | 新库基础 | 新建空库的基础表和初始字典。不是重置工具；条件建表不会升级已有表，种子写入可能覆盖字典、菜单或初始角色 |
 | [doctor_workspace_20260921.sql](doctor_workspace_20260921.sql) | 旧库升级 | 基础表后补医生分配、临床草稿、审核及工作台。会更新角色/菜单及绑定；存在检查不等于不写数据 |
 | [care_platform_upgrade_20260921.sql](care_platform_upgrade_20260921.sql) | 旧库升级 | 基础表、医生工作台后补照护平台及临床兼容列。24 个旧列按 AFTER 前置列顺序恢复；只检查存在，不修复错误类型，菜单/绑定仍会更新 |
@@ -80,3 +83,32 @@ MySQL 不支持预编译 SIGNAL，因此脚本在只读依赖核验后创建保�
 加列/表只检查存在，不修复错误类型、默认值或可空性；执行前后核验 `medical_record.content_version BIGINT NOT NULL DEFAULT 1`、可空 `verification_note TEXT`、任务 `config_version BIGINT NOT NULL DEFAULT 0`/可空 `active_run_id BIGINT`，以及 `health_analysis_run` 的唯一 token、阶段/时间/设置快照/草稿链接/渠道结果。DDL 隐式提交，中途失败应逐项核对结构。历史患者 remark 原文、附件字节、已有审核身份时间与任务设置不重写。
 
 发布兼容性：旧审核客户端必须升级并提交看到的内容版本；旧 JWT 首次需重新登录；Webhook 只接受公网 HTTPS，内网与 HTTP 会被拒绝。未知 AI/通知阶段须由用户明确确认，不自动重发；确认已有草稿只返回同一草稿。维护者仍负责实际数据库迁移及生产部署。
+
+## 本次已存在业务库的 MySQL 5.7.18 定向升级
+
+适用于已具备基础、医生工作台、照护平台及 20261011 临床一致性结构，而缺少协作结构并带有已识别旧索引/附件差异的库。必须以实时预检为准，结构导出不能证明数据内容、线上状态、备份或执行历史。本路径的明确文件顺序是：
+
+1. `mysql57_preflight_20261012.sql`：只读，保存输出作为结构和旧计划状态/行数基线
+2. `mysql57_schema_upgrade_20261012.sql`：备份恢复演练、核对权限并停止全部写入者后，人工执行定向升级
+3. `mysql57_postcheck_20261012.sql`：只读，与预检、完整备份和目标定义逐项比较，通过后再恢复写入
+
+使用对应语言目录的三个文件；不要混用两版。使用支持 `DELIMITER` 的标准 mysql 客户端执行第二个文件，遇到第一处错误立即停止，禁止 `mysql --force`。上述路径不需要再执行 `init.sql`、`care_plan_collaboration_20261003.sql` 或已经完整的 `clinical_integrity_upgrade_20261011.sql`，也不包括角色权限清理、演示数据或任何测试夹具。不是所有历史库都符合这组前提；缺失依赖或未知定制必须先调查，不能盲目重跑旧初始化。
+
+实际改动限定为：
+
+- 补 7 张协作表、doctor_care_plan 的 9 列及 3 条循环外键，既有表定义异常则停止，不重建表
+- patient 唯一范围由已识别的 uk_name(name) 改为 (user_id,name)，库存唯一范围由 (medication_id) 改为 (patient_id,medication_id)；遇到 NULL 患者归属、重复组合或库存/药品归属不一致先停止，绝不自动去重、合并或改写归属
+- 补齐 alert_record、medication_intake、dialysis_schedule 的目标完整二级索引，把 health_event 已识别的二列索引补到三列；未知同名定义先停止
+- 只把 medical_record_attachment.file_path 放宽为可空 VARCHAR(500)，保留该列字符集、排序规则、注释和所有附件内容
+- MySQL 5.7 不执行 CHECK。8 个 BEFORE INSERT/UPDATE 触发器执行原六项数值/空键约束，错误为 SQLSTATE 45000/1644；MySQL 8 仍保留原 CHECK。重复执行先验证全部同名触发器正文再替换，只替换本脚本保留名，未知定义保留并报错
+- 先核对唯一且启用的 admin/nurse 身份、id=8 的 patient-profile 父菜单和现有目标菜单的 permission/path/type/status；缺失、歧义或未知定制先停止，不授予未知菜单权限。补回历史协作脚本相同的 nurse 角色、两个菜单与 nurse/admin 菜单绑定；不会为账号分配护士角色、创建患者授权、发布旧计划或发送通知。重复执行可能恢复曾删除的这组菜单绑定
+
+现有 utf8 表、medication_stock.unit 默认值、额外历史表和其他自定义对象保持不变。需要字符集转换或其他变化时另行评审。MySQL DDL 隐式提交，临时过程及触发器替换不是整批事务，失败后核验已完成步骤；停止写入必须覆盖预检、执行与后验全过程，不能只停应用中的一个实例。
+
+维护账号需 schema 内 CREATE ROUTINE、ALTER ROUTINE、EXECUTE、TRIGGER、SELECT、INSERT、UPDATE、CREATE、ALTER、INDEX、REFERENCES。过程 cp57_upgrade_preflight 属于本脚本保留名：重跑前验证正文 SHA-256，未知或不可读定义不会被覆盖。预检失败可遗留这个已知过程，修正已核实原因后原文件可以重跑；成功时删除过程。二进制日志开启且 log_bin_trust_function_creators=OFF 时，触发器可能还需要 DBA 审核的服务器策略或 SUPER 权限；脚本提前阻断不满足直接授权的情况，不执行 SET GLOBAL、不自动放宽安全配置。通过角色获得的特殊管理权限未必能由该保守检测确认，应先由 DBA 核对，不要为应用运行账号扩大权限。
+
+5.7.18 现有较宽 utf8mb4 索引还依赖 innodb_large_prefix=ON、Barracuda 及 DYNAMIC/COMPRESSED 行格式；预检会显示这些配置，不会截短索引或调整服务器配置。原生 CI 的标准 MySQL 5.7.18 不能替代实际托管厂商变体的隔离恢复演练。H2、静态检查或跳过的原生测试不算 MySQL 验收通过。
+
+完成 SQL 升级并不自动启用护理计划；在 5.7 上启用协作功能之前，还必须部署本次包含通知 worker 锁语法兼容修复的应用版本，旧版本无条件使用 8.0 才支持的锁语法。先在隔离环境验证真实工作流和权限，再由维护者决定上线。升级后计划状态/行数应和基线一致；单次 postcheck 没有历史基线时，不能声称所有旧内容未变。
+
+5.7 通知领取使用 `FOR UPDATE`，临时把该连接的 InnoDB 行锁等待设为 1 秒并在结束后恢复，继续保留 claim token/lease 保护。它不能像 8.0 一样跳过被锁住的最早任务，遇到争用由后续轮询再试；这个时间限制只针对领取时的 InnoDB 行锁，不是整个 worker 轮询、网络或元数据等待的总超时。

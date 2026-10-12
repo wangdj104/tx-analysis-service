@@ -51,7 +51,7 @@ import java.lang.reflect.InvocationTargetException;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Native MySQL 8.0 schema/restore, actual lifecycle/action races and actual outbox acceptance.
+ * Native MySQL 5.7.18/8.0 schema/restore, actual lifecycle/action races and actual outbox acceptance.
  * Minimal transaction-proxy contexts use real services and current database authority.
  * No Spring Boot/HTTP/UI API or real external transport is loaded by this class.
  * Run through scripts/verify-care-plan-mysql.sh in its disposable service job.
@@ -80,7 +80,7 @@ class CarePlanMysqlIntegrationTest {
         boolean configured = Arrays.stream(CONFIG_KEYS).anyMatch(env::containsKey);
         boolean required = Boolean.getBoolean("carePlanMysqlRequired");
         if (!configured && !required) {
-            Assumptions.assumeTrue(false, "Native MySQL 8.0 acceptance SKIPPED: no explicit synthetic configuration; H2 is not native acceptance");
+            Assumptions.assumeTrue(false, "Native MySQL acceptance SKIPPED: no explicit synthetic configuration; H2 is not native acceptance");
         }
         assertTrue(configured, "Required native MySQL configuration is absent; run the guarded disposable service script");
         for (String key : CONFIG_KEYS) assertNotNull(env.get(key), "Missing required synthetic test configuration: " + key);
@@ -100,7 +100,8 @@ class CarePlanMysqlIntegrationTest {
         container = env.get("CARE_PLAN_MYSQL_CONTAINER_ID");
         assertTrue(container.matches("[a-f0-9]{12,64}"), "The exact disposable service container ID is required");
         String image = command(Arrays.asList("docker", "inspect", "--format", "{{.Config.Image}}", container), null, null).trim();
-        assertTrue(image.equals("mysql:8.0") || image.startsWith("mysql:8.0@sha256:"), "Only the official MySQL 8.0 service is allowed");
+        String expectedImage = "mysql:" + NativeMysqlTestVersion.selected();
+        assertTrue(image.equals(expectedImage) || image.startsWith(expectedImage + "@sha256:"), "Only the explicitly selected official MySQL service is allowed");
         String serviceEnvironment = command(Arrays.asList("docker", "inspect", "--format",
                 "{{range .Config.Env}}{{println .}}{{end}}", container), null, null);
         List<String> rootHostLines = new ArrayList<>();
@@ -111,12 +112,12 @@ class CarePlanMysqlIntegrationTest {
                 "Only the declared disposable empty-password service is permitted");
         assertEquals("0", socketQuery("SELECT COUNT(*) FROM mysql.user WHERE User='root' AND Host<>'localhost'"),
                 "The actual account table must contain no non-local root account");
-        assertEquals("0", socketQuery("SELECT @@GLOBAL.partial_revokes"), "Escaped grant names require partial_revokes=OFF");
+        if (!NativeMysqlTestVersion.is57()) assertEquals("0", socketQuery("SELECT @@GLOBAL.partial_revokes"), "Escaped grant names require partial_revokes=OFF");
         String serviceIdentity = socketQuery("SELECT @@server_uuid");
         assertExactNativeGrantPatterns();
         for (String db : Arrays.asList(fresh, upgrade, restore)) {
             try (Connection connection = connect(db)) {
-                assertTrue(scalar(connection, "SELECT VERSION()").startsWith("8.0."), "A real MySQL 8.0 server is required");
+                assertTrue(NativeMysqlTestVersion.matches(NativeMysqlTestVersion.selected(), scalar(connection, "SELECT VERSION()")), "The exact selected native MySQL version is required");
                 assertEquals(serviceIdentity, scalar(connection, "SELECT @@server_uuid"), "JDBC must reach the exact disposable service");
                 assertEquals("0", scalar(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()"),
                         "The wrapper must create a new empty schema; never adopt an existing schema");
@@ -156,11 +157,15 @@ class CarePlanMysqlIntegrationTest {
                 List<String> legacyBefore = rows(connection, "SELECT " + identifiers(legacyFields) + " FROM doctor_care_plan");
                 List<String> grantsBefore = rows(connection, "SELECT * FROM care_access_grant");
                 List<String> bindingsBefore = rows(connection, "SELECT * FROM sys_user_role");
-                apply(connection, MIGRATION);
+                if (NativeMysqlTestVersion.is57()) {
+                    if (db.equals(upgrade)) Mysql57UpgradeAssertions.verifyLegacyUpgrade(connection);
+                    else Mysql57UpgradeAssertions.apply(connection);
+                } else apply(connection, MIGRATION);
                 Map<String, List<String>> first = comparisonSnapshot(snapshot(connection), false);
                 // INSERT ... ON DUPLICATE KEY UPDATE may advance InnoDB allocators
                 // without changing any logical row; this is not a migration defect.
-                apply(connection, MIGRATION);
+                if (NativeMysqlTestVersion.is57()) Mysql57UpgradeAssertions.apply(connection);
+                else apply(connection, MIGRATION);
                 assertEquals(first, comparisonSnapshot(snapshot(connection), false), "Repeat migration must preserve every row, key and schema relationship");
                 assertEquals(legacyBefore, rows(connection, "SELECT " + identifiers(legacyFields) + " FROM doctor_care_plan"),
                         "Every populated legacy field must survive both migration applications unchanged");
@@ -271,7 +276,7 @@ class CarePlanMysqlIntegrationTest {
                 ps.setString(1,expected[0]);ps.setString(2,expected[1]);
                 try(ResultSet rs=ps.executeQuery()) {
                     assertTrue(rs.next(), "Missing current clinical field " + expected[0]+"."+expected[1]);
-                    assertEquals(expected[2],rs.getString(1));assertEquals(expected[3],rs.getString(2));assertEquals(expected[4],rs.getString(3));assertFalse(rs.next());
+                    assertEquals(expected[2],normalizeIntegerDisplayWidth(rs.getString(1)));assertEquals(expected[3],rs.getString(2));assertEquals(expected[4],rs.getString(3));assertFalse(rs.next());
                 }
             }
         }
@@ -411,13 +416,17 @@ class CarePlanMysqlIntegrationTest {
         }
     }
 
+    static String normalizeIntegerDisplayWidth(String type) {
+        return type.replaceFirst("^(tinyint|smallint|mediumint|int|bigint)\\([0-9]+\\)", "$1");
+    }
+
     private void assertCompatibilityColumns(Connection c) throws SQLException {
         for (String[] column : LEGACY_COMPATIBILITY) {
             try (PreparedStatement ps = c.prepareStatement("SELECT COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,ORDINAL_POSITION FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?")) {
                 ps.setString(1, column[0]); ps.setString(2, column[1]);
                 try (ResultSet rs = ps.executeQuery()) {
                     assertTrue(rs.next(), "Missing compatibility column " + column[0] + "." + column[1]);
-                    assertEquals(column[2], rs.getString(1), "Compatibility type: " + column[0] + "." + column[1]);
+                    assertEquals(column[2], normalizeIntegerDisplayWidth(rs.getString(1)), "Compatibility type: " + column[0] + "." + column[1]);
                     assertEquals(column[3], rs.getString(2), "Compatibility nullability: " + column[0] + "." + column[1]);
                     assertEquals(column[4], rs.getString(3), "Compatibility default: " + column[0] + "." + column[1]);
                     int position = rs.getInt(4);
@@ -430,7 +439,7 @@ class CarePlanMysqlIntegrationTest {
     }
 
     private List<String> compatibilityIndexes(Connection c, String table) throws SQLException {
-        return rows(c, "SELECT INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,COLLATION,SUB_PART,INDEX_TYPE,IS_VISIBLE,EXPRESSION FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='" + table + "'");
+        return rows(c, "SELECT INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,COLLATION,SUB_PART,INDEX_TYPE" + (NativeMysqlTestVersion.is57() ? "" : ",IS_VISIBLE,EXPRESSION") + " FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='" + table + "'");
     }
 
     @Test @Order(2) void nativeUniqueChecksAndForeignKeysRejectInvalidRows() throws Exception {
@@ -446,7 +455,7 @@ class CarePlanMysqlIntegrationTest {
                     "UPDATE care_plan_action SET ordinal=0 WHERE id=7301", "UPDATE care_plan_action SET ordinal=51 WHERE id=7301",
                     "UPDATE care_plan_action SET lock_version=-1 WHERE id=7301", "UPDATE care_plan_command SET expected_version=-1 WHERE id=7901",
                     "UPDATE care_plan_notification SET attempt_count=4 WHERE id=7801", "UPDATE care_plan_notification SET dispatch_key='' WHERE id=7801")) {
-                expectMysqlError(c, 3819, sql);
+                expectMysqlError(c, NativeMysqlTestVersion.is57() ? 1644 : 3819, sql);
             }
             // Every additive FK is tested on real rows, not merely counted.
             for (String target : Arrays.asList("care_plan_revision:plan_id:7201", "care_plan_action:plan_id:7301",
@@ -585,7 +594,7 @@ class CarePlanMysqlIntegrationTest {
         };
         try (Connection baseline = dataSource.getConnection()) {
             assertEquals(Connection.TRANSACTION_REPEATABLE_READ, baseline.getTransactionIsolation(), "The native datasource default must be RR");
-            assertEquals("REPEATABLE-READ", scalar(baseline, "SELECT @@SESSION.transaction_isolation"));
+            assertEquals("REPEATABLE-READ", scalar(baseline, (NativeMysqlTestVersion.is57()?"SELECT @@SESSION.tx_isolation":"SELECT @@SESSION.transaction_isolation")));
         }
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         CarePlanProperties properties = new CarePlanProperties(true,
@@ -725,7 +734,7 @@ class CarePlanMysqlIntegrationTest {
         }
     }
 
-    @Test @Order(8) void actualNotificationWorkerSkipLockedConcurrencyRecoveryAndDedup() throws Exception {
+    @Test @Order(8) void actualNotificationWorkerBoundedClaimConcurrencyRecoveryAndDedup() throws Exception {
         try(NativeServices h=nativeServices()) {
             h.jdbc.update("INSERT INTO notification_channel(id,user_id,channel_type,webhook_url,enabled) VALUES(8801,7001,'WEBHOOK','http://127.0.0.1:9/synthetic-disabled',1)");
             Map<String,Object> draft=h.plans.createDraft(7003,nativeBody(1),key());long plan=number(draft.get("id"));
@@ -734,10 +743,29 @@ class CarePlanMysqlIntegrationTest {
             try(Connection lock=connect(upgrade)) {
                 lock.setAutoCommit(false);execute(lock,"SELECT id FROM care_plan_notification WHERE id="+job+" FOR UPDATE");
                 long start=System.nanoTime();h.worker.tick(h.now.get());
-                assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<3000,"Production SKIP LOCKED must avoid waiting on another instance's claim");
-                assertEquals(0,h.transport.calls.size());lock.rollback();
+                assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<3000,"Claims must finish within the bounded contention deadline on both native versions");
+                assertEquals(0,h.transport.calls.size());
+                if (NativeMysqlTestVersion.is57()) {
+                    try (Connection reused=connect(upgrade)) {
+                        execute(reused,"SET SESSION innodb_lock_wait_timeout=7");
+                        JdbcTemplate sameSession=new JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(reused,true));
+                        CarePlanNotificationWorker sameWorker=new CarePlanNotificationWorker(sameSession,h.auth,h.properties,h.transport);
+                        long before=System.nanoTime();
+                        assertNull(org.springframework.test.util.ReflectionTestUtils.invokeMethod(sameWorker,"claim",h.now.get()));
+                        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-before)<3000,"Native lock timeout must bound an actual InnoDB contender");
+                        assertEquals("7",scalar(reused,"SELECT @@SESSION.innodb_lock_wait_timeout"),"A reused physical session must retain its original timeout after rollback");
+                        assertTrue(reused.getAutoCommit());
+                        assertEquals("QUEUED",h.state(job));
+                        assertNull(org.springframework.test.util.ReflectionTestUtils.invokeMethod(sameWorker,"claim",Instant.parse("1900-01-01T00:00:00Z")));
+                        assertEquals("7",scalar(reused,"SELECT @@SESSION.innodb_lock_wait_timeout"),"An empty successful claim must also restore the reused session");
+                    }
+                }
+                lock.rollback();
             }
-            assertTrue(h.sql.stream().anyMatch(sql->sql.contains("FOR UPDATE SKIP LOCKED")),"Actual MySQL claim SQL must execute; H2 fallback is not native proof");
+            if (NativeMysqlTestVersion.is57()) {
+                assertFalse(h.sql.stream().anyMatch(sql->sql.contains("SKIP LOCKED")),"5.7 must never receive unsupported syntax");
+                assertTrue(h.sql.stream().anyMatch(sql->sql.contains("ORDER BY next_attempt_at,id LIMIT 1 FOR UPDATE")),"Actual 5.7 row-lock claim must execute");
+            } else assertTrue(h.sql.stream().anyMatch(sql->sql.contains("FOR UPDATE SKIP LOCKED")),"Actual MySQL 8 claim SQL must execute; H2 fallback is not native proof");
             CountDownLatch sending=new CountDownLatch(1),release=new CountDownLatch(1);
             h.transport.beforeSend=()->{sending.countDown();await(release);};
             ExecutorService pool=Executors.newFixedThreadPool(2);
@@ -791,8 +819,18 @@ class CarePlanMysqlIntegrationTest {
             h.worker.tick(batchStart);h.transport.beforeSend=()->{};
             assertTrue(h.jdbc.queryForObject("SELECT request_id FROM care_plan_notification WHERE id=?",String.class,clockFirst).endsWith(":"+batchStart.toEpochMilli()));
             assertTrue(h.jdbc.queryForObject("SELECT request_id FROM care_plan_notification WHERE id=?",String.class,clockSecond).endsWith(":"+batchStart.plusSeconds(120).toEpochMilli()),"A later job's first-send clock must be captured after the earlier transport finishes");
+            long fenced=h.newJob();
+            Object stale=org.springframework.test.util.ReflectionTestUtils.invokeMethod(h.worker,"claim",h.now.get());
+            assertNotNull(stale);assertEquals(fenced,((Number)org.springframework.test.util.ReflectionTestUtils.getField(stale,"id")).longValue());
+            h.jdbc.update("UPDATE care_plan_notification SET claim_token='synthetic-new-owner' WHERE id=?",fenced);
+            assertNull(h.transaction(()->org.springframework.test.util.ReflectionTestUtils.invokeMethod(h.worker,"prepare",stale)),"Stale claim token cannot prepare a send");
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(h.worker,"complete",stale,"DELIVERED",h.now.get(),false);
+            assertEquals("CLAIMED",h.state(fenced));
+            assertEquals("synthetic-new-owner",h.jdbc.queryForObject("SELECT claim_token FROM care_plan_notification WHERE id=?",String.class,fenced));
+            h.jdbc.update("UPDATE care_plan_notification SET status='QUEUED',claim_token=NULL WHERE id=?",fenced);
+            h.worker.tick(h.now.get());
             for(TransportCall call:h.transport.calls){assertEquals("Care plan update",call.title);assertTrue(call.path.matches("/care-plans/[1-9][0-9]*"));}
-            System.out.println("Native actual worker SKIP LOCKED/concurrent claim/current authority/restart recovery/dedup/UNKNOWN/explicit retry budget and generic provider body verified; all external sends synthetic");
+            System.out.println("Native actual worker bounded claim/concurrent claim/current authority/restart recovery/dedup/UNKNOWN/explicit retry budget and generic provider body verified; all external sends synthetic");
         }
     }
 
@@ -812,7 +850,11 @@ class CarePlanMysqlIntegrationTest {
         HealthAutomationMysqlAssertions.verify(dataSource);
     }
 
-    @Test @Order(10) void restorePreservesAllPlanRelationships() throws Exception {
+    @Test @Order(10) void targetedUpgradePreservesPopulatedDataAndEnforcesEveryInvariant() throws Exception {
+        try (Connection c=connect(upgrade)) { Mysql57UpgradeAssertions.verify(c); }
+    }
+
+    @Test @Order(11) void restorePreservesAllPlanRelationships() throws Exception {
         Map<String, List<String>> beforeRestore;
         try (Connection c = connect(upgrade)) { assertRelationships(c); beforeRestore = comparisonSnapshot(snapshot(c), true); }
         Path directory = Files.createTempDirectory("care-plan-mysql-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
@@ -944,7 +986,7 @@ class CarePlanMysqlIntegrationTest {
             assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
             assertEquals(Integer.valueOf(Connection.TRANSACTION_READ_COMMITTED),
                     TransactionSynchronizationManager.getCurrentTransactionIsolationLevel(), "The actual @Transactional service must declare RC");
-            assertEquals("READ-COMMITTED", jdbc.queryForObject("SELECT @@SESSION.transaction_isolation", String.class), "Native effective isolation must be RC despite the RR datasource default");
+            assertEquals("READ-COMMITTED", jdbc.queryForObject((NativeMysqlTestVersion.is57()?"SELECT @@SESSION.tx_isolation":"SELECT @@SESSION.transaction_isolation"), String.class), "Native effective isolation must be RC despite the RR datasource default");
             String id = jdbc.queryForObject("SELECT CONNECTION_ID()", String.class);
             String previous = connectionIds.putIfAbsent(current, id);
             if (previous != null) assertEquals(previous, id, "Each command must stay on its own transaction-bound physical connection");
@@ -1041,7 +1083,8 @@ class CarePlanMysqlIntegrationTest {
             assertEquals("InnoDB", scalar(c, "SELECT ENGINE FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='" + table + "'"));
         }
         assertEquals("16", scalar(c, "SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema=DATABASE() AND constraint_type='FOREIGN KEY' AND (table_name LIKE 'care_plan_%' OR table_name IN ('care_nurse_assignment','doctor_care_plan'))"));
-        assertEquals("6", scalar(c, "SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema=DATABASE() AND constraint_type='CHECK' AND table_name LIKE 'care_plan_%'"));
+        if (NativeMysqlTestVersion.is57()) assertEquals("8", scalar(c, "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name IN ('cp57_revision_bi','cp57_revision_bu','cp57_action_bi','cp57_action_bu','cp57_notification_bi','cp57_notification_bu','cp57_command_bi','cp57_command_bu')"));
+        else assertEquals("6", scalar(c, "SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema=DATABASE() AND constraint_type='CHECK' AND table_name LIKE 'care_plan_%'"));
         assertEquals("0", scalar(c, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND data_type='datetime' AND (table_name LIKE 'care_plan_%' OR table_name='care_nurse_assignment') AND (datetime_precision<>6 OR column_default IS NOT NULL)"));
         for (String target : Arrays.asList("care_plan_notification:dispatch_key", "care_plan_command:command_key", "care_plan_command:payload_hash")) {
             String[] parts = target.split(":");
@@ -1070,7 +1113,8 @@ class CarePlanMysqlIntegrationTest {
         result.put("columns", rows(c, "SELECT TABLE_NAME,ORDINAL_POSITION,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,CHARACTER_SET_NAME,COLLATION_NAME,EXTRA FROM information_schema.columns WHERE table_schema=DATABASE()"));
         result.put("keys", rows(c, "SELECT TABLE_NAME,CONSTRAINT_NAME,COLUMN_NAME,ORDINAL_POSITION,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM information_schema.key_column_usage WHERE constraint_schema=DATABASE()"));
         result.put("indexes", rows(c, "SELECT TABLE_NAME,INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,COLLATION,SUB_PART,INDEX_TYPE FROM information_schema.statistics WHERE table_schema=DATABASE()"));
-        result.put("checks", rows(c, "SELECT CONSTRAINT_NAME,CHECK_CLAUSE FROM information_schema.check_constraints WHERE constraint_schema=DATABASE()"));
+        if (!NativeMysqlTestVersion.is57()) result.put("checks", rows(c, "SELECT CONSTRAINT_NAME,CHECK_CLAUSE FROM information_schema.check_constraints WHERE constraint_schema=DATABASE()"));
+        result.put("triggers", rows(c, "SELECT TRIGGER_NAME,EVENT_MANIPULATION,EVENT_OBJECT_TABLE,ACTION_ORDER,ACTION_CONDITION,ACTION_STATEMENT,ACTION_ORIENTATION,ACTION_TIMING,SQL_MODE FROM information_schema.triggers WHERE trigger_schema=DATABASE()"));
         result.put("foreign-key-rules", rows(c, "SELECT TABLE_NAME,CONSTRAINT_NAME,REFERENCED_TABLE_NAME,UPDATE_RULE,DELETE_RULE FROM information_schema.referential_constraints WHERE constraint_schema=DATABASE()"));
         return result;
     }
@@ -1146,7 +1190,7 @@ class CarePlanMysqlIntegrationTest {
         try (Statement statement = connection.createStatement()) {
             statement.execute("SET SESSION time_zone='+00:00'");
             // Fresh metadata avoids cached pre-insert AUTO_INCREMENT statistics.
-            statement.execute("SET SESSION information_schema_stats_expiry=0");
+            if (!NativeMysqlTestVersion.is57()) statement.execute("SET SESSION information_schema_stats_expiry=0");
         } catch (SQLException failure) { connection.close(); throw failure; }
         return connection;
     }

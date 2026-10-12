@@ -24,6 +24,10 @@ function run(overrides = {}, args = ['--check-guards']) {
 for (const [label, overrides, expected] of [
   ['missing test flag', { CARE_PLAN_TEST_ONLY: undefined }, 'CARE_PLAN_TEST_ONLY'],
   ['false test flag', { CARE_PLAN_TEST_ONLY: 'false' }, 'CARE_PLAN_TEST_ONLY'],
+  ['empty version selector', { CARE_PLAN_MYSQL_VERSION: '' }, 'version'],
+  ['unbounded 5.7 selector', { CARE_PLAN_MYSQL_VERSION: '5.7' }, 'version'],
+  ['different 5.7 patch', { CARE_PLAN_MYSQL_VERSION: '5.7.44' }, 'version'],
+  ['unexpected server family', { CARE_PLAN_MYSQL_VERSION: 'mariadb:10.11' }, 'version'],
   ['invalid browser release flag', { CARE_PLAN_BROWSER_REQUIRED: 'false' }, 'CARE_PLAN_BROWSER_REQUIRED'],
   ['production host', { CARE_PLAN_MYSQL_HOST: 'db.example.org' }, 'host'],
   ['IPv4 host suffix', { CARE_PLAN_MYSQL_HOST: '127.0.0.1.attacker.test' }, 'host'],
@@ -72,20 +76,25 @@ import os from 'node:os'
 function syntheticService(initialDatabases, action, options = {}) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'care-plan-mysql-guards-'))
   const stateFile = path.join(directory, 'state.json')
+  const queryFile = path.join(directory, 'queries.txt')
+  writeFileSync(queryFile, '')
   writeFileSync(stateFile, JSON.stringify({ databases: initialDatabases, users: [], grants: [] }))
   writeFileSync(path.join(directory, 'docker'), `#!/usr/bin/env node
 const fs = require('node:fs')
 const args = process.argv.slice(2)
 if (args[0] === 'inspect') {
   const format = args[args.indexOf('--format') + 1]
-  console.log(format === '{{.Config.Image}}' ? 'mysql:8.0' : format === '{{.Image}}' ? 'sha256:synthetic-only' : process.env.CARE_PLAN_MYSQL_TEST_SERVICE_ENV)
+  console.log(format === '{{.Config.Image}}' ? process.env.CARE_PLAN_MYSQL_TEST_SERVICE_IMAGE : format === '{{.Image}}' ? 'sha256:synthetic-only' : process.env.CARE_PLAN_MYSQL_TEST_SERVICE_ENV)
   process.exit(0)
 }
 if (!args.includes('mysql') || !args.includes('--protocol=socket') || !args.includes('--user=root')) process.exit(90)
 const sql = fs.readFileSync(0, 'utf8')
-if (sql.startsWith('SELECT CURRENT_USER()')) { console.log('root@localhost\\t8.0.99-synthetic'); process.exit(0) }
+if (sql.startsWith('SELECT ') || sql.startsWith('SET GLOBAL ') || sql.startsWith('GRANT ')) fs.appendFileSync(process.env.CARE_PLAN_MYSQL_TEST_QUERY_FILE, sql)
+if (sql.startsWith('SELECT CURRENT_USER()')) { console.log(process.env.CARE_PLAN_MYSQL_TEST_IDENTITY); process.exit(0) }
 if (sql.includes("FROM mysql.user WHERE User='root'")) { console.log(process.env.CARE_PLAN_MYSQL_TEST_NONLOCAL_ROOTS); process.exit(0) }
-if (sql.includes('@@GLOBAL.partial_revokes')) { console.log(process.env.CARE_PLAN_MYSQL_TEST_PARTIAL_REVOKES); process.exit(0) }
+if (sql.includes('@@GLOBAL.partial_revokes')) { if (process.env.CARE_PLAN_MYSQL_TEST_IDENTITY.endsWith('5.7.18')) process.exit(95); console.log(process.env.CARE_PLAN_MYSQL_TEST_PARTIAL_REVOKES); process.exit(0) }
+if (sql.startsWith('SET GLOBAL log_bin_trust_function_creators=1;')) process.exit(Number(process.env.CARE_PLAN_MYSQL_TEST_SET_TRUST_STATUS))
+if (sql.includes('@@GLOBAL.log_bin_trust_function_creators')) { console.log(process.env.CARE_PLAN_MYSQL_TEST_TRUST_CREATORS); process.exit(0) }
 const file = process.env.CARE_PLAN_MYSQL_TEST_STATE
 const state = JSON.parse(fs.readFileSync(file, 'utf8'))
 let match
@@ -128,11 +137,17 @@ process.exit(42)
 `, { mode: 0o700 })
   try {
     const result = run({ PATH: `${directory}:${valid.PATH}`, CARE_PLAN_MYSQL_TEST_STATE: stateFile,
+      CARE_PLAN_MYSQL_VERSION: options.version,
+      CARE_PLAN_MYSQL_TEST_QUERY_FILE: queryFile,
+      CARE_PLAN_MYSQL_TEST_SERVICE_IMAGE: options.image ?? 'mysql:8.0',
+      CARE_PLAN_MYSQL_TEST_IDENTITY: options.identity ?? 'root@localhost\t8.0.99-synthetic',
       CARE_PLAN_MYSQL_TEST_SERVICE_ENV: options.serviceEnv ?? 'MYSQL_ALLOW_EMPTY_PASSWORD=yes\nMYSQL_ROOT_HOST=localhost',
       CARE_PLAN_MYSQL_TEST_NONLOCAL_ROOTS: String(options.nonlocalRoots ?? 0),
       CARE_PLAN_MYSQL_TEST_PARTIAL_REVOKES: String(options.partialRevokes ?? 0),
+      CARE_PLAN_MYSQL_TEST_SET_TRUST_STATUS: String(options.setTrustStatus ?? 0),
+      CARE_PLAN_MYSQL_TEST_TRUST_CREATORS: String(options.trustCreators ?? 1),
       CARE_PLAN_MYSQL_TEST_DENIED_DB: options.deniedDb }, [])
-    action(result, JSON.parse(readFileSync(stateFile, 'utf8')))
+    action(result, JSON.parse(readFileSync(stateFile, 'utf8')), readFileSync(queryFile, 'utf8'))
   } finally { rmSync(directory, { recursive: true, force: true }) }
 }
 test('a failed native test run cleans exactly its created schemas and ephemeral user', () => {
@@ -164,16 +179,18 @@ for (const [label, serviceEnv] of [
   })
 }
 test('refuses an actual non-local root account even when the service environment is safe', () => {
-  syntheticService(['care_plan_test_foreign'], (result, state) => {
+  syntheticService(['care_plan_test_foreign'], (result, state, queries) => {
     assert.equal(result.status, 64, result.stderr)
     assert.match(result.stderr, /non-local root account/)
+    assert.doesNotMatch(queries, /SET GLOBAL/)
     assert.deepEqual(state, { databases: ['care_plan_test_foreign'], users: [], grants: [] })
   }, { nonlocalRoots: 1 })
 })
 test('refuses incompatible partial-revoke semantics before issuing database grants', () => {
-  syntheticService(['care_plan_test_foreign'], (result, state) => {
+  syntheticService(['care_plan_test_foreign'], (result, state, queries) => {
     assert.equal(result.status, 64, result.stderr)
     assert.match(result.stderr, /partial_revokes/)
+    assert.doesNotMatch(queries, /SET GLOBAL/)
     assert.deepEqual(state, { databases: ['care_plan_test_foreign'], users: [], grants: [] })
   }, { partialRevokes: 1 })
 })
@@ -182,6 +199,127 @@ test('escaped grants deny a sibling matched by the original underscore wildcard'
     assert.equal(result.status, 42, result.stderr)
     assert.deepEqual(state, { databases: ['care_plan_test_en_123xfresh'], users: [], grants: [] })
   }, { deniedDb: 'care_plan_test_en_123xfresh' })
+})
+
+// These exercise the real wrapper through synthetic process boundaries only.
+// The separate CI jobs must execute the actual, version-verified MySQL servers.
+const mysql57Image = 'mysql:5.7.18@sha256:d178dffba8d81afedc251498e227607934636e06228ac63d58b72f9e9ec271a6'
+for (const version of ['8.0', '5.7.18']) {
+  test(`explicit ${version} selector passes only the non-destructive input guards`, () => {
+    const result = run({ CARE_PLAN_MYSQL_VERSION: version })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /no database\/client operation performed/)
+  })
+}
+for (const image of ['mysql:5.7.18', mysql57Image]) {
+  test(`explicit 5.7.18 service ${image} skips the unavailable partial_revokes variable and cleans its own objects`, () => {
+    syntheticService(['care_plan_test_foreign'], (result, state, queries) => {
+      assert.equal(result.status, 42, result.stderr)
+      assert.match(result.stdout, /Native MySQL service: 5\.7\.18;/)
+      assert.doesNotMatch(queries, /partial_revokes/)
+      assert.match(queries, /FROM mysql\.user WHERE User='root'/)
+      assert.deepEqual(state, { databases: ['care_plan_test_foreign'], users: [], grants: [] })
+      assert.doesNotMatch(result.stdout + result.stderr, /SyntheticOnly0123456789abc/)
+    }, { version: '5.7.18', image, identity: 'root@localhost\t5.7.18' })
+  })
+}
+for (const [label, options] of [
+  ['implicit downgrade to 5.7.18', { image: mysql57Image, identity: 'root@localhost\t5.7.18' }],
+  ['5.7.18 selection backed by an 8.0 image', { version: '5.7.18' }],
+  ['different official 5.7 patch image', { version: '5.7.18', image: 'mysql:5.7.44', identity: 'root@localhost\t5.7.44' }],
+  ['lookalike image', { version: '5.7.18', image: 'attacker/mysql:5.7.18', identity: 'root@localhost\t5.7.18' }],
+  ['invalid image digest', { version: '5.7.18', image: 'mysql:5.7.18@sha256:invalid', identity: 'root@localhost\t5.7.18' }],
+  ['5.7.18 image with a different patch server', { version: '5.7.18', image: mysql57Image, identity: 'root@localhost\t5.7.44' }],
+  ['5.7.18 prefix lookalike version', { version: '5.7.18', image: mysql57Image, identity: 'root@localhost\t5.7.180' }],
+  ['5.7.18 vendor suffix', { version: '5.7.18', image: mysql57Image, identity: 'root@localhost\t5.7.18-MariaDB' }],
+  ['unexpected socket identity', { version: '5.7.18', image: mysql57Image, identity: 'root@%\t5.7.18' }]
+]) {
+  test(`refuses ${label} before creating schemas or users`, () => {
+    syntheticService(['care_plan_test_foreign'], (result, state, queries) => {
+      assert.equal(result.status, 64, result.stderr)
+      assert.match(result.stderr, /image|identity\/version/)
+      assert.doesNotMatch(queries, /SET GLOBAL/)
+      assert.deepEqual(state, { databases: ['care_plan_test_foreign'], users: [], grants: [] })
+    }, options)
+  })
+}
+test('explicit MySQL 8.0 still checks partial_revokes and preserves failure cleanup', () => {
+  syntheticService(['care_plan_test_foreign'], (result, state, queries) => {
+    assert.equal(result.status, 42, result.stderr)
+    assert.match(queries, /SELECT @@GLOBAL\.partial_revokes/)
+    assert.deepEqual(state, { databases: ['care_plan_test_foreign'], users: [], grants: [] })
+  }, { version: '8.0' })
+})
+test('MySQL 5.7.18 retains exact escaped schema grants', () => {
+  syntheticService(['care_plan_test_en_123xfresh'], (result, state) => {
+    assert.equal(result.status, 42, result.stderr)
+    assert.deepEqual(state, { databases: ['care_plan_test_en_123xfresh'], users: [], grants: [] })
+  }, { version: '5.7.18', image: mysql57Image, identity: 'root@localhost\t5.7.18', deniedDb: 'care_plan_test_en_123xfresh' })
+})
+for (const options of [{ version: '8.0' }, { version: '5.7.18', image: mysql57Image, identity: 'root@localhost\t5.7.18' }]) {
+  test(`MySQL ${options.version} configures verified disposable trigger support without global user grants`, () => {
+    syntheticService(['care_plan_test_foreign'], (result, state, queries) => {
+      assert.equal(result.status, 42, result.stderr)
+      assert.match(queries, /FROM mysql\.user WHERE User='root'[\s\S]*SET GLOBAL log_bin_trust_function_creators=1;\nSELECT @@GLOBAL\.log_bin_trust_function_creators;/)
+      assert.equal(queries.match(/SET GLOBAL /g)?.length, 1)
+      const grants = queries.split('\n').filter(line => line.startsWith('GRANT '))
+      assert.equal(grants.length, 3)
+      for (const grant of grants) {
+        assert.match(grant, /^GRANT ALL PRIVILEGES ON `care\\_plan\\_test\\_[^`]+`\.\* TO 'care_plan_test_en_123'@'%';$/)
+        assert.doesNotMatch(grant, /SUPER|ON \*\.\*|WITH GRANT OPTION/)
+      }
+      assert.deepEqual(state, { databases: ['care_plan_test_foreign'], users: [], grants: [] })
+    }, options)
+  })
+  test(`MySQL ${options.version} refuses unverified trigger support before schema or user creation`, () => {
+    syntheticService(['care_plan_test_foreign'], (result, state) => {
+      assert.equal(result.status, 64, result.stderr)
+      assert.match(result.stderr, /log_bin_trust_function_creators/)
+      assert.deepEqual(state, { databases: ['care_plan_test_foreign'], users: [], grants: [] })
+    }, { ...options, trustCreators: 0 })
+  })
+}
+test('failure to configure disposable trigger support stops before schema or user creation', () => {
+  syntheticService(['care_plan_test_foreign'], (result, state, queries) => {
+    assert.equal(result.status, 96, result.stderr)
+    assert.doesNotMatch(queries, /SELECT @@GLOBAL\.log_bin_trust_function_creators|GRANT /)
+    assert.deepEqual(state, { databases: ['care_plan_test_foreign'], users: [], grants: [] })
+  }, { setTrustStatus: 96 })
+})
+const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8')
+function workflowJob(name) {
+  return workflow.split(`\n  ${name}:`)[1]?.split(/\n  [a-zA-Z0-9_-]+:/)[0] ?? ''
+}
+test('CI requires exact official native MySQL 5.7.18 in both editions with bounded diagnostics', () => {
+  const job = workflowJob('care-plan-mysql57')
+  assert.ok(job, 'A separate required native 5.7.18 acceptance job is required')
+  assert.ok(job.includes(`image: ${mysql57Image}`), 'Pin the verified official manifest, not an image config digest')
+  assert.match(job, /language: en/)
+  assert.match(job, /language: cn/)
+  assert.match(job, /CARE_PLAN_MYSQL_VERSION: '5\.7\.18'/)
+  assert.match(job, /MYSQL_ROOT_HOST: 'localhost'/)
+  assert.match(job, /127\.0\.0\.1:13306:3306/)
+  assert.match(job, /for pass in 1 2; do/)
+  assert.match(job, /bash scripts\/verify-care-plan-mysql\.sh/)
+  assert.match(job, /node --test scripts\/tests\/care-plan-mysql-guards\.test\.mjs/)
+  assert.match(job, /node --test scripts\/tests\/mysql57-upgrade\.test\.mjs/)
+  assert.match(job, /apt-get install --yes --no-install-recommends fonts-wqy-microhei python3-fonttools/)
+  assert.match(job, /\/usr\/bin\/python3 scripts\/tests\/care-report-font\.test\.py/)
+  assert.match(job, /\/usr\/bin\/python3 scripts\/prepare-care-report-font\.py/)
+  assert.ok(job.indexOf('scripts/prepare-care-report-font.py') < job.indexOf('bash scripts/verify-care-plan-mysql.sh'))
+  assert.match(job, /python3 scripts\/collect-native-diagnostics\.py/)
+  assert.match(job, /if: always\(\)[\s\S]*actions\/upload-artifact@v4/)
+  assert.match(job, /native-diagnostics\.json/)
+  assert.doesNotMatch(job, /continue-on-error|\|\|\s*true|H2|5\.7\.44|CARE_PLAN_BROWSER_REQUIRED/)
+})
+test('existing MySQL 8.0 native and browser release gate remains required', () => {
+  const job = workflowJob('care-plan-mysql')
+  assert.match(job, /image: mysql:8\.0\s/)
+  assert.match(job, /for pass in 1 2; do/)
+  assert.match(job, /export CARE_PLAN_BROWSER_REQUIRED=true/)
+  assert.match(job, /playwright install --with-deps chromium/)
+  assert.match(job, /name: Preserve bounded final browser outcomes/)
+  assert.doesNotMatch(job, /continue-on-error|\|\|\s*true/)
 })
 
 import { readdirSync } from 'node:fs'

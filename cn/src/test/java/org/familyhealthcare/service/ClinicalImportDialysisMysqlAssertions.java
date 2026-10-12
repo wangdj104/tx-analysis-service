@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/** Called only from the existing guarded disposable MySQL 8.0 acceptance test. */
+/** Called only from the existing guarded disposable MySQL 5.7.18/8.0 acceptance test. */
 final class ClinicalImportDialysisMysqlAssertions {
     private static final long PATIENT = 991901L, OTHER_PATIENT = 991902L;
     private ClinicalImportDialysisMysqlAssertions() { }
@@ -26,7 +26,7 @@ final class ClinicalImportDialysisMysqlAssertions {
     static void verify(DataSource dataSource) throws Exception {
         try (Connection connection = dataSource.getConnection()) {
             assertEquals("MySQL", connection.getMetaData().getDatabaseProductName());
-            assertTrue(connection.getMetaData().getDatabaseProductVersion().startsWith("8.0."));
+            assertTrue(NativeMysqlTestVersion.matches(NativeMysqlTestVersion.selected(),connection.getMetaData().getDatabaseProductVersion()));
         }
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
         context.registerBean("dataSource", DataSource.class, () -> dataSource);

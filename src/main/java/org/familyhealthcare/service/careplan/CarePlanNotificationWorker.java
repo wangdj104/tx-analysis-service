@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionSystemException;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import java.sql.*;
@@ -19,7 +20,7 @@ import static org.familyhealthcare.service.careplan.CarePlanData.*;
 import static org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryOutcome;
 import static org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryAttempt;
 
-/** Same-transaction durable outbox, short nonblocking claims and conservative uncertain-result recovery. */
+/** Same-transaction durable outbox, bounded-wait claims and conservative uncertain-result recovery. */
 @Service
 @ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
@@ -133,6 +134,15 @@ public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
             String token=UUID.randomUUID().toString();update("UPDATE care_plan_notification SET status='CLAIMED',claimed_at=?,claim_token=?,last_result='CLAIMED_UNATTEMPTED',updated_at=? WHERE id=?",now,token,now,row.id);row.token=token;row.status="CLAIMED";return row;
             }finally{lock.restore();}
         });}catch(CannotAcquireLockException busy){return null;}
+        catch(TransactionSystemException cleanupFailure) {
+            // Aborting a dirty session can make Spring's subsequent rollback fail; retain the actual cause.
+            if(cleanupFailure.getApplicationException() instanceof ClaimSessionRestoreException) {
+                ClaimSessionRestoreException original=(ClaimSessionRestoreException)cleanupFailure.getApplicationException();
+                if(cleanupFailure.getCause()!=null)original.addSuppressed(cleanupFailure.getCause());
+                throw original;
+            }
+            throw cleanupFailure;
+        }
     }
     private Job prepare(Job row) {
         if(!"CLAIMED".equals(row.status)||row.token==null)return null;
@@ -224,21 +234,43 @@ public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
         String result=rs.getString("last_result");return map("id",rs.getLong("id"),"status",rs.getString("status"),"attemptCount",rs.getInt("attempt_count"),"nextAttemptAt",time(rs,"next_attempt_at"),"lastResult",RESULTS.contains(result)?result:null,"deliveredAt",time(rs,"delivered_at"),"createdAt",time(rs,"created_at"),"updatedAt",time(rs,"updated_at"));
     }
     private <T>T inTransaction(Supplier<T> work){TransactionTemplate transaction=new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);return transaction.execute(s->{mutationTransaction(jdbc);return work.get();});}
-    /** H2 is a test-scoped dependency. Its NOWAIT syntax alone still waits, so bound only that test session. */
+    /** MySQL 5.7 lacks SKIP LOCKED: bound the claim's row-lock wait and restore pooled session state. */
     private ClaimLock claimLock(){return jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<ClaimLock>)connection->{
-        String database=connection.getMetaData().getDatabaseProductName();
-        if("MySQL".equals(database))return new ClaimLock("FOR UPDATE SKIP LOCKED",null);
+        DatabaseMetaData metadata=connection.getMetaData();
+        String database=metadata.getDatabaseProductName();
+        if("MySQL".equals(database)) {
+            int major=metadata.getDatabaseMajorVersion(),minor=metadata.getDatabaseMinorVersion();
+            if(major>=8&&minor>=0)return new ClaimLock("FOR UPDATE SKIP LOCKED",null);
+            if(major==5&&minor==7) {
+                int previous;try(Statement statement=connection.createStatement();ResultSet value=statement.executeQuery("SELECT @@SESSION.innodb_lock_wait_timeout")){value.next();previous=value.getInt(1);}
+                try(Statement statement=connection.createStatement()){statement.execute("SET SESSION innodb_lock_wait_timeout = 1");}
+                return new ClaimLock("FOR UPDATE","SET SESSION innodb_lock_wait_timeout = "+previous);
+            }
+            throw new IllegalStateException("Unsupported care-plan notification MySQL version.");
+        }
+        // H2 is test-only. Its NOWAIT syntax alone still waits, so also bound that session.
         if("H2".equals(database)) {
             int previous;try(Statement statement=connection.createStatement();ResultSet value=statement.executeQuery("CALL LOCK_TIMEOUT()")){value.next();previous=value.getInt(1);}
             try(Statement statement=connection.createStatement()){statement.execute("SET LOCK_TIMEOUT 1");}
-            return new ClaimLock("FOR UPDATE NOWAIT",previous);
+            return new ClaimLock("FOR UPDATE NOWAIT","SET LOCK_TIMEOUT "+previous);
         }
         throw new IllegalStateException("Unsupported care-plan notification database.");
     });}
     private final class ClaimLock {
-        final String clause;final Integer previous;
-        ClaimLock(String clause,Integer previous){this.clause=clause;this.previous=previous;}
-        void restore(){if(previous!=null)jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{try(Statement statement=connection.createStatement()){statement.execute("SET LOCK_TIMEOUT "+previous);}return null;});}
+        final String clause,restoreSql;
+        ClaimLock(String clause,String restoreSql){this.clause=clause;this.restoreSql=restoreSql;}
+        void restore(){if(restoreSql!=null)jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
+            try(Statement statement=connection.createStatement()){statement.execute(restoreSql);}
+            catch(SQLException restoreFailure) {
+                // A pool does not reset arbitrary session variables. Abort the physical connection, not its handle.
+                try{connection.abort(Runnable::run);}catch(SQLException|RuntimeException abortFailure){restoreFailure.addSuppressed(abortFailure);}
+                throw new ClaimSessionRestoreException(restoreFailure);
+            }
+            return null;
+        });}
+    }
+    private static final class ClaimSessionRestoreException extends IllegalStateException {
+        ClaimSessionRestoreException(SQLException cause){super("Cannot restore notification claim session timeout.",cause);}
     }
     private <T>List<T>query(String sql,RowMapper<T> mapper,Object... args){return jdbc.query(sql,ps->bind(ps,args),mapper);}
     private int update(String sql,Object... args){return jdbc.update(sql,ps->bind(ps,args));}

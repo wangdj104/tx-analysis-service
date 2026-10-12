@@ -8,6 +8,9 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const editions = ['.', 'cn']
 const expectedCategories = {
+  'mysql57_preflight_20261012.sql': '只读检查',
+  'mysql57_schema_upgrade_20261012.sql': '旧库升级',
+  'mysql57_postcheck_20261012.sql': '只读检查',
   'init.sql': '新库基础',
   'doctor_workspace_20260921.sql': '旧库升级',
   'care_platform_upgrade_20260921.sql': '旧库升级',

@@ -19,7 +19,7 @@ public final class MedicalRecordMysqlAssertions {
     public static void verify(DataSource dataSource) throws Exception {
         JdbcTemplate jdbc=new JdbcTemplate(dataSource);
         assertTrue(jdbc.queryForObject("SELECT DATABASE()",String.class).matches("care_plan_test_[a-z0-9_]+"),"Only the already guarded disposable database is allowed");
-        assertTrue(jdbc.queryForObject("SELECT VERSION()",String.class).startsWith("8.0."),"Actual native MySQL 8.0 is required");
+        assertTrue(NativeMysqlTestVersion.matches(NativeMysqlTestVersion.selected(),jdbc.queryForObject("SELECT VERSION()",String.class)),"Explicitly selected native MySQL version is required");
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM sys_user WHERE id IN (?,?)",Integer.class,OWNER,DOCTOR));
         jdbc.update("INSERT INTO sys_user(id,username,password,real_name) VALUES(?,?,'not-a-real-credential','Synthetic medical owner'),(?,?,'not-a-real-credential','Synthetic medical doctor')",OWNER,"medical-risk-synthetic-owner",DOCTOR,"medical-risk-synthetic-doctor");
         jdbc.update("INSERT INTO sys_user_role(user_id,role_id) SELECT ?,id FROM sys_role WHERE role_code='patient'",OWNER);
