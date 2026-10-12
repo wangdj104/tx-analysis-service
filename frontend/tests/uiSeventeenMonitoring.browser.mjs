@@ -319,7 +319,7 @@ async function capture(page, result, suffix, { preserveHover = false } = {}) {
         return { name: element.textContent.trim(), ...describe(element), clippingAncestors }
       }),
     } : null
-    return { innerWidth, scrollWidth: document.documentElement.scrollWidth, bodyScrollWidth: document.body.scrollWidth, scrollY, scrollHeight: document.documentElement.scrollHeight, bpSummary, controls: [...document.querySelectorAll('.monitoring-controls')].map(describe), outsideViewport: [...document.querySelectorAll('.fixture-toolbar,.monitoring-head,.monitoring-controls,.monitor-panel,.el-popper,.bp-monitor-page .page-inner,.bp-summary .summary-item')].map(describe).filter(rect => rect.width && (rect.left < 0 || rect.right > innerWidth)) }
+    return { innerWidth, scrollWidth: document.documentElement.scrollWidth, bodyScrollWidth: document.body.scrollWidth, scrollY, scrollHeight: document.documentElement.scrollHeight, bpSummary, tooltipLeaveTraces: window.__uiSeventeenMonitoringTooltipLeaves || [], controls: [...document.querySelectorAll('.monitoring-controls')].map(describe), outsideViewport: [...document.querySelectorAll('.fixture-toolbar,.monitoring-head,.monitoring-controls,.monitor-panel,.el-popper,.bp-monitor-page .page-inner,.bp-summary .summary-item')].map(describe).filter(rect => rect.width && (rect.left < 0 || rect.right > innerWidth)) }
   })
   result.geometry ||= []; result.geometry.push({ suffix, ...geometry })
   await mkdir(join(evidence, 'monitoring', commit, runId), { recursive: true })
@@ -335,13 +335,77 @@ async function capture(page, result, suffix, { preserveHover = false } = {}) {
 }
 async function waitGate(gate) { await expect.poll(() => gate.waiting).toBe(true) }
 async function open(page, origin, surface) { await page.goto(`${origin}/?surface=${surface}`); await page.getByTestId('fixture-patient').waitFor() }
+// Observation only: no dispatched events, focus changes, styles or tooltip state.
+function monitoringTooltipInputTrace(operation) {
+  const eventNames = ['focus', 'blur', 'mouseenter', 'mouseleave']
+  if (operation === 'start') {
+    const trace = { events: [], states: [], initialFocus: document.activeElement }
+    const describe = element => element ? { tag: element.tagName, className: element.className, role: element.getAttribute('role') } : null
+    trace.state = step => {
+      const trigger = document.querySelector('.control-field--switch .el-switch'), refresh = document.querySelector('.refresh-button'), tooltip = document.querySelector('.monitoring-auto-refresh-tooltip')
+      const style = tooltip && getComputedStyle(tooltip)
+      trace.states.push({ step, activeElement: describe(document.activeElement), triggerFocused: !!trigger?.contains(document.activeElement), triggerHovered: !!trigger?.matches(':hover'), refreshFocused: document.activeElement === refresh, refreshEnabled: !!refresh && !refresh.disabled, tooltipHovered: !!tooltip?.matches(':hover'), tooltip: tooltip ? { ariaHidden: tooltip.getAttribute('aria-hidden'), display: style.display, visibility: style.visibility } : null })
+      if (trace.states.length > 8) trace.states.shift()
+    }
+    trace.listener = event => {
+      if (!event.target?.closest?.('.control-field--switch,.monitoring-auto-refresh-tooltip,.refresh-button')) return
+      trace.events.push({ type: event.type, trusted: event.isTrusted, timestamp: event.timeStamp, target: describe(event.target), relatedTarget: describe(event.relatedTarget) })
+      if (trace.events.length > 32) trace.events.shift()
+    }
+    window.__uiSeventeenMonitoringTooltipTrace = trace
+    for (const name of eventNames) document.addEventListener(name, trace.listener, true)
+    trace.state('before')
+    return
+  }
+  const trace = window.__uiSeventeenMonitoringTooltipTrace
+  if (!trace) return
+  trace.state(operation)
+  if (operation === 'focus-unchanged') return document.activeElement === trace.initialFocus
+  if (operation === 'pointer-neutral') return !trace.states.at(-1).triggerHovered && !trace.states.at(-1).tooltipHovered
+  if (operation === 'finish') {
+    for (const name of eventNames) document.removeEventListener(name, trace.listener, true)
+    window.__uiSeventeenMonitoringTooltipLeaves ||= []
+    window.__uiSeventeenMonitoringTooltipLeaves.push({ events: trace.events, states: trace.states, focusUnchanged: document.activeElement === trace.initialFocus })
+    if (window.__uiSeventeenMonitoringTooltipLeaves.length > 8) window.__uiSeventeenMonitoringTooltipLeaves.shift()
+    delete window.__uiSeventeenMonitoringTooltipTrace
+  }
+}
+async function leaveMonitoringTooltip(page, { mode = 'hover' } = {}) {
+  const input = page.locator('.control-field--switch .el-switch').getByRole('switch')
+  const refresh = page.locator('.refresh-button')
+  // Establish a genuine focus/blur path instead of assuming a prior wrapper
+  // click focused its native input or an unchecked focus() call moved it away.
+  await page.evaluate(monitoringTooltipInputTrace, 'start')
+  try {
+    if (mode === 'reset') {
+      // Only initial timer cleanup may establish a fresh keyboard state.
+      await expect(refresh).toBeEnabled()
+      await input.focus(); await expect(input).toBeFocused()
+      await page.evaluate(monitoringTooltipInputTrace, 'switch-focused')
+    } else if (mode === 'focus') {
+      await expect(input).toBeFocused(); await expect(refresh).toBeEnabled()
+      expect(await page.evaluate(monitoringTooltipInputTrace, 'pointer-neutral')).toBe(true)
+    }
+    if (mode !== 'hover') {
+      await page.keyboard.press('Tab'); await expect(refresh).toBeFocused()
+      await page.evaluate(monitoringTooltipInputTrace, 'refresh-focused')
+    }
+    if (mode !== 'focus') {
+      // Pure hover leave never adds focus/Tab; keyboard leave never moves the pointer.
+      await page.getByTestId('fixture-patient').hover()
+      await page.evaluate(monitoringTooltipInputTrace, 'neutral-hover')
+    }
+    if (mode === 'hover') expect(await page.evaluate(monitoringTooltipInputTrace, 'focus-unchanged')).toBe(true)
+    await expect(page.locator('.monitoring-auto-refresh-tooltip')).toBeHidden()
+    await waitForMonitoringLayout(page)
+  } finally {
+    await page.evaluate(monitoringTooltipInputTrace, 'finish')
+  }
+}
 async function stopMonitoringTimer(page) {
   const control = page.locator('.control-field--switch .el-switch')
   if (await control.getAttribute('aria-checked') === 'true' || await control.locator('input').isChecked()) await control.click()
-  // Move both actual hover and keyboard focus away without changing reading data.
-  await page.mouse.move(0, 0); await page.locator('.refresh-button').focus()
-  await expect(page.locator('.monitoring-auto-refresh-tooltip')).toBeHidden()
-  await waitForMonitoringLayout(page)
+  await leaveMonitoringTooltip(page, { mode: 'reset' })
 }
 async function filter(page, label) { await page.locator('.filter-switch .el-radio-button').filter({ hasText: new RegExp(`^${label}$`) }).click() }
 
@@ -354,7 +418,7 @@ async function verifyMonitoringTooltip(page, result, words) {
   const control = page.locator('.control-field--switch .el-switch')
   const tooltip = page.locator('.monitoring-auto-refresh-tooltip')
   for (const mode of ['hover', 'focus']) {
-    if (mode === 'hover') await control.hover()
+    if (mode === 'hover') { await expect(page.locator('.refresh-button')).toBeFocused(); await control.hover() }
     else { await control.getByRole('switch').focus(); await expect(control.getByRole('switch')).toBeFocused() }
     await expect(tooltip).toBeVisible(); await expect(tooltip).toContainText(words.tooltipOff)
     await waitForMonitoringLayout(page)
@@ -363,8 +427,7 @@ async function verifyMonitoringTooltip(page, result, words) {
     assertMonitoringTooltipBounds(geometry, result.viewport)
     if (mode === 'hover') await capture(page, result, 'monitoring-visible-tooltip', { preserveHover: true })
     else await capture(page, result, 'monitoring-keyboard-tooltip', { preserveHover: true })
-    await page.mouse.move(0, 0); await page.locator('.refresh-button').focus()
-    await expect(tooltip).toBeHidden(); await waitForMonitoringLayout(page)
+    await leaveMonitoringTooltip(page, { mode })
   }
   result.checks.push('Monitoring help is visible through native hover and keyboard focus, fits the exact viewport, and finishes its real leave transition before unrelated screenshots')
 }
