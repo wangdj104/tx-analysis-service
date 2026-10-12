@@ -7,6 +7,7 @@ import org.mybatis.spring.mapper.MapperFactoryBean;
 import org.familyhealthcare.mapper.*;
 import org.familyhealthcare.service.impl.MedicalRecordServiceImpl;
 import org.familyhealthcare.util.DataScopeHelper;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -17,7 +18,7 @@ import static org.mockito.Mockito.mock;
 
 /** Small actual mapper/transaction context for H2 and guarded native MySQL synthetic tests. */
 final class MedicalRecordPersistenceHarness {
-    @Configuration @EnableTransactionManagement static class TxConfig { }
+    @TestConfiguration @EnableTransactionManagement static class TxConfig { }
     static GenericApplicationContext create(DataSource dataSource,Interceptor... plugins) throws Exception {
         GenericApplicationContext context=new GenericApplicationContext();
         context.registerBean(JdbcTemplate.class,()->new JdbcTemplate(dataSource));

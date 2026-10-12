@@ -143,7 +143,7 @@ test('visible enabled boundaries skip hidden, inert, visibility-hidden and negat
   const note = view.control('receipt-note'), input = walk(view.root).find(node => node.tag === 'input'), select = walk(view.root).find(node => node.tag === 'select'), fieldset = walk(view.root).find(node => node.tag === 'fieldset')
   note.parent.props.hidden = true
   input.props.tabindex = -1
-  select.style.visibility = 'hidden'
+  for (const select of walk(view.root).filter(node => node.tag === 'select')) select.style.visibility = 'hidden'
   fieldset.props.inert = true
   view.focus('close-receipt')
   assert.equal(view.key().defaultPrevented, true)

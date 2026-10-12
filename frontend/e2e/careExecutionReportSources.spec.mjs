@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test'
 import { test, showIdentity, signOut } from './carePlanSessions.mjs'
 import { ids, language, appPath, login, api, grant, assertNoOverflow, assertMedicalDialogReady } from './helpers.mjs'
+import { reportPatientOptionLabel } from './reportBrowser.mjs'
 
 // Actual built Vue, Spring authorization and disposable MySQL fixtures. The only
 // transport failure below is one explicitly named menu-bootstrap failure; source
@@ -28,7 +29,6 @@ const unavailableLabel = text('This linked record is restricted, unavailable, or
 const medicalDialog = page => page.getByRole('dialog', { name: text('Medical record details', '医疗记录详情'), exact: true })
 const focused = page => page.locator('.focused-source')
 const measurementRows = page => focused(page).locator('.el-table__body tr')
-const patientNames = { [patient]: 'Synthetic Report Patient', [otherPatient]: 'Synthetic Empty Report Patient' }
 
 function sameApiPath(url, path) {
   const actual = new URL(url), expected = new URL(`/api${path}`, 'http://fixture.invalid')
@@ -69,9 +69,9 @@ async function selectPatient(page, id) {
   await expect(control).toBeEnabled()
   await control.press('ArrowDown')
   await expect(control).toHaveAttribute('aria-expanded', 'true')
-  await page.getByRole('option', { name: patientNames[id], exact: true }).click()
+  await page.getByRole('option', { name: reportPatientOptionLabel(id), exact: true }).click()
   await page.keyboard.press('Escape')
-  await expect(switcher).toContainText(patientNames[id])
+  await expect(switcher).toContainText(reportPatientOptionLabel(id))
   await expect.poll(() => page.evaluate(() => Number(localStorage.getItem('currentPatientId')))).toBe(id)
 }
 

@@ -8,6 +8,7 @@ import org.familyhealthcare.mapper.*;
 import org.familyhealthcare.service.impl.MedicalRecordServiceImpl;
 import org.familyhealthcare.util.DataScopeHelper;
 import org.junit.jupiter.api.*;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -22,7 +23,7 @@ import static org.mockito.Mockito.mock;
 
 /** Actual MyBatis mappers and Spring transaction proxy; every row and byte is synthetic. */
 class MedicalRecordIntegrityTest {
-    @Configuration @EnableTransactionManagement static class TxConfig { }
+    @TestConfiguration @EnableTransactionManagement static class TxConfig { }
     Runnable atAttachmentRead, atItemsRead;
     CarePlanTestFixture f; GenericApplicationContext context; MedicalRecordService service; DoctorWorkspaceService doctor;
     @BeforeEach void setup() throws Exception {

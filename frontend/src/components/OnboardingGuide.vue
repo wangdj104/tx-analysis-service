@@ -4,13 +4,14 @@
     <template #footer><el-button @click="dismissWelcome">Maybe Later</el-button><el-button type="primary" @click="begin">Start Interactive Guide</el-button></template>
   </el-dialog>
   <div v-if="active" class="guide-layer" role="dialog" aria-modal="false" :aria-labelledby="`guide-title-${stepIndex}`">
-    <div class="guide-anchor" :style="anchorStyle" aria-hidden="true"></div>
+    <div v-if="!targetUnavailable" class="guide-anchor" :style="anchorStyle" aria-hidden="true"></div>
     <section class="guide-card" :class="`guide-card--${cardPlacement}`" :style="cardStyle">
       <button class="guide-close" type="button" aria-label="Pause guide" @click="pause">×</button>
       <span class="guide-kicker">GUIDED TOUR</span>
       <h2 ref="guideTitle" :id="`guide-title-${stepIndex}`" tabindex="-1">{{ current.title }}</h2>
       <p>{{ current.description }}</p>
-      <div class="guide-instruction"><strong>{{ current.gesture }}</strong><span>{{ current.action }}</span><small>Expected: {{ current.result }}</small></div>
+      <p v-if="targetUnavailable" role="status">No actionable target is currently available or visible on this screen. You can continue to the next step; no action has been taken.</p>
+      <div v-else class="guide-instruction"><strong>{{ current.gesture }}</strong><span>{{ current.action }}</span><small>Expected: {{ current.result }}</small></div>
       <footer><button type="button" :disabled="stepIndex===0" aria-label="Previous step" @click="previous">‹</button><span>{{stepIndex+1}} / {{steps.length}}</span><button type="button" :aria-label="stepIndex===steps.length-1?'Finish guide':'Confirm step and continue'" @click="confirmStep">{{stepIndex===steps.length-1?'✓':'›'}}</button></footer>
     </section>
   </div>
@@ -24,15 +25,16 @@ import { Guide, Menu, Search, User, FirstAidKit, Odometer, House, Setting, Switc
 const reducedMotion = useReducedMotion();
 const props=defineProps({accountId:{type:[String,Number],default:''},roleCodes:{type:Array,default:()=>[]}}),router=useRouter();
 const welcomeVisible=ref(false),active=ref(false),stepIndex=ref(0),targetBox=reactive({top:80,left:80,width:220,height:80}),viewport=reactive({width:1280,height:800}),cardPlacement=ref('right');
-const role=computed(()=>['admin','doctor','patient','family'].find(code=>props.roleCodes.includes(code))||'patient');
+const role=computed(()=>['admin','doctor','nurse','patient','family'].find(code=>props.roleCodes.includes(code))||'patient');
 const detail=(title,description,action,result,why,selector,icon,gesture,path)=>({title,description,action,result,why,selector,icon,gesture,path});
 const commonEnd=[
-  detail('Find any feature quickly','The feature finder searches the workspace without making you remember where each page lives.','Click the highlighted search control, type “medication” or “report”, then choose a result.','The matching page opens and the breadcrumb changes.','This is the quickest and safest route when you are unfamiliar with the menu.','.workspace-search',Search,'Click here'),
+  detail('Find any feature quickly','The feature finder searches the workspace without making you remember where each page lives.','Click the highlighted search control, type “medication” or “report”, then choose a result.','The matching page opens and the breadcrumb changes.','This is the quickest and safest route when you are unfamiliar with the menu.','[data-guide="feature-search"]',Search,'Click here'),
   detail('Confirm the current patient','Every clinical record and care action belongs to the patient selected here.','Open the highlighted patient selector and verify the name before entering data.','The selected patient name remains visible in the header.','Checking identity first prevents information from being added to the wrong record.','.patient-switcher',Switch,'Check this name'),
   detail('Manage your account safely','Password and sign-out actions are grouped in the account control.','Click the highlighted account area when you need to change your password or sign out.','The account panel opens with identity and security actions.','Every care-team member should use an individual, traceable account.','.workspace-account',User,'Open here')
 ];
 const roleSteps={
-  doctor:[detail('Review a clinical item','The doctor workspace brings pending records and AI-assisted summaries into one review queue.','Use the highlighted decision button only after checking the patient and source.','The item leaves the queue and the decision is recorded.','Clinical decisions remain explicit and auditable.','.review-actions .el-button',FirstAidKit,'Use this button','/doctor-workspace')],
+  nurse:[detail('Review nursing follow-up tasks','The nursing workspace lists authorized tasks needing follow-up or more information.','Check the task and patient record before choosing an available follow-up action.','The task opens; if no task is available, continue to the next step.','Confirm the patient and task before recording nursing follow-up.','[data-testid="collaboration-tasks"]',FirstAidKit,'Review tasks','/nurse-workspace')],
+  doctor:[detail('Review a clinical item','The doctor workspace brings pending records and AI-assisted summaries into one review queue.','Open the highlighted review entry to read the complete source and patient context before making a decision.','The source opens for review. Opening or closing it does not record a decision.','Clinical decisions remain explicit and auditable.','.review-actions .el-button',FirstAidKit,'Use this button','/doctor-workspace')],
   patient:[detail('Record a due measurement','The blood-pressure page stores readings against the selected patient and measurement time.','Enter the reading in the highlighted field, verify the time, and save.','The new reading appears in history and updates the trend.','Consistent measurements give the care team a usable longitudinal picture.','.entry-panel input',Odometer,'Type here','/bp-self-monitor')],
   family:[detail('Open a family care action','The family workspace combines medication, measurements, appointments, and handover work.','Use the highlighted action after selecting the correct family member.','The shared schedule updates for the care team.','This prevents incomplete or wrong-person handovers.','.care-toolbar .el-button',House,'Use this button','/care')],
   admin:[detail('Open an account action','User management controls identity and role assignment separately from clinical records.','Use the highlighted toolbar button after confirming the intended role scope.','The relevant administration workflow opens.','Least-privilege access protects sensitive health information.','.toolbar .el-button',Setting,'Use this button','/system/user')]
@@ -42,6 +44,7 @@ const current=computed(()=>steps.value[stepIndex.value]),storageKey=computed(()=
 const anchorStyle=computed(()=>{const side=cardPlacement.value;return{left:`${side==='left'?targetBox.left:side==='right'?targetBox.left+targetBox.width:targetBox.left+targetBox.width/2}px`,top:`${side==='top'?targetBox.top+targetBox.height:side==='bottom'?targetBox.top:targetBox.top+targetBox.height/2}px`}});
 const cardStyle=computed(()=>{const width=Math.min(370,viewport.width-24),height=285,gap=20;let left,top;if(viewport.width<720){cardPlacement.value='bottom';left=12;top=Math.max(12,viewport.height-height-12)}else if(targetBox.left+targetBox.width+gap+width<viewport.width){cardPlacement.value='right';left=targetBox.left+targetBox.width+gap;top=targetBox.top+targetBox.height/2-height/2}else if(targetBox.left-width-gap>0){cardPlacement.value='left';left=targetBox.left-width-gap;top=targetBox.top+targetBox.height/2-height/2}else if(targetBox.top+targetBox.height+gap+height<viewport.height){cardPlacement.value='top';left=targetBox.left+targetBox.width/2-width/2;top=targetBox.top+targetBox.height+gap}else{cardPlacement.value='bottom';left=targetBox.left+targetBox.width/2-width/2;top=targetBox.top-height-gap}return{left:`${Math.max(12,Math.min(left,viewport.width-width-12))}px`,top:`${Math.max(12,Math.min(top,viewport.height-height-12))}px`,width:`${width}px`}});
 const guideTitle = ref(null);
+const targetUnavailable = ref(false);
 let highlighted, positionTimer, guideEpoch = 0, returnFocus = null, welcomeFocusEpoch = null;
 function clearHighlight() {
   clearTimeout(positionTimer);
@@ -92,7 +95,9 @@ async function showStep() {
     guideTitle.value?.focus({ preventScroll: true });
     positionTimer = setTimeout(() => {
       if (!active.value || epoch !== guideEpoch) return;
-      highlighted = document.querySelector(step.selector) || document.querySelector('.workspace-content');
+      const firstTarget = document.querySelector(step.selector);
+      highlighted = canReceiveFocus(firstTarget) ? firstTarget : Array.from(document.querySelectorAll(step.selector)).find(element => canReceiveFocus(element)) || null;
+      targetUnavailable.value = !highlighted;
       highlighted?.scrollIntoView?.({ block: 'center', behavior: reducedMotion.value ? 'auto' : 'smooth' });
       highlighted?.classList.add('guide-target');
       positionGuide();

@@ -5,7 +5,7 @@
       <label :for="inputId">Current patient</label>
       <el-select :id="inputId" :model-value="patients.length ? modelValue : undefined" :disabled="!patients.length" filterable :placeholder="patients.length ? 'Select a patient' : 'No authorized patients'"
         aria-label="Switch current patient" @change="$emit('update:modelValue', $event)">
-        <el-option v-for="patient in patients" :key="patient.id" :value="patient.id" :label="patient.patientName || patient.name" />
+        <el-option v-for="patient in patients" :key="patient.id" :value="patient.id" :label="`${patient.patientName || patient.name} · Record #${patient.id}`" />
         <el-option v-if="patients.length && allowAll" label="All patients" :value="0" />
         <template #empty><span class="patient-switcher__empty">No patients</span></template>
       </el-select>

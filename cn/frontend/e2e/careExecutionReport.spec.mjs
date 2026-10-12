@@ -3,7 +3,7 @@ import { expect } from '@playwright/test'
 import { test } from './carePlanSessions.mjs'
 import { ids, appPath, api, grant, assignNurse, assertNoOverflow } from './helpers.mjs'
 import { inspectReportDownload, assertReportDeniedResponse } from './reportDownloads.mjs'
-import { panel, reportBody, formats, originalPhrase, originalAttack, questionSentinel, uiText, selectPatient, setReportOptions, openReport, preview, prepareReadRole, reportResponse, readReportInput, postReportResponse, assertClearedReport, downloadCounter, screenshotReport, observeDownloadMetadata, revokeReportGrants } from './reportBrowser.mjs'
+import { panel, reportBody, formats, originalPhrase, originalAttack, questionSentinel, uiText, doctorReportPatientOptionLabel, selectPatient, setReportOptions, openReport, preview, prepareReadRole, reportResponse, readReportInput, postReportResponse, assertClearedReport, downloadCounter, screenshotReport, observeDownloadMetadata, revokeReportGrants } from './reportBrowser.mjs'
 
 import { fixtureReportExpectation, assertDownloadClickMetadata } from '../../../scripts/care-report-fixture-oracle.mjs'
 
@@ -41,7 +41,7 @@ for (const role of ['personal', 'family', 'doctor', 'nurse']) for (const mobile 
       await page.getByRole('tab', { name: uiText('Care plans','照护计划'), exact: true }).click()
       const select = page.locator('.doctor-tabs .patient-filter:visible').getByRole('combobox')
       await select.press('ArrowDown')
-      await page.getByRole('option', { name: 'Synthetic Report Patient', exact: true }).click()
+      await page.getByRole('option', { name: doctorReportPatientOptionLabel(ids.reportPatient), exact: true }).click()
       await page.keyboard.press('Escape')
       await page.getByTestId('doctor-execution-report').click()
     } else {

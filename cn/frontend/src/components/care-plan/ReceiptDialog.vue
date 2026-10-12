@@ -2,15 +2,25 @@
   <dialog ref="dialog" class="receipt-dialog" aria-labelledby="receipt-heading" @cancel.prevent="requestClose" @keydown="containFocus">
     <h2 id="receipt-heading">{{ commandLabel }}</h2>
     <template v-if="state.editor && visibleAction">
-      <p>{{ visibleAction.instruction }}</p><p>录入账号：{{ actorName }} (#{{ actorId }}). 账号身份不等于患者身份认证。</p>
+      <p class="receipt-patient">患者：{{ patientName || '患者姓名暂不可用' }} · 档案 #{{ patientId }}</p><p>{{ visibleAction.instruction }}</p><p>录入账号：{{ actorName }} (#{{ actorId }}). 账号身份不等于患者身份认证。</p>
       <p v-if="command==='submitReceipt'">默认代为录入，包括使用本账号管理其他家庭成员的情况。</p>
       <form @submit.prevent="submit">
         <label>说明（{{ command==='submitReceipt' ? '1–2000' : '1–1000' }} 字）<textarea v-model="form.note" rows="4" data-testid="receipt-note" :disabled="busy" /></label>
         <template v-if="command==='submitReceipt'">
-          <label>实际执行时间，须含明确的 UTC 偏移<input v-model="form.occurredAt" type="text" placeholder="2026-10-03T14:30:00+08:00" :disabled="busy" /></label><p>{{ displayTime(form.occurredAt) }}</p>
+          <label>实际执行时间<input v-model="executionClock" type="datetime-local" step="0.001" data-testid="receipt-execution-time" :disabled="busy" /></label>
+          <label>时区与 UTC 偏移 ({{ executionZone }})<select v-model.number="executionOffset" data-testid="receipt-time-offset" :disabled="busy || !executionOffsets.length"><option v-if="executionOffsets.length !== 1" :value="null">请选择明确偏移</option><option v-for="offset in executionOffsets" :key="offset" :value="offset">{{ offsetLabel(offset) }}</option></select></label>
+          <p v-if="executionTimeError" role="alert">{{ executionTimeError }}</p><p v-else>{{ displayTime(form.occurredAt) }}</p>
           <label>录入声明<select v-model="form.entryMode" :disabled="busy"><option v-if="entryModes.includes('ASSISTED')" value="ASSISTED">代为录入</option><option v-if="entryModes.includes('SELF')" value="SELF">我明确声明由账号所有者本人录入</option></select></label>
           <p v-if="form.entryMode==='SELF'">这是您的录入声明，并非患者身份认证。</p>
-          <fieldset :disabled="busy"><legend>仅可引用既有记录（最多 5 条；不可上传）</legend><div v-for="(e,index) in form.evidence" :key="index" class="evidence-row"><select v-model="e.sourceType" aria-label="引用类型"><option value="MEASUREMENT">健康测量</option><option value="MEDICAL_RECORD">医疗记录</option></select><input v-model.number="e.sourceId" type="number" min="1" step="1" aria-label="既有记录编号" /><button type="button" @click="form.evidence.splice(index,1)">移除引用</button></div><button type="button" :disabled="form.evidence.length>=5" @click="form.evidence.push({sourceType:'MEASUREMENT',sourceId:null})">添加既有引用</button><p>服务器会验证患者归属和当前权限；引用不会授予访问权限。</p></fieldset>
+          <fieldset :disabled="busy"><legend>仅可引用既有记录（最多 5 条；不可上传）</legend>
+            <label>引用类型<select v-model="referenceType" aria-label="引用类型"><option value="MEASUREMENT">健康测量</option><option value="MEDICAL_RECORD">医疗记录</option></select></label>
+            <button type="button" :disabled="referencesLoading" @click="loadReferences">{{ referencesLoading ? '正在加载记录…' : '查看已授权记录' }}</button>
+            <p v-if="referencesError" role="alert">{{ referencesError }}</p><p v-else-if="referencesQueried && !referencesLoading && !referenceOptions.length">该患者暂无可访问的此类记录。</p>
+            <label v-if="referenceOptions.length">选择既有记录<select v-model.number="selectedReferenceId" data-testid="receipt-existing-record"><option :value="null">选择既有记录</option><option v-for="record in referenceOptions" :key="record.id" :value="record.id" :disabled="form.evidence.some(e => e.sourceType === referenceType && e.sourceId === record.id)">{{ record.label }}</option></select></label>
+            <button type="button" data-testid="add-existing-reference" :disabled="form.evidence.length>=5 || !selectedReferenceId || referencesLoading" @click="addReference">添加既有引用</button>
+            <div v-for="(e,index) in form.evidence" :key="e.sourceType+':'+e.sourceId" class="evidence-row"><p>{{ referenceLabels[e.sourceType+':'+e.sourceId] || referenceFallback(e) }}</p><button type="button" @click="form.evidence.splice(index,1)">移除引用</button></div>
+            <p>服务器会验证患者归属和当前权限；引用不会授予访问权限。</p>
+          </fieldset>
         </template>
         <label v-if="command==='followUp'">跟进类型<select v-model="form.kind" :disabled="busy"><option value="CONTACTED">已联系</option><option value="AWAITING_INFORMATION">等待补充信息</option><option value="DOCTOR_NOTIFIED">已通知医生</option></select></label>
         <p v-if="!canSubmit" role="status">此操作只读或不可用，需要有效的当前权限。</p>
@@ -26,11 +36,53 @@
 <script setup>
 import {computed,ref,reactive,watch,onMounted,onUnmounted,nextTick} from 'vue'
 import {useCarePlan} from '@/composables/useCarePlan'
-import {formatPlanTime} from '@/utils/carePlanTime'
+import {formatPlanTime,getLocalTimeOffsets,toOffsetIso} from '@/utils/carePlanTime'
+import request from '@/utils/request'
 import {captureAuthSession,isAuthSessionCurrent} from '@/utils/authSession'
 const props=defineProps({action:{type:Object,required:true},planVersion:{type:Number,required:true},command:{type:String,default:'submitReceipt'}}),emit=defineEmits(['submitted','closed'])
 const patientId=computed(()=>props.action?.patientId??null),client=useCarePlan(patientId),{state}=client,dialog=ref(null),message=ref(''),abandonIntent=ref(false),needsReload=ref(false),visibleAction=ref(null),actorName=ref(''),actorId=ref('')
 const form=reactive({note:'',occurredAt:'',entryMode:'ASSISTED',evidence:[],kind:'CONTACTED'})
+const executionClock=ref(''),executionOffset=ref(null),executionZone=Intl.DateTimeFormat().resolvedOptions().timeZone,executionTimeError=ref(''),patientName=ref('')
+const referenceType=ref('MEASUREMENT'),referenceOptions=ref([]),referenceLabels=reactive({}),selectedReferenceId=ref(null),referencesLoading=ref(false),referencesError=ref(''),referencesQueried=ref(false)
+let referenceEpoch=0,referenceController=null,identityController=null
+const executionOffsets=computed(()=>{try{return getLocalTimeOffsets(executionClock.value,{timeZone:executionZone})}catch{return []}})
+function offsetLabel(value){const absolute=Math.abs(value);return `UTC${value<0?'-':'+'}${String(Math.floor(absolute/60)).padStart(2,'0')}:${String(absolute%60).padStart(2,'0')}`}
+watch(executionClock,()=>{const offsets=executionOffsets.value;executionOffset.value=offsets.length===1?offsets[0]:null},{flush:'sync'})
+watch(()=>[executionClock.value,executionOffset.value],()=>{try{form.occurredAt=toOffsetIso(executionClock.value,executionOffset.value,{timeZone:executionZone});executionTimeError.value=''}catch{form.occurredAt='';executionTimeError.value='请选择有效的本地时间及明确偏移；夏令时重复时间需选择偏移，跳过的时间不可使用。'}},{flush:'sync'})
+function setExecutionInstant(date){const pad=value=>String(value).padStart(2,'0');executionClock.value=`${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3,'0')}`;executionOffset.value=-date.getTimezoneOffset()}
+function resetReferences(){referenceEpoch++;referenceController?.abort();referenceOptions.value=[];selectedReferenceId.value=null;referencesLoading.value=false;referencesQueried.value=false;referencesError.value=''}
+watch(referenceType,resetReferences,{flush:'sync'})
+function referenceFallback(e){return `${e.sourceType==='MEASUREMENT'?'健康测量':'医疗记录'} #${e.sourceId}`}
+function referenceLabel(record,type){
+  const metricLabels={BP:'血压',GLUCOSE:'血糖',SPO2:'血氧饱和度',WEIGHT:'体重',HEART_RATE:'心率',TEMPERATURE:'体温',CUSTOM:'健康测量'}
+  const recordLabels={BLOOD:'血液检验',URINE:'尿液检验',LIVER:'肝功能',KIDNEY:'肾功能',BONE:'骨代谢',IRON:'铁代谢',IMAGE:'影像报告',OTHER:'其他'}
+  const date=type==='MEASUREMENT'?record.measured_at||record.measuredAt:record.recordDate
+  const title=type==='MEASUREMENT'?record.metric_name||record.metricName||metricLabels[record.metric_type||record.metricType]||record.metric_type||record.metricType:recordLabels[record.recordType]||record.recordType
+  const value=type==='MEASUREMENT'?`${record.value_primary ?? record.valuePrimary ?? ''}${record.value_secondary != null || record.valueSecondary != null ? '/'+(record.value_secondary ?? record.valueSecondary) : ''} ${record.unit||''}`:record.hospitalName||record.remark||''
+  return `${date||'日期暂不可用'} · ${title||'既有记录'} · ${value} · #${record.id}`
+}
+async function loadPatientIdentity(){
+  const c=capture(),id=patientId.value;identityController?.abort();identityController=new AbortController()
+  patientName.value=props.action.patientName||''
+  try{const result=await request({url:'/patient/names',method:'get',expectedAuth:{...c.auth,actorId:c.actor},signal:identityController.signal,executionReport:true});if(!owns(c))return;const patient=Array.isArray(result.data)?result.data.find(p=>String(p.id)===String(id)):null;if(patient)patientName.value=patient.patientName||patient.name||patientName.value}catch{}
+}
+async function loadReferences(){
+  if(!state.editor||!visibleAction.value||referencesLoading.value)return
+  resetReferences();const turn=referenceEpoch,c=capture(),id=patientId.value,type=referenceType.value
+  referenceController=new AbortController();referencesLoading.value=true;referencesQueried.value=true
+  try{
+    const result=await request({url:type==='MEASUREMENT'?'/care-journey/measurements':'/medical-record/list',method:'get',params:{patientId:id},expectedAuth:{...c.auth,actorId:c.actor},signal:referenceController.signal,executionReport:true})
+    if(turn!==referenceEpoch||!owns(c))return
+    if(result.code!=null&&result.code!==200)throw Object.assign(new Error('Restricted source'),{code:result.code})
+    referenceOptions.value=(Array.isArray(result.data)?result.data:[]).filter(record=>Number.isSafeInteger(Number(record.id))&&Number(record.id)>0&&String(record.patientId??record.patient_id)===String(id)).map(record=>({id:Number(record.id),label:referenceLabel(record,type)}))
+  }catch(failure){
+    if(turn!==referenceEpoch||!owns(c))return
+    referenceOptions.value=[];referencesError.value='既有记录无法加载或访问受限，请重试。'
+    if([401,403,404].includes(Number(failure?.response?.status||failure?.code))){form.evidence=[];Object.keys(referenceLabels).forEach(key=>delete referenceLabels[key])}
+  }finally{if(turn===referenceEpoch&&owns(c))referencesLoading.value=false}
+}
+function addReference(){const id=selectedReferenceId.value,record=referenceOptions.value.find(r=>r.id===id),type=referenceType.value;if(!record||form.evidence.length>=5||form.evidence.some(e=>e.sourceType===type&&e.sourceId===id))return;form.evidence.push({sourceType:type,sourceId:id});referenceLabels[type+':'+id]=record.label;selectedReferenceId.value=null}
+
 let generation=0,opener=null,currentVersion=null
 const names={submitReceipt:'SUBMIT_RECEIPT',requestHelp:'REQUEST_HELP',followUp:'FOLLOW_UP'}
 const commandLabel=computed(()=>({submitReceipt:'记录执行情况',requestHelp:'向照护团队请求协助',followUp:'记录护理跟进'})[props.command]||'操作不可用')
@@ -41,8 +93,8 @@ const payload=()=>props.command==='submitReceipt'?{note:form.note.trim(),occurre
 const owns=c=>c.generation===generation&&isAuthSessionCurrent(c.auth)&&c.actor===localStorage.getItem('userId')
 const capture=()=>({generation,auth:captureAuthSession(),actor:localStorage.getItem('userId')})
 function displayTime(value){try{return formatPlanTime(value,'zh-CN')}catch{return '请输入有效且带明确偏移的 ISO 时间。'}}
-function clearForm(){Object.assign(form,{note:'',occurredAt:'',entryMode:'ASSISTED',evidence:[],kind:'CONTACTED'});visibleAction.value=null;actorName.value='';actorId.value='';abandonIntent.value=false;needsReload.value=false}
-async function initialize(){generation++;client.reset();clearForm();message.value='';visibleAction.value=props.action;currentVersion=props.planVersion;actorId.value=localStorage.getItem('userId')||'';actorName.value=localStorage.getItem('realName')||localStorage.getItem('username')||'当前账号';Object.assign(form,{occurredAt:new Date().toISOString()});await client.open(null,{draft:payload()})}
+function clearForm(){identityController?.abort();resetReferences();patientName.value='';executionClock.value='';executionOffset.value=null;Object.keys(referenceLabels).forEach(key=>delete referenceLabels[key]);Object.assign(form,{note:'',occurredAt:'',entryMode:'ASSISTED',evidence:[],kind:'CONTACTED'});visibleAction.value=null;actorName.value='';actorId.value='';abandonIntent.value=false;needsReload.value=false}
+async function initialize(){generation++;client.reset();clearForm();message.value='';visibleAction.value=props.action;currentVersion=props.planVersion;actorId.value=localStorage.getItem('userId')||'';actorName.value=localStorage.getItem('realName')||localStorage.getItem('username')||'当前账号';setExecutionInstant(new Date());await client.open(null,{draft:payload()});if(state.editor)loadPatientIdentity()}
 watch(()=>[props.action?.id,props.action?.patientId,props.planVersion,props.command],initialize,{immediate:true,flush:'sync'})
 watch(form,()=>{if(state.editor)state.draft=payload()},{deep:true,flush:'sync'})
 watch(()=>state.editor,editor=>{if(!editor){clearForm()}},{flush:'sync'})
@@ -72,9 +124,9 @@ function containFocus(event){
   }
 }
 onMounted(async()=>{opener=document.activeElement;await nextTick();dialog.value?.showModal?.();window.addEventListener('beforeunload',beforeUnload);window.addEventListener('care-plan-before-context-change',contextChange)})
-onUnmounted(()=>{generation++;window.removeEventListener('beforeunload',beforeUnload);window.removeEventListener('care-plan-before-context-change',contextChange);dialog.value?.close?.();opener?.focus?.()})
+onUnmounted(()=>{generation++;identityController?.abort();resetReferences();window.removeEventListener('beforeunload',beforeUnload);window.removeEventListener('care-plan-before-context-change',contextChange);dialog.value?.close?.();opener?.focus?.()})
 defineExpose({guardLeave,requestClose})
 </script>
 <style scoped>
-.receipt-dialog{box-sizing:border-box;width:min(640px,94vw);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--paper);color:var(--ink-800)}.receipt-dialog::backdrop{background:#10282c88}h2,p{overflow-wrap:anywhere}p{line-height:1.6}label{display:grid;gap:6px;margin:14px 0}textarea,input,select{width:100%;min-width:0;box-sizing:border-box;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--paper);color:inherit}button{min-height:44px;max-width:100%;padding:10px 14px;cursor:pointer;font:inherit;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800)}button:disabled{opacity:.5;cursor:default}button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.controls{display:flex;gap:10px;flex-wrap:wrap}.notice{padding:12px;margin:12px 0;border:1px solid var(--line);background:var(--care-50)}fieldset{min-width:0;margin:12px 0;border:1px solid var(--line)}.evidence-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.evidence-row button{grid-column:1/-1}@media(max-width:600px){.receipt-dialog{padding:14px}.controls button{width:100%}.evidence-row{grid-template-columns:1fr}}
+.receipt-dialog{box-sizing:border-box;width:min(640px,94vw);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--paper);color:var(--ink-800)}.receipt-dialog::backdrop{background:#10282c88}h2,p{overflow-wrap:anywhere}p{line-height:1.6}label{display:grid;gap:6px;margin:14px 0}textarea,input,select{width:100%;min-width:0;box-sizing:border-box;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--paper);color:inherit}button{min-height:44px;max-width:100%;padding:10px 14px;cursor:pointer;font:inherit;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800)}button:disabled{opacity:.5;cursor:default}button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.controls{display:flex;gap:10px;flex-wrap:wrap}.notice{padding:12px;margin:12px 0;border:1px solid var(--line);background:var(--care-50)}fieldset{min-width:0;margin:12px 0;border:1px solid var(--line)}.evidence-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.evidence-row{align-items:center}.evidence-row p{margin:0;overflow-wrap:anywhere}@media(max-width:600px){.receipt-dialog{padding:14px}.controls button{width:100%}.evidence-row{grid-template-columns:1fr}}
 </style>

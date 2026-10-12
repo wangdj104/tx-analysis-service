@@ -22,7 +22,7 @@
         <section class="panel">
           <div class="panel-head"><div><h2>Assigned patients</h2><p>Only patients assigned to your care team are shown.</p></div></div>
           <el-table :data="patients" v-loading="loading" stripe empty-text="No patients have been assigned">
-            <el-table-column prop="name" label="Patient" min-width="140"><template #default="{row}"><button class="patient-link" @click="selectPatient(row)">{{ row.name }}</button></template></el-table-column>
+            <el-table-column prop="name" label="Patient" min-width="140"><template #default="{row}"><button class="patient-link" @click="selectPatient(row)">{{ row.name }} · #{{ row.id }}</button></template></el-table-column>
             <el-table-column prop="careTeamRole" label="Care-team role" min-width="140" />
             <el-table-column prop="lastVitalAt" label="Latest vital sign" min-width="170"><template #default="{row}">{{ row.lastVitalAt || 'No reading' }}</template></el-table-column>
             <el-table-column prop="criticalAlerts" label="Critical alerts" width="130"><template #default="{row}"><el-tag :type="Number(row.criticalAlerts)>0?'danger':'success'">{{ row.criticalAlerts || 0 }}</el-tag></template></el-table-column>
@@ -33,8 +33,8 @@
       <el-tab-pane :label="`Review queue (${reviews.length})`" name="reviews">
         <section class="panel review-list">
           <article v-for="item in reviews" :key="item.sourceType+'-'+item.sourceId" class="review-card">
-            <div><span class="eyebrow">{{ sourceLabel(item.sourceType) }}</span><h3>{{ item.patientName }} · {{ item.title }}</h3><p>{{ item.occurredAt || 'Date unavailable' }}<template v-if="item.confidence"> · Confidence {{ Math.round(Number(item.confidence)*100) }}%</template></p></div>
-            <div class="review-actions"><el-button type="success" plain @click="review(item,'APPROVED')">Approve</el-button><el-button type="danger" plain @click="review(item,'REJECTED')">Reject</el-button></div>
+            <div><span class="eyebrow">{{ sourceLabel(item.sourceType) }}</span><h3>{{ item.patientName }} · Record #{{ item.patientId }} · {{ item.title }}</h3><p>{{ item.occurredAt || 'Date unavailable' }}<template v-if="item.confidence"> · Confidence {{ Math.round(Number(item.confidence)*100) }}%</template></p></div>
+            <div class="review-actions"><el-button type="primary" plain @click="openReview(item)">View and review</el-button></div>
           </article>
           <el-empty v-if="!reviews.length" description="No clinical items are waiting for review" />
         </section>
@@ -54,18 +54,20 @@
     </el-tabs>
 
     <el-dialog v-model="noteVisible" title="Add clinical note" width="min(560px,94vw)">
-      <el-form label-position="top"><el-form-item label="Patient"><b>{{ activePatient?.name }}</b></el-form-item><el-form-item label="Note type"><el-select v-model="noteForm.noteType"><el-option label="Follow-up" value="FOLLOW_UP"/><el-option label="Assessment" value="ASSESSMENT"/><el-option label="Medication" value="MEDICATION"/></el-select></el-form-item><el-form-item label="Visibility"><el-radio-group v-model="noteForm.visibility"><el-radio value="CARE_TEAM">Care team only</el-radio><el-radio value="PATIENT">Visible to patient</el-radio></el-radio-group></el-form-item><el-form-item label="Clinical note"><el-input v-model="noteForm.noteText" type="textarea" :rows="5" maxlength="4000" show-word-limit/></el-form-item></el-form>
+      <el-form label-position="top"><el-form-item label="Patient"><b>{{ activePatient?.name }} · Record #{{ activePatient?.id }}</b></el-form-item><el-form-item label="Note type"><el-select v-model="noteForm.noteType"><el-option label="Follow-up" value="FOLLOW_UP"/><el-option label="Assessment" value="ASSESSMENT"/><el-option label="Medication" value="MEDICATION"/></el-select></el-form-item><el-form-item label="Visibility"><el-radio-group v-model="noteForm.visibility"><el-radio value="CARE_TEAM">Care team only</el-radio><el-radio value="PATIENT">Visible to patient</el-radio></el-radio-group></el-form-item><el-form-item label="Clinical note"><el-input v-model="noteForm.noteText" type="textarea" :rows="5" maxlength="4000" show-word-limit/></el-form-item></el-form>
       <template #footer><el-button @click="noteVisible=false">Cancel</el-button><el-button type="primary" :loading="saving" @click="submitNote">Save note</el-button></template>
     </el-dialog>
     <el-dialog v-model="planVisible" title="Create historical internal plan" width="min(600px,94vw)">
-      <el-form label-position="top"><el-form-item label="Patient"><b>{{ activePatient?.name }}</b></el-form-item><el-form-item label="Plan title"><el-input v-model="planForm.title" maxlength="160"/></el-form-item><el-form-item label="Plan type"><el-select v-model="planForm.planType"><el-option label="Follow-up" value="FOLLOW_UP"/><el-option label="Medication" value="MEDICATION"/><el-option label="Dialysis" value="DIALYSIS"/><el-option label="Nutrition" value="NUTRITION"/></el-select></el-form-item><el-form-item label="Target date"><el-date-picker v-model="planForm.targetDate" value-format="YYYY-MM-DD"/></el-form-item><el-form-item label="Instructions"><el-input v-model="planForm.instructions" type="textarea" :rows="5" maxlength="4000" show-word-limit/></el-form-item></el-form>
+      <el-form label-position="top"><el-form-item label="Patient"><b>{{ activePatient?.name }} · Record #{{ activePatient?.id }}</b></el-form-item><el-form-item label="Plan title"><el-input v-model="planForm.title" maxlength="160"/></el-form-item><el-form-item label="Plan type"><el-select v-model="planForm.planType"><el-option label="Follow-up" value="FOLLOW_UP"/><el-option label="Medication" value="MEDICATION"/><el-option label="Dialysis" value="DIALYSIS"/><el-option label="Nutrition" value="NUTRITION"/></el-select></el-form-item><el-form-item label="Target date"><el-date-picker v-model="planForm.targetDate" value-format="YYYY-MM-DD"/></el-form-item><el-form-item label="Instructions"><el-input v-model="planForm.instructions" type="textarea" :rows="5" maxlength="4000" show-word-limit/></el-form-item></el-form>
       <template #footer><el-button @click="planVisible=false">Cancel</el-button><el-button type="primary" :loading="saving" @click="submitPlan">Save internal plan</el-button></template>
     </el-dialog>
+    <AiAnalysisReviewDialog v-if="aiReviewTarget" :item="aiReviewTarget" @closed="aiReviewTarget=null" @reviewed="reviewedAiAnalysis" />
     <MedicalRecordReviewDialog v-if="medicalReviewTarget" :record-id="medicalReviewTarget.recordId" :patient-id="medicalReviewTarget.patientId" workspace @closed="medicalReviewTarget=null" @reviewed="reviewedMedicalRecord" />
   </main>
 </template>
 
 <script setup>
+import AiAnalysisReviewDialog from '@/components/care-plan/AiAnalysisReviewDialog.vue';
 import MedicalRecordReviewDialog from '@/components/MedicalRecordReviewDialog.vue';
 import { defineComponent, h, onMounted, onUnmounted, reactive, ref, resolveComponent, watch } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
@@ -108,11 +110,11 @@ const CollaborationPlans = defineComponent({
   }
 });
 
-const PatientSelect = defineComponent({ props:{ modelValue:[Number,String], disabled:Boolean, patients:{type:Array,default:()=>[]} }, emits:['update:modelValue','change'], setup(props,{emit}){return()=>h('div',{class:'patient-filter'},[h('span','Patient'),h(resolveComponent('el-select'),{modelValue:props.modelValue,disabled:props.disabled,placeholder:'Select a patient','onUpdate:modelValue':v=>{emit('update:modelValue',v);emit('change',v)}},{default:()=>props.patients.map(p=>h(resolveComponent('el-option'),{key:p.id,label:p.name,value:p.id}))})])} });
+const PatientSelect = defineComponent({ props:{ modelValue:[Number,String], disabled:Boolean, patients:{type:Array,default:()=>[]} }, emits:['update:modelValue','change'], setup(props,{emit}){return()=>h('div',{class:'patient-filter'},[h('span','Patient'),h(resolveComponent('el-select'),{modelValue:props.modelValue,disabled:props.disabled,placeholder:'Select a patient','onUpdate:modelValue':v=>{emit('update:modelValue',v);emit('change',v)}},{default:()=>props.patients.map(p=>h(resolveComponent('el-option'),{key:p.id,label:`${p.name} · #${p.id}`,value:p.id}))})])} });
 const loading=ref(false),saving=ref(false),tab=ref('patients'),summary=ref({}),patients=ref([]),reviews=ref([]),notes=ref([]),plans=ref([]),selectedPatientId=ref(null),activePatient=ref(null),noteVisible=ref(false),planVisible=ref(false),collaborationEditing=ref(false);
 const noteForm=reactive({noteType:'FOLLOW_UP',visibility:'CARE_TEAM',noteText:''});
 const planForm=reactive({title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});
-const medicalReviewTarget=ref(null);
+const medicalReviewTarget=ref(null),aiReviewTarget=ref(null);
 let contextEpoch=0, summaryEpoch=0, dialogEpoch=0;
 async function loadAll(){const epoch=++summaryEpoch;loading.value=true;try{const res=await getDoctorSummary();if(epoch!==summaryEpoch)return;summary.value=res.data||{};patients.value=summary.value.patients||[];reviews.value=summary.value.reviewQueue||[];if(!patients.value.some(p=>p.id===selectedPatientId.value))selectedPatientId.value=patients.value[0]?.id||null;await loadPatientContext()}finally{if(epoch===summaryEpoch)loading.value=false}}
 async function loadPatientContext(){const epoch=++contextEpoch;const patientId=selectedPatientId.value;notes.value=[];plans.value=[];if(!patientId)return;const [n,p]=await Promise.all([getDoctorNotes(patientId),getDoctorPlans(patientId)]);if(epoch!==contextEpoch||patientId!==selectedPatientId.value)return;notes.value=n.data||[];plans.value=p.data||[]}
@@ -121,9 +123,10 @@ function openNote(row){if(collaborationEditing.value){ElMessage.warning('Close t
 function openPlan(row){if(collaborationEditing.value){ElMessage.warning('Close the collaboration editor or plan detail before switching patients.');return}dialogEpoch++;activePatient.value=row;selectedPatientId.value=row.id;loadPatientContext();Object.assign(planForm,{title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});planVisible.value=true}
 async function submitNote(){if(saving.value)return;if(!noteForm.noteText.trim()){ElMessage.warning('Enter a clinical note.');return}const epoch=dialogEpoch,patientId=selectedPatientId.value;saving.value=true;try{await saveDoctorNote({patientId,...noteForm});if(epoch!==dialogEpoch||patientId!==selectedPatientId.value||!noteVisible.value)return;ElMessage.success('Clinical note saved.');noteVisible.value=false;await loadPatientContext()}finally{saving.value=false}}
 async function submitPlan(){if(saving.value)return;if(!planForm.title.trim()||!planForm.instructions.trim()){ElMessage.warning('Enter a title and instructions.');return}const epoch=dialogEpoch,patientId=selectedPatientId.value;saving.value=true;try{await saveDoctorPlan({patientId,status:'ACTIVE',...planForm});if(epoch!==dialogEpoch||patientId!==selectedPatientId.value||!planVisible.value)return;ElMessage.success('Internal care plan saved.');planVisible.value=false;await loadAll()}finally{saving.value=false}}
-async function review(item,decision){if(item.sourceType==='MEDICAL_RECORD'){medicalReviewTarget.value={recordId:Number(item.sourceId),patientId:item.patientId};return}const {value}=await ElMessageBox.prompt(decision==='APPROVED'?'Optional approval note':'Reason for rejection','Clinical review',{confirmButtonText:decision==='APPROVED'?'Approve':'Reject',cancelButtonText:'Cancel',inputType:'textarea'});await completeDoctorReview({sourceType:item.sourceType,sourceId:item.sourceId,decision,reviewNote:value});ElMessage.success('Review completed.');await loadAll()}
+function openReview(item){aiReviewTarget.value=null;medicalReviewTarget.value=null;if(item.sourceType==='MEDICAL_RECORD'){medicalReviewTarget.value={recordId:Number(item.sourceId),patientId:item.patientId};return}if(item.sourceType==='AI_ANALYSIS')aiReviewTarget.value={...item}}
+async function reviewedAiAnalysis(){aiReviewTarget.value=null;await loadAll()}
 async function reviewedMedicalRecord(){medicalReviewTarget.value=null;await loadAll()}
-watch(selectedPatientId,()=>{medicalReviewTarget.value=null},{flush:'sync'});
+watch(selectedPatientId,()=>{medicalReviewTarget.value=null;aiReviewTarget.value=null},{flush:'sync'});
 function sourceLabel(type){return type==='MEDICAL_RECORD'?'Imported medical record':'AI-assisted analysis'}
 onMounted(loadAll);
 </script>

@@ -8,7 +8,7 @@
           <span class="workspace-brand__mark"><img :src="platformBranding.logo" alt="" width="30" height="30" /></span>
           <span><strong>{{ platformBranding.platformName }}</strong><small>{{ platformBranding.organizationName }}</small></span>
         </router-link>
-        <button class="workspace-search" type="button" @click="openSearch"><el-icon><Search /></el-icon><span>Find a feature</span><kbd>Ctrl K</kbd></button>
+        <button class="workspace-search" data-guide="feature-search" type="button" @click="openSearch"><el-icon><Search /></el-icon><span>Find a feature</span><kbd>Ctrl K</kbd></button>
         <WorkspaceNav :groups="navigationGroups" :active-label="activeModule?.label" />
         <div class="workspace-sidebar__footer">
           <div class="workspace-utility-panel workspace-utility-panel--compact">
@@ -33,7 +33,7 @@
           <router-link v-if="userInfo.roles?.some(role => role.roleCode === 'doctor')" class="workspace-consultations" to="/care-journey?tab=consultation" aria-label="Open consultation inbox"><el-icon><ChatDotRound /></el-icon><span v-if="!isMobile">Consultations</span></router-link>
           <PatientSwitcher :model-value="currentPatientId || 0" :patients="route.path === '/care' ? patientList : appPatientList" :allow-all="route.path !== '/care'" @update:model-value="switchPatient" />
           <a class="workspace-language" :href="languageHref" hreflang="zh-CN">中文</a>
-          <button v-if="isMobile" type="button" class="workspace-icon-button" aria-label="Find a feature" @click="openSearch"><el-icon :size="20"><Search /></el-icon></button>
+          <button v-if="isMobile" type="button" class="workspace-icon-button" data-guide="feature-search" aria-label="Find a feature" @click="openSearch"><el-icon :size="20"><Search /></el-icon></button>
         </div>
       </header>
 
@@ -67,12 +67,13 @@
     <OnboardingGuide v-if="!route.meta.hideNav" ref="guideRef" :account-id="userInfo.id || ''" :role-codes="userInfo.roles?.map(role => role.roleCode) || []" />
 
     <el-dialog v-model="searchVisible" title="Find a feature" width="520px" class="workspace-search-dialog" @opened="searchInput?.focus()">
-      <el-input ref="searchInput" v-model="searchQuery" placeholder="Search blood pressure, medications, reports, and more" :prefix-icon="Search" clearable size="large" aria-label="Search features" @keydown.enter="openFirstResult" />
-      <div class="workspace-search-results">
-        <router-link v-for="item in searchResults" :key="item.path" :to="item.entryPath || item.path" @click="searchVisible = false"><el-icon :size="19"><component :is="item.icon" /></el-icon><span><strong>{{ item.label }}</strong><small>{{ item.group }}</small></span><el-icon><ArrowRight /></el-icon></router-link>
+      <el-input ref="searchInput" v-model="searchQuery" placeholder="Search blood pressure, medications, reports, and more" :prefix-icon="Search" clearable size="large" aria-label="Search features" @keydown.enter="openFirstResult" @keydown.down="moveSearchResult(1, $event)" @keydown.up="moveSearchResult(-1, $event)" aria-controls="feature-search-results" :aria-activedescendant="searchResults.length ? `feature-result-${activeSearchIndex}` : undefined" />
+      <p class="sr-only" role="status" aria-live="polite">{{ searchResults.length }} results</p>
+      <div id="feature-search-results" class="workspace-search-results">
+        <router-link v-for="(item, index) in searchResults" :key="item.path" :id="`feature-result-${index}`" :class="{ 'is-search-active': index === activeSearchIndex }" @focus="activeSearchIndex=index" :to="item.entryPath || item.path" @click="searchVisible = false"><el-icon :size="19"><component :is="item.icon" /></el-icon><span><strong>{{ item.label }}</strong><small>{{ item.group }}</small></span><el-icon><ArrowRight /></el-icon></router-link>
         <el-empty v-if="!searchResults.length" description="No matching feature. Try another keyword." :image-size="64" />
       </div>
-      <template #footer><span class="workspace-search-hint">Enter to open the first result · Esc to close</span></template>
+      <template #footer><span class="workspace-search-hint">↑↓ to select · Enter to open selection · Esc to close</span></template>
     </el-dialog>
     <el-dialog v-model="accountVisible" title="Current Account" width="min(380px, 94vw)">
       <div class="workspace-account-summary"><span class="workspace-account__avatar">{{ accountName.slice(0, 1) }}</span><div><strong>{{ accountName }}</strong><p>{{ userRoles }}</p></div></div>
@@ -258,13 +259,24 @@ const searchResults = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
   return [...entries.values()].filter(item => (item.label + item.group).toLowerCase().includes(query));
 });
-function openSearch() { searchQuery.value = ''; searchVisible.value = true; }
+const activeSearchIndex = ref(0);
+watch(searchQuery, () => { activeSearchIndex.value = 0; });
+watch(searchResults, results => { activeSearchIndex.value = Math.min(activeSearchIndex.value, Math.max(0, results.length - 1)); });
+function openSearch() { searchQuery.value = ''; activeSearchIndex.value = 0; searchVisible.value = true; }
+function moveSearchResult(direction, event) {
+  if (event?.isComposing || event?.keyCode === 229) return;
+  event?.preventDefault();
+  const length = searchResults.value.length;
+  activeSearchIndex.value = length ? (activeSearchIndex.value + direction + length) % length : 0;
+  document.getElementById(`feature-result-${activeSearchIndex.value}`)?.scrollIntoView?.({ block: 'nearest' });
+}
 function openFirstResult(event) {
   if (event?.isComposing || event?.keyCode === 229) return;
   event?.preventDefault();
   event?.stopPropagation();
-  if (!searchResults.value.length) return;
-  router.push(searchResults.value[0].entryPath || searchResults.value[0].path);
+  const item = searchResults.value[activeSearchIndex.value];
+  if (!item) return;
+  router.push(item.entryPath || item.path);
   searchVisible.value = false;
 }
 function onSearchShortcut(event) {
@@ -725,3 +737,5 @@ select {
   font: inherit;
 }
 </style>
+
+<style scoped>.workspace-search-results .is-search-active{background:var(--care-50);outline:2px solid var(--care-600);outline-offset:-2px}.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}</style>

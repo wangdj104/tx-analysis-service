@@ -3,7 +3,13 @@ package org.familyhealthcare.service;
 import org.familyhealthcare.FamilyHealthCareApplication;
 import org.familyhealthcare.service.careplan.CarePlanNotificationTransport;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.context.TypeExcludeFilter;
+import org.springframework.boot.test.context.TestComponent;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.core.type.classreading.MetadataReader;
+import org.springframework.core.type.classreading.MetadataReaderFactory;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
+import java.io.IOException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.MapPropertySource;
@@ -70,9 +76,25 @@ public final class CarePlanBrowserApplication {
         config.put("bailian.api-key","");config.put("ocr.vision.api-key","");
         config.put("ocr.vision.base-url","http://127.0.0.1:9/disabled");config.put("langflow.enabled",false);
         config.put("audit.capture-client-ip",false);config.put("springfox.documentation.enabled",false);
+        createApplication(config).run();
+    }
+    static SpringApplication createApplication(Map<String,Object> config) {
         SpringApplication application=new SpringApplication(FamilyHealthCareApplication.class,SyntheticExternalServices.class);
-        application.addInitializers(context->context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("guarded-browser-test-only",config)));
-        application.run();
+        application.addInitializers(context->{
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("guarded-browser-test-only",config));
+            // 普通 SpringApplication 不会安装 SpringBootTest 的测试组件过滤器。
+            // 排除自动扫描到的无关测试夹具，同时保留显式指定的配置和导入。
+            context.getBeanFactory().registerSingleton("browserTestComponentExcludeFilter",new BrowserTestComponentExcludeFilter());
+        });
+        return application;
+    }
+    private static final class BrowserTestComponentExcludeFilter extends TypeExcludeFilter {
+        private final AnnotationTypeFilter testComponents = new AnnotationTypeFilter(TestComponent.class);
+        @Override public boolean match(MetadataReader reader,MetadataReaderFactory factory) throws IOException {
+            return testComponents.match(reader,factory);
+        }
+        @Override public boolean equals(Object other) { return other!=null&&getClass()==other.getClass(); }
+        @Override public int hashCode() { return getClass().hashCode(); }
     }
     private static void require(boolean value,String label){if(!value)throw new IllegalStateException("care-plan browser launcher guard: "+label);}
 

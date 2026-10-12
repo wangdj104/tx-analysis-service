@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test'
 import { test, signOut } from './carePlanSessions.mjs'
 import { ids, appPath, login } from './helpers.mjs'
-import { openReport, reportPath, panel, preview, reportBody, selectPatient, reportResponse, assertClearedReport, downloadCounter, screenshotReport, holdRealReportResponse } from './reportBrowser.mjs'
+import { openReport, reportPath, panel, preview, reportBody, reportPatientOptionLabel, selectPatient, reportResponse, assertClearedReport, downloadCounter, screenshotReport, holdRealReportResponse } from './reportBrowser.mjs'
 
 function safeConsole(page) {
   const violations = []
@@ -223,21 +223,21 @@ test('real report pre-click patient boundary: metadata is visible before a real 
   // At this extremely short boundary, a native option click is synchronously
   // dispatched by instrumentation so the actual App selection handler runs.
   await page.locator('.patient-switcher').getByRole('combobox').press('ArrowDown')
-  await expect(page.getByRole('option',{name:'Synthetic Empty Report Patient',exact:true})).toBeVisible()
+  await expect(page.getByRole('option',{name:reportPatientOptionLabel(ids.emptyReportPatient),exact:true})).toBeVisible()
   await page.keyboard.press('Escape')
-  await page.evaluate(() => {
+  await page.evaluate(emptyPatientLabel => {
     const native = URL.createObjectURL
     window.__reportPatientBoundary = null
     URL.createObjectURL = function (blob) {
       const metadata = document.querySelector('[data-testid="last-export"]')
-      const option = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent.trim() === 'Synthetic Empty Report Patient')
+      const option = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent.trim() === emptyPatientLabel)
       window.__reportPatientBoundary = { metadata: metadata?.textContent || '', optionFound: !!option }
       if (!option) throw new Error('Synthetic patient option must already exist')
       option.click() // Production Element Plus -> App switchPatient, no state injection.
       return native.call(URL,blob)
     }
     window.__restoreReportPatientBoundary = () => { URL.createObjectURL = native; delete window.__restoreReportPatientBoundary }
-  })
+  }, reportPatientOptionLabel(ids.emptyReportPatient))
   try {
     const delivered = reportResponse(page,'export',{format:'actions_csv'})
     await page.getByTestId('download-actions_csv').click()
@@ -266,7 +266,7 @@ test('real report coalesced App A→B→A retains the same panel but rejects its
       await patientSelect.focus();await expect(patientSelect).toBeFocused()
       await patientSelect.press('ArrowDown')
       await expect(patientSelect).toHaveAttribute('aria-expanded','true')
-      await expect(page.getByRole('option',{name:'Synthetic Empty Report Patient',exact:true})).toBeVisible()
+      await expect(page.getByRole('option',{name:reportPatientOptionLabel(ids.emptyReportPatient),exact:true})).toBeVisible()
       await page.keyboard.press('Escape')
       await expect(patientSelect).toHaveAttribute('aria-expanded','false')
       const original = await panel(page).elementHandle()
@@ -274,10 +274,10 @@ test('real report coalesced App A→B→A retains the same panel but rejects its
       try {
         await page.getByTestId(endpoint==='preview'?'preview-report':'download-actions_csv').click()
         await hold.reached
-        const accepted = await page.evaluate(async () => {
+        const accepted = await page.evaluate(async ({ patientALabel, patientBLabel }) => {
           const options = [...document.querySelectorAll('[role="option"]')]
           const option = name => options.find(node=>node.textContent.trim()===name)
-          const a=option('Synthetic Report Patient'),b=option('Synthetic Empty Report Patient')
+          const a=option(patientALabel),b=option(patientBLabel)
           if(!a||!b)throw new Error('Synthetic App patient options missing')
           b.click()
           const middle=Number(localStorage.getItem('currentPatientId'))
@@ -287,7 +287,7 @@ test('real report coalesced App A→B→A retains the same panel but rejects its
           await Promise.resolve()
           a.click()
           return {middle,last:Number(localStorage.getItem('currentPatientId'))}
-        })
+        }, { patientALabel: reportPatientOptionLabel(ids.reportPatient), patientBLabel: reportPatientOptionLabel(ids.emptyReportPatient) })
         expect(accepted).toEqual({middle:ids.emptyReportPatient,last:ids.reportPatient})
         await expect(page).toHaveURL(`${process.env.CARE_PLAN_E2E_BASE_URL}${appPath(reportPath())}`)
         expect(await original.evaluate(element=>element===document.querySelector('.execution-report')),'Coalesced actual App selection retains the original panel').toBe(true)

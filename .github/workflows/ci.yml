@@ -84,6 +84,58 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  ui-seventeen-browser:
+    name: Seventeen UI workflows (EN/CN, desktop/mobile, six themes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      UI_SEVENTEEN_EVIDENCE_DIR: ${{ runner.temp }}/ui-seventeen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            cn/frontend/package-lock.json
+      - name: Install official browser dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends fonts-wqy-microhei
+          npm ci --prefix frontend
+          npm ci --prefix cn/frontend
+          cd frontend
+          npx --no-install playwright install --with-deps chromium
+      - name: Verify fail-closed synthetic evidence gate
+        run: node --test scripts/tests/ui-seventeen-browser-gate.test.mjs
+      - name: Verify care drafts, identity, hierarchy and required fields
+        if: ${{ !cancelled() }}
+        run: node frontend/tests/careDraftDialogBacklog.browser.mjs
+      - name: Verify monitoring states, readings, history and trend data
+        if: ${{ !cancelled() }}
+        run: node frontend/tests/uiSeventeenMonitoring.browser.mjs
+      - name: Verify AI source review, receipt controls and lab states
+        if: ${{ !cancelled() }}
+        run: node frontend/tests/uiSeventeenClinical.browser.mjs
+      - name: Verify shell search, onboarding, summary and export scope
+        if: ${{ !cancelled() }}
+        run: node frontend/tests/uiSeventeenShell.browser.mjs
+      - name: Require all seventeen actual-browser acceptance matrices
+        if: ${{ !cancelled() }}
+        run: node scripts/verify-ui-seventeen-browser.mjs "$UI_SEVENTEEN_EVIDENCE_DIR" "$(git rev-parse HEAD)"
+      - name: Preserve synthetic screenshots and per-item outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-seventeen-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/ui-seventeen/**/*.png
+            ${{ runner.temp }}/ui-seventeen/*-results.json
+            ${{ runner.temp }}/ui-seventeen/acceptance-summary.json
+          if-no-files-found: error
+          retention-days: 14
+
   care-plan-mysql:
     # Release gate: required native acceptance, never an H2/optional fallback.
     # Both languages and both fresh/upgrade passes use this exact checkout.

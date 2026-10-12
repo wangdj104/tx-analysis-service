@@ -32,10 +32,11 @@
           <div class="panel-head">
             <div class="list-panel-title">
               <el-icon><EditPen /></el-icon>
-              <span>{{ editingId ? '编辑记录' : '新增记录' }}</span>
+              <h2 ref="editorHeading" tabindex="-1" class="editor-heading">{{ editingId ? editRecordLabel : '新增记录' }}</h2>
             </div>
           </div>
 
+          <p class="submission-patient">正在为 {{ currentPatientName || '当前患者' }} · 患者档案 #{{ currentPatientId || '—' }}</p>
           <el-form :model="form" label-position="top" ref="formRef" :rules="formRules" class="entry-form" :disabled="saving">
             <div class="form-grid form-grid--meta">
               <el-form-item label="记录日期" prop="recordDate">
@@ -106,7 +107,8 @@
               <el-button type="primary" @click="handleSave" :loading="saving">
                 <el-icon><Check /></el-icon>{{ editingId ? '更新记录' : '保存记录' }}
               </el-button>
-              <el-button @click="resetForm">重置</el-button>
+              <el-button v-if="editingId" @click="cancelEdit" :disabled="saving">取消编辑</el-button>
+              <el-button v-else @click="resetForm" :disabled="saving">重置</el-button>
             </div>
           </el-form>
         </div>
@@ -159,7 +161,7 @@
               <el-table-column label="操作" width="120" align="center" fixed="right">
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" @click="handleEdit(row)" :disabled="saving">编辑</el-button>
+                    <el-button link type="primary" size="small" :ref="node => setEditOpener(row.id, node)" @click="handleEdit(row, $event)" :disabled="saving">编辑</el-button>
                     <el-popconfirm title="确认删除这条记录吗？" @confirm="handleDelete(row)">
                       <template #reference>
                         <el-button link type="danger" size="small">删除</el-button>
@@ -184,12 +186,44 @@ import { listDiaries, saveDiary, updateDiary, deleteDiary } from '@/api/nutritio
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import { localDateKey } from '@/utils/familyHealth';
 
-const { currentPatientId } = useCurrentPatient();
+const { currentPatientId, currentPatientName } = useCurrentPatient();
 const loading = ref(false);
 const saving = ref(false);
 const records = ref([]);
 const editingId = ref(null);
 const formRef = ref(null);
+const editorHeading = ref(null);
+const editRecordLabel = ref('');
+const editOpeners = new Map();
+let editOrigin = null;
+function setEditOpener(id, node) {
+  if (node) editOpeners.set(id, node.$el || node);
+  else editOpeners.delete(id);
+}
+function focusEditor(context) {
+  Promise.resolve().then(() => {
+    if (!isCurrentContext(context) || !editingId.value) return;
+    const heading = editorHeading.value;
+    if (!heading?.isConnected) return;
+    const behavior = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    heading.scrollIntoView?.({ behavior, block: 'start' });
+    heading.focus?.({ preventScroll: true });
+  });
+}
+async function restoreEditOrigin(origin, context) {
+  await Promise.resolve();
+  if (!origin || !isCurrentContext(context) || editingId.value) return;
+  const target = editOpeners.get(origin.id) || origin.opener;
+  if (!target?.isConnected || target.matches?.(':disabled') || target.closest?.('[hidden],[inert]')) return;
+  if (typeof window !== 'undefined') window.scrollTo?.({ top: origin.scrollY, behavior: 'auto' });
+  target.focus?.({ preventScroll: true });
+}
+async function cancelEdit() {
+  if (saving.value) return;
+  const origin = editOrigin;
+  resetForm();
+  await restoreEditOrigin(origin, captureContext());
+}
 const selectedSymptoms = ref([]);
 let patientEpoch = 0;
 let editorEpoch = 0;
@@ -270,6 +304,8 @@ function toggleSymptom(name) {
 function resetForm() {
   invalidateEditor();
   editingId.value = null;
+  editRecordLabel.value = '';
+  editOrigin = null;
   form.recordDate = localDateKey();
   form.bodyWeight = null;
   form.appetite = '';
@@ -317,8 +353,11 @@ async function handleSave() {
     if (!isCurrentSave()) return;
     if (res.code === 200) {
       ElMessage.success(isEdit ? '更新成功' : '保存成功');
+      const origin = editOrigin;
       resetForm();
-      loadRecords();
+      const focusContext = captureContext();
+      await loadRecords();
+      await restoreEditOrigin(origin, focusContext);
     } else {
       ElMessage.error(res.msg || '操作失败');
     }
@@ -327,10 +366,13 @@ async function handleSave() {
   } finally { if (isCurrentSave()) saving.value = false; }
 }
 
-function handleEdit(row) {
+function handleEdit(row, event) {
   if (saving.value || disposed || !currentPatientId.value || row.patientId !== currentPatientId.value) return;
   invalidateEditor();
   editingId.value = row.id;
+  editOrigin = { id: row.id, opener: event?.currentTarget || editOpeners.get(row.id), scrollY: typeof window === 'undefined' ? 0 : window.scrollY };
+  editRecordLabel.value = '编辑 ' + row.recordDate + (row.recordTime ? ' ' + row.recordTime : '');
+  focusEditor(captureContext());
   Object.assign(form, {
     recordDate: row.recordDate,
     bodyWeight: row.bodyWeight,
@@ -362,6 +404,7 @@ watch(currentPatientId, () => {
   patientEpoch++;
   listRequest++;
   records.value = [];
+  editOpeners.clear();
   loading.value = false;
   resetForm();
   loadRecords();
@@ -370,6 +413,8 @@ watch(currentPatientId, () => {
 onMounted(() => { loadRecords(); });
 onUnmounted(() => {
   disposed = true;
+  editOpeners.clear();
+  editOrigin = null;
   patientEpoch++;
   listRequest++;
   invalidateEditor();
@@ -378,6 +423,10 @@ onUnmounted(() => {
 
 <style scoped src="@/styles/module-layout.css"></style>
 <style scoped>
+.editor-heading { margin: 0; font-size: inherit; font-weight: 700; overflow-wrap: anywhere; }
+.editor-heading:focus-visible { outline: 3px solid var(--care-600); outline-offset: 4px; }
+.submission-patient { margin: 12px 20px 0; color: var(--ink-700); overflow-wrap: anywhere; }
+
 .nutrition-diary-page {
   --diary-accent: var(--success);
   --diary-soft: var(--success-soft);

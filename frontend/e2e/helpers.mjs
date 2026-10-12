@@ -20,7 +20,7 @@ export async function login(page, role) {
   expect(account.data.user.id).toBe(ids[role])
   // Match OnboardingGuide's actual per-account role key. Reading an existing
   // dismissal distinguishes repeat login; only the visible button writes it.
-  const roleCode = ['admin', 'doctor', 'patient', 'family'].find(code => account.data.roles.some(item => item.roleCode === code)) || 'patient'
+  const roleCode = ['admin', 'doctor', 'nurse', 'patient', 'family'].find(code => account.data.roles.some(item => item.roleCode === code)) || 'patient'
   const alreadyDismissed = await page.evaluate(({ accountId, roleCode }) => localStorage.getItem(`care-onboarding-prompt:${accountId}:${roleCode}`) === 'seen' || localStorage.getItem(`care-onboarding:${accountId}:${roleCode}`) === 'complete', { accountId: ids[role], roleCode })
   const welcome = page.getByRole('dialog', { name: language === 'cn' ? '欢迎使用健康工作台' : 'Welcome to your health workspace', exact: true })
   if (!alreadyDismissed) {

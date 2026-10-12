@@ -4,7 +4,7 @@
       <p v-if="loading" role="status">正在读取原始病历…</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <template v-if="preview">
-        <h2>{{ preview.patientName }} · {{ preview.recordDate }}</h2>
+        <h2>{{ preview.patientName }} · 档案 #{{ preview.patientId }} · {{ preview.recordDate }}</h2>
         <dl class="medical-review-context">
           <dt>内容版本</dt><dd>{{ preview.contentVersion }}</dd>
           <dt>记录类型</dt><dd>{{ preview.recordType || '—' }}</dd>

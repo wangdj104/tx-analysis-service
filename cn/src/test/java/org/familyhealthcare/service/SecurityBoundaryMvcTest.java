@@ -8,6 +8,8 @@ import org.familyhealthcare.mapper.*;
 import org.familyhealthcare.service.impl.SysUserServiceImpl;
 import org.familyhealthcare.util.JwtUtil;
 import org.junit.jupiter.api.*;
+import org.springframework.boot.test.context.TestComponent;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.mock.web.MockServletContext;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -25,8 +27,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Actual MVC, real JWT, real password mutation service; only storage/provider seams are synthetic. */
 class SecurityBoundaryMvcTest {
-    @Configuration @EnableWebMvc static class Config { }
-    @RestController static class AdjacentController { @GetMapping({"/api/ai-adjacent","/api/health-report/generate-adjacent","/api/data-export/csv-adjacent","/api/care/backup-adjacent"}) String adjacent(){return "adjacent";} }
+    @TestConfiguration @EnableWebMvc static class Config { }
+    @TestComponent @RestController static class AdjacentController { @GetMapping({"/api/ai-adjacent","/api/health-report/generate-adjacent","/api/data-export/csv-adjacent","/api/care/backup-adjacent"}) String adjacent(){return "adjacent";} }
     GenericWebApplicationContext context; MockMvc mvc; JwtUtil jwt; SysUserServiceImpl users;
     SysMenuMapper menus; HealthReportService reports; DataExportService exports; FamilyBackupService backup;
     org.familyhealthcare.support.PatientAuthorizationFixture patientFixture; AiAnalysisRecordMapper aiRecords;

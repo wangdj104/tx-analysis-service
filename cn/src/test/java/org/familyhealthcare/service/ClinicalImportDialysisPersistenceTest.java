@@ -11,6 +11,7 @@ import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.*;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.aop.support.AopUtils;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -251,13 +252,13 @@ class ClinicalImportDialysisPersistenceTest {
     @SafeVarargs private static Map<String,Object> fhir(Map<String,Object>... resources) { List<Object> entries = new ArrayList<>(); for (Map<String,Object> resource : resources) entries.add(map("resource", resource)); return map("bundle", map("resourceType", "Bundle", "entry", entries)); }
     private static Map<String,Object> device(String id, int systolic) { return map("readings", Collections.singletonList(map("sourceExternalId", id, "observedAt", "2026-10-01T08:00:00Z", "systolic", systolic, "diastolic", 80))); }
 
-    @Configuration
+    @TestConfiguration
     @Import(Config.class)
     static class H2Database {
         @Bean DataSource dataSource() { JdbcDataSource ds = new JdbcDataSource(); ds.setURL("jdbc:h2:mem:importdialysis" + UUID.randomUUID().toString().replace("-", "") + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=4000"); return ds; }
     }
 
-    @Configuration
+    @TestConfiguration
     @EnableTransactionManagement(proxyTargetClass = true)
     @MapperScan("org.familyhealthcare.mapper")
     @Import({ClinicalImportService.class, ClinicalImportRowWriter.class, MedicalRecordReviewAccess.class, BpSelfMonitorRecordServiceImpl.class, MedicalRecordServiceImpl.class, DialysisRecordServiceImpl.class})

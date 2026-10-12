@@ -49,6 +49,13 @@
             <el-form-item label="隐私保护">
               <el-checkbox v-model="form.masked">脱敏手机号和证件号码后导出</el-checkbox>
             </el-form-item>
+            <section class="export-scope" aria-live="polite">
+              <strong>导出对象：{{ currentPatientName || '—' }} · 档案 #{{ currentPatientId || '—' }}</strong>
+              <p>{{ DATA_TYPE_LABELS[form.dataType] || '—' }} · 日期范围（含首尾）：{{ dateRange ? `${dateRange.from} – ${dateRange.to}` : '请先选择患者和日期范围' }}</p>
+              <p>{{ form.masked ? '手机号和证件号码已选择脱敏' : '未选择脱敏：将包含原始可用数据' }}</p>
+              <p>脱敏只屏蔽手机号和证件号码，健康数据仍可识别个人，不等同于匿名数据。</p>
+            </section>
+            <p v-if="exportMessage" role="status" class="export-feedback">{{ exportMessage }}</p>
             <el-form-item>
               <el-button type="primary" @click="handleExport" :loading="exporting">
                 <el-icon><Download /></el-icon>导出 CSV
@@ -63,14 +70,16 @@
 
 <script setup>
 import ExecutionReportPanel from '@/components/care-plan/ExecutionReportPanel.vue';
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Download } from '@element-plus/icons-vue';
+import { exportDateRange } from '@/utils/exportPresentation';
+import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession';
 import { exportCsv } from '@/api/dataExport.js';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import { useMenuPermission } from '@/composables/useMenuPermission';
 
-const { currentPatientId } = useCurrentPatient();
+const { currentPatientId, currentPatientName } = useCurrentPatient();
 const { hasMenu, hasMenuName } = useMenuPermission();
 const showCareExecution = ref(false);
 const exporting = ref(false);
@@ -130,6 +139,14 @@ onMounted(() => {
   }
 });
 
+const dateRange = computed(() => exportDateRange(form.timeType, form.timeValue));
+const exportMessage = ref('');
+let exportEpoch = 0, disposed = false;
+watch(() => [currentPatientId.value, form.dataType, form.timeType, form.timeValue, form.masked], () => {
+  exportEpoch++; exporting.value = false; exportMessage.value = '';
+}, { flush: 'sync' });
+onUnmounted(() => { disposed = true; exportEpoch++; });
+
 const rules = {
   dataType: [{ required: true, message: '请选择数据类型', trigger: 'change' }],
   timeType: [{ required: true, message: '请选择时间维度', trigger: 'change' }],
@@ -137,28 +154,37 @@ const rules = {
 };
 
 async function handleExport() {
+  if (exporting.value) return;
   if (!currentPatientId.value) { ElMessage.warning('请先选择患者。'); return; }
-  try { await formRef.value.validate(); } catch { return; }
-  exporting.value = true;
+  const epoch = ++exportEpoch, auth = captureAuthSession();
+  const snapshot = { patientId: currentPatientId.value, ...form }, range = exportDateRange(snapshot.timeType, snapshot.timeValue);
+  const current = () => !disposed && epoch === exportEpoch && snapshot.patientId === currentPatientId.value && isAuthSessionCurrent(auth);
+  exporting.value = true; exportMessage.value = '';
   try {
-    const blob = await exportCsv({
-      patientId: currentPatientId.value,
-      ...form
-    });
-    // blobalready throughYesBlobtoimage, directlyCreateDownloadlink
+    try { await formRef.value.validate(); } catch { return; }
+    if (!current()) return;
+    if (!range) { exportMessage.value = '请选择有效的日期范围。'; return; }
+    const blob = await exportCsv(snapshot);
+    if (!current()) return;
+    const text = await blob.text();
+    if (!current()) return;
+    if (text.replace(/^\uFEFF/, '').trim().split(/\r?\n/).length < 2) { exportMessage.value = '此患者在所选日期范围内没有记录。'; return; }
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${DATA_TYPE_LABELS[form.dataType] || form.dataType}_数据导出.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    ElMessage.success('数据已导出');
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${snapshot.dataType}_${range.from}_${range.to}.csv`;
+      link.click();
+    } finally { window.URL.revokeObjectURL(url); }
+    exportMessage.value = '数据已导出。';
   } catch (e) {
-    ElMessage.error('导出失败');
-  } finally { exporting.value = false; }
+    if (current()) exportMessage.value = '导出失败，输入已保留，请重试。';
+  } finally { if (current()) exporting.value = false; }
 }
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>
 
 <style scoped>.execution-report-choice{min-height:44px;padding:10px 16px;margin-bottom:16px;max-width:100%;font:inherit;white-space:normal}.execution-report-choice:focus-visible{outline:3px solid var(--care-600)}</style>
+
+<style scoped>.export-scope{padding:16px;background:var(--care-50);border:1px solid var(--line);border-radius:10px;margin-bottom:16px;overflow-wrap:anywhere}.export-scope p{line-height:1.6;margin:8px 0}.export-feedback{padding:12px;border:1px solid var(--line)}</style>

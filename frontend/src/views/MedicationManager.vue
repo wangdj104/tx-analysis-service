@@ -32,7 +32,7 @@
                   <el-option
                     v-for="patient in patientList"
                     :key="patient.id"
-                    :label="patient.patientName"
+                    :label="`${patient.patientName || patient.name} · Record #${patient.id}`"
                     :value="patient.id"
                   />
                 </el-select>
@@ -197,7 +197,7 @@
                     <el-option
                       v-for="patient in patientList"
                       :key="patient.id"
-                      :label="patient.patientName"
+                      :label="`${patient.patientName || patient.name} · Record #${patient.id}`"
                       :value="patient.id"
                     />
                   </el-select>
@@ -346,7 +346,7 @@
       <el-form :model="editingLog" :disabled="logSaving" label-width="100px">
         <el-form-item label="Patient" required>
           <el-select v-model="editingLog.patientId" placeholder="Select a patient" filterable>
-            <el-option v-for="patient in patientList" :key="patient.id" :label="patient.patientName" :value="patient.id" />
+            <el-option v-for="patient in patientList" :key="patient.id" :label="`${patient.patientName || patient.name} · Record #${patient.id}`" :value="patient.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="Medication" required>

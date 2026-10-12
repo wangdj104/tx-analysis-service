@@ -39,7 +39,7 @@ function setup(t, overrides = {}) {
     window: { removeEventListener() {} }, URL: { revokeObjectURL() {} },
     FileReader: class { readAsDataURL(file) { readers.push({ file, finish: () => this.onload({ target: { result: `data:image/png;base64,${file.name}` } }), fail: () => this.onerror(new Error('Synthetic file failure')) }) } }, api
   }
-  const names = 'patientList,editDialogVisible,editForm,editItems,editAttachments,editAttachmentUploadRef,openEditDialog,handleEditAttachmentChange,removeEditAttachment,addEditItem,removeEditItem,saveEditRecord,getImageSrc,getPreviewSrcList'
+  const names = 'patientLabel,patientIdentity,patientList,editDialogVisible,editForm,editItems,editAttachments,editAttachmentUploadRef,openEditDialog,handleEditAttachmentChange,removeEditAttachment,addEditItem,removeEditItem,saveEditRecord,getImageSrc,getPreviewSrcList'
   const optional = ['editLoading', 'editReady', 'editSaving', 'editLocked', 'editFilesProcessing', 'editSession', 'editAttachmentChange', 'editDialogKey', 'editDialogBeforeClose', 'editDialogModelChange']
   const view = scope.run(() => new Function(...Object.keys(bindings), script + `\nreturn {${names},${optional.map(name => `...(typeof ${name} === 'undefined' ? {} : {${name}})`).join(',')}}`)(...Object.values(bindings)))
   view.patientList.value = [{ id: 1, patientName: 'Synthetic patient A' }, { id: 2, patientName: 'Synthetic patient B' }]

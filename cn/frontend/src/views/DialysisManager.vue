@@ -575,7 +575,7 @@
       <el-form :model="form" :disabled="formSaving" :label-width="isMobile ? 'auto' : '130px'" :label-position="isMobile ? 'top' : 'right'" :rules="rules" ref="formRef">
         <el-form-item label="患者">
           <el-select v-model="form.patientId" :disabled="isEdit || formSaving" placeholder="选择患者" filterable style="width:100%">
-            <el-option v-for="patient in patientList" :key="patient.id" :label="patient.patientName" :value="patient.id" />
+            <el-option v-for="patient in patientList" :key="patient.id" :label="`${patient.patientName || patient.name} · 档案 #${patient.id}`" :value="patient.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="透析日期" prop="recordDate">

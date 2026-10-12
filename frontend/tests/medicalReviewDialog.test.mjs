@@ -53,7 +53,7 @@ test('duplicate clicks stay single-flight and unknown outcome requires reload',a
 test('both workspaces route medical decisions into source dialog instead of direct submit',async t=>{
  const row={sourceType:'MEDICAL_RECORD',sourceId:17,patientId:1,title:'Synthetic record'}
  const v=await fixture(t,'DoctorWorkspace',{},async c=>c.url==='/doctor-workspace/summary'?{data:{patients:[{id:1,name:'Synthetic patient'}],reviewQueue:[row]}}:c.url==='/medical-record/17/review-preview'?{data:copy()}:c.url.endsWith('/capabilities')?{data:{enabled:false}}:{data:[]})
- await v.vm.review(row,'APPROVED');await flush();assert.equal(posts(v).length,0);assert.ok(v.calls.some(c=>c.url==='/medical-record/17/review-preview'));assert.ok(textOf(v.root).includes(snapshot.remark))
+ await v.vm.openReview(row);await flush();assert.equal(posts(v).length,0);assert.ok(v.calls.some(c=>c.url==='/medical-record/17/review-preview'));assert.ok(textOf(v.root).includes(snapshot.remark))
  const clinical=fs.readFileSync(new URL('../src/views/ClinicalWorkbench.vue',import.meta.url),'utf8');assert.match(clinical,/<MedicalRecordReviewDialog/);assert.doesNotMatch(clinical,/await reviewMedicalRecord\(/)
 })
 

@@ -14,6 +14,7 @@ const has = (node, key) => node.props[key] != null && node.props[key] !== false
 const disabled = node => ['button', 'input', 'select', 'textarea', 'fieldset'].includes(node.tag) && ancestors(node).some(parent => has(parent, 'disabled'))
 async function flush() { for (let i = 0; i < 16; i++) { await Promise.resolve(); await nextTick() } }
 function deferred() { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
+const localClock = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, -1)
 let sequence = 0
 const action = { id: 31, planId: 17, patientId: 1, ordinal: 1, assignedUserId: 51, instruction: 'Synthetic action', status: 'OPEN', dueAt: '2026-10-04T12:00:00Z', evidence: [], events: [], allowedActions: ['SUBMIT_RECEIPT', 'REQUEST_HELP', 'FOLLOW_UP'], allowedEntryModes: ['ASSISTED'] }
 const plan = { id: 17, patientId: 1, title: 'Synthetic plan', instructions: 'Synthetic instructions', revisionNo: 1, revisionId: 23, currentRevisionId: 23, revisionStatus: 'PUBLISHED', version: 4, lifecycle: 'ACTIVE', actions: [action], allowedActions: [] }
@@ -35,6 +36,7 @@ async function mountedParent(t, name) {
     if (config.url.endsWith('/capabilities')) return { data: { enabled: true } }
     if (config.url.endsWith('/revisions')) return { data: { items: [], nextCursor: null } }
     if (config.method === 'post') return postTransport(config)
+    if (config.url === '/patient/names') return { data: [{ id: 1, patientName: 'Synthetic patient' }] }
     const value = config.url === '/care-plans' ? { items: [copy(plan)], nextCursor: null } : copy(plan)
     reads++
     if (deferredRead && reads === 2) return pending.promise
@@ -53,6 +55,7 @@ async function mountedParent(t, name) {
     const template = compileTemplate({ source: descriptor.template.content, filename, id: `${id}-${componentName}`, compilerOptions: { bindingMetadata: script.bindings, hoistStatic: false } })
     assert.deepEqual(template.errors, [])
     let code = script.content.replace('export default', 'const __component=') + '\n' + template.code.replace('export function render', 'function render') + '\n__component.render=render; export default __component;'
+    code = code.replace(/import request from ['"]@\/utils\/request['"]/g, `const request=config=>globalThis.${slot}.request(config)`)
     code = code.replace(/from ['"]vue['"]/g, `from '${vueUrl}'`).replace(/from ['"]vue-router['"]/g, `from '${routerUrl}'`).replace(/from ['"]@\/api\/carePlan['"]/g, `from '${apiUrl}'`).replace(/from ['"]@\/composables\/useCarePlan['"]/g, `from '${composableUrl}'`).replace(/from ['"]@\/utils\/authSession['"]/g, `from '${authUrl}'`).replace(/from ['"]@\/utils\/carePlanTime['"]/g, `from '${timeUrl}'`)
     for (const match of code.matchAll(/from ['"](?:@\/components\/care-plan\/|\.\/)(\w+)\.vue['"]/g)) code = code.replace(match[0], `from '${await compile(match[1])}'`)
     return urls[componentName] = moduleUrl(code)
@@ -74,7 +77,7 @@ async function mountedParent(t, name) {
   render(); await flush()
   t.after(() => { renderer.render(null, root); delete globalThis[slot]; globalThis.document = previousDocument })
   const openerId = name === 'PlanTaskList' ? 'record-31' : 'route-record-31'
-  return { root, body, outside, route, guards, calls, storage, get vm() { return root._vnode.component.setupState }, beginDeferredRead() { deferredRead = true }, postTransport(handler) { postTransport = handler }, async resolveRead(value = plan) { pending.resolve({ data: name === 'PlanTaskList' ? { items: [copy(value)], nextCursor: null } : copy(value) }); await flush() }, async open(id = openerId) { const opener = find(root, id); assert.ok(opener); opener.focus(); opener.props.onClick({ currentTarget: opener }); await flush(); return opener }, async dismiss(kind = 'cancel') { const dialog = walk(root).find(element => element.tag === 'dialog'); assert.ok(dialog?.open); if (kind === 'cancel') dialog.props.onCancel(new Event('cancel', { cancelable: true })); else find(root, 'close-receipt').props.onClick(); await flush() }, async submit() { find(root, 'receipt-note').props['onUpdate:modelValue']('Synthetic submitted note'); walk(root).find(node => node.tag === 'input').props['onUpdate:modelValue'](new Date(Date.now() - 60000).toISOString()); await find(root, 'submit-receipt').props.onClick(new Event('click', { cancelable: true })); await flush() }, async update(value) { props = { ...props, ...value }; render(); await flush() }, openerId }
+  return { root, body, outside, route, guards, calls, storage, get vm() { return root._vnode.component.setupState }, beginDeferredRead() { deferredRead = true }, postTransport(handler) { postTransport = handler }, async resolveRead(value = plan) { pending.resolve({ data: name === 'PlanTaskList' ? { items: [copy(value)], nextCursor: null } : copy(value) }); await flush() }, async open(id = openerId) { const opener = find(root, id); assert.ok(opener); opener.focus(); opener.props.onClick({ currentTarget: opener }); await flush(); return opener }, async dismiss(kind = 'cancel') { const dialog = walk(root).find(element => element.tag === 'dialog'); assert.ok(dialog?.open); if (kind === 'cancel') dialog.props.onCancel(new Event('cancel', { cancelable: true })); else find(root, 'close-receipt').props.onClick(); await flush() }, async submit() { find(root, 'receipt-note').props['onUpdate:modelValue']('Synthetic submitted note'); find(root, 'receipt-execution-time').props['onUpdate:modelValue'](localClock(new Date(Date.now() - 60000))); await find(root, 'submit-receipt').props.onClick(new Event('click', { cancelable: true })); await flush() }, async update(value) { props = { ...props, ...value }; render(); await flush() }, openerId }
 }
 
 for (const parent of ['CarePlanDetailRoute', 'PlanTaskList']) {

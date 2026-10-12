@@ -6,7 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.springframework.jdbc.datasource.DataSourceUtils;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -322,7 +322,7 @@ class CarePlanDraftTest {
             assertTrue(dataSource.mutationIsolation.isEmpty());assertEquals(0,count("care_plan_revision"));assertEquals(0,count("care_plan_command"));assertEquals(1,count("doctor_care_plan"));
         }
     }
-    @Configuration @EnableTransactionManagement static class TransactionConfiguration { }
+    @TestConfiguration @EnableTransactionManagement static class TransactionConfiguration { }
     private AnnotationConfigApplicationContext transactionContext(DataSource dataSource){
         AnnotationConfigApplicationContext context=new AnnotationConfigApplicationContext();
         context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("care-plan-test",Collections.singletonMap("care-plan.enabled",true)));

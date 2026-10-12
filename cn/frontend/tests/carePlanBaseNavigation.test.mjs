@@ -84,6 +84,7 @@ async function fixture(t, name, { timeline = [], enabled = true } = {}) {
     const template = compileTemplate({ source: descriptor.template.content, filename: file, id: scope, compilerOptions: { bindingMetadata: script.bindings, hoistStatic: false } })
     assert.deepEqual(template.errors, [], `${componentName} compiles`)
     let code = script.content.replace('export default', 'const __component =') + '\n' + template.code.replace('export function render', 'function render') + '\n__component.render = render; export default __component;'
+    code=code.replace(/import request from ['"]@\/utils\/request['"]/g,`const request=(...args)=>globalThis.${slot}(...args)`)
     code = code.replace(/from ['"]vue['"]/g, `from '${vueUrl}'`)
       .replace(/from ['"]vue-router['"]/g, `from '${routerUrl}'`)
       .replace(/from ['"]@\/api\/carePlan['"]/g, `from '${careApiUrl}'`)

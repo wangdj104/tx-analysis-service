@@ -27,13 +27,14 @@
         <div class="content-panel">
         <!-- Upload and Recognize -->
         <div v-show="activeMenu === 'upload'" class="upload-panel">
+          <p class="submission-patient">录入患者：{{ patientIdentity(uploadForm.patientId, uploadForm.patientName) }}</p>
           <el-form :disabled="uploadSaving" :model="uploadForm" label-width="100px" class="upload-form">
             <el-form-item label="患者" required>
               <el-select v-model="uploadForm.patientId" placeholder="选择患者" filterable style="max-width: 320px">
                 <el-option
                   v-for="patient in patientList"
                   :key="patient.id"
-                  :label="patient.patientName"
+                  :label="patientLabel(patient)"
                   :value="patient.id"
                 />
               </el-select>
@@ -273,7 +274,7 @@
                   <el-option
                     v-for="patient in patientList"
                     :key="patient.id"
-                    :label="patient.patientName"
+                    :label="patientLabel(patient)"
                     :value="patient.id"
                   />
                 </el-select>
@@ -303,6 +304,14 @@
               </el-form-item>
             </el-form>
           </div>
+          <div class="trend-query-state" aria-live="polite">
+            <p v-if="trendQuery">查询条件： {{ patientIdentity(trendQuery.patientId, trendQuery.patientName) }} · {{ trendQuery.itemName }}</p>
+            <p v-if="trendLoading" role="status">正在加载该项目的历史记录…</p>
+            <p v-else-if="trendStatus === 'idle'">尚未查询，请选择患者与检验项目后查看趋势。</p>
+            <p v-else-if="trendStatus === 'empty'">该患者的此检验项目暂无历史记录。</p>
+            <div v-else-if="trendStatus === 'error'" role="alert"><p>{{ trendError }}</p><el-button data-testid="retry-trend" :loading="trendLoading" @click="loadTrend">重试查询</el-button></div>
+            <p v-if="trendData.length && trendResultQuery">当前结果对应： {{ patientIdentity(trendResultQuery.patientId, trendResultQuery.patientName) }} · {{ trendResultQuery.itemName }}<span v-if="trendStatus === 'error'"> （上次成功结果，刷新失败）</span></p>
+          </div>
           <div v-if="trendData.length > 0" class="trend-chart-wrap">
             <v-chart class="trend-chart" :option="trendChartOption" autoresize />
           </div>
@@ -321,9 +330,7 @@
               <el-table-column prop="hospitalName" label="医院" min-width="160" show-overflow-tooltip />
             </el-table>
           </div>
-          <div v-if="trendData.length === 0 && !trendLoading" class="stats-empty">
-            <el-empty description="选择患者和检验项目后查看历史趋势" />
-          </div>
+
         </div>
 
         <!-- Record List / Abnormalrecord -->
@@ -335,7 +342,7 @@
                 <el-option
                   v-for="patient in patientList"
                   :key="patient.id"
-                  :label="patient.patientName"
+                  :label="patientLabel(patient)"
                   :value="patient.id"
                 />
               </el-select>
@@ -431,6 +438,7 @@
 
     <!-- Upload and Recognizedialog (listpageshortcutentry)  -->
     <el-dialog v-model="uploadDialogVisible" title="上传报告" width="min(800px, 95vw)" :close-on-click-modal="false" destroy-on-close>
+      <p class="submission-patient">录入患者：{{ patientIdentity(uploadForm.patientId, uploadForm.patientName) }}</p>
       <el-form :disabled="uploadSaving" :model="uploadForm" label-width="100px">
         <el-form-item label="患者姓名" required>
           <el-input v-model="uploadForm.patientName" placeholder="请输入患者姓名" />
@@ -557,7 +565,7 @@
     <!-- Detailsdialog -->
     <el-dialog v-model="detailDialogVisible" title="医疗记录详情" width="min(900px, 95vw)" destroy-on-close>
       <el-descriptions :column="2" border v-if="currentRecord">
-        <el-descriptions-item label="患者">{{ currentRecord.patientName }}</el-descriptions-item>
+        <el-descriptions-item label="患者">{{ patientIdentity(currentRecord.patientId, currentRecord.patientName) }}</el-descriptions-item>
         <el-descriptions-item label="检查日期">{{ currentRecord.recordDate }}</el-descriptions-item>
         <el-descriptions-item label="检查类型">{{ getRecordTypeName(currentRecord.recordType) }}</el-descriptions-item>
         <el-descriptions-item label="医院">{{ currentRecord.hospitalName }}</el-descriptions-item>
@@ -616,12 +624,13 @@
     <el-dialog :model-value="editDialogVisible" :key="editDialogKey" @update:model-value="editDialogModelChange" :before-close="editDialogBeforeClose" title="编辑医疗记录" width="min(900px, 95vw)" :close-on-click-modal="false" destroy-on-close>
       <p v-if="editLoading" role="status">正在加载医疗记录…</p>
       <p v-if="editFilesProcessing" role="status">正在处理附件…</p>
+      <p class="submission-patient">编辑患者：{{ patientIdentity(editForm.patientId, editForm.patientName) }}</p>
       <el-form :disabled="editLocked" :model="editForm" label-width="100px">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="患者">
               <el-select :disabled="editLocked" v-model="editForm.patientId" placeholder="选择患者" filterable style="width: 100%">
-                <el-option v-for="patient in patientList" :key="patient.id" :label="patient.patientName" :value="patient.id" />
+                <el-option v-for="patient in patientList" :key="patient.id" :label="patientLabel(patient)" :value="patient.id" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -911,6 +920,12 @@ const editItems = ref([]);
 const editAttachments = ref([]);
 
 const patientList = ref([]);
+function patientLabel(patient) { return `${patient.patientName || patient.name || '患者姓名暂不可用'} · 档案 #${patient.id}`; }
+function patientIdentity(id, fallback = '') {
+  const patient = patientList.value.find(p => String(p.id) === String(id));
+  return patient ? patientLabel(patient) : `${fallback || '患者姓名暂不可用'} · 档案 #${id ?? '—'}`;
+}
+
 
 const uploadForm = reactive({
   patientId: currentPatientId.value,
@@ -962,6 +977,7 @@ const trendForm = reactive({
 });
 const trendData = ref([]);
 const trendLoading = ref(false);
+const trendStatus = ref('idle'), trendError = ref(''), trendQuery = ref(null), trendResultQuery = ref(null);
 const allItemNames = ref([]);
 
 const recordTypeMap = {
@@ -1290,12 +1306,29 @@ async function loadRecords() {
   }
 }
 
-let trendRequest = 0, itemNamesRequest = 0, medicalReadDisposed = false;
+let trendRequest = 0, itemNamesRequest = 0, medicalReadDisposed = false, trendSession = null;
 function invalidateTrend() {
   trendRequest++;
   trendData.value = [];
   trendLoading.value = false;
+  trendStatus.value = 'idle'; trendError.value = ''; trendQuery.value = null; trendResultQuery.value = null;
 }
+function trendSessionCurrent() {
+  return !!trendSession && isAuthSessionCurrent(trendSession) && trendSession.actorId === localStorage.getItem('userId');
+}
+function clearTrendAccount() { invalidateTrend(); trendSession = null; }
+function handleTrendAuthStorage(event) {
+  if ((event.key == null || ['token', 'userId'].includes(event.key)) && trendSession && !trendSessionCurrent()) clearTrendAccount();
+}
+onMounted(() => {
+  window.addEventListener('auth-session-cleared', clearTrendAccount);
+  window.addEventListener('storage', handleTrendAuthStorage);
+});
+onUnmounted(() => {
+  clearTrendAccount();
+  window.removeEventListener('auth-session-cleared', clearTrendAccount);
+  window.removeEventListener('storage', handleTrendAuthStorage);
+});
 watch(() => [trendForm.patientId, trendForm.itemName], invalidateTrend, { flush: 'sync' });
 onUnmounted(() => {
   medicalReadDisposed = true;
@@ -1304,8 +1337,16 @@ onUnmounted(() => {
   allItemNames.value = [];
 });
 
+function failTrend(error) {
+  const denied = [401, 403].includes(Number(error?.response?.status || error?.code));
+  if (denied) { trendData.value = []; trendResultQuery.value = null; }
+  trendStatus.value = 'error';
+  trendError.value = denied ? '访问权限已变化，之前的趋势结果已清除。请重试以检查当前权限。' : '查询失败，请重试当前患者及检验项目。';
+}
+
 async function loadTrend() {
   if (medicalReadDisposed) return;
+  if (trendSession && !trendSessionCurrent()) clearTrendAccount();
   const patient = patientList.value.find(p => p.id === trendForm.patientId);
   trendForm.patientName = patient?.patientName || '';
   if (!trendForm.patientId || !trendForm.itemName) {
@@ -1313,23 +1354,33 @@ async function loadTrend() {
     return;
   }
   const request = ++trendRequest;
+  const auth = { ...captureAuthSession(), actorId: localStorage.getItem('userId') };
+  trendSession = auth;
+  if (!auth.token) { clearTrendAccount(); return; }
   const params = { ...trendForm };
-  const isCurrent = () => !medicalReadDisposed && request === trendRequest
-    && params.patientId === trendForm.patientId && params.itemName === trendForm.itemName;
+  trendQuery.value = { ...params }; trendError.value = ''; trendStatus.value = 'loading';
+  const isCurrent = () => {
+    if (medicalReadDisposed || request !== trendRequest || params.patientId !== trendForm.patientId || params.itemName !== trendForm.itemName) return false;
+    if (!isAuthSessionCurrent(auth) || auth.actorId !== localStorage.getItem('userId')) { clearTrendAccount(); return false; }
+    return true;
+  };
   trendLoading.value = true;
   try {
     const res = await api.getItemTrend(params.patientId, params.patientName, params.itemName);
     if (!isCurrent()) return;
     if (res.code === 200) {
       trendData.value = res.data || [];
+      trendResultQuery.value = { ...params };
+      trendStatus.value = trendData.value.length ? 'loaded' : 'empty';
       if (trendData.value.length === 0) {
         ElMessage.info('未找到该指标的历史记录');
       }
     } else {
+      failTrend(res);
       ElMessage.error(res.message || '查询失败');
     }
   } catch (e) {
-    if (isCurrent()) ElMessage.error('查询失败：' + e.message);
+    if (isCurrent()) { failTrend(e); ElMessage.error('查询失败：' + e.message); }
   } finally {
     if (isCurrent()) trendLoading.value = false;
   }

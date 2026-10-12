@@ -108,6 +108,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as api from '@/api/careJourney'
+import { AUTH_STORAGE_KEYS } from '@/utils/authSession'
 
 const props = defineProps({ patientId: { type: [Number, String], default: null }, isDoctor: Boolean, enabled: Boolean, locale: { type: String, default: 'en' } })
 const route = useRoute(), router = useRouter()
@@ -138,6 +139,7 @@ const english = {
   confirmArchive: 'Close and archive', cancel: 'Cancel', archived: 'Consultation archived', unavailableFile: 'This attachment is unavailable for download.',
   mediaError: 'Unable to start the camera or microphone. Check your browser permissions.', callError: 'The call connection was interrupted. You can join again.',
   attachmentLoadError: 'The attachment could not be opened.', noDoctor: 'No doctors are currently available.',
+  draftTitle: 'Unsaved consultation draft', draftWarning: 'Keep editing to retain your unsent text for this patient and consultation, or discard it to continue. A message already sent may still complete.', keepEditing: 'Keep editing', discardDraft: 'Discard draft', roomLoadError: 'This consultation could not be opened. Your previous conversation and draft are still available.', roomDraftChanged: 'Your draft changed while the other consultation loaded. Your current conversation and text are kept; choose the other conversation again when ready.',
 }
 const chinese = {
   inboxHint: '患者选择您后，问诊会自动出现在这里。点击“进入聊天”即可回复，无需在顶部先选择患者。',
@@ -166,6 +168,7 @@ const chinese = {
   confirmArchive: '结束并归档', cancel: '取消', archived: '问诊已归档', unavailableFile: '暂时无法下载此附件。',
   mediaError: '无法启动摄像头或麦克风，请检查浏览器权限。', callError: '通话连接已中断，请重新加入。',
   attachmentLoadError: '无法打开该附件。', noDoctor: '当前暂无可接诊医生。',
+  draftTitle: '问诊草稿尚未提交', draftWarning: '继续编辑可保留当前患者和问诊的未发送内容；放弃草稿后可继续操作。已发送的消息请求可能已经完成。', keepEditing: '继续编辑', discardDraft: '放弃草稿', roomLoadError: '未能打开这次问诊。原会话和草稿仍然保留。', roomDraftChanged: '另一问诊加载期间，您修改了草稿。当前会话和内容已保留；准备好后请重新选择另一问诊。',
 }
 const copy = computed(() => props.locale === 'zh' ? chinese : english)
 const modeOptions = computed(() => [{ value: 'TEXT', label: copy.value.textMode }, { value: 'VOICE', label: copy.value.voiceMode }, { value: 'VIDEO', label: copy.value.videoMode }])
@@ -189,13 +192,59 @@ const mediaSupported = computed(() => Boolean(window.isSecureContext && navigato
 const canStart = computed(() => Boolean(props.patientId && form.doctorUserId && form.symptom.trim() && !starting.value))
 const canMessage = computed(() => activeConsultation.value?.status === 'OPEN' && activeConsultation.value?.can_message === true)
 const canClose = computed(() => activeConsultation.value?.status === 'OPEN' && activeConsultation.value?.can_close === true)
-const canSend = computed(() => canMessage.value && !sending.value && !closing.value && Boolean(draft.content.trim()) && (draft.messageType === 'TEXT' || recordOptions.value.some(record => Number(record.id) === Number(draft.attachmentRecordId))))
+const canSend = computed(() => canMessage.value && !openingId.value && !sending.value && !closing.value && Boolean(draft.content.trim()) && (draft.messageType === 'TEXT' || recordOptions.value.some(record => Number(record.id) === Number(draft.attachmentRecordId))))
 let disposed = false, contextVersion = 0, roomVersion = 0, navigationVersion = 0, listRequest = 0, listTimer = null, messageTimer = null, signalTimer = null
 let localStream = null, callVersion = 0, lastSignalId = 0, signalBusy = false
 const peers = new Map(), pendingIce = new Map()
 function currentContext(version) { return !disposed && props.enabled && version === contextVersion }
 function currentRoom(version, id) { return !disposed && props.enabled && version === roomVersion && Number(activeConsultation.value?.id) === Number(id) }
 function consultationRowClass({ row }) { return Number(row.id) === Number(activeConsultation.value?.id) ? 'consultation-selected-row' : '' }
+let discardPrompt = null, routeWrite = null, removeRouteGuard = null, draftRevision = 0
+watch(draft, () => { draftRevision++ }, { deep: true, flush: 'sync' })
+const messageDraftDirty = () => Boolean(draft.content.trim() || draft.attachmentRecordId || draft.messageType !== 'TEXT' || sending.value)
+const startSnapshot = () => JSON.stringify({ form, visibleToFamily: visibleToFamily.value, participants: participantUserIds.value })
+let startBaseline = startSnapshot()
+const startDraftDirty = () => starting.value || startSnapshot() !== startBaseline
+const unsavedDraft = () => props.enabled && (messageDraftDirty() || (!props.isDoctor && startDraftDirty()))
+const draftSnapshot = () => JSON.stringify({ draft, form, visibleToFamily: visibleToFamily.value, participants: participantUserIds.value })
+async function confirmDiscard() {
+  if (discardPrompt) return discardPrompt
+  const context = contextVersion, original = draftSnapshot()
+  discardPrompt = ElMessageBox.confirm(copy.value.draftWarning, copy.value.draftTitle, {
+    confirmButtonText: copy.value.discardDraft, cancelButtonText: copy.value.keepEditing,
+    distinguishCancelAndClose: true, closeOnClickModal: false, type: 'warning'
+  }).then(() => currentContext(context) && draftSnapshot() === original, () => false)
+  try { return await discardPrompt } finally { discardPrompt = null }
+}
+function clearUnsavedDrafts() {
+  clearDraft(); Object.assign(form, { mode: 'TEXT', doctorUserId: null, symptom: '', durationText: '', medicalHistory: '' })
+  participantUserIds.value = []; visibleToFamily.value = true; startBaseline = startSnapshot()
+}
+async function protectRouteChange(to, from) {
+  if (routeWrite && to?.path === routeWrite.path && routeQueryKey(to.query) === routeQueryKey(routeWrite.query)) return true
+  const target = Number(to?.query?.consultationId)
+  if (to?.path === from?.path && to?.query?.tab === 'consultation' && Number.isSafeInteger(target) && target > 0 && target !== Number(activeConsultation.value?.id)) {
+    // Commit a linked-room route only after its target loads; failed reads retain source input.
+    return await openConsultation(target, false) === true
+  }
+  if (!unsavedDraft()) return true
+  if (!(await confirmDiscard())) return false
+  clearUnsavedDrafts(); return true
+}
+function protectPatientChange(event) {
+  if (event.defaultPrevented || !unsavedDraft()) return
+  event.preventDefault()
+  void confirmDiscard().then(discard => { if (discard) clearUnsavedDrafts() })
+}
+function protectPageUnload(event) { if (unsavedDraft()) { event.preventDefault(); event.returnValue = '' } }
+function sessionCleared() { resetContext() }
+function sessionStorageChanged(event) { if (event.key == null || AUTH_STORAGE_KEYS.includes(event.key)) sessionCleared() }
+const routeQueryKey = query => JSON.stringify(Object.keys(query || {}).sort().map(key => [key, query[key]]))
+async function replaceRoomRoute(target) {
+  const write = { path: target.path || route.path, query: { ...target.query } }
+  routeWrite = write
+  try { return await router.replace(target) } finally { if (routeWrite === write) routeWrite = null }
+}
 function clearDraft() { Object.assign(draft, { messageType: 'TEXT', content: '', attachmentRecordId: null }) }
 function stopListSync() { clearTimeout(listTimer); listTimer = null }
 function stopMessageSync() { clearTimeout(messageTimer); messageTimer = null }
@@ -251,29 +300,42 @@ async function activateConsultation(detail) {
   void loadRecordOptions(version, detail.id)
 }
 async function openConsultation(id, updateRoute = true) {
-  if (!id || disposed) return
-  const context = contextVersion, navigation = ++navigationVersion, requestVersion = ++roomVersion
-  stopMessageSync(); stopCall(); activeConsultation.value = null; recordOptions.value = []; clearDraft()
-  openingId.value = id
+  if (!id || disposed || !props.enabled || Number(id) === Number(activeConsultation.value?.id)) return
+  const context = contextVersion, navigation = ++navigationVersion
+  if (messageDraftDirty() && !(await confirmDiscard())) {
+    if (currentContext(context) && navigation === navigationVersion) { openingId.value = null; scheduleMessageSync() }
+    return false
+  }
+  if (!currentContext(context) || navigation !== navigationVersion) return false
+  // Approval belongs to this exact source-room and draft revision, including clean drafts.
+  const sourceRoom = roomVersion, approvedRevision = draftRevision
+  // Keep the source room and draft until the target is successfully authorized and loaded.
+  stopMessageSync(); openingId.value = id
   try {
     const response = await api.getConsultation(id)
-    if (!currentContext(context) || navigation !== navigationVersion || requestVersion !== roomVersion) return
+    if (!currentContext(context) || navigation !== navigationVersion || sourceRoom !== roomVersion) return false
+    if (approvedRevision !== draftRevision) { ElMessage.warning(copy.value.roomDraftChanged); return false }
     await activateConsultation(response.data)
-    if (updateRoute && currentContext(context) && navigation === navigationVersion && Number(activeConsultation.value?.id) === Number(id)) await router.replace({ query: { ...route.query, tab: 'consultation', consultationId: String(id) } })
-  } catch {} finally { if (currentContext(context) && navigation === navigationVersion) openingId.value = null }
+    if (updateRoute && currentContext(context) && navigation === navigationVersion && Number(activeConsultation.value?.id) === Number(id)) await replaceRoomRoute({ query: { ...route.query, tab: 'consultation', consultationId: String(id) } })
+    return currentContext(context) && navigation === navigationVersion && Number(activeConsultation.value?.id) === Number(id)
+  } catch {
+    if (currentContext(context) && navigation === navigationVersion) { ElMessage.error(copy.value.roomLoadError); scheduleMessageSync() }
+  } finally { if (currentContext(context) && navigation === navigationVersion) { openingId.value = null; if (sourceRoom === roomVersion) scheduleMessageSync() } }
 }
 async function beginConsultation() {
+  if (!canStart.value) return
+  if (messageDraftDirty() && !(await confirmDiscard())) return
   if (!canStart.value) return
   const context = contextVersion, navigation = ++navigationVersion, patientId = props.patientId
   starting.value = true; openingId.value = null
   try {
     const response = await api.startConsultation({ ...form, symptom: form.symptom.trim(), patientId, familyVisibility: visibleToFamily.value ? 'VISIBLE' : 'PRIVATE', participantUserIds: visibleToFamily.value ? [...participantUserIds.value] : [] })
     if (!currentContext(context) || navigation !== navigationVersion) return
-    form.symptom = ''; form.durationText = ''; form.medicalHistory = ''
+    form.symptom = ''; form.durationText = ''; form.medicalHistory = ''; startBaseline = startSnapshot()
     const version = roomVersion + 1
     await activateConsultation(response.data)
     if (!currentContext(context) || navigation !== navigationVersion || !currentRoom(version, response.data.id)) return
-    await router.replace({ query: { ...route.query, tab: 'consultation', consultationId: String(response.data.id) } })
+    await replaceRoomRoute({ query: { ...route.query, tab: 'consultation', consultationId: String(response.data.id) } })
     if (!currentContext(context) || navigation !== navigationVersion || !currentRoom(version, response.data.id)) return
     ElMessage.success(copy.value.started)
     await loadConsultations()
@@ -289,8 +351,8 @@ async function refreshActiveConsultation() {
     activeConsultation.value = response.data
     syncError.value = false
     if ((response.data.messages || []).at(-1)?.id !== previous) await scrollMessages()
-    if (response.data.status !== 'OPEN') { stopCall(); clearDraft() }
-  } catch { if (currentRoom(version, id)) syncError.value = true } finally {
+    if (response.data.status !== 'OPEN' || response.data.can_message !== true) { stopCall(); clearDraft() }
+  } catch (error) { if (currentRoom(version, id)) { if (Number(error?.response?.status || error?.code) === 403) resetContext(); else syncError.value = true } } finally {
     if (currentRoom(version, id)) { chatSyncing.value = false; scheduleMessageSync() }
   }
 }
@@ -310,7 +372,7 @@ async function sendMessage() {
     await refreshActiveConsultation()
     await scrollMessages(true)
     void loadConsultations()
-  } catch {} finally { if (currentRoom(version, id)) sending.value = false }
+  } catch (error) { if (currentRoom(version, id) && Number(error?.response?.status || error?.code) === 403) resetContext() } finally { if (currentRoom(version, id)) sending.value = false }
 }
 function onComposerKeydown(event) {
   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) { event.preventDefault(); void sendMessage() }
@@ -431,7 +493,7 @@ function resetContext() {
   chatSyncing.value = false; listLoading.value = false; starting.value = false; sending.value = false; closing.value = false; downloadingId.value = null
   listError.value = false; syncError.value = false; clearDraft()
   Object.assign(form, { mode: 'TEXT', doctorUserId: null, symptom: '', durationText: '', medicalHistory: '' })
-  visibleToFamily.value = true; invitees.value = []; participantUserIds.value = []
+  visibleToFamily.value = true; invitees.value = []; participantUserIds.value = []; startBaseline = startSnapshot()
 }
 async function initialize(allowLinkedConsultation = true) {
   if (!props.enabled) return
@@ -441,13 +503,24 @@ async function initialize(allowLinkedConsultation = true) {
 }
 watch(() => props.patientId, () => {
   resetContext()
-  if (route.query.consultationId) { const query = { ...route.query }; delete query.consultationId; void router.replace({ query }) }
+  if (route.query.consultationId) { const query = { ...route.query }; delete query.consultationId; void replaceRoomRoute({ query }) }
   void initialize(false)
-})
-watch(() => props.enabled, enabled => { resetContext(); if (enabled) void initialize() })
+}, { flush: 'sync' })
+watch(() => props.enabled, enabled => { resetContext(); if (enabled) void initialize() }, { flush: 'sync' })
 watch(() => route.query.consultationId, id => { if (props.enabled && id && Number(id) !== Number(activeConsultation.value?.id)) void openConsultation(id, false) })
-onMounted(() => initialize())
-onBeforeUnmount(() => { disposed = true; resetContext() })
+onMounted(() => {
+  removeRouteGuard = router.beforeEach(protectRouteChange)
+  window.addEventListener('care-plan-before-context-change', protectPatientChange)
+  window.addEventListener('beforeunload', protectPageUnload)
+  window.addEventListener('auth-session-cleared', sessionCleared)
+  window.addEventListener('storage', sessionStorageChanged)
+  void initialize()
+})
+onBeforeUnmount(() => {
+  removeRouteGuard?.(); window.removeEventListener('care-plan-before-context-change', protectPatientChange)
+  window.removeEventListener('beforeunload', protectPageUnload); window.removeEventListener('auth-session-cleared', sessionCleared); window.removeEventListener('storage', sessionStorageChanged)
+  disposed = true; resetContext()
+})
 </script>
 
 <style scoped>

@@ -13,13 +13,21 @@ export const questionSentinel = 'Synthetic question outside activity period'
 export const formulaCell = "'\t=SUM(1,2)\r\nSynthetic \"quoted\", text"
 export const uiText = (en, zh) => language === 'cn' ? zh : en
 
+// Match the authorized record identity shown by the real selectors exactly.
+export function reportPatientOptionLabel(id) {
+  return `${reportPatientNames[id]} · ${uiText('Record', '档案')} #${id}`
+}
+export function doctorReportPatientOptionLabel(id) {
+  return `${reportPatientNames[id]} · #${id}`
+}
+
 export async function selectPatient(page, id) {
   const control = page.locator('.patient-switcher').getByRole('combobox')
   await expect(control).toBeEnabled()
   await control.press('ArrowDown')
-  await page.getByRole('option', { name: reportPatientNames[id], exact: true }).click()
+  await page.getByRole('option', { name: reportPatientOptionLabel(id), exact: true }).click()
   await page.keyboard.press('Escape')
-  await expect(page.locator('.patient-switcher')).toContainText(reportPatientNames[id])
+  await expect(page.locator('.patient-switcher')).toContainText(reportPatientOptionLabel(id))
 }
 export async function setReportOptions(page, language = 'en', timeZone = 'UTC') {
   await expect(panel(page)).toBeVisible()

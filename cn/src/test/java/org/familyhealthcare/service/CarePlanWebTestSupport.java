@@ -10,7 +10,7 @@ import org.familyhealthcare.service.careplan.*;
 import org.familyhealthcare.util.JwtUtil;
 import org.junit.jupiter.api.*;
 import org.springframework.context.annotation.AnnotatedBeanDefinitionReader;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.mock.web.MockServletContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.*;
@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Shared actual application MVC/JWT/permission/audit chain and synthetic JDBC fixture. */
 abstract class CarePlanWebTestSupport {
-    @Configuration @EnableWebMvc @EnableTransactionManagement static class WebConfig { }
+    @TestConfiguration @EnableWebMvc @EnableTransactionManagement static class WebConfig { }
     CarePlanLifecycleTest h;
     GenericWebApplicationContext context;
     MockMvc mvc;

@@ -2,15 +2,25 @@
   <dialog ref="dialog" class="receipt-dialog" aria-labelledby="receipt-heading" @cancel.prevent="requestClose" @keydown="containFocus">
     <h2 id="receipt-heading">{{ commandLabel }}</h2>
     <template v-if="state.editor && visibleAction">
-      <p>{{ visibleAction.instruction }}</p><p>Recording account: {{ actorName }} (#{{ actorId }}). Account identity does not verify patient identity.</p>
+      <p class="receipt-patient">Patient: {{ patientName || 'Patient name unavailable' }} · Record #{{ patientId }}</p><p>{{ visibleAction.instruction }}</p><p>Recording account: {{ actorName }} (#{{ actorId }}). Account identity does not verify patient identity.</p>
       <p v-if="command==='submitReceipt'">Assisted entry is the default, including when this account manages another family member.</p>
       <form @submit.prevent="submit">
         <label>Explanation ({{ command==='submitReceipt' ? '1–2000' : '1–1000' }} characters)<textarea v-model="form.note" rows="4" data-testid="receipt-note" :disabled="busy" /></label>
         <template v-if="command==='submitReceipt'">
-          <label>Actual execution time, with explicit UTC offset<input v-model="form.occurredAt" type="text" placeholder="2026-10-03T14:30:00+08:00" :disabled="busy" /></label><p>{{ displayTime(form.occurredAt) }}</p>
+          <label>Actual execution date and time<input v-model="executionClock" type="datetime-local" step="0.001" data-testid="receipt-execution-time" :disabled="busy" /></label>
+          <label>Timezone and UTC offset ({{ executionZone }})<select v-model.number="executionOffset" data-testid="receipt-time-offset" :disabled="busy || !executionOffsets.length"><option v-if="executionOffsets.length !== 1" :value="null">Select an explicit offset</option><option v-for="offset in executionOffsets" :key="offset" :value="offset">{{ offsetLabel(offset) }}</option></select></label>
+          <p v-if="executionTimeError" role="alert">{{ executionTimeError }}</p><p v-else>{{ displayTime(form.occurredAt) }}</p>
           <label>Entry declaration<select v-model="form.entryMode" :disabled="busy"><option v-if="entryModes.includes('ASSISTED')" value="ASSISTED">Assisted entry</option><option v-if="entryModes.includes('SELF')" value="SELF">I explicitly declare account-owner self-entry</option></select></label>
           <p v-if="form.entryMode==='SELF'">This is your declaration, not patient identity verification.</p>
-          <fieldset :disabled="busy"><legend>Existing record references only (maximum 5; no uploads)</legend><div v-for="(e,index) in form.evidence" :key="index" class="evidence-row"><select v-model="e.sourceType" aria-label="Reference type"><option value="MEASUREMENT">Measurement</option><option value="MEDICAL_RECORD">Medical record</option></select><input v-model.number="e.sourceId" type="number" min="1" step="1" aria-label="Existing record ID" /><button type="button" @click="form.evidence.splice(index,1)">Remove reference</button></div><button type="button" :disabled="form.evidence.length>=5" @click="form.evidence.push({sourceType:'MEASUREMENT',sourceId:null})">Add existing reference</button><p>The server verifies patient ownership and current permission. A reference does not grant access.</p></fieldset>
+          <fieldset :disabled="busy"><legend>Existing record references only (maximum 5; no uploads)</legend>
+            <label>Reference type<select v-model="referenceType" aria-label="Reference type"><option value="MEASUREMENT">Measurement</option><option value="MEDICAL_RECORD">Medical record</option></select></label>
+            <button type="button" :disabled="referencesLoading" @click="loadReferences">{{ referencesLoading ? 'Loading records…' : 'Browse authorized records' }}</button>
+            <p v-if="referencesError" role="alert">{{ referencesError }}</p><p v-else-if="referencesQueried && !referencesLoading && !referenceOptions.length">No accessible records of this type for this patient.</p>
+            <label v-if="referenceOptions.length">Select an existing record<select v-model.number="selectedReferenceId" data-testid="receipt-existing-record"><option :value="null">Select an existing record</option><option v-for="record in referenceOptions" :key="record.id" :value="record.id" :disabled="form.evidence.some(e => e.sourceType === referenceType && e.sourceId === record.id)">{{ record.label }}</option></select></label>
+            <button type="button" data-testid="add-existing-reference" :disabled="form.evidence.length>=5 || !selectedReferenceId || referencesLoading" @click="addReference">Add existing reference</button>
+            <div v-for="(e,index) in form.evidence" :key="e.sourceType+':'+e.sourceId" class="evidence-row"><p>{{ referenceLabels[e.sourceType+':'+e.sourceId] || referenceFallback(e) }}</p><button type="button" @click="form.evidence.splice(index,1)">Remove reference</button></div>
+            <p>The server verifies patient ownership and current permission. A reference does not grant access.</p>
+          </fieldset>
         </template>
         <label v-if="command==='followUp'">Follow-up type<select v-model="form.kind" :disabled="busy"><option value="CONTACTED">Contacted</option><option value="AWAITING_INFORMATION">Waiting for more information</option><option value="DOCTOR_NOTIFIED">Doctor notified</option></select></label>
         <p v-if="!canSubmit" role="status">Read-only or unavailable action. Current permission is required.</p>
@@ -26,11 +36,53 @@
 <script setup>
 import {computed,ref,reactive,watch,onMounted,onUnmounted,nextTick} from 'vue'
 import {useCarePlan} from '@/composables/useCarePlan'
-import {formatPlanTime} from '@/utils/carePlanTime'
+import {formatPlanTime,getLocalTimeOffsets,toOffsetIso} from '@/utils/carePlanTime'
+import request from '@/utils/request'
 import {captureAuthSession,isAuthSessionCurrent} from '@/utils/authSession'
 const props=defineProps({action:{type:Object,required:true},planVersion:{type:Number,required:true},command:{type:String,default:'submitReceipt'}}),emit=defineEmits(['submitted','closed'])
 const patientId=computed(()=>props.action?.patientId??null),client=useCarePlan(patientId),{state}=client,dialog=ref(null),message=ref(''),abandonIntent=ref(false),needsReload=ref(false),visibleAction=ref(null),actorName=ref(''),actorId=ref('')
 const form=reactive({note:'',occurredAt:'',entryMode:'ASSISTED',evidence:[],kind:'CONTACTED'})
+const executionClock=ref(''),executionOffset=ref(null),executionZone=Intl.DateTimeFormat().resolvedOptions().timeZone,executionTimeError=ref(''),patientName=ref('')
+const referenceType=ref('MEASUREMENT'),referenceOptions=ref([]),referenceLabels=reactive({}),selectedReferenceId=ref(null),referencesLoading=ref(false),referencesError=ref(''),referencesQueried=ref(false)
+let referenceEpoch=0,referenceController=null,identityController=null
+const executionOffsets=computed(()=>{try{return getLocalTimeOffsets(executionClock.value,{timeZone:executionZone})}catch{return []}})
+function offsetLabel(value){const absolute=Math.abs(value);return `UTC${value<0?'-':'+'}${String(Math.floor(absolute/60)).padStart(2,'0')}:${String(absolute%60).padStart(2,'0')}`}
+watch(executionClock,()=>{const offsets=executionOffsets.value;executionOffset.value=offsets.length===1?offsets[0]:null},{flush:'sync'})
+watch(()=>[executionClock.value,executionOffset.value],()=>{try{form.occurredAt=toOffsetIso(executionClock.value,executionOffset.value,{timeZone:executionZone});executionTimeError.value=''}catch{form.occurredAt='';executionTimeError.value='Choose a valid local time and explicit offset. Repeated daylight-saving times need an offset; skipped times cannot be used.'}},{flush:'sync'})
+function setExecutionInstant(date){const pad=value=>String(value).padStart(2,'0');executionClock.value=`${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3,'0')}`;executionOffset.value=-date.getTimezoneOffset()}
+function resetReferences(){referenceEpoch++;referenceController?.abort();referenceOptions.value=[];selectedReferenceId.value=null;referencesLoading.value=false;referencesQueried.value=false;referencesError.value=''}
+watch(referenceType,resetReferences,{flush:'sync'})
+function referenceFallback(e){return `${e.sourceType==='MEASUREMENT'?'Measurement':'Medical record'} #${e.sourceId}`}
+function referenceLabel(record,type){
+  const metricLabels={BP:'Blood pressure',GLUCOSE:'Blood glucose',SPO2:'Oxygen saturation',WEIGHT:'Weight',HEART_RATE:'Heart rate',TEMPERATURE:'Temperature',CUSTOM:'Measurement'}
+  const recordLabels={BLOOD:'Blood test',URINE:'Urinalysis',LIVER:'Liver function',KIDNEY:'Kidney function',BONE:'Bone metabolism',IRON:'Iron metabolism',IMAGE:'Imaging report',OTHER:'Other'}
+  const date=type==='MEASUREMENT'?record.measured_at||record.measuredAt:record.recordDate
+  const title=type==='MEASUREMENT'?record.metric_name||record.metricName||metricLabels[record.metric_type||record.metricType]||record.metric_type||record.metricType:recordLabels[record.recordType]||record.recordType
+  const value=type==='MEASUREMENT'?`${record.value_primary ?? record.valuePrimary ?? ''}${record.value_secondary != null || record.valueSecondary != null ? '/'+(record.value_secondary ?? record.valueSecondary) : ''} ${record.unit||''}`:record.hospitalName||record.remark||''
+  return `${date||'Date unavailable'} · ${title||'Existing record'} · ${value} · #${record.id}`
+}
+async function loadPatientIdentity(){
+  const c=capture(),id=patientId.value;identityController?.abort();identityController=new AbortController()
+  patientName.value=props.action.patientName||''
+  try{const result=await request({url:'/patient/names',method:'get',expectedAuth:{...c.auth,actorId:c.actor},signal:identityController.signal,executionReport:true});if(!owns(c))return;const patient=Array.isArray(result.data)?result.data.find(p=>String(p.id)===String(id)):null;if(patient)patientName.value=patient.patientName||patient.name||patientName.value}catch{}
+}
+async function loadReferences(){
+  if(!state.editor||!visibleAction.value||referencesLoading.value)return
+  resetReferences();const turn=referenceEpoch,c=capture(),id=patientId.value,type=referenceType.value
+  referenceController=new AbortController();referencesLoading.value=true;referencesQueried.value=true
+  try{
+    const result=await request({url:type==='MEASUREMENT'?'/care-journey/measurements':'/medical-record/list',method:'get',params:{patientId:id},expectedAuth:{...c.auth,actorId:c.actor},signal:referenceController.signal,executionReport:true})
+    if(turn!==referenceEpoch||!owns(c))return
+    if(result.code!=null&&result.code!==200)throw Object.assign(new Error('Restricted source'),{code:result.code})
+    referenceOptions.value=(Array.isArray(result.data)?result.data:[]).filter(record=>Number.isSafeInteger(Number(record.id))&&Number(record.id)>0&&String(record.patientId??record.patient_id)===String(id)).map(record=>({id:Number(record.id),label:referenceLabel(record,type)}))
+  }catch(failure){
+    if(turn!==referenceEpoch||!owns(c))return
+    referenceOptions.value=[];referencesError.value='Existing records could not be loaded or access is restricted. Try browsing again.'
+    if([401,403,404].includes(Number(failure?.response?.status||failure?.code))){form.evidence=[];Object.keys(referenceLabels).forEach(key=>delete referenceLabels[key])}
+  }finally{if(turn===referenceEpoch&&owns(c))referencesLoading.value=false}
+}
+function addReference(){const id=selectedReferenceId.value,record=referenceOptions.value.find(r=>r.id===id),type=referenceType.value;if(!record||form.evidence.length>=5||form.evidence.some(e=>e.sourceType===type&&e.sourceId===id))return;form.evidence.push({sourceType:type,sourceId:id});referenceLabels[type+':'+id]=record.label;selectedReferenceId.value=null}
+
 let generation=0,opener=null,currentVersion=null
 const names={submitReceipt:'SUBMIT_RECEIPT',requestHelp:'REQUEST_HELP',followUp:'FOLLOW_UP'}
 const commandLabel=computed(()=>({submitReceipt:'Record execution',requestHelp:'Ask the care team for help',followUp:'Record nursing follow-up'})[props.command]||'Unavailable action')
@@ -41,8 +93,8 @@ const payload=()=>props.command==='submitReceipt'?{note:form.note.trim(),occurre
 const owns=c=>c.generation===generation&&isAuthSessionCurrent(c.auth)&&c.actor===localStorage.getItem('userId')
 const capture=()=>({generation,auth:captureAuthSession(),actor:localStorage.getItem('userId')})
 function displayTime(value){try{return formatPlanTime(value,'en')}catch{return 'Enter a valid ISO time with an explicit offset.'}}
-function clearForm(){Object.assign(form,{note:'',occurredAt:'',entryMode:'ASSISTED',evidence:[],kind:'CONTACTED'});visibleAction.value=null;actorName.value='';actorId.value='';abandonIntent.value=false;needsReload.value=false}
-async function initialize(){generation++;client.reset();clearForm();message.value='';visibleAction.value=props.action;currentVersion=props.planVersion;actorId.value=localStorage.getItem('userId')||'';actorName.value=localStorage.getItem('realName')||localStorage.getItem('username')||'Current account';Object.assign(form,{occurredAt:new Date().toISOString()});await client.open(null,{draft:payload()})}
+function clearForm(){identityController?.abort();resetReferences();patientName.value='';executionClock.value='';executionOffset.value=null;Object.keys(referenceLabels).forEach(key=>delete referenceLabels[key]);Object.assign(form,{note:'',occurredAt:'',entryMode:'ASSISTED',evidence:[],kind:'CONTACTED'});visibleAction.value=null;actorName.value='';actorId.value='';abandonIntent.value=false;needsReload.value=false}
+async function initialize(){generation++;client.reset();clearForm();message.value='';visibleAction.value=props.action;currentVersion=props.planVersion;actorId.value=localStorage.getItem('userId')||'';actorName.value=localStorage.getItem('realName')||localStorage.getItem('username')||'Current account';setExecutionInstant(new Date());await client.open(null,{draft:payload()});if(state.editor)loadPatientIdentity()}
 watch(()=>[props.action?.id,props.action?.patientId,props.planVersion,props.command],initialize,{immediate:true,flush:'sync'})
 watch(form,()=>{if(state.editor)state.draft=payload()},{deep:true,flush:'sync'})
 watch(()=>state.editor,editor=>{if(!editor){clearForm()}},{flush:'sync'})
@@ -72,9 +124,9 @@ function containFocus(event){
   }
 }
 onMounted(async()=>{opener=document.activeElement;await nextTick();dialog.value?.showModal?.();window.addEventListener('beforeunload',beforeUnload);window.addEventListener('care-plan-before-context-change',contextChange)})
-onUnmounted(()=>{generation++;window.removeEventListener('beforeunload',beforeUnload);window.removeEventListener('care-plan-before-context-change',contextChange);dialog.value?.close?.();opener?.focus?.()})
+onUnmounted(()=>{generation++;identityController?.abort();resetReferences();window.removeEventListener('beforeunload',beforeUnload);window.removeEventListener('care-plan-before-context-change',contextChange);dialog.value?.close?.();opener?.focus?.()})
 defineExpose({guardLeave,requestClose})
 </script>
 <style scoped>
-.receipt-dialog{box-sizing:border-box;width:min(640px,94vw);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--paper);color:var(--ink-800)}.receipt-dialog::backdrop{background:#10282c88}h2,p{overflow-wrap:anywhere}p{line-height:1.6}label{display:grid;gap:6px;margin:14px 0}textarea,input,select{width:100%;min-width:0;box-sizing:border-box;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--paper);color:inherit}button{min-height:44px;max-width:100%;padding:10px 14px;cursor:pointer;font:inherit;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800)}button:disabled{opacity:.5;cursor:default}button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.controls{display:flex;gap:10px;flex-wrap:wrap}.notice{padding:12px;margin:12px 0;border:1px solid var(--line);background:var(--care-50)}fieldset{min-width:0;margin:12px 0;border:1px solid var(--line)}.evidence-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.evidence-row button{grid-column:1/-1}@media(max-width:600px){.receipt-dialog{padding:14px}.controls button{width:100%}.evidence-row{grid-template-columns:1fr}}
+.receipt-dialog{box-sizing:border-box;width:min(640px,94vw);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--paper);color:var(--ink-800)}.receipt-dialog::backdrop{background:#10282c88}h2,p{overflow-wrap:anywhere}p{line-height:1.6}label{display:grid;gap:6px;margin:14px 0}textarea,input,select{width:100%;min-width:0;box-sizing:border-box;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--paper);color:inherit}button{min-height:44px;max-width:100%;padding:10px 14px;cursor:pointer;font:inherit;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800)}button:disabled{opacity:.5;cursor:default}button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.controls{display:flex;gap:10px;flex-wrap:wrap}.notice{padding:12px;margin:12px 0;border:1px solid var(--line);background:var(--care-50)}fieldset{min-width:0;margin:12px 0;border:1px solid var(--line)}.evidence-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.evidence-row{align-items:center}.evidence-row p{margin:0;overflow-wrap:anywhere}@media(max-width:600px){.receipt-dialog{padding:14px}.controls button{width:100%}.evidence-row{grid-template-columns:1fr}}
 </style>

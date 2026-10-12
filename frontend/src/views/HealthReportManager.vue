@@ -58,6 +58,12 @@
                 </el-form-item>
               </el-col>
             </el-row>
+            <section class="report-export-scope" aria-live="polite">
+              <strong>Report for：{{ currentPatientName || '—' }} · Record #{{ currentPatientId || '—' }}</strong>
+              <p>{{ reportTypeOptions.find(option => option.value === form.reportType)?.label || '—' }} · {{ form.format.toUpperCase() }}</p>
+              <p>Inclusive dates：{{ reportDateRange ? `${reportDateRange.from} – ${reportDateRange.to}` : 'Select a date range' }}</p>
+              <p>This report contains personal health information and is not anonymized. Check its contents and recipient before sharing.</p>
+            </section>
             <el-form-item>
               <el-button type="primary" @click="handleExport" :loading="exporting">
                 <el-icon><Download /></el-icon>Generate and download report
@@ -90,6 +96,7 @@ import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { LineChart, BarChart, PieChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, LegendComponent, TitleComponent, ToolboxComponent } from 'echarts/components';
+import { exportDateRange } from '@/utils/exportPresentation';
 import { generateReport } from '@/api/healthReport.js';
 import { getChartData, getStats } from '@/api/dialysis.js';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
@@ -97,13 +104,14 @@ import { useMenuPermission } from '@/composables/useMenuPermission';
 
 echarts.use([CanvasRenderer, LineChart, BarChart, PieChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent, ToolboxComponent]);
 
-const { currentPatientId } = useCurrentPatient();
+const { currentPatientId, currentPatientName } = useCurrentPatient();
 const { hasMenu, hasMenuName } = useMenuPermission();
 const showCareExecution = ref(false);
 const exporting = ref(false);
 const previewing = ref(false);
 const previewHtml = ref('');
 const formRef = ref(null);
+const reportDateRange = computed(() => exportDateRange(form.timeType, form.timeValue));
 let requestEpoch = 0;
 let disposed = false;
 
@@ -193,6 +201,7 @@ async function handleExport() {
   try {
     try { await formRef.value.validate(); } catch { return; }
     if (!isCurrentReport(epoch, snapshot)) return;
+    if (!exportDateRange(snapshot.timeType, snapshot.timeValue)) { ElMessage.warning('Select a valid date range.'); return; }
     const payload = await buildReportPayload(snapshot.format, snapshot, () => isCurrentReport(epoch, snapshot));
     if (!isCurrentReport(epoch, snapshot)) return;
     const blob = await generateReport(payload);
@@ -202,7 +211,8 @@ async function handleExport() {
       const link = document.createElement('a');
       link.href = url;
       const ext = snapshot.format === 'pdf' ? 'pdf' : 'html';
-      link.download = `Health Report_${snapshot.patientId}.${ext}`;
+      const range = exportDateRange(snapshot.timeType, snapshot.timeValue);
+      link.download = `${snapshot.reportType}_${range.from}_${range.to}.${ext}`;
       link.click();
     } finally { window.URL.revokeObjectURL(url); }
     ElMessage.success(snapshot.format === 'pdf' ? 'PDF report downloaded' : 'HTML report downloaded');
@@ -220,6 +230,7 @@ async function handlePreview() {
   try {
     try { await formRef.value.validate(); } catch { return; }
     if (!isCurrentReport(epoch, snapshot)) return;
+    if (!exportDateRange(snapshot.timeType, snapshot.timeValue)) { ElMessage.warning('Select a valid date range.'); return; }
     const payload = await buildReportPayload('html', snapshot, () => isCurrentReport(epoch, snapshot));
     if (!isCurrentReport(epoch, snapshot)) return;
     const blob = await generateReport(payload);
@@ -401,3 +412,5 @@ function lineOption(dates = [], series = []) {
 </style>
 
 <style scoped>.execution-report-choice{min-height:44px;padding:10px 16px;margin-bottom:16px;max-width:100%;font:inherit;white-space:normal}.execution-report-choice:focus-visible{outline:3px solid var(--care-600)}</style>
+
+<style scoped>.report-export-scope{padding:16px;margin-bottom:16px;background:var(--care-50);border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}.report-export-scope p{line-height:1.6;margin:8px 0}</style>

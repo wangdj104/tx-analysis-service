@@ -12,35 +12,41 @@
             </div>
             <div class="bp-summary" aria-label="记录概览">
               <div class="summary-item">
-                <span class="summary-label">记录数量</span>
+                <span class="summary-label">列表记录数</span>
                 <strong>{{ records.length }}</strong>
               </div>
               <div class="summary-item">
                 <span class="summary-label">最近血压</span>
                 <strong>{{ latestBpText }}</strong>
+                <small>{{ latestBpAt }}</small>
               </div>
               <div class="summary-item">
                 <span class="summary-label">最近血糖</span>
                 <strong>{{ latestBgText }}</strong>
+                <small>{{ latestBgAt }}</small>
               </div>
             </div>
           </div>
         </div>
 
+        <p class="summary-context">最近读数来自该患者的全部记录，不受下方列表筛选影响。</p>
+        <p v-if="summaryLoading || (loading && !summarySuccessAt)" role="status" class="read-state">正在读取最近读数…</p>
+        <div v-if="summaryError" class="read-state" role="alert"><p>{{ summaryError }}</p><p v-if="summarySuccessAt">显示上次成功摘要，数据可能已过时。成功读取时间：{{ summarySuccessAt }}</p><el-button @click="refreshRecords" :loading="summaryLoading">重试最近读数</el-button></div>
         <div class="content-panel entry-panel">
           <div class="panel-head">
             <div class="list-panel-title">
               <el-icon><Plus /></el-icon>
-              <span>{{ editingId ? '编辑记录' : '新增记录' }}</span>
+              <h2 ref="editorHeading" tabindex="-1" class="editor-heading">{{ editingId ? editRecordLabel : '新增记录' }}</h2>
             </div>
-            <el-radio-group v-model="form.measureType" :disabled="saving" class="measure-switch">
+            <el-radio-group v-model="form.measureType" :disabled="saving || accessDenied" class="measure-switch">
               <el-radio-button value="BP">血压</el-radio-button>
               <el-radio-button value="BG">血糖</el-radio-button>
               <el-radio-button value="BP_BG">血压和血糖</el-radio-button>
             </el-radio-group>
           </div>
 
-          <el-form :model="form" :disabled="saving" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
+          <p class="submission-patient">正在为 {{ currentPatientName || '当前患者' }} · 患者档案 #{{ currentPatientId || '—' }}</p>
+          <el-form :model="form" :disabled="saving || accessDenied" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
             <div class="form-grid form-grid--meta">
               <el-form-item label="记录日期" prop="recordDate">
                 <el-date-picker v-model="form.recordDate" value-format="YYYY-MM-DD" :clearable="false" />
@@ -99,15 +105,29 @@
             </el-form-item>
 
             <div class="form-actions">
-              <el-button type="primary" @click="handleSave" :loading="saving">
+              <el-button type="primary" @click="handleSave" :loading="saving" :disabled="accessDenied">
                 <el-icon><Check /></el-icon>{{ editingId ? '更新记录' : '保存记录' }}
               </el-button>
-              <el-button @click="resetForm">重置</el-button>
+              <el-button v-if="editingId" @click="cancelEdit" :disabled="saving || accessDenied">取消编辑</el-button>
+              <el-button v-else @click="resetForm" :disabled="saving || accessDenied">重置</el-button>
             </div>
           </el-form>
         </div>
 
+        <div v-if="loadError" class="read-state" role="alert"><p>{{ loadError }}</p><p v-if="lastSuccessAt" data-testid="bp-stale">显示上次成功列表，数据可能已过时。成功读取时间：{{ lastSuccessAt }}</p><el-button data-testid="retry-bp-records" @click="refreshRecords" :loading="loading">重试</el-button></div>
+        <p v-if="loading" class="read-state" role="status">正在加载记录…</p>
+        <template v-if="lastSuccessAt">
         <VitalsTrendPanel :records="records" />
+        <details class="trend-data" data-testid="bp-trend-data">
+          <summary>读取趋势数据</summary>
+          <p>患者档案 #{{ currentPatientId }} · 与图表及当前列表相同的记录范围，保留原始数值与单位</p>
+          <div class="trend-data-wrap" tabindex="0" role="region" aria-label="趋势原始数据">
+            <table><caption>血压与血糖原始记录</caption><thead><tr><th scope="col">日期与时间</th><th scope="col">收缩压（mmHg）</th><th scope="col">舒张压（mmHg）</th><th scope="col">血糖（原始单位）</th><th scope="col">已有标记</th></tr></thead>
+              <tbody><tr v-for="row in trendRecords" :key="row.id"><th scope="row">{{ row.recordDate }} {{ row.recordTime || '—' }}</th><td>{{ row.systolicBp ?? '—' }}</td><td>{{ row.diastolicBp ?? '—' }}</td><td>{{ row.bloodGlucose ?? '—' }} {{ row.bloodGlucose != null ? (row.bgUnit || 'mmol/L') : '' }}</td><td>{{ trendRecordAbnormal(row) ? '异常' : '—' }}</td></tr></tbody>
+            </table>
+          </div>
+        </details>
+        </template>
         <div class="content-panel records-panel">
           <div class="toolbar records-toolbar">
             <div class="list-panel-title">
@@ -121,13 +141,13 @@
                 <el-radio-button value="BP">血压</el-radio-button>
                 <el-radio-button value="BG">血糖</el-radio-button>
               </el-radio-group>
-              <el-button @click="loadRecords" :loading="loading">
+              <el-button @click="refreshRecords" :loading="loading">
                 <el-icon><Refresh /></el-icon>刷新
               </el-button>
             </div>
           </div>
 
-          <div class="table-wrap">
+          <div v-if="lastSuccessAt" class="table-wrap">
             <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="暂无记录">
               <el-table-column prop="recordDate" label="日期" width="112" />
               <el-table-column prop="recordTime" label="时间" width="86">
@@ -155,7 +175,7 @@
               <el-table-column label="操作" width="120" align="center" fixed="right">
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" @click="handleEdit(row)" :disabled="saving">编辑</el-button>
+                    <el-button link type="primary" size="small" :ref="node => setEditOpener(row.id, node)" @click="handleEdit(row, $event)" :disabled="saving || accessDenied">编辑</el-button>
                     <el-popconfirm title="确认删除这条记录吗？" @confirm="handleDelete(row)">
                       <template #reference>
                         <el-button link type="danger" size="small">删除</el-button>
@@ -181,13 +201,71 @@ import { listBpSelfMonitorRecords, saveBpSelfMonitorRecord, updateBpSelfMonitorR
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import VitalsTrendPanel from '@/components/VitalsTrendPanel.vue';
 
-const { currentPatientId } = useCurrentPatient();
+const { currentPatientId, currentPatientName } = useCurrentPatient();
 const loading = ref(false);
 const saving = ref(false);
 const records = ref([]);
+const loadError = ref('');
+const accessDenied = ref(false);
+const lastSuccessAt = ref('');
+const summaryRecords = ref([]);
+const summaryError = ref('');
+const summaryLoading = ref(false);
+const summarySuccessAt = ref('');
+let summaryRequest = 0;
+const latestBpRecord = computed(() => newestSummaryRecord(item => item.systolicBp != null && item.diastolicBp != null));
+const latestBgRecord = computed(() => newestSummaryRecord(item => item.bloodGlucose != null));
+function newestSummaryRecord(predicate) {
+  return [...summaryRecords.value].sort((a, b) => `${b.recordDate || ''} ${b.recordTime || ''}`.localeCompare(`${a.recordDate || ''} ${a.recordTime || ''}`)).find(predicate);
+}
+function readingTime(row) { return row ? `${row.recordDate} ${row.recordTime || '时间未记录'}` : '暂无读数'; }
+const latestBpAt = computed(() => readingTime(latestBpRecord.value));
+const latestBgAt = computed(() => readingTime(latestBgRecord.value));
+const trendRecords = computed(() => [...records.value].sort((a, b) => `${a.recordDate} ${a.recordTime || ''}`.localeCompare(`${b.recordDate} ${b.recordTime || ''}`)));
+// Mirror the existing VitalsTrendPanel markers exactly. No clinical rule is added or changed.
+function trendRecordAbnormal(x) {
+  const bp = x.systolicBp && (x.systolicBp > 140 || x.systolicBp < 90 || x.diastolicBp > 90 || x.diastolicBp < 60);
+  const raw = x.bloodGlucose, unit = String(x.bgUnit ?? '').trim().toLowerCase() || 'mmol/l';
+  const valid = ['number', 'string'].includes(typeof raw) && String(raw).trim() !== '' && Number.isFinite(Number(raw));
+  const glucose = valid && unit === 'mg/dl' ? Number((Number(raw) / 18).toFixed(8)) : valid && unit === 'mmol/l' ? Number(raw) : null;
+  const bg = glucose != null && (glucose < 3.9 || glucose > (String(x.measurePeriod || '').includes('After Meal') ? 7.8 : 6.1));
+  return !!(bp || bg);
+}
 const filterType = ref('');
 const editingId = ref(null);
 const formRef = ref(null);
+const editorHeading = ref(null);
+const editRecordLabel = ref('');
+const editOpeners = new Map();
+let editOrigin = null;
+function setEditOpener(id, node) {
+  if (node) editOpeners.set(id, node.$el || node);
+  else editOpeners.delete(id);
+}
+function focusEditor(context) {
+  Promise.resolve().then(() => {
+    if (!isCurrentContext(context) || !editingId.value) return;
+    const heading = editorHeading.value;
+    if (!heading?.isConnected) return;
+    const behavior = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    heading.scrollIntoView?.({ behavior, block: 'start' });
+    heading.focus?.({ preventScroll: true });
+  });
+}
+async function restoreEditOrigin(origin, context) {
+  await Promise.resolve();
+  if (!origin || !isCurrentContext(context) || editingId.value) return;
+  const target = editOpeners.get(origin.id) || origin.opener;
+  if (!target?.isConnected || target.matches?.(':disabled') || target.closest?.('[hidden],[inert]')) return;
+  if (typeof window !== 'undefined') window.scrollTo?.({ top: origin.scrollY, behavior: 'auto' });
+  target.focus?.({ preventScroll: true });
+}
+async function cancelEdit() {
+  if (saving.value) return;
+  const origin = editOrigin;
+  resetForm();
+  await restoreEditOrigin(origin, captureContext());
+}
 let patientEpoch = 0;
 let editorEpoch = 0;
 let listRequest = 0;
@@ -195,13 +273,35 @@ let saveRequest = 0;
 let disposed = false;
 const pendingDeletes = new Map();
 
+function captureReaderSession() {
+  if (typeof localStorage === 'undefined') return null;
+  return JSON.stringify(['token', 'userId', 'username'].map(key => localStorage.getItem(key)));
+}
+let readerSession = captureReaderSession();
+let readerSessionEpoch = 0;
+function ownsReaderSession(session = readerSession, epoch = readerSessionEpoch) {
+  return epoch === readerSessionEpoch && session === captureReaderSession();
+}
+function readerSessionChanged(event) {
+  if (disposed || (event?.key != null && !['token', 'userId', 'username', 'realName'].includes(event.key))) return;
+  readerSessionEpoch++;
+  clearProtectedRecords();
+  loadError.value = '登录会话已改变，请重新登录并选择患者。';
+  summaryError.value = loadError.value;
+}
+function ensureReaderSession() {
+  if (ownsReaderSession()) return true;
+  readerSessionChanged();
+  return false;
+}
+
 function captureContext() {
-  return { patientId: currentPatientId.value, patientEpoch, editorEpoch };
+  return { patientId: currentPatientId.value, patientEpoch, editorEpoch, session: readerSession, sessionEpoch: readerSessionEpoch };
 }
 
 function isCurrentContext(context, includeEditor = true) {
   return !disposed && !!context.patientId && context.patientId === currentPatientId.value
-    && context.patientEpoch === patientEpoch && (!includeEditor || context.editorEpoch === editorEpoch);
+    && context.patientEpoch === patientEpoch && ownsReaderSession(context.session, context.sessionEpoch) && (!includeEditor || context.editorEpoch === editorEpoch);
 }
 
 function invalidateEditor() {
@@ -225,11 +325,11 @@ const form = reactive({
 const showBpFields = computed(() => form.measureType === 'BP' || form.measureType === 'BP_BG');
 const showBgFields = computed(() => form.measureType === 'BG' || form.measureType === 'BP_BG');
 const latestBpText = computed(() => {
-  const row = records.value.find(item => item.systolicBp && item.diastolicBp);
-  return row ? `${row.systolicBp}/${row.diastolicBp}` : '-';
+  const row = latestBpRecord.value;
+  return row ? `${row.systolicBp}/${row.diastolicBp} mmHg` : '-';
 });
 const latestBgText = computed(() => {
-  const row = records.value.find(item => item.bloodGlucose);
+  const row = latestBgRecord.value;
   return row ? `${row.bloodGlucose} ${row.bgUnit || 'mmol/L'}` : '-';
 });
 
@@ -268,6 +368,8 @@ function measureTagType(type) {
 function resetForm() {
   invalidateEditor();
   editingId.value = null;
+  editRecordLabel.value = '';
+  editOrigin = null;
   form.recordDate = localDateKey();
   form.recordTime = '';
   form.measureType = 'BP';
@@ -281,24 +383,90 @@ function resetForm() {
   formRef.value?.clearValidate?.();
 }
 
+function isDeniedRead(error) {
+  return [401, 403].includes(Number(error.response?.status || error.status || error.code));
+}
+function clearProtectedRecords() {
+  accessDenied.value = true;
+  patientEpoch++;
+  listRequest++;
+  summaryRequest++;
+  pendingDeletes.clear();
+  records.value = [];
+  summaryRecords.value = [];
+  lastSuccessAt.value = '';
+  summarySuccessAt.value = '';
+  loading.value = false;
+  summaryLoading.value = false;
+  editOpeners.clear();
+  resetForm();
+  loadError.value = '测量记录访问不可用或已被撤销，请重新检查权限。';
+  summaryError.value = loadError.value;
+}
 async function loadRecords() {
+  if (disposed || !ensureReaderSession()) return;
   const request = ++listRequest;
   const context = captureContext();
   const type = filterType.value;
+  // An unfiltered read owns the summary independently of the list filter.
+  const summary = type ? null : ++summaryRequest;
   const isCurrentList = () => request === listRequest && isCurrentContext(context, false) && type === filterType.value;
+  const isCurrentSummary = () => summary != null && summary === summaryRequest && isCurrentContext(context, false);
   if (!context.patientId || disposed) { records.value = []; loading.value = false; return; }
   loading.value = true;
+  if (summary != null) summaryLoading.value = true;
   try {
     const res = await listBpSelfMonitorRecords(context.patientId, type || undefined);
-    if (!isCurrentList()) return;
-    if (res.code === 200) records.value = res.data || [];
-  } catch (e) {
-    if (isCurrentList()) ElMessage.error('加载记录失败');
-  } finally { if (isCurrentList()) loading.value = false; }
+    if (!isCurrentList() && !isCurrentSummary()) return;
+    if (res.code !== 200) throw Object.assign(new Error(res.msg || '无法加载记录'), { code: res.code });
+    const stamp = new Date().toISOString();
+    accessDenied.value = false;
+    if (isCurrentList()) {
+      records.value = res.data || [];
+      lastSuccessAt.value = stamp;
+      loadError.value = '';
+    }
+    if (isCurrentSummary()) {
+      summaryRecords.value = res.data || [];
+      summarySuccessAt.value = stamp;
+      summaryError.value = '';
+    }
+  } catch (error) {
+    if (!isCurrentList() && !isCurrentSummary()) return;
+    if (isDeniedRead(error)) { clearProtectedRecords(); return; }
+    if (isCurrentList()) loadError.value = error.message || '无法加载记录';
+    if (isCurrentSummary()) summaryError.value = error.message || '无法读取最近读数';
+  } finally {
+    if (isCurrentList()) loading.value = false;
+    if (isCurrentSummary()) summaryLoading.value = false;
+  }
+}
+
+async function loadLatestRecords() {
+  if (disposed || !ensureReaderSession()) return;
+  const context = captureContext(), request = ++summaryRequest;
+  if (!context.patientId || disposed) return;
+  summaryLoading.value = true;
+  try {
+    const res = await listBpSelfMonitorRecords(context.patientId);
+    if (request !== summaryRequest || !isCurrentContext(context, false)) return;
+    if (res.code !== 200) throw Object.assign(new Error(res.msg || '无法读取最近读数'), { code: res.code });
+    accessDenied.value = false;
+    summaryRecords.value = res.data || [];
+    summarySuccessAt.value = new Date().toISOString();
+    summaryError.value = '';
+  } catch (error) {
+    if (request !== summaryRequest || !isCurrentContext(context, false)) return;
+    if (isDeniedRead(error)) { clearProtectedRecords(); return; }
+    summaryError.value = error.message || '无法读取最近读数';
+  } finally { if (request === summaryRequest && isCurrentContext(context, false)) summaryLoading.value = false; }
+}
+async function refreshRecords() {
+  await Promise.all([loadRecords(), ...(filterType.value ? [loadLatestRecords()] : [])]);
 }
 
 async function handleSave() {
-  if (saving.value || disposed) return;
+  if (saving.value || disposed || !ensureReaderSession() || accessDenied.value) return;
   if (!currentPatientId.value) { ElMessage.warning('请先选择患者。'); return; }
   if (!formRef.value) return;
   const context = captureContext();
@@ -314,8 +482,11 @@ async function handleSave() {
     if (!isCurrentSave()) return;
     if (res.code === 200) {
       ElMessage.success(isEdit ? '更新成功' : '保存成功');
+      const origin = editOrigin;
       resetForm();
-      loadRecords();
+      const focusContext = captureContext();
+      await refreshRecords();
+      await restoreEditOrigin(origin, focusContext);
     } else {
       ElMessage.error(res.msg || '操作失败');
     }
@@ -324,10 +495,13 @@ async function handleSave() {
   } finally { if (isCurrentSave()) saving.value = false; }
 }
 
-function handleEdit(row) {
-  if (saving.value || disposed || !currentPatientId.value || row.patientId !== currentPatientId.value) return;
+function handleEdit(row, event) {
+  if (saving.value || disposed || !ensureReaderSession() || accessDenied.value || !currentPatientId.value || row.patientId !== currentPatientId.value) return;
   invalidateEditor();
   editingId.value = row.id;
+  editOrigin = { id: row.id, opener: event?.currentTarget || editOpeners.get(row.id), scrollY: typeof window === 'undefined' ? 0 : window.scrollY };
+  editRecordLabel.value = '编辑 ' + row.recordDate + (row.recordTime ? ' ' + row.recordTime : '');
+  focusEditor(captureContext());
   Object.assign(form, {
     recordDate: row.recordDate,
     recordTime: row.recordTime,
@@ -342,7 +516,7 @@ function handleEdit(row) {
 }
 
 async function handleDelete(row) {
-  if (disposed || !currentPatientId.value || row.patientId !== currentPatientId.value || pendingDeletes.has(row.id)) return;
+  if (disposed || !ensureReaderSession() || accessDenied.value || !currentPatientId.value || row.patientId !== currentPatientId.value || pendingDeletes.has(row.id)) return;
   const context = captureContext();
   const operation = {};
   pendingDeletes.set(row.id, operation);
@@ -351,7 +525,7 @@ async function handleDelete(row) {
     if (!isCurrentContext(context, false)) return;
     if (res.code === 200) {
       ElMessage.success('删除成功');
-      loadRecords();
+      refreshRecords();
     }
   } catch (e) {
     if (isCurrentContext(context, false)) ElMessage.error('删除失败');
@@ -359,34 +533,68 @@ async function handleDelete(row) {
 }
 
 watch(currentPatientId, () => {
+  readerSession = captureReaderSession();
+  readerSessionEpoch++;
   patientEpoch++;
   listRequest++;
   pendingDeletes.clear();
+  summaryRequest++;
+  summaryRecords.value = [];
+  summarySuccessAt.value = '';
+  summaryError.value = '';
+  summaryLoading.value = false;
+  accessDenied.value = false;
+  lastSuccessAt.value = '';
+  loadError.value = '';
   records.value = [];
+  editOpeners.clear();
   loading.value = false;
   resetForm();
-  loadRecords();
+  refreshRecords();
 }, { flush: 'sync' });
 watch(filterType, () => {
   listRequest++;
+  loadError.value = '';
+  lastSuccessAt.value = '';
   records.value = [];
   loading.value = false;
   loadRecords();
 }, { flush: 'sync' });
 
-onMounted(() => { loadRecords(); });
+onMounted(() => {
+  if (typeof window !== 'undefined') { window.addEventListener?.('storage', readerSessionChanged); window.addEventListener?.('auth-session-cleared', readerSessionChanged); }
+  refreshRecords();
+});
 onUnmounted(() => {
+  if (typeof window !== 'undefined') { window.removeEventListener?.('storage', readerSessionChanged); window.removeEventListener?.('auth-session-cleared', readerSessionChanged); }
   disposed = true;
+  editOpeners.clear();
+  editOrigin = null;
   patientEpoch++;
   listRequest++;
   pendingDeletes.clear();
+  summaryRequest++;
   loading.value = false;
+  summaryLoading.value = false;
   invalidateEditor();
 });
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>
 <style scoped>
+.editor-heading { margin: 0; font-size: inherit; font-weight: 700; overflow-wrap: anywhere; }
+.editor-heading:focus-visible { outline: 3px solid var(--care-600); outline-offset: 4px; }
+.submission-patient { margin: 12px 20px 0; color: var(--ink-700); overflow-wrap: anywhere; }
+
+ .summary-item small { display: block; margin-top: 8px; font-size: 12px; color: var(--ink-700); overflow-wrap: anywhere; }
+.summary-context { color: var(--ink-700); }
+.read-state, .trend-data { margin: 16px 0; padding: 16px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper); color: var(--ink-800); overflow-wrap: anywhere; }
+.trend-data summary { min-height: 44px; cursor: pointer; font-weight: 700; }
+.trend-data summary:focus-visible, .trend-data-wrap:focus-visible { outline: 3px solid var(--care-600); outline-offset: 4px; }
+.trend-data-wrap { overflow-x: auto; }
+.trend-data table { width: 100%; border-collapse: collapse; }
+.trend-data th, .trend-data td { text-align: start; padding: 10px; border-bottom: 1px solid var(--line); }
+.trend-data caption { text-align: start; padding: 8px 0; }
 .bp-monitor-page {
   --bp-accent: var(--info);
   --bp-soft: var(--info-soft);

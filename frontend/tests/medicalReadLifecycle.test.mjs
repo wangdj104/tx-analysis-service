@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
 import { ref, reactive, computed, watch, nextTick, effectScope } from 'vue'
+const trendTestStorage = new Map([['token', 'synthetic-trend-token'], ['userId', '51']]);
+globalThis.localStorage = { getItem: key => trendTestStorage.get(key) ?? null };
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
 const ok = data => ({ code: 200, data })
 function setup(t, api = {}, initialRoute = {}) {

@@ -13,7 +13,7 @@
       <el-table :data="sourceFocus.state.record ? [sourceFocus.state.record] : []" max-height="440"><el-table-column prop="measured_at" label="Time" width="165"/><el-table-column prop="metric_type" label="Metric" width="110"/><el-table-column label="Value"><template #default="{row}">{{row.value_primary}}{{row.value_secondary!=null?'/'+row.value_secondary:''}} {{row.unit}}</template></el-table-column><el-table-column prop="status" label="Status" width="100"><template #default="{row}"><el-tag :type="row.status==='NORMAL'?'success':'danger'">{{row.status}}</el-tag></template></el-table-column></el-table>
       <article v-for="note in sourceFocus.state.record?.annotations || []" :key="note.id"><p>{{note.doctor_name}} · {{note.created_at}}</p><p>{{note.annotation}}</p></article>
     </section>
-    <el-tabs v-if="!focusedMode" v-model="tab" class="journey-tabs" @tab-change="syncTab">
+    <el-tabs v-if="!focusedMode" v-model="tab" class="journey-tabs" :before-leave="beforeTabLeave">
       <el-tab-pane label="Measurements" name="measurements">
         <section class="panel-grid two">
           <el-card><template #header><b>Record a health measurement</b></template><el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top">
@@ -101,7 +101,8 @@ const sourceFocus=useFocusedCareSource(route,currentPatientId,(source,options)=>
 const focusedMode=sourceFocus.attempted
 const roles=JSON.parse(localStorage.getItem('userRoleCodes')||'[]'),isDoctor=computed(()=>roles.includes('doctor')||roles.includes('admin'))
 const allowedTabs=['measurements','appointments','consultation','recovery','emergency','specialty','mental','privacy',...(isDoctor.value?['operations']:[])]
-const tab=ref(allowedTabs.includes(route.query.tab)?route.query.tab:'measurements'),busy=ref(false)
+// Only a committed route selects content; rejected navigation cannot disable an active draft.
+const tab=computed({get:()=>allowedTabs.includes(route.query.tab)?route.query.tab:'measurements',set:name=>{void syncTab(name)}}),busy=ref(false)
 const patientRequired=computed(()=>!['operations','consultation'].includes(tab.value))
 const clinicians=ref([]),doctorSchedules=ref([]),measurements=ref([]),appointments=ref([]),visits=ref([]),prescriptions=ref([]),specialtyRows=reactive({growth:[],vaccination:[],maternity:[]}),plans=ref([]),rehabRows=ref([]),emergencyCard=ref(null),emergencyEvents=ref([]),selectedEmergency=ref(null),mentalRows=ref([]),mentalSchedules=ref([]),grants=ref([]),groups=ref([]),operations=ref(null)
 const now=()=>{const date=new Date();return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,19)},today=()=>now().slice(0,10)
@@ -125,7 +126,8 @@ function nurseAuthCleared(){invalidateCarePlanGrants();clearNurseCandidates()}
 function nurseStorageChanged(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))nurseAuthCleared()}
 const grantModuleOptions=[{value:'CARE_PLAN',label:'Collaboration care plans'},{value:'MEASUREMENTS',label:'Measurements'},{value:'APPOINTMENTS',label:'Appointments'},{value:'VISITS',label:'Visit summaries'},{value:'MEDICATION',label:'Medication'},{value:'CONSULTATION',label:'Consultations'},{value:'TREATMENT',label:'Treatment plans'},{value:'REHAB',label:'Recovery'},{value:'EMERGENCY',label:'Emergency'},{value:'SPECIALTY',label:'Child and maternity'},{value:'MENTAL',label:'Mental health'},{value:'MEDICAL',label:'Medical records'},{value:'DIALYSIS',label:'Dialysis'}]
 const metricOptions=[{label:'Blood pressure',value:'BP'},{label:'Blood glucose',value:'GLUCOSE'},{label:'Blood oxygen',value:'SPO2'},{label:'Weight',value:'WEIGHT'},{label:'Heart rate',value:'HEART_RATE'},{label:'Temperature',value:'TEMPERATURE'},{label:'Custom',value:'CUSTOM'}]
-function syncTab(name){const query={...route.query,tab:name};if(name!=='consultation')delete query.consultationId;router.replace({query})}
+function syncTab(name){if(!allowedTabs.includes(name))return;const query={...route.query,tab:name};if(name!=='consultation')delete query.consultationId;if(JSON.stringify(query)===JSON.stringify(route.query))return;return router.replace({query})}
+async function beforeTabLeave(name){if(name===tab.value)return true;const failure=await syncTab(name);return !failure&&tab.value===name}
 function pid(){if(!currentPatientId.value)throw new Error('Select a patient first.');return currentPatientId.value}
 async function safely(action,message='Saved',isCurrent=null){if(busy.value)return;try{busy.value=true;const result=await action();if(!isCurrent||(isCurrent()&&result!==false))ElMessage.success(message)}catch(e){if(isCurrent&&!isCurrent())return;if(e.validation)ElMessage.warning(e.message);else if(e.message==='Select a patient first.')ElMessage.warning(e.message)}finally{busy.value=false}}
 let editorEpoch=0,editorOperation=null
@@ -338,7 +340,7 @@ watch(currentPatientId,()=>{
   measurement.measuredAt=now();mentalSchedule.nextDueAt=now();growth.recordDate=today();vaccine.plannedDate=today();maternity.recordDate=today()
   loadTab()
 },{flush:'sync'})
-watch([()=>route.query.tab,focusedMode],([value,focused],[,wasFocused])=>{if(focused||(wasFocused&&route.fullPath?.split('?')[0]!=='/care-journey'))return;const next=allowedTabs.includes(value)?value:'measurements';if(tab.value!==next)tab.value=next;if(value&&value!==next){syncTab(next);return}loadTab()})
+watch([()=>route.query.tab,focusedMode],([value,focused],[,wasFocused])=>{if(focused||(wasFocused&&route.fullPath?.split('?')[0]!=='/care-journey'))return;const next=allowedTabs.includes(value)?value:'measurements';if(value&&value!==next){syncTab(next);return}loadTab()})
 onMounted(()=>{window.addEventListener('auth-session-cleared',nurseAuthCleared);window.addEventListener('storage',nurseStorageChanged);if(route.query.tab&&!allowedTabs.includes(route.query.tab))syncTab(tab.value);else loadTab()})
 onUnmounted(()=>{nurseAuthCleared();window.removeEventListener('auth-session-cleared',nurseAuthCleared);window.removeEventListener('storage',nurseStorageChanged)})
 </script>

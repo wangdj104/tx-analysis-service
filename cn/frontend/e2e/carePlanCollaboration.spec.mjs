@@ -2,6 +2,7 @@ import { test as base, expect } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { test, showIdentity, accountNames } from './carePlanSessions.mjs'
 import { ids, language, appPath, login, api, assertAccessDenied, command, assignNurse, grant, draft, publish, detail, assertNoOverflow, pageErrorCounter } from './helpers.mjs'
+import { toOffsetIso } from '../src/utils/carePlanTime.js'
 
 // Each edition runs the same contract against its built Vue app and real Spring/MySQL.
 // Only explicitly named resilience tests intercept transport, after real commit.
@@ -20,7 +21,7 @@ const labels = {
   deadline: text('Deadline, ISO date/time with explicit offset', '截止时间：包含明确偏移的 ISO 日期时间'),
   addAction: text('Add action', '添加行动'), history: text('Version history', '版本历史'),
   editDraft: text('Edit private draft', '编辑私有草稿'), keepPrivate: text('Keep private', '保持私有'),
-  entry: text('Entry declaration', '录入声明'), occurred: text('Actual execution time, with explicit UTC offset', '实际执行时间，须含明确的 UTC 偏移'),
+  entry: text('Entry declaration', '录入声明'),
   followKind: text('Follow-up type', '跟进类型'), help: text('Ask for help', '请求协助'), followRoute: text('Record follow-up', '记录跟进'),
   returnNote: text('Required explanation (1–1000 characters)', '必填说明（1–1000 字）'),
   cancelNote: text('Required reason (1–1000 characters)', '必填原因（1–1000 字）'),
@@ -32,6 +33,8 @@ const labels = {
   revoke: text('Revoke', '撤销'), moreHistory: text('Use this existing plan', '使用此既有计划'),
 }
 const patientNames = { [ids.patientA]: 'Synthetic Patient A', [ids.patientB]: 'Synthetic Patient B', [ids.patientC]: 'Synthetic Patient C' }
+const patientSwitcherLabel = id => `${patientNames[id]} · ${text('Record', '档案')} #${id}`
+const doctorPatientLabel = id => `${patientNames[id]} · #${id}`
 const exact = value => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
 const planTitle = name => `Synthetic ${language} ${name}`
 const planPath = id => `/care-plans/${id}`
@@ -85,8 +88,8 @@ async function nativeSelect(scope, labelText) {
 async function selectPatient(page, patientId) {
   const switcher = page.locator('.patient-switcher')
   await expect(switcher.getByRole('combobox')).toBeEnabled()
-  await selectElementOption(page, switcher.getByRole('combobox'), patientNames[patientId])
-  await expect(switcher).toContainText(patientNames[patientId])
+  await selectElementOption(page, switcher.getByRole('combobox'), patientSwitcherLabel(patientId))
+  await expect(switcher).toContainText(patientSwitcherLabel(patientId))
 }
 
 function formItem(page, form, label) {
@@ -127,7 +130,7 @@ async function openDoctorPlans(doctor, patientId = ids.patientA) {
   await doctor.goto(appPath('/doctor-workspace'))
   await expect(doctor.getByRole('heading', { name: labels.doctor, exact: true })).toBeVisible()
   await doctor.getByRole('tab', { name: labels.plans, exact: true }).click()
-  await selectElementOption(doctor, doctor.locator('.doctor-tabs .patient-filter:visible').getByRole('combobox'), patientNames[patientId])
+  await selectElementOption(doctor, doctor.locator('.doctor-tabs .patient-filter:visible').getByRole('combobox'), doctorPatientLabel(patientId))
   await expect(doctor.getByTestId('new-collaboration-draft')).toBeEnabled()
 }
 
@@ -210,6 +213,27 @@ async function assertVisibleReceipt(page, note, entryMode, actorId) {
   await expect(card.locator('p').filter({ hasText: 'UTC+08:00, Asia/Shanghai' })).toHaveCount(2)
 }
 
+async function fillReceiptExecutionTime(dialog, occurredAt) {
+  const clock = dialog.getByTestId('receipt-execution-time')
+  await expect(clock).toHaveAttribute('type', 'datetime-local')
+  // Read the real browser context's timezone, never the Node runner's local zone.
+  // Keep occurredAt as the original UTC persistence oracle; only the UI fill is local.
+  const { localDateTime, offsetMinutes, timeZone } = await clock.evaluate((element, instant) => {
+    const date = new Date(instant)
+    if (!Number.isFinite(date.getTime())) throw new Error('Invalid receipt instant')
+    const pad = (value, length = 2) => String(value).padStart(length, '0')
+    return {
+      localDateTime: `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`,
+      offsetMinutes: -date.getTimezoneOffset(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    }
+  }, occurredAt)
+  expect(Date.parse(toOffsetIso(localDateTime, offsetMinutes, { timeZone }))).toBe(Date.parse(occurredAt))
+  await clock.fill(localDateTime)
+  const offset = dialog.getByTestId('receipt-time-offset')
+  await offset.selectOption(String(offsetMinutes))
+  await expect(offset).toHaveValue(String(offsetMinutes))
+}
+
 async function recordThroughUi(page, view, actionId, note, entryMode = 'ASSISTED', duplicate = false) {
   await openPlan(page, view)
   const before = await detail(page, view.id), actorId = await page.evaluate(() => Number(localStorage.getItem('userId')))
@@ -227,7 +251,7 @@ async function recordThroughUi(page, view, actionId, note, entryMode = 'ASSISTED
   }
   await dialog.getByTestId('receipt-note').fill(note)
   const occurredAt = new Date(Date.now() - 60000).toISOString()
-  await dialog.getByLabel(labels.occurred, { exact: true }).fill(occurredAt)
+  await fillReceiptExecutionTime(dialog, occurredAt)
   const result = await observeCommand(page, 'POST', `/care-plans/actions/${actionId}/receipts`, () => duplicate ? dialog.getByTestId('submit-receipt').dblclick() : dialog.getByTestId('submit-receipt').click())
   await expect(dialog).toBeHidden()
   const persisted = await detail(page, view.id)
@@ -547,7 +571,7 @@ test('390px real Vue: keyboard receipt, focus, patient A→B→A, Back/Forward a
   await dialog.getByTestId('receipt-note').fill('Synthetic mobile keyboard-assisted execution')
   await expect(await nativeSelect(dialog, labels.entry)).toHaveValue('ASSISTED')
   const occurredAt = new Date(Date.now() - 60000).toISOString()
-  await dialog.getByLabel(labels.occurred, { exact: true }).fill(occurredAt)
+  await fillReceiptExecutionTime(dialog, occurredAt)
   await assertNoOverflow(mobile)
   await dialog.getByTestId('submit-receipt').focus()
   const result = await observeCommand(mobile, 'POST', `/care-plans/actions/${actionId}/receipts`, () => dialog.getByTestId('submit-receipt').press('Enter'))
@@ -600,7 +624,7 @@ test('dirty doctor editor guards visible SPA leave, Back/Forward and patient cha
   await careLink.click(); await expectUiRoute(doctor, '/care')
   await doctor.goBack(); await expectUiRoute(doctor, '/doctor-workspace')
   await doctor.getByRole('tab', { name: labels.plans, exact: true }).click()
-  await selectElementOption(doctor, doctor.locator('.doctor-tabs .patient-filter:visible').getByRole('combobox'), patientNames[ids.patientA])
+  await selectElementOption(doctor, doctor.locator('.doctor-tabs .patient-filter:visible').getByRole('combobox'), doctorPatientLabel(ids.patientA))
   await doctor.getByTestId('new-collaboration-draft').click()
   const editor = doctor.locator('.care-plan-editor')
   await acknowledgeExistingHistory(editor)
@@ -616,8 +640,8 @@ test('dirty doctor editor guards visible SPA leave, Back/Forward and patient cha
   await careLink.click(); await assertRetained()
   await doctor.goBack(); await assertRetained()
   await doctor.goForward(); await assertRetained()
-  await selectElementOption(doctor, doctor.locator('.patient-switcher').getByRole('combobox'), patientNames[ids.patientB])
-  await expect(doctor.locator('.patient-switcher')).toContainText(patientNames[ids.patientA])
+  await selectElementOption(doctor, doctor.locator('.patient-switcher').getByRole('combobox'), patientSwitcherLabel(ids.patientB))
+  await expect(doctor.locator('.patient-switcher')).toContainText(patientSwitcherLabel(ids.patientA))
   await assertRetained()
   await screenshot(doctor, testInfo, 'dirty-editor-navigation-input-retained')
   await editor.getByTestId('close-editor').click()
@@ -739,8 +763,8 @@ test('resilience: UNKNOWN doctor review guards SPA navigation, browser Forward a
   await doctor.goForward()
   await expectUiRoute(doctor, planPath(view.id))
   await expect(doctor.getByTestId('retry-detail-original')).toBeVisible()
-  await selectElementOption(doctor, doctor.locator('.patient-switcher').getByRole('combobox'), patientNames[ids.patientB])
-  await expect(doctor.locator('.patient-switcher')).toContainText(patientNames[ids.patientA])
+  await selectElementOption(doctor, doctor.locator('.patient-switcher').getByRole('combobox'), patientSwitcherLabel(ids.patientB))
+  await expect(doctor.locator('.patient-switcher')).toContainText(patientSwitcherLabel(ids.patientA))
   await expect(doctor.getByTestId('retry-detail-original')).toBeVisible()
   const committed = await detail(owner, view.id)
   expect(committed.actions[0].events.filter(e => e.eventType === 'RECEIPT_CONFIRMED')).toHaveLength(1)

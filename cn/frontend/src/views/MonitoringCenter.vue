@@ -32,6 +32,13 @@
     <el-alert v-if="!patientId" title="请先在顶部选择一名患者，再查看监测数据。" type="warning" :closable="false" show-icon />
 
     <template v-else>
+      <div v-if="loadError" role="alert" class="read-state read-state--error">
+        <p>{{ loadError }}</p>
+        <p v-if="hasSnapshot" data-testid="monitoring-stale">显示上次成功结果，数据可能已过时。成功读取时间：{{ formatDateTime(lastSuccessAt) }}</p>
+        <el-button data-testid="retry-monitoring" :loading="loading" @click="loadSnapshot()">重试</el-button>
+      </div>
+      <p v-if="loading" role="status" class="read-state">{{ hasSnapshot ? '正在刷新，当前显示上次成功结果' : '正在加载监测数据…' }}</p>
+      <template v-if="hasSnapshot">
       <section class="status-hero" :class="`status-hero--${statusTone}`" v-loading="loading && !snapshot.generatedAt">
         <div class="status-orb"><el-icon :size="34"><component :is="statusIcon" /></el-icon></div>
         <div class="status-copy">
@@ -41,7 +48,7 @@
         </div>
         <div class="status-side">
           <div class="status-meta">
-            <span><i></i>{{ autoRefresh ? '正在监测新记录' : '手动检查' }}</span>
+            <span><i></i>{{ loadError ? '上次成功结果' : (autoRefresh ? '正在监测新记录' : '手动检查') }}</span>
             <small>状态更新于 {{ formatDateTime(snapshot.generatedAt) }}</small>
             <small>最近记录 {{ formatRelative(snapshot.lastDataAt) }}</small>
           </div>
@@ -92,7 +99,19 @@
             <div><span class="panel-kicker">趋势监测</span><h2>生命体征变化</h2><p>异常数据点会使用菱形标记。</p></div>
             <div class="chart-legend"><span><i class="legend-systolic"></i>收缩压</span><span><i class="legend-diastolic"></i>舒张压</span><span><i class="legend-glucose"></i>血糖</span></div>
           </header>
-          <v-chart v-if="hasTrendData" class="monitor-chart" :option="chartOption" autoresize />
+          <div class="trend-view-controls" role="group" aria-label="趋势显示方式">
+            <button type="button" :aria-pressed="trendView === 'chart'" @click="trendView = 'chart'">图表</button>
+            <button type="button" :aria-pressed="trendView === 'data'" @click="trendView = 'data'">数据</button>
+          </div>
+          <p class="trend-context">患者档案 #{{ patientId }} · 近 {{ loadedDays }} 天</p>
+          <div v-if="trendView === 'data' && hasTrendData" class="trend-data-wrap" tabindex="0" role="region" aria-label="趋势原始数据">
+            <table data-testid="monitoring-trend-data">
+              <caption>与图表相同范围的原始读数；血糖保留原始单位</caption>
+              <thead><tr><th scope="col">日期与时间</th><th scope="col">收缩压（mmHg）</th><th scope="col">舒张压（mmHg）</th><th scope="col">血糖（原始单位）</th><th scope="col">已有标记</th></tr></thead>
+              <tbody><tr v-for="(row, index) in trendRows" :key="index"><th scope="row">{{ row.date }} {{ row.time || '—' }}</th><td>{{ row.systolic ?? '—' }}</td><td>{{ row.diastolic ?? '—' }}</td><td>{{ row.glucose ?? '—' }} {{ row.glucose != null ? (row.glucoseUnit || 'mmol/L') : '' }}</td><td>{{ row.abnormal ? '异常' : '—' }}</td></tr></tbody>
+            </table>
+          </div>
+          <v-chart v-else-if="hasTrendData" class="monitor-chart" :option="chartOption" autoresize />
           <el-empty v-else description="当前时间范围内暂无生命体征记录">
             <el-button type="primary" @click="$router.push('/bp-self-monitor')">前往记录血压与血糖</el-button>
           </el-empty>
@@ -103,8 +122,9 @@
             <div><span class="panel-kicker">风险队列</span><h2>活动告警</h2></div>
             <el-button text type="primary" :loading="checking" @click="runCheck">重新检查</el-button>
           </header>
+          <div class="alert-list-summary"><span data-testid="alert-count">显示 {{ shownAlerts.length }} / 已加载 {{ activeAlerts.length }} 项</span><router-link v-if="canViewAllAlerts" :to="allAlertsRoute" data-testid="view-all-alerts">查看全部告警</router-link></div>
           <div v-if="activeAlerts.length" class="alert-list">
-            <article v-for="alert in activeAlerts.slice(0, 8)" :key="alert.id" class="alert-row" :class="`alert-row--${(alert.level || 'INFO').toLowerCase()}`">
+            <article v-for="alert in shownAlerts" :key="alert.id" class="alert-row" :class="`alert-row--${(alert.level || 'INFO').toLowerCase()}`">
               <span class="alert-level">{{ alertLevel(alert.level) }}</span>
               <div class="alert-row__body"><strong>{{ alert.title || '健康指标异常' }}</strong><p>{{ alert.value || '请查看详细记录' }}</p><small>{{ formatDateTime(alert.triggeredAt) }}</small></div>
               <div class="alert-actions">
@@ -149,6 +169,7 @@
         <header><el-icon><Opportunity /></el-icon><div><strong>当前照护建议</strong><span>根据监测数据自动汇总，仅供健康管理参考。</span></div></header>
         <ol><li v-for="item in snapshot.careSuggestions || []" :key="item">{{ item }}</li></ol>
       </section>
+      </template>
     </template>
   </main>
 </template>
@@ -190,11 +211,54 @@ const checking = ref(false)
 const days = ref(7)
 const loadedDays = ref(7)
 const loadError = ref('')
+const accessDenied = ref(false)
+const lastSuccessAt = ref('')
+const hasSnapshot = computed(() => !!lastSuccessAt.value)
+const trendView = ref('chart')
+const trendRows = computed(() => snapshot.value.vitalTrend || [])
+const shownAlerts = computed(() => activeAlerts.value.slice(0, 8))
+const allAlertsRoute = computed(() => ({ path: '/health-analysis', query: { tab: 'alert', patientId: patientId.value } }))
+const canViewAllAlerts = computed(() => {
+  const { menuPaths = [], roleCodes = [] } = readPermissionCache() || {}
+  return canAccessWorkspace('/health-analysis?tab=alert', menuPaths, roleCodes)
+})
 const autoRefresh = ref(true)
 let timer = null
 let snapshotRequestEpoch = 0
+let snapshotAccessEpoch = 0
 let snapshotPending = null
 let snapshotDisposed = false
+
+function captureReaderSession() {
+  if (typeof localStorage === 'undefined') return null;
+  return JSON.stringify(['token', 'userId', 'username'].map(key => localStorage.getItem(key)));
+}
+let readerSession = captureReaderSession();
+let readerSessionEpoch = 0;
+function ownsReaderSession(session = readerSession, epoch = readerSessionEpoch) {
+  return epoch === readerSessionEpoch && session === captureReaderSession();
+}
+function clearProtectedSnapshot(message) {
+  snapshotAccessEpoch++
+  snapshotRequestEpoch++
+  snapshotPending = null
+  snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {}, vitalTrend: [] }
+  lastSuccessAt.value = ''
+  loading.value = false
+  checking.value = false
+  accessDenied.value = true
+  loadError.value = message
+}
+function readerSessionChanged(event) {
+  if (snapshotDisposed || (event?.key != null && !['token', 'userId', 'username', 'realName'].includes(event.key))) return
+  readerSessionEpoch++
+  clearProtectedSnapshot('登录会话已改变，请重新登录并选择患者。')
+}
+function ensureReaderSession() {
+  if (ownsReaderSession()) return true
+  readerSessionChanged()
+  return false
+}
 
 const metrics = computed(() => snapshot.value.metrics || {})
 const activeAlerts = computed(() => snapshot.value.activeAlerts || [])
@@ -262,25 +326,32 @@ const chartOption = computed(() => {
 async function loadSnapshot(silent = false) {
   const requestedPatientId = patientId.value
   const requestedDays = days.value
-  if (snapshotDisposed || !requestedPatientId) return
+  if (snapshotDisposed || !requestedPatientId || !ensureReaderSession()) return
+  const session = readerSession, sessionEpoch = readerSessionEpoch
   const requestEpoch = ++snapshotRequestEpoch
   const pending = { patientId: requestedPatientId, days: requestedDays }
   snapshotPending = pending
-  if (!silent) loading.value = true
+  loading.value = true
   try {
     const res = await getMonitoringSnapshot(requestedPatientId, requestedDays)
-    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
+    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch)) return
     if (res.code === 200) {
       snapshot.value = localizeSnapshot(res.data || {})
       loadedDays.value = requestedDays
       loadError.value = ''
+      lastSuccessAt.value = new Date().toISOString()
+      accessDenied.value = false
+    } else {
+      throw Object.assign(new Error(res.msg || '无法加载监测数据。'), { code: res.code })
     }
   } catch (error) {
-    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value) return
-    if (!silent) {
-      days.value = loadedDays.value
-      loadError.value = error.message || '监测数据加载失败'
+    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch)) return
+    if ([401, 403].includes(Number(error.response?.status || error.status || error.code))) {
+      clearProtectedSnapshot('监测访问不可用或已被撤销，请重新检查权限。')
+      return
     }
+    days.value = loadedDays.value
+    loadError.value = error.message || '无法加载监测数据。'
   } finally {
     if (snapshotPending === pending) snapshotPending = null
     if (!snapshotDisposed && requestEpoch === snapshotRequestEpoch) loading.value = false
@@ -290,7 +361,7 @@ async function loadSnapshot(silent = false) {
 // Only automatic wakes share a pending read. Explicit and post-write refreshes
 // must still dispatch so new patient/range choices and saved changes take priority.
 function refreshSnapshotInBackground() {
-  if (snapshotDisposed || document.hidden || !autoRefresh.value) return
+  if (snapshotDisposed || accessDenied.value || document.hidden || !autoRefresh.value) return
   if (snapshotPending?.patientId === patientId.value && snapshotPending?.days === days.value) return
   return loadSnapshot(true)
 }
@@ -302,6 +373,7 @@ function resetTimer() {
 }
 
 async function runCheck() {
+  if (snapshotDisposed || !ensureReaderSession() || accessDenied.value || !patientId.value) return
   checking.value = true
   try {
     await checkThresholds(patientId.value)
@@ -313,24 +385,38 @@ async function runCheck() {
 }
 
 async function acknowledgeAlert(alert) {
+  if (snapshotDisposed || !ensureReaderSession() || accessDenied.value || !patientId.value) return
   await acknowledge(alert.id)
   ElMessage.success('告警已确认')
   await loadSnapshot(true)
 }
 
 async function resolveAlert(alert) {
+  if (snapshotDisposed || !ensureReaderSession() || accessDenied.value || !patientId.value) return
+  const context = { patientId: patientId.value, session: readerSession, sessionEpoch: readerSessionEpoch, accessEpoch: snapshotAccessEpoch, alertId: alert.id }
+  const isCurrentResolution = () => !snapshotDisposed && !accessDenied.value && context.patientId === patientId.value
+    && context.accessEpoch === snapshotAccessEpoch && ownsReaderSession(context.session, context.sessionEpoch)
+    && activeAlerts.value.some(item => item.id === context.alertId && item.status !== 'RESOLVED')
+  if (!isCurrentResolution()) return
   const result = await ElMessageBox.prompt('请描述已采取的措施、复测结果或后续计划。', '解决告警', {
     confirmButtonText: '标记已解决', cancelButtonText: '取消', inputType: 'textarea',
     inputPlaceholder: '例如：休息 10 分钟后复测 138/86，继续观察',
     inputValidator: value => value?.trim() ? true : '请输入处置说明'
   }).catch(() => null)
-  if (!result) return
-  await resolve(alert.id, result.value.trim())
+  if (!result || !isCurrentResolution()) return
+  try {
+    await resolve(context.alertId, result.value.trim())
+  } catch (error) {
+    if (!isCurrentResolution()) return
+    throw error
+  }
+  if (!isCurrentResolution()) return
   ElMessage.success('告警已解决')
   await loadSnapshot(true)
 }
 
 async function completeMedication(task) {
+  if (snapshotDisposed || !ensureReaderSession() || accessDenied.value || !patientId.value) return
   await actionIntake(task.id, 'TAKEN', '')
   ElMessage.success('服药记录已保存')
   await loadSnapshot(true)
@@ -381,27 +467,49 @@ function localizeSnapshot(data) {
 
 
 watch(patientId, () => {
+  snapshotAccessEpoch++
+  readerSession = captureReaderSession()
+  readerSessionEpoch++
   snapshotRequestEpoch++
   snapshotPending = null
   loading.value = false
   snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {}, vitalTrend: [] }
   loadedDays.value = days.value
   loadError.value = ''
+  lastSuccessAt.value = ''
+  accessDenied.value = false
+  trendView.value = 'chart'
   loadSnapshot()
   resetTimer()
-}, { immediate: true })
-onMounted(() => { resetTimer(); document.addEventListener('visibilitychange', handleVisibility) })
+}, { immediate: true, flush: 'sync' })
+onMounted(() => { resetTimer(); document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('storage', readerSessionChanged); window.addEventListener('auth-session-cleared', readerSessionChanged) })
 onUnmounted(() => {
   snapshotDisposed = true
   snapshotRequestEpoch++
   snapshotPending = null
   if (timer) window.clearInterval(timer)
   document.removeEventListener('visibilitychange', handleVisibility)
+  window.removeEventListener('storage', readerSessionChanged)
+  window.removeEventListener('auth-session-cleared', readerSessionChanged)
 })
 function handleVisibility() { return refreshSnapshotInBackground() }
 </script>
 
 <style scoped>
+.read-state { padding: 14px 18px; margin-bottom: 16px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-subtle); color: var(--ink-800); overflow-wrap: anywhere; }
+.read-state--error { border-color: var(--danger); }
+.alert-list-summary, .trend-view-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
+.alert-list-summary { justify-content: space-between; }
+.alert-list-summary a, .trend-view-controls button { min-height: 44px; display: inline-flex; align-items: center; padding: 8px 12px; color: var(--care-800); }
+.trend-view-controls button { font: inherit; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--paper); cursor: pointer; }
+.trend-view-controls button[aria-pressed="true"] { background: var(--care-50); border-color: var(--care-700); }
+.trend-view-controls button:focus-visible, .trend-data-wrap:focus-visible, .alert-list-summary a:focus-visible { outline: 3px solid var(--care-600); outline-offset: 3px; }
+.trend-context { color: var(--ink-700); }
+.trend-data-wrap { overflow-x: auto; }
+.trend-data-wrap table { border-collapse: collapse; width: 100%; color: var(--ink-800); }
+.trend-data-wrap th, .trend-data-wrap td { padding: 10px; border-bottom: 1px solid var(--line); text-align: start; }
+.trend-data-wrap caption { text-align: start; padding: 8px 0; }
+
 .monitoring-page {
   max-width: 1480px;
   margin: 0 auto;

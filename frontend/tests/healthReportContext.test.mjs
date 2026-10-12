@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
+import { exportDateRange } from '../src/utils/exportPresentation.js'
 import { ref, reactive, computed, watch, nextTick, effectScope } from 'vue'
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject}}
 function setup(t,overrides={}){
  const patientId=ref(1),scope=effectScope(),unmount=[],messages=[],requests=[],downloads=[],urls=[],revoked=[],chartRequests=[]
- const bindings={ref,reactive,computed,watch,onMounted(){},onUnmounted:fn=>unmount.push(fn),useCurrentPatient:()=>({currentPatientId:patientId}),useMenuPermission:()=>({hasMenu:()=>true,hasMenuName:()=>true}),
+ const bindings={ref,reactive,computed,watch,exportDateRange,onMounted(){},onUnmounted:fn=>unmount.push(fn),useCurrentPatient:()=>({currentPatientId:patientId}),useMenuPermission:()=>({hasMenu:()=>true,hasMenuName:()=>true}),
   ElMessage:Object.fromEntries(['success','error','warning'].map(kind=>[kind,text=>messages.push({kind,text})])),
   echarts:{use(){}},...Object.fromEntries(['CanvasRenderer','LineChart','BarChart','PieChart','GridComponent','TooltipComponent','LegendComponent','TitleComponent','ToolboxComponent'].map(k=>[k,{}])),
   window:{URL:{createObjectURL(blob){urls.push(blob);return 'blob:synthetic-'+urls.length},revokeObjectURL(url){revoked.push(url)}}},
@@ -81,7 +82,7 @@ test('failed export retains the options and allows retry',async t=>{
  await v.handleExport();assert.equal(v.exporting.value,false);assert.equal(v.form.timeValue,'2026-10');await v.handleExport();assert.equal(calls,2);assert.equal(v.downloads.length,1)
 })
 test('successful export uses its requested patient/format and revokes its URL',async t=>{
- const v=setup(t);await v.handleExport();assert.equal(v.requests[0].patientId,1);assert.equal(v.requests[0].format,'pdf');assert.match(v.downloads[0].filename,/_1\.pdf$/);assert.deepEqual(v.revoked,['blob:synthetic-1'])
+ const v=setup(t);await v.handleExport();assert.equal(v.requests[0].patientId,1);assert.equal(v.requests[0].format,'pdf');assert.equal(v.downloads[0].filename,'bp_2026-10-01_2026-10-31.pdf');assert.deepEqual(v.revoked,['blob:synthetic-1'])
 })
 test('failed chart rendering still disposes its instance and removes its temporary node',t=>{
  let disposed=0,removed=0,appended=0
@@ -100,3 +101,7 @@ for (const cancel of ['patient change', 'unmount']) {
   assert.equal(renders,0);assert.equal(v.requests.length,0)
  })
 }
+test('download report filename uses captured type and dates without patient identifier',async t=>{
+ const v=setup(t);await v.handleExport()
+ assert.equal(v.downloads[0].filename,'bp_2026-10-01_2026-10-31.pdf')
+})

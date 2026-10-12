@@ -27,25 +27,26 @@
         <div class="content-panel">
         <!-- Upload and Recognize -->
         <div v-show="activeMenu === 'upload'" class="upload-panel">
+          <p class="submission-patient">Recording for: {{ patientIdentity(uploadForm.patientId, uploadForm.patientName) }}</p>
           <el-form :disabled="uploadSaving" :model="uploadForm" label-width="100px" class="upload-form">
             <el-form-item label="Patient" required>
               <el-select v-model="uploadForm.patientId" placeholder="Select a patient" filterable style="max-width: 320px">
                 <el-option
                   v-for="patient in patientList"
                   :key="patient.id"
-                  :label="patient.patientName"
+                  :label="patientLabel(patient)"
                   :value="patient.id"
                 />
               </el-select>
             </el-form-item>
             <el-form-item label="Report type">
               <el-select v-model="uploadForm.recordType" placeholder="Select" style="max-width: 320px">
-                <el-option label="blood test" value="BLOOD" />
-                <el-option label="urinalysis" value="URINE" />
+                <el-option label="Blood test" value="BLOOD" />
+                <el-option label="Urinalysis" value="URINE" />
                 <el-option label="Liver function" value="LIVER" />
                 <el-option label="Kidney function" value="KIDNEY" />
-                <el-option label="bone metabolism" value="BONE" />
-                <el-option label="iron metabolism" value="IRON" />
+                <el-option label="Bone metabolism" value="BONE" />
+                <el-option label="Iron metabolism" value="IRON" />
                 <el-option label="Imaging report" value="IMAGE" />
                 <el-option label="Other" value="OTHER" />
               </el-select>
@@ -128,7 +129,7 @@
                       <el-input v-model="row.unit" size="small" />
                     </template>
                   </el-table-column>
-                  <el-table-column prop="referenceRange" label="Reference Range" width="120">
+                  <el-table-column prop="referenceRange" label="Reference range" width="120">
                     <template #default="{ row }">
                       <el-input v-model="row.referenceRange" size="small" />
                     </template>
@@ -198,15 +199,15 @@
               />
             </el-tabs>
             <el-form :disabled="uploadSaving" :model="currentRecognizeRecord" label-width="100px">
-              <el-form-item v-if="recognizedRecords.length <= 1" label="Examination Type">
+              <el-form-item v-if="recognizedRecords.length <= 1" label="Record type">
                 <el-select :disabled="uploadSaving" v-model="currentRecognizeRecord.recordType" style="max-width: 320px">
                   <el-option v-for="(label, val) in recordTypeMap" :key="val" :label="label" :value="val" />
                 </el-select>
               </el-form-item>
-              <el-form-item v-else label="Examination Type">
+              <el-form-item v-else label="Record type">
                 <el-tag type="primary">{{ getRecordTypeName(currentRecognizeRecord.recordType) }}</el-tag>
               </el-form-item>
-              <el-form-item label="Examination Date">
+              <el-form-item label="Report date">
                 <el-date-picker v-model="currentRecognizeRecord.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%; max-width: 320px" />
               </el-form-item>
               <el-form-item label="Hospital">
@@ -239,7 +240,7 @@
                   <el-input :disabled="uploadSaving" v-model="row.unit" size="small" />
                 </template>
               </el-table-column>
-              <el-table-column prop="referenceRange" label="Reference Range" width="120">
+              <el-table-column prop="referenceRange" label="Reference range" width="120">
                 <template #default="{ row }">
                   <el-input :disabled="uploadSaving" v-model="row.referenceRange" size="small" />
                 </template>
@@ -273,7 +274,7 @@
                   <el-option
                     v-for="patient in patientList"
                     :key="patient.id"
-                    :label="patient.patientName"
+                    :label="patientLabel(patient)"
                     :value="patient.id"
                   />
                 </el-select>
@@ -298,21 +299,29 @@
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" :loading="trendLoading" @click="loadTrend">
-                  <el-icon><Search /></el-icon>querytrend
+                  <el-icon><Search /></el-icon>View trend
                 </el-button>
               </el-form-item>
             </el-form>
+          </div>
+          <div class="trend-query-state" aria-live="polite">
+            <p v-if="trendQuery">Query: {{ patientIdentity(trendQuery.patientId, trendQuery.patientName) }} · {{ trendQuery.itemName }}</p>
+            <p v-if="trendLoading" role="status">Loading this test item’s history…</p>
+            <p v-else-if="trendStatus === 'idle'">Not queried yet. Select a patient and test item, then view the trend.</p>
+            <p v-else-if="trendStatus === 'empty'">No historical records for this patient and test item.</p>
+            <div v-else-if="trendStatus === 'error'" role="alert"><p>{{ trendError }}</p><el-button data-testid="retry-trend" :loading="trendLoading" @click="loadTrend">Retry query</el-button></div>
+            <p v-if="trendData.length && trendResultQuery">Displayed result: {{ patientIdentity(trendResultQuery.patientId, trendResultQuery.patientName) }} · {{ trendResultQuery.itemName }}<span v-if="trendStatus === 'error'"> (last successful result; refresh failed)</span></p>
           </div>
           <div v-if="trendData.length > 0" class="trend-chart-wrap">
             <v-chart class="trend-chart" :option="trendChartOption" autoresize />
           </div>
           <div v-if="trendData.length > 0" class="table-wrap">
             <el-table :data="trendData" class="app-data-table" stripe border size="small">
-              <el-table-column prop="recordDate" label="Examination Date" width="120" />
+              <el-table-column prop="recordDate" label="Report date" width="120" />
               <el-table-column prop="itemName" label="Test item" min-width="140" />
               <el-table-column prop="resultValue" label="Measured value" width="120" />
               <el-table-column prop="unit" label="Unit" width="88" />
-              <el-table-column prop="referenceRange" label="Reference Range" width="140" />
+              <el-table-column prop="referenceRange" label="Reference range" width="140" />
               <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
                 <template #default="{ row }">
                   <el-tag :type="getAbnormalType(row.isAbnormal)" size="small">{{ getAbnormalText(row.isAbnormal) }}</el-tag>
@@ -321,9 +330,7 @@
               <el-table-column prop="hospitalName" label="Hospital" min-width="160" show-overflow-tooltip />
             </el-table>
           </div>
-          <div v-if="trendData.length === 0 && !trendLoading" class="stats-empty">
-            <el-empty description="Select a patient and test item to view its history" />
-          </div>
+
         </div>
 
         <!-- Record List / Abnormalrecord -->
@@ -335,19 +342,19 @@
                 <el-option
                   v-for="patient in patientList"
                   :key="patient.id"
-                  :label="patient.patientName"
+                  :label="patientLabel(patient)"
                   :value="patient.id"
                 />
               </el-select>
             </el-form-item>
-            <el-form-item label="Examination Type">
+            <el-form-item label="Record type">
               <el-select v-model="filterForm.recordType" placeholder="Select" clearable>
-                <el-option label="blood test" value="BLOOD" />
-                <el-option label="urinalysis" value="URINE" />
+                <el-option label="Blood test" value="BLOOD" />
+                <el-option label="Urinalysis" value="URINE" />
                 <el-option label="Liver function" value="LIVER" />
                 <el-option label="Kidney function" value="KIDNEY" />
-                <el-option label="bone metabolism" value="BONE" />
-                <el-option label="iron metabolism" value="IRON" />
+                <el-option label="Bone metabolism" value="BONE" />
+                <el-option label="Iron metabolism" value="IRON" />
                 <el-option label="Imaging report" value="IMAGE" />
                 <el-option label="Other" value="OTHER" />
               </el-select>
@@ -388,7 +395,7 @@
             >
               <el-table-column v-if="listColVisible('recordDate')" prop="recordDate" label="Date" min-width="108" />
               <el-table-column v-if="listColVisible('patientName')" prop="patientName" label="Patient" min-width="100" show-overflow-tooltip />
-              <el-table-column v-if="listColVisible('recordType')" prop="recordType" label="type" min-width="96" show-overflow-tooltip>
+              <el-table-column v-if="listColVisible('recordType')" prop="recordType" label="Record type" min-width="96" show-overflow-tooltip>
                 <template #default="{ row }">
                   <el-tag size="small">{{ getRecordTypeName(row.recordType) }}</el-tag>
                 </template>
@@ -431,18 +438,19 @@
 
     <!-- Upload and Recognizedialog (listpageshortcutentry)  -->
     <el-dialog v-model="uploadDialogVisible" title="Upload report" width="min(800px, 95vw)" :close-on-click-modal="false" destroy-on-close>
+      <p class="submission-patient">Recording for: {{ patientIdentity(uploadForm.patientId, uploadForm.patientName) }}</p>
       <el-form :disabled="uploadSaving" :model="uploadForm" label-width="100px">
         <el-form-item label="Patient name" required>
           <el-input v-model="uploadForm.patientName" placeholder="Enter patient name" />
         </el-form-item>
-        <el-form-item label="Examination Type">
+        <el-form-item label="Record type">
           <el-select v-model="uploadForm.recordType" placeholder="Select">
-            <el-option label="blood test" value="BLOOD" />
-            <el-option label="urinalysis" value="URINE" />
+            <el-option label="Blood test" value="BLOOD" />
+            <el-option label="Urinalysis" value="URINE" />
             <el-option label="Liver function" value="LIVER" />
             <el-option label="Kidney function" value="KIDNEY" />
-            <el-option label="bone metabolism" value="BONE" />
-            <el-option label="iron metabolism" value="IRON" />
+            <el-option label="Bone metabolism" value="BONE" />
+            <el-option label="Iron metabolism" value="IRON" />
             <el-option label="Imaging report" value="IMAGE" />
             <el-option label="Other" value="OTHER" />
           </el-select>
@@ -487,7 +495,7 @@
       <div v-if="recognizeResult" class="recognize-result">
         <el-divider content-position="left">AI recognition results</el-divider>
         <el-form :model="recognizedData" label-width="100px">
-          <el-form-item label="Examination Date">
+          <el-form-item label="Report date">
             <el-date-picker v-model="recognizedData.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
           </el-form-item>
           <el-form-item label="Hospital">
@@ -525,7 +533,7 @@
               <el-input v-model="row.unit" size="small" />
             </template>
           </el-table-column>
-          <el-table-column prop="referenceRange" label="Reference Range" width="120">
+          <el-table-column prop="referenceRange" label="Reference range" width="120">
             <template #default="{ row }">
               <el-input v-model="row.referenceRange" size="small" />
             </template>
@@ -557,9 +565,9 @@
     <!-- Detailsdialog -->
     <el-dialog v-model="detailDialogVisible" title="Medical record details" width="min(900px, 95vw)" destroy-on-close>
       <el-descriptions :column="2" border v-if="currentRecord">
-        <el-descriptions-item label="Patient">{{ currentRecord.patientName }}</el-descriptions-item>
-        <el-descriptions-item label="Examination Date">{{ currentRecord.recordDate }}</el-descriptions-item>
-        <el-descriptions-item label="Examination Type">{{ getRecordTypeName(currentRecord.recordType) }}</el-descriptions-item>
+        <el-descriptions-item label="Patient">{{ patientIdentity(currentRecord.patientId, currentRecord.patientName) }}</el-descriptions-item>
+        <el-descriptions-item label="Report date">{{ currentRecord.recordDate }}</el-descriptions-item>
+        <el-descriptions-item label="Record type">{{ getRecordTypeName(currentRecord.recordType) }}</el-descriptions-item>
         <el-descriptions-item label="Hospital">{{ currentRecord.hospitalName }}</el-descriptions-item>
         <el-descriptions-item label="Department">{{ currentRecord.deptName }}</el-descriptions-item>
         <el-descriptions-item label="Clinician">{{ currentRecord.doctorName }}</el-descriptions-item>
@@ -570,7 +578,7 @@
         <el-table-column prop="itemName" label="Test item" width="150" />
         <el-table-column prop="resultValue" label="Measured value" width="120" />
         <el-table-column prop="unit" label="Unit" width="80" />
-        <el-table-column prop="referenceRange" label="Reference Range" width="150" />
+        <el-table-column prop="referenceRange" label="Reference range" width="150" />
         <el-table-column prop="isAbnormal" label="Status" width="100">
           <template #default="{ row }">
             <el-tag :type="getAbnormalType(row.isAbnormal)">{{ getAbnormalText(row.isAbnormal) }}</el-tag>
@@ -616,31 +624,32 @@
     <el-dialog :model-value="editDialogVisible" :key="editDialogKey" @update:model-value="editDialogModelChange" :before-close="editDialogBeforeClose" title="Edit medical record" width="min(900px, 95vw)" :close-on-click-modal="false" destroy-on-close>
       <p v-if="editLoading" role="status">Loading medical record…</p>
       <p v-if="editFilesProcessing" role="status">Preparing attachments…</p>
+      <p class="submission-patient">Editing for: {{ patientIdentity(editForm.patientId, editForm.patientName) }}</p>
       <el-form :disabled="editLocked" :model="editForm" label-width="100px">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="Patient">
               <el-select :disabled="editLocked" v-model="editForm.patientId" placeholder="Select a patient" filterable style="width: 100%">
-                <el-option v-for="patient in patientList" :key="patient.id" :label="patient.patientName" :value="patient.id" />
+                <el-option v-for="patient in patientList" :key="patient.id" :label="patientLabel(patient)" :value="patient.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Examination Date">
+            <el-form-item label="Report date">
               <el-date-picker :disabled="editLocked" v-model="editForm.recordDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Examination Type">
+            <el-form-item label="Record type">
               <el-select :disabled="editLocked" v-model="editForm.recordType" placeholder="Select" style="width: 100%">
-                <el-option label="blood test" value="BLOOD" />
-                <el-option label="urinalysis" value="URINE" />
+                <el-option label="Blood test" value="BLOOD" />
+                <el-option label="Urinalysis" value="URINE" />
                 <el-option label="Liver function" value="LIVER" />
                 <el-option label="Kidney function" value="KIDNEY" />
-                <el-option label="bone metabolism" value="BONE" />
-                <el-option label="iron metabolism" value="IRON" />
+                <el-option label="Bone metabolism" value="BONE" />
+                <el-option label="Iron metabolism" value="IRON" />
                 <el-option label="Imaging report" value="IMAGE" />
                 <el-option label="Other" value="OTHER" />
               </el-select>
@@ -689,7 +698,7 @@
             <el-input :disabled="editLocked" v-model="row.unit" size="small" />
           </template>
         </el-table-column>
-        <el-table-column prop="referenceRange" label="Reference Range" width="120">
+        <el-table-column prop="referenceRange" label="Reference range" width="120">
           <template #default="{ row }">
             <el-input :disabled="editLocked" v-model="row.referenceRange" size="small" />
           </template>
@@ -796,7 +805,7 @@ use([CanvasRenderer, EchartsLineChart, GridComponent, TooltipComponent, LegendCo
 const LIST_COLUMN_DEFS = [
   { key: 'recordDate', label: 'Date' },
   { key: 'patientName', label: 'Patient' },
-  { key: 'recordType', label: 'type' },
+  { key: 'recordType', label: 'Record type' },
   { key: 'hospitalName', label: 'Hospital', default: false },
   { key: 'doctorName', label: 'Clinician', default: false },
   { key: 'items', label: 'Test items' },
@@ -911,6 +920,12 @@ const editItems = ref([]);
 const editAttachments = ref([]);
 
 const patientList = ref([]);
+function patientLabel(patient) { return `${patient.patientName || patient.name || 'Patient name unavailable'} · Record #${patient.id}`; }
+function patientIdentity(id, fallback = '') {
+  const patient = patientList.value.find(p => String(p.id) === String(id));
+  return patient ? patientLabel(patient) : `${fallback || 'Patient name unavailable'} · Record #${id ?? '—'}`;
+}
+
 
 const uploadForm = reactive({
   patientId: currentPatientId.value,
@@ -962,15 +977,16 @@ const trendForm = reactive({
 });
 const trendData = ref([]);
 const trendLoading = ref(false);
+const trendStatus = ref('idle'), trendError = ref(''), trendQuery = ref(null), trendResultQuery = ref(null);
 const allItemNames = ref([]);
 
 const recordTypeMap = {
-  BLOOD: 'blood test',
-  URINE: 'urinalysis',
+  BLOOD: 'Blood test',
+  URINE: 'Urinalysis',
   LIVER: 'Liver function',
   KIDNEY: 'Kidney function',
-  BONE: 'bone metabolism',
-  IRON: 'iron metabolism',
+  BONE: 'Bone metabolism',
+  IRON: 'Iron metabolism',
   IMAGE: 'Imaging report',
   OTHER: 'Other'
 };
@@ -1290,12 +1306,29 @@ async function loadRecords() {
   }
 }
 
-let trendRequest = 0, itemNamesRequest = 0, medicalReadDisposed = false;
+let trendRequest = 0, itemNamesRequest = 0, medicalReadDisposed = false, trendSession = null;
 function invalidateTrend() {
   trendRequest++;
   trendData.value = [];
   trendLoading.value = false;
+  trendStatus.value = 'idle'; trendError.value = ''; trendQuery.value = null; trendResultQuery.value = null;
 }
+function trendSessionCurrent() {
+  return !!trendSession && isAuthSessionCurrent(trendSession) && trendSession.actorId === localStorage.getItem('userId');
+}
+function clearTrendAccount() { invalidateTrend(); trendSession = null; }
+function handleTrendAuthStorage(event) {
+  if ((event.key == null || ['token', 'userId'].includes(event.key)) && trendSession && !trendSessionCurrent()) clearTrendAccount();
+}
+onMounted(() => {
+  window.addEventListener('auth-session-cleared', clearTrendAccount);
+  window.addEventListener('storage', handleTrendAuthStorage);
+});
+onUnmounted(() => {
+  clearTrendAccount();
+  window.removeEventListener('auth-session-cleared', clearTrendAccount);
+  window.removeEventListener('storage', handleTrendAuthStorage);
+});
 watch(() => [trendForm.patientId, trendForm.itemName], invalidateTrend, { flush: 'sync' });
 onUnmounted(() => {
   medicalReadDisposed = true;
@@ -1304,8 +1337,16 @@ onUnmounted(() => {
   allItemNames.value = [];
 });
 
+function failTrend(error) {
+  const denied = [401, 403].includes(Number(error?.response?.status || error?.code));
+  if (denied) { trendData.value = []; trendResultQuery.value = null; }
+  trendStatus.value = 'error';
+  trendError.value = denied ? 'Access changed. Previous trend results were cleared. Retry to check current access.' : 'Query failed. Retry this patient and test item.';
+}
+
 async function loadTrend() {
   if (medicalReadDisposed) return;
+  if (trendSession && !trendSessionCurrent()) clearTrendAccount();
   const patient = patientList.value.find(p => p.id === trendForm.patientId);
   trendForm.patientName = patient?.patientName || '';
   if (!trendForm.patientId || !trendForm.itemName) {
@@ -1313,23 +1354,33 @@ async function loadTrend() {
     return;
   }
   const request = ++trendRequest;
+  const auth = { ...captureAuthSession(), actorId: localStorage.getItem('userId') };
+  trendSession = auth;
+  if (!auth.token) { clearTrendAccount(); return; }
   const params = { ...trendForm };
-  const isCurrent = () => !medicalReadDisposed && request === trendRequest
-    && params.patientId === trendForm.patientId && params.itemName === trendForm.itemName;
+  trendQuery.value = { ...params }; trendError.value = ''; trendStatus.value = 'loading';
+  const isCurrent = () => {
+    if (medicalReadDisposed || request !== trendRequest || params.patientId !== trendForm.patientId || params.itemName !== trendForm.itemName) return false;
+    if (!isAuthSessionCurrent(auth) || auth.actorId !== localStorage.getItem('userId')) { clearTrendAccount(); return false; }
+    return true;
+  };
   trendLoading.value = true;
   try {
     const res = await api.getItemTrend(params.patientId, params.patientName, params.itemName);
     if (!isCurrent()) return;
     if (res.code === 200) {
       trendData.value = res.data || [];
+      trendResultQuery.value = { ...params };
+      trendStatus.value = trendData.value.length ? 'loaded' : 'empty';
       if (trendData.value.length === 0) {
         ElMessage.info('No historical records found for this test item');
       }
     } else {
+      failTrend(res);
       ElMessage.error(res.message || 'Query failed');
     }
   } catch (e) {
-    if (isCurrent()) ElMessage.error('Query failed: ' + e.message);
+    if (isCurrent()) { failTrend(e); ElMessage.error('Query failed: ' + e.message); }
   } finally {
     if (isCurrent()) trendLoading.value = false;
   }

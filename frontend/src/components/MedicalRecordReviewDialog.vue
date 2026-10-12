@@ -4,7 +4,7 @@
       <p v-if="loading" role="status">Loading the source medical record…</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <template v-if="preview">
-        <h2>{{ preview.patientName }} · {{ preview.recordDate }}</h2>
+        <h2>{{ preview.patientName }} · Record #{{ preview.patientId }} · {{ preview.recordDate }}</h2>
         <dl class="medical-review-context">
           <dt>Content version</dt><dd>{{ preview.contentVersion }}</dd>
           <dt>Record type</dt><dd>{{ preview.recordType || '—' }}</dd>

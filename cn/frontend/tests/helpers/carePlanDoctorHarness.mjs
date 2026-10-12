@@ -39,6 +39,7 @@ export async function fixture(t, name, props, transport, slots) {
     const script=compileScript(descriptor,{id}),template=compileTemplate({source:descriptor.template.content,filename,id,compilerOptions:{bindingMetadata:script.bindings,hoistStatic:false}})
     assert.deepEqual(template.errors,[],`${componentName} compiles`)
     let code=script.content.replace(/export default/,'const __component =')+'\n'+template.code.replace('export function render','function render')+'\n__component.render=render; export default __component;'
+    code=code.replace(/import request from ['"]@\/utils\/request['"]/g,`const request=(...args)=>globalThis.${slot}(...args)`)
     code=code.replace(/from ['"]vue['"]/g,`from '${vueUrl}'`).replace(/from ['"]vue-router['"]/g,`from '${routerUrl}'`).replace(/from ['"]@\/api\/carePlan['"]/g,`from '${apiUrl}'`).replace(/from ['"]@\/composables\/useCarePlan['"]/g,`from '${composableUrl}'`).replace(/from ['"]@\/utils\/authSession['"]/g,`from '${authUrl}'`).replace(/from ['"]@\/utils\/carePlanTime['"]/g,`from '${timeUrl}'`)
     code=code.replace(/from ['"]@\/api\/clinicalWorkbench['"]/g,`from '${clinicalApiUrl}'`).replace(/from ['"]@\/composables\/useCurrentPatient['"]/g,`from '${patientUrl}'`).replace(/from ['"]@\/utils\/platformBranding['"]/g,`from '${brandingUrl}'`)
     code=code.replace(/from ['"]@\/api\/medicalReview['"]/g,`from '${medicalApiUrl}'`)

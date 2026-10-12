@@ -49,6 +49,13 @@
             <el-form-item label="Privacy">
               <el-checkbox v-model="form.masked">Mask phone numbers and identity numbers for portable export</el-checkbox>
             </el-form-item>
+            <section class="export-scope" aria-live="polite">
+              <strong>Export for：{{ currentPatientName || '—' }} · Record #{{ currentPatientId || '—' }}</strong>
+              <p>{{ DATA_TYPE_LABELS[form.dataType] || '—' }} · Inclusive dates：{{ dateRange ? `${dateRange.from} – ${dateRange.to}` : 'Select a patient and date range first' }}</p>
+              <p>{{ form.masked ? 'Phone and identity number masking is selected' : 'Masking is off: available original data will be included' }}</p>
+              <p>Masking phone and identity numbers does not anonymize health data. The exported records may still identify a person.</p>
+            </section>
+            <p v-if="exportMessage" role="status" class="export-feedback">{{ exportMessage }}</p>
             <el-form-item>
               <el-button type="primary" @click="handleExport" :loading="exporting">
                 <el-icon><Download /></el-icon>Export CSV
@@ -63,14 +70,16 @@
 
 <script setup>
 import ExecutionReportPanel from '@/components/care-plan/ExecutionReportPanel.vue';
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Download } from '@element-plus/icons-vue';
+import { exportDateRange } from '@/utils/exportPresentation';
+import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession';
 import { exportCsv } from '@/api/dataExport.js';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import { useMenuPermission } from '@/composables/useMenuPermission';
 
-const { currentPatientId } = useCurrentPatient();
+const { currentPatientId, currentPatientName } = useCurrentPatient();
 const { hasMenu, hasMenuName } = useMenuPermission();
 const showCareExecution = ref(false);
 const exporting = ref(false);
@@ -130,6 +139,14 @@ onMounted(() => {
   }
 });
 
+const dateRange = computed(() => exportDateRange(form.timeType, form.timeValue));
+const exportMessage = ref('');
+let exportEpoch = 0, disposed = false;
+watch(() => [currentPatientId.value, form.dataType, form.timeType, form.timeValue, form.masked], () => {
+  exportEpoch++; exporting.value = false; exportMessage.value = '';
+}, { flush: 'sync' });
+onUnmounted(() => { disposed = true; exportEpoch++; });
+
 const rules = {
   dataType: [{ required: true, message: 'Select a data type', trigger: 'change' }],
   timeType: [{ required: true, message: 'Select a time dimension', trigger: 'change' }],
@@ -137,28 +154,37 @@ const rules = {
 };
 
 async function handleExport() {
+  if (exporting.value) return;
   if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
-  try { await formRef.value.validate(); } catch { return; }
-  exporting.value = true;
+  const epoch = ++exportEpoch, auth = captureAuthSession();
+  const snapshot = { patientId: currentPatientId.value, ...form }, range = exportDateRange(snapshot.timeType, snapshot.timeValue);
+  const current = () => !disposed && epoch === exportEpoch && snapshot.patientId === currentPatientId.value && isAuthSessionCurrent(auth);
+  exporting.value = true; exportMessage.value = '';
   try {
-    const blob = await exportCsv({
-      patientId: currentPatientId.value,
-      ...form
-    });
-    // blobalready throughYesBlobtoimage, directlyCreateDownloadlink
+    try { await formRef.value.validate(); } catch { return; }
+    if (!current()) return;
+    if (!range) { exportMessage.value = 'Select a valid date range.'; return; }
+    const blob = await exportCsv(snapshot);
+    if (!current()) return;
+    const text = await blob.text();
+    if (!current()) return;
+    if (text.replace(/^\uFEFF/, '').trim().split(/\r?\n/).length < 2) { exportMessage.value = 'No records for this patient in the selected date range.'; return; }
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${DATA_TYPE_LABELS[form.dataType] || form.dataType}_Data Export.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    ElMessage.success('Data exported');
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${snapshot.dataType}_${range.from}_${range.to}.csv`;
+      link.click();
+    } finally { window.URL.revokeObjectURL(url); }
+    exportMessage.value = 'Data exported.';
   } catch (e) {
-    ElMessage.error('Export failed');
-  } finally { exporting.value = false; }
+    if (current()) exportMessage.value = 'Export failed. Your selections are kept; please retry.';
+  } finally { if (current()) exporting.value = false; }
 }
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>
 
 <style scoped>.execution-report-choice{min-height:44px;padding:10px 16px;margin-bottom:16px;max-width:100%;font:inherit;white-space:normal}.execution-report-choice:focus-visible{outline:3px solid var(--care-600)}</style>
+
+<style scoped>.export-scope{padding:16px;background:var(--care-50);border:1px solid var(--line);border-radius:10px;margin-bottom:16px;overflow-wrap:anywhere}.export-scope p{line-height:1.6;margin:8px 0}.export-feedback{padding:12px;border:1px solid var(--line)}</style>

@@ -158,10 +158,10 @@ test('artifact source and destination trees must not contain each other',async()
   }finally{await rm(base,{recursive:true,force:true})}
 })
 
-test('expanded acceptance has a 60-minute job budget while seven jobs and bounded requests remain intact',async()=>{
+test('native acceptance retains its 60-minute budget alongside the separate seventeen-UI gate',async()=>{
   const workflow=await readFile(new URL('../../.github/workflows/ci.yml',import.meta.url),'utf8')
   const jobs=workflow.slice(workflow.indexOf('\njobs:\n'))
-  assert.deepEqual([...jobs.matchAll(/^  ([a-z-]+):$/gm)].map(match=>match[1]),['backend','frontend','static-demo','care-plan-mysql'])
+  assert.deepEqual([...jobs.matchAll(/^  ([a-z-]+):$/gm)].map(match=>match[1]),['backend','frontend','static-demo','ui-seventeen-browser','care-plan-mysql'])
   assert.match(jobs,/matrix:\n        directory: \['\.', cn\]/)
   assert.match(jobs,/matrix:\n        directory: \[frontend, cn\/frontend\]/)
   const native=jobs.slice(jobs.indexOf('  care-plan-mysql:'))
