@@ -16,7 +16,7 @@ async function fixture(t,edition) {
  const script=compileScript(descriptor,{id:'care-draft-mounted'}),template=compileTemplate({source:descriptor.template.content,filename:'CareEntryDialog.vue',id:'care-draft-mounted',compilerOptions:{bindingMetadata:script.bindings,hoistStatic:false}})
  assert.deepEqual(template.errors,[])
  const code=(script.content.replace('export default','const __component =')+'\n'+template.code.replace('export function render','function render')+'\n__component.render=render;export default __component;')
-  .replace(/from ['"]vue['"]/g,`from '${vueUrl}'`).replace(/from ['"]@\/utils\/authSession['"]/g,`from 'file:///workspace/scratch/2518b604e335/health-ui-seventeen/${edition}/src/utils/authSession.js'`).replace(/from ['"]vue-router['"]/g,`from '${routerUrl}'`)
+  .replace(/from ['"]vue['"]/g,`from '${vueUrl}'`).replace(/from ['"]vue-router['"]/g,`from '${routerUrl}'`)
   .replace(/import \{ ElMessage \} from ['"]element-plus['"]/g,'const ElMessage={success(){},warning(){},error(){}}')
   .replace(/import \{ saveCareItem \} from ['"]@\/api\/care['"]/g,'const saveCareItem=async()=>({})')
   .replace(/from ['"]@\/utils\/authSession['"]/g,`from '${new URL('../src/utils/authSession.js',import.meta.url).href}'`)
