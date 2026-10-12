@@ -222,8 +222,12 @@ async function fillReceiptExecutionTime(dialog, occurredAt) {
     const date = new Date(instant)
     if (!Number.isFinite(date.getTime())) throw new Error('Invalid receipt instant')
     const pad = (value, length = 2) => String(value).padStart(length, '0')
+    // 原生控件会去掉小数末尾的零；先用独立控件规范格式，避免 fill 误判为非法值。
+    const normalized = element.ownerDocument.createElement('input')
+    normalized.type = 'datetime-local'
+    normalized.value = `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`
     return {
-      localDateTime: `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`,
+      localDateTime: normalized.value,
       offsetMinutes: -date.getTimezoneOffset(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
     }
   }, occurredAt)
@@ -250,7 +254,10 @@ async function recordThroughUi(page, view, actionId, note, entryMode = 'ASSISTED
     if (actorId !== ids.personal) expect(modes).toEqual(['ASSISTED'])
   }
   await dialog.getByTestId('receipt-note').fill(note)
-  const occurredAt = new Date(Date.now() - 60000).toISOString()
+  const receiptInstant = new Date(Date.now() - 60000)
+  // 固定末尾零，让真实浏览器每次都验证毫秒格式规范化而不丢失时间精度。
+  receiptInstant.setUTCMilliseconds(590)
+  const occurredAt = receiptInstant.toISOString()
   await fillReceiptExecutionTime(dialog, occurredAt)
   const result = await observeCommand(page, 'POST', `/care-plans/actions/${actionId}/receipts`, () => duplicate ? dialog.getByTestId('submit-receipt').dblclick() : dialog.getByTestId('submit-receipt').click())
   await expect(dialog).toBeHidden()
@@ -570,7 +577,10 @@ test('390px real Vue: keyboard receipt, focus, patient A→B→A, Back/Forward a
   await opener.press('Enter')
   await dialog.getByTestId('receipt-note').fill('Synthetic mobile keyboard-assisted execution')
   await expect(await nativeSelect(dialog, labels.entry)).toHaveValue('ASSISTED')
-  const occurredAt = new Date(Date.now() - 60000).toISOString()
+  const receiptInstant = new Date(Date.now() - 60000)
+  // 固定末尾零，让真实浏览器每次都验证毫秒格式规范化而不丢失时间精度。
+  receiptInstant.setUTCMilliseconds(590)
+  const occurredAt = receiptInstant.toISOString()
   await fillReceiptExecutionTime(dialog, occurredAt)
   await assertNoOverflow(mobile)
   await dialog.getByTestId('submit-receipt').focus()

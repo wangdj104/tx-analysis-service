@@ -10,11 +10,19 @@ const isCn = import.meta.url.includes('/cn/frontend/')
 const clockLabel = receipt.match(/<label>([^<]*)<input[^>]*data-testid="receipt-execution-time"/)[1]
 const inputPaths = source.match(/await (?:dialog\.getByLabel\(labels\.occurred, \{ exact: true \}\)\.fill\(occurredAt\)|fillReceiptExecutionTime\(dialog, occurredAt\))/g) || []
 
+// Model the HTML normalized local date/time value; the real CI uses Chromium.
+function normalizedLocalTime(value) {
+  return value.replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1').replace(/(T\d{2}:\d{2}):00$/, '$1')
+}
+
 function nativeReceipt(timeZone) {
   const clock = { type: 'datetime-local', value: '',
-    async evaluate(callback, instant) { return callback({ type: this.type }, instant) },
+    async evaluate(callback, instant) { return callback({ type: this.type, ownerDocument: { createElement(tag) {
+      assert.equal(tag, 'input'); let value = ''; return { type: '', get value() { return value }, set value(next) { value = normalizedLocalTime(next) } }
+    } } }, instant) },
     async fill(value) {
-      assert.match(value, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}$/, 'Native datetime-local rejects an ISO UTC/offset suffix')
+      assert.match(value, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/, 'Native datetime-local rejects an ISO UTC/offset suffix')
+      assert.equal(value, normalizedLocalTime(value), 'Playwright rejects a value changed by native input normalization')
       this.value = value
     } }
   const offset = { value: null, async selectOption(value) {
@@ -44,6 +52,11 @@ for (const [pathIndex, description] of ['shared receipt submission', '390px keyb
     try {
       for (const [timeZone, occurredAt, expected] of [
         ['Asia/Shanghai', '2026-12-31T23:59:59.987Z', '2027-01-01T07:59:59.987+08:00'],
+        ['Asia/Shanghai', '2026-10-11T00:31:06.590Z', '2026-10-11T08:31:06.59+08:00'],
+        ['Asia/Shanghai', '2026-10-11T00:31:06.100Z', '2026-10-11T08:31:06.1+08:00'],
+        ['Asia/Shanghai', '2026-10-11T00:31:06.000Z', '2026-10-11T08:31:06+08:00'],
+        ['Asia/Shanghai', '2026-10-11T00:00:00.000Z', '2026-10-11T08:00:00+08:00'],
+        ['Asia/Shanghai', '2026-10-11T00:31:00.000Z', '2026-10-11T08:31:00+08:00'],
         ['Asia/Shanghai', '2026-10-11T00:00:00.001Z', '2026-10-11T08:00:00.001+08:00'],
         ['America/New_York', '2026-11-01T05:30:00.123Z', '2026-11-01T01:30:00.123-04:00'],
         ['America/New_York', '2026-11-01T06:30:00.123Z', '2026-11-01T01:30:00.123-05:00']
@@ -82,4 +95,9 @@ test('exact authorized patient options retain name and record ID in both selecto
   }
   assert.doesNotMatch(source, /selectElementOption\([^\n]*, patientNames\[/, 'No exact selector may use the obsolete name-only label')
   assert.match(source, /getByRole\('option', \{ name, exact: typeof name === 'string' \}\)/, 'Keep exact option matching')
+})
+
+test('both native receipt paths deterministically exercise trailing-zero milliseconds', () => {
+  assert.equal((source.match(/receiptInstant\.setUTCMilliseconds\(590\)/g) || []).length, 2)
+  assert.equal((source.match(/const occurredAt = receiptInstant\.toISOString\(\)/g) || []).length, 2)
 })

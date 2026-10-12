@@ -12,11 +12,11 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, expect } from '@playwright/test'
-import { build, createServer } from 'vite'
+import { build, preview } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 const repo = fileURLToPath(new URL('../../', import.meta.url))
@@ -133,22 +133,30 @@ async function startHarness(edition, compile) {
   const harness = mkdtempSync(join(dependencyRoot, '.ui-seventeen-clinical-'))
   const data = fixtureData(edition)
   let server
+  const close = async () => {
+    await server?.close()
+    rmSync(harness, { recursive: true, force: true })
+  }
   try {
     writeFileSync(join(harness, 'index.html'), `<!doctype html><html lang="${edition === 'en' ? 'en' : 'zh-CN'}"><meta name="viewport" content="width=device-width,initial-scale=1"><body><div id="app"></div><script type="module" src="/main.js"></script></body></html>`)
     writeFileSync(join(harness, 'main.js'), mainSource(frontend, edition, data))
     const config = { configFile: false, root: harness, plugins: [vue()],
       resolve: { alias: { '@': join(frontend, 'src') }, dedupe: ['vue', 'vue-router', 'element-plus'] },
-      server: { host: '127.0.0.1', port: 0, hmr: false, fs: { allow: [repo] } }, logLevel: 'error' }
+      build: { outDir: join(harness, 'dist'), reportCompressedSize: false, chunkSizeWarningLimit: 5000 },
+      preview: { host: '127.0.0.1', port: 0 }, logLevel: 'error' }
+    // hmr:false still injects Vite's development client into CSS modules. Serve
+    // the compiled real SFCs/CSS instead, keeping the strict WebSocket guard intact.
+    await build(config)
+    const compiledFiles = ['index.html', ...readdirSync(join(harness, 'dist/assets')).filter(file => /\.(?:js|css)$/.test(file)).map(file => `assets/${file}`)]
+    for (const file of compiledFiles) assert.ok(!readFileSync(join(harness, 'dist', file), 'utf8').includes('/@vite/client'), 'Compiled browser harness must not contain the Vite development client')
     if (compile) {
-      await build({ ...config, build: { outDir: join(harness, 'dist'), reportCompressedSize: false, chunkSizeWarningLimit: 5000 } })
-      return { data, close: async () => rmSync(harness, { recursive: true, force: true }) }
+      return { data, close }
     }
-    server = await createServer(config)
-    await server.listen()
+    server = await preview(config)
     return { data, base: `http://127.0.0.1:${server.httpServer.address().port}`,
-      close: async () => { await server.close(); rmSync(harness, { recursive: true, force: true }) } }
+      close }
   } catch (error) {
-    await server?.close(); rmSync(harness, { recursive: true, force: true }); throw error
+    await close(); throw error
   }
 }
 
@@ -196,6 +204,21 @@ async function attachApiFixtures(context, data, base) {
     return json(null, 404, 404)
   })
   return fixture
+}
+
+async function assertNativeReferenceDeduplication(receipt, picker, id, expectedCount) {
+  // Playwright's enabled/disabled actionability matcher retargets OPTION to
+  // its enabled SELECT. The real native option property is the relevant gate.
+  await expect(picker.locator(`option[value="${id}"]`)).toHaveJSProperty('disabled', true)
+  await expect(receipt.locator('.evidence-row')).toHaveCount(expectedCount)
+  const originalRows = await receipt.locator('.evidence-row p').allTextContents()
+  // A normal native choice cannot select this disabled option. Also stress a
+  // stale/programmatic change event through the DOM, never exposed Vue state,
+  // and click the actual control to verify the production deduplication guard.
+  await picker.evaluate((select, value) => { select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })) }, id)
+  await receipt.getByTestId('add-existing-reference').evaluate(button => button.click())
+  await expect(receipt.locator('.evidence-row')).toHaveCount(expectedCount)
+  assert.deepEqual(await receipt.locator('.evidence-row p').allTextContents(), originalRows, 'A duplicate attempt must retain the exact original reference rows')
 }
 
 async function verifyCell(browser, harness, edition, viewport, theme) {
@@ -354,9 +377,9 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     await expect(picker.locator('option[value="701"]')).toContainText('2026-10-10')
     await expect(picker.locator('option[value="701"]')).toContainText('120/80 mmHg')
     await expect(picker.locator('option[value="799"]')).toHaveCount(0)
-    for (const id of ['701', '702', '703', '704']) {
+    for (const [index, id] of ['701', '702', '703', '704'].entries()) {
       await picker.selectOption(id); await page.getByTestId('add-existing-reference').click()
-      await expect(picker.locator(`option[value="${id}"]`)).toBeDisabled()
+      await assertNativeReferenceDeduplication(receipt, picker, id, index + 1)
     }
     await receipt.getByRole('combobox', { name: t('Reference type', '引用类型'), exact: true }).selectOption('MEDICAL_RECORD')
     await receipt.getByRole('button', { name: t('Browse authorized records', '查看已授权记录'), exact: true }).click()

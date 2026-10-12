@@ -579,6 +579,7 @@ function handleVisibility() { return refreshSnapshotInBackground() }
 }
 
 .monitoring-controls {
+  box-sizing: border-box;
   padding: 10px;
   display: flex;
   align-items: flex-end;

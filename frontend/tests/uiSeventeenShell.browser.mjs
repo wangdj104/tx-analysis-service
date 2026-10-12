@@ -6,12 +6,12 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rename, mkdtemp, rm, readdir } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
 import { chromium, expect } from '@playwright/test'
-import { createServer } from 'vite'
+import { build, preview } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 const repo = fileURLToPath(new URL('../../', import.meta.url))
@@ -96,26 +96,39 @@ function menusFor(edition) {
   return rows.map(([id, parentId, en, cn, menuPath, menuCode]) => ({ id, parentId, menuName: edition === 'en' ? en : cn, menuPath, menuCode }))
 }
 
-async function serve(edition) {
+async function serve(edition, compileOnly = false) {
   const root = join(repo, edition === 'en' ? 'frontend' : 'cn/frontend')
-  // Deliberately do not load the product Vite proxy config. Any un-intercepted
-  // API call fails locally; there is no upstream server or production fallback.
-  const server = await createServer({
+  const output = await mkdtemp(join(repo, 'frontend/.shell-preview-'))
+  const config = {
     configFile: false, root, base: edition === 'en' ? '/' : '/cn/', logLevel: 'error',
-    plugins: [vue(), { name: 'fail-closed-api-boundary', configureServer(s) {
-      s.middlewares.use((req, res, next) => {
-        if (!new URL(req.url, 'http://localhost').pathname.startsWith('/api/')) return next()
-        res.statusCode = 599; res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify({ code: 599, msg: 'QA interception missing; no API upstream is configured' }))
-      })
-    } }],
+    plugins: [vue()],
     resolve: { alias: { '@': join(root, 'src') }, dedupe: ['vue', 'vue-router', 'element-plus'] },
-    server: { host: '127.0.0.1', port: 0, hmr: false, fs: { allow: [repo] } },
-  })
-  await server.listen()
-  const address = server.httpServer.address()
-  assert.ok(address && typeof address === 'object', 'Vite must listen on a local TCP port')
-  return { server, origin: `http://127.0.0.1:${address.port}`, prefix: edition === 'en' ? '' : '/cn' }
+    build: { outDir: output, emptyOutDir: true, minify: false },
+    preview: { host: '127.0.0.1', port: 0, strictPort: false },
+  }
+  let server
+  const close = async () => {
+    if (server) await new Promise((done, reject) => server.httpServer.close(error => error ? reject(error) : done()))
+    await rm(output, { recursive: true, force: true })
+  }
+  try {
+    // Preview the compiled real app: no Vite development client, HMR socket,
+    // proxy, or upstream service is configured. Every API remains intercepted.
+    await build(config)
+    async function assertNoDevClient(directory) {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name)
+        if (entry.isDirectory()) await assertNoDevClient(path)
+        else if (/\.(html|js)$/.test(entry.name)) assert.doesNotMatch(await readFile(path, 'utf8'), /\/@vite\/client|vite\/dist\/client\/client\.mjs/, 'Compiled preview must contain no Vite development client')
+      }
+    }
+    await assertNoDevClient(output)
+    if (compileOnly) return { server: { close } }
+    server = await preview(config)
+    const address = server.httpServer.address()
+    assert.ok(address && typeof address === 'object', 'Preview must listen on a local TCP port')
+    return { server: { close }, origin: `http://127.0.0.1:${address.port}`, prefix: edition === 'en' ? '' : '/cn' }
+  } catch (error) { await close(); throw error }
 }
 
 async function openCase(browser, host, cell, result) {
@@ -190,12 +203,12 @@ async function openCase(browser, host, cell, result) {
     state.violations.push(`Unhandled API request: ${method} ${url.pathname}`)
     return json(route, { message: 'Unhandled synthetic request; never forwarded' }, 599)
   })
-  // Suppress dev-client sockets as well as app sockets. A Vite client may still
-  // attempt its same-origin handshake with HMR disabled; only external attempts
-  // are a boundary violation. No socket is connected to an upstream service.
+  // Compiled preview has no dev client. Any socket is unexpected and closed
+  // without connecting to an upstream service; external attempts stay fatal.
   await context.routeWebSocket('**/*', socket => {
     const url = new URL(socket.url())
     if (url.host !== new URL(host.origin).host) state.violations.push(`Blocked external WebSocket: ${url.origin}${url.pathname}`)
+    else state.violations.push(`Unexpected local WebSocket: ${url.pathname}`)
     socket.close()
   })
   const page = await context.newPage()
@@ -254,9 +267,10 @@ async function exerciseCase(s, cell, result) {
     return Object.fromEntries(['--paper', '--surface-subtle', '--care-50', '--care-700'].map(name => [name, style.getPropertyValue(name).trim().toLowerCase()]))
   })
   assert.deepEqual(Object.values(result.themeTokens), themeOracle[cell.theme], 'Computed colors must equal the requested real theme, not just its dataset label')
-  result.renderedScopeStyle = await page.locator('.export-scope').evaluate(node => ({ backgroundColor: getComputedStyle(node).backgroundColor, color: getComputedStyle(node).color }))
   const hex = themeOracle[cell.theme][2].slice(1)
   const expectedScopeBackground = `rgb(${[0, 2, 4].map(start => parseInt(hex.slice(start, start + 2), 16)).join(', ')})`
+  await expect.poll(() => page.locator('.export-scope').evaluate(node => getComputedStyle(node).backgroundColor)).toBe(expectedScopeBackground)
+  result.renderedScopeStyle = await page.locator('.export-scope').evaluate(node => ({ backgroundColor: getComputedStyle(node).backgroundColor, color: getComputedStyle(node).color }))
   assert.equal(result.renderedScopeStyle.backgroundColor, expectedScopeBackground, 'The real scope panel uses the selected theme in computed rendered styles')
   result.styleSignature = sha(JSON.stringify({ tokens: result.themeTokens, rendered: result.renderedScopeStyle }))
   await fit()
@@ -372,7 +386,12 @@ async function exerciseCase(s, cell, result) {
   await date(scope)
   await expect(scope).toContainText('#99012'); await expect(scope).toContainText(t('Nutrition Diary', '营养日记'))
   await expect(scope).toContainText(t('does not anonymize health data', '不等同于匿名数据'))
-  await form.getByRole('checkbox').uncheck()
+  const privacy = form.locator('.export-privacy')
+  await expect(privacy.getByRole('checkbox')).toBeChecked()
+  await privacy.locator('.el-checkbox__label').click()
+  await expect(privacy.getByRole('checkbox')).not.toBeChecked()
+  const privacyBox = await privacy.locator('.el-checkbox__label').evaluate(node => ({ right: node.getBoundingClientRect().right, width: innerWidth, scrollWidth: node.scrollWidth, clientWidth: node.clientWidth }))
+  assert.ok(privacyBox.right <= cell.viewport + 1 && privacyBox.scrollWidth <= privacyBox.clientWidth + 1, 'Privacy wording is visible and wraps within the narrow form')
   await expect(scope).toContainText(t('Masking is off', '未选择脱敏'))
   await fit(); await capture('export-scope')
   const exportButton = form.getByRole('button', { name: t('Export CSV', '导出 CSV'), exact: true })
@@ -429,6 +448,7 @@ const hosts = new Map()
 try {
   await compileSources()
   if (compileOnly) {
+    for (const edition of ['en', 'cn']) { const host = await serve(edition, true); await host.server.close() }
     manifest.note = 'Compilation only: no browser launched, no screenshot captured, no visual or interaction assertion executed. results is intentionally empty.'
     console.log(`Compiled ${manifest.compiledFiles.length} real Vue SFCs; browser verification NOT RUN`)
   } else {

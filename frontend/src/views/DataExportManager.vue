@@ -47,7 +47,7 @@
               </el-col>
             </el-row>
             <el-form-item label="Privacy">
-              <el-checkbox v-model="form.masked">Mask phone numbers and identity numbers for portable export</el-checkbox>
+              <el-checkbox class="export-privacy" v-model="form.masked">Mask phone numbers and identity numbers for portable export</el-checkbox>
             </el-form-item>
             <section class="export-scope" aria-live="polite">
               <strong>Export for：{{ currentPatientName || '—' }} · Record #{{ currentPatientId || '—' }}</strong>
@@ -188,3 +188,9 @@ async function handleExport() {
 <style scoped>.execution-report-choice{min-height:44px;padding:10px 16px;margin-bottom:16px;max-width:100%;font:inherit;white-space:normal}.execution-report-choice:focus-visible{outline:3px solid var(--care-600)}</style>
 
 <style scoped>.export-scope{padding:16px;background:var(--care-50);border:1px solid var(--line);border-radius:10px;margin-bottom:16px;overflow-wrap:anywhere}.export-scope p{line-height:1.6;margin:8px 0}.export-feedback{padding:12px;border:1px solid var(--line)}</style>
+
+<style scoped>
+:deep(.export-privacy){max-width:100%;height:auto;align-items:flex-start;white-space:normal;line-height:1.5}
+:deep(.export-privacy .el-checkbox__input){flex:0 0 auto;margin-top:4px}
+:deep(.export-privacy .el-checkbox__label){min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+</style>

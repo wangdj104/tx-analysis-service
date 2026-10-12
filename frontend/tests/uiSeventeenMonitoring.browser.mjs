@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtemp, mkdir, readFile, writeFile, rename, rm } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join, relative, resolve } from 'node:path'
-import { build, createServer } from 'vite'
+import { build, preview } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { chromium, expect } from '@playwright/test'
 
@@ -90,7 +90,7 @@ async function makeHarness(edition) {
   `)
   const config = {
     configFile: false, root: directory, plugins: [vue(), {
-      name: 'monitoring-qa-no-api-upstream', configureServer(server) {
+      name: 'monitoring-qa-no-api-upstream', configurePreviewServer(server) {
         server.middlewares.use((req, res, next) => {
           if (!new URL(req.url, 'http://localhost').pathname.startsWith('/api/')) return next()
           res.statusCode = 599; res.setHeader('Content-Type', 'application/json')
@@ -99,7 +99,8 @@ async function makeHarness(edition) {
       },
     }],
     resolve: { alias: { '@': join(frontend, 'src') }, dedupe: ['vue', 'vue-router', 'element-plus'] },
-    server: { host: '127.0.0.1', port: 0, hmr: false, fs: { allow: [repo] } }, logLevel: 'error',
+    preview: { host: '127.0.0.1', port: 0 },
+    build: { outDir: join(directory, 'dist'), reportCompressedSize: false }, logLevel: 'error',
   }
   return { directory, config }
 }
@@ -182,6 +183,9 @@ function fixture() {
   return state
 }
 async function intercept(context, origin, state) {
+  await context.routeWebSocket('**/*', socket => {
+    state.blockedNetwork.push('websocket:' + socket.url()); socket.close()
+  })
   await context.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url())
     if (url.origin !== origin) { state.blockedNetwork.push(url.origin + url.pathname); await route.abort('blockedbyclient'); return }
@@ -259,13 +263,20 @@ async function verifyTheme(page, cell, result, surface) {
 }
 async function capture(page, result, suffix) {
   const path = `monitoring/${commit}/${runId}/${result.edition}-${result.viewport}-${result.theme}-${suffix}.png`
+  const geometry = await page.evaluate(() => {
+    const describe = element => { const rect = element.getBoundingClientRect(); return { tag: element.tagName, className: typeof element.className === 'string' ? element.className : '', left: rect.left, right: rect.right, width: rect.width } }
+    return { innerWidth, scrollWidth: document.documentElement.scrollWidth, bodyScrollWidth: document.body.scrollWidth, scrollY, scrollHeight: document.documentElement.scrollHeight, controls: [...document.querySelectorAll('.monitoring-controls')].map(describe), outsideViewport: [...document.querySelectorAll('.fixture-toolbar,.monitoring-head,.monitoring-controls,.monitor-panel,.el-popper')].map(describe).filter(rect => rect.width && (rect.left < 0 || rect.right > innerWidth)) }
+  })
+  result.geometry ||= []; result.geometry.push({ suffix, ...geometry })
   await mkdir(join(evidence, 'monitoring', commit, runId), { recursive: true })
   await page.screenshot({ path: join(evidence, path), fullPage: true })
   const bytes = await readFile(join(evidence, path))
-  assert.equal(bytes.readUInt32BE(16), result.viewport, 'Screenshot must use the actual requested viewport width')
-  assert.ok(bytes.readUInt32BE(20) >= 900, 'Screenshot must retain full-page height at least the viewport height')
   result.screenshotHashes ||= {}; result.screenshotHashes[path] = createHash('sha256').update(bytes).digest('hex')
   result.screenshots.push(path)
+  assert.equal(geometry.innerWidth, result.viewport, 'Geometry must use the actual requested viewport')
+  assert.ok(geometry.scrollWidth <= geometry.innerWidth, 'Document content must not overflow the viewport')
+  assert.equal(bytes.readUInt32BE(16), result.viewport, 'Screenshot must use the actual requested viewport width')
+  assert.ok(bytes.readUInt32BE(20) >= 900, 'Screenshot must retain full-page height at least the viewport height')
 }
 async function waitGate(gate) { await expect.poll(() => gate.waiting).toBe(true) }
 async function open(page, origin, surface) { await page.goto(`${origin}/?surface=${surface}`); await page.getByTestId('fixture-patient').waitFor() }
@@ -337,6 +348,20 @@ async function monitoringCase(page, origin, state, cell, result, words) {
   result.checks.push('Monitoring explicit 403 revocation purges protected alerts, navigation/actions and trend data; retry stays in current patient context')
   result.checks.push('Monitoring loading, stale/read timestamp, retry, successful empty, patient isolation, raw units/time range, shown/loaded count, and full authorized alert route')
 }
+// Click actionability/native focus may scroll after scrollIntoViewIfNeeded.
+// Observe the trusted capture-phase event immediately before the real Vue handler;
+// never derive the return-position oracle from the earlier automation position.
+async function readEditClickOrigin(opener) {
+  await opener.evaluate(element => {
+    delete element.__uiSeventeenEditClickOrigin
+    element.addEventListener('click', event => {
+      const rect = element.getBoundingClientRect()
+      element.__uiSeventeenEditClickOrigin = { scrollY: window.scrollY, rowTop: rect.top, rowBottom: rect.bottom, scrollHeight: document.documentElement.scrollHeight, maxScrollY: Math.max(0, document.documentElement.scrollHeight - window.innerHeight), trusted: event.isTrusted }
+    }, { capture: true, once: true })
+  })
+  await opener.click()
+  return opener.evaluate(element => element.__uiSeventeenEditClickOrigin)
+}
 async function editHistory(page, state, result, words, surface) {
   const note = surface === 'bp' ? 'Fictional BP history 17' : 'Fictional nutrition history 17'
   const recordId = surface === 'bp' ? 217 : 317, path = surface === 'bp' ? '/api/bp-self-monitor/update' : '/api/nutrition-diary/update'
@@ -344,9 +369,12 @@ async function editHistory(page, state, result, words, surface) {
   const opener = row.getByRole('button', { name: words.edit, exact: true })
   for (const action of ['cancel', 'save']) {
     await opener.scrollIntoViewIfNeeded()
-    const originalY = await page.evaluate(() => window.scrollY)
-    assert.ok(originalY > 100, 'History origin must be meaningfully below the editor')
-    await opener.click()
+    const beforeClickY = await page.evaluate(() => window.scrollY)
+    const origin = await readEditClickOrigin(opener)
+    assert.equal(origin?.trusted, true, 'History edit is opened through a trusted native click')
+    assert.ok(origin.scrollY > 100, 'History origin must be meaningfully below the editor')
+    const observation = { surface, action, beforeClickY, origin }
+    result.editOrigins ||= []; result.editOrigins.push(observation)
     const heading = page.locator('.editor-heading')
     await expect(heading).toBeFocused(); await expect(heading).toContainText(words.dated); await expect(heading).toContainText(dateAt(17))
     if (surface === 'bp') await expect(heading).toContainText('08:00')
@@ -362,7 +390,11 @@ async function editHistory(page, state, result, words, surface) {
       await page.locator('.form-actions').getByRole('button', { name: words.update, exact: true }).click()
     }
     await expect(opener).toBeFocused()
-    await expect.poll(async () => Math.abs(await page.evaluate(() => window.scrollY) - originalY)).toBeLessThanOrEqual(3)
+    await expect.poll(async () => {
+      const restored = await opener.evaluate(element => { const rect = element.getBoundingClientRect(); return { scrollY: window.scrollY, rowTop: rect.top, rowBottom: rect.bottom, scrollHeight: document.documentElement.scrollHeight, focused: document.activeElement === element } })
+      observation.restored = restored
+      return Math.abs(restored.scrollY - origin.scrollY)
+    }).toBeLessThanOrEqual(3)
     await expect(page.locator('.form-actions').getByRole('button', { name: words.cancel, exact: true })).toHaveCount(0)
     if (action === 'save') {
       const mutation = state.requests.filter(request => request.path === path).at(-1)
@@ -497,15 +529,15 @@ try {
     const harness = await makeHarness(edition)
     let server
     try {
+      await build(harness.config)
+      report.compiledEditions ||= []; report.compiledEditions.push(edition)
       if (compileOnly) {
-        await build({ ...harness.config, build: { outDir: join(harness.directory, 'dist'), reportCompressedSize: false } })
-        report.compiledEditions ||= []; report.compiledEditions.push(edition)
         await persist(); console.log(`${edition}: actual monitoring/BP/nutrition/PlanTaskList harness bundle compiled; browser assertions NEVER RUN`)
         continue
       }
       // No socket or browser operation is reachable in compile-only mode.
       browser ||= await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), timeout: 30000 })
-      server = await createServer(harness.config); await server.listen()
+      server = await preview(harness.config)
       const address = server.httpServer.address()
       assert.ok(address && typeof address === 'object')
       const origin = `http://127.0.0.1:${address.port}`
@@ -547,7 +579,7 @@ try {
         }
         console.log(`${edition} ${cell.viewport}px ${cell.theme}: ${result.status}`)
       }
-    } finally { if (server) await server.close(); await rm(harness.directory, { recursive: true, force: true }) }
+    } finally { if (server) await new Promise((resolve, reject) => server.httpServer.close(error => error ? reject(error) : resolve())); await rm(harness.directory, { recursive: true, force: true }) }
   }
   if (!compileOnly) { assert.equal(report.results.length, 24); assert.ok(report.results.every(result => result.status === 'passed'), 'One or more real-browser acceptance cells failed') }
 } catch (error) {

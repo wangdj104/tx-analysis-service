@@ -112,15 +112,47 @@ jobs:
       - name: Verify care drafts, identity, hierarchy and required fields
         if: ${{ !cancelled() }}
         run: node frontend/tests/careDraftDialogBacklog.browser.mjs
+      - name: Preserve care browser outcomes immediately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-seventeen-care-outcomes-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-seventeen/care-results.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify monitoring states, readings, history and trend data
         if: ${{ !cancelled() }}
         run: node frontend/tests/uiSeventeenMonitoring.browser.mjs
+      - name: Preserve monitoring browser outcomes immediately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-seventeen-monitoring-outcomes-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-seventeen/monitoring-results.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify AI source review, receipt controls and lab states
         if: ${{ !cancelled() }}
         run: node frontend/tests/uiSeventeenClinical.browser.mjs
+      - name: Preserve clinical browser outcomes immediately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-seventeen-clinical-outcomes-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-seventeen/clinical-results.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify shell search, onboarding, summary and export scope
         if: ${{ !cancelled() }}
         run: node frontend/tests/uiSeventeenShell.browser.mjs
+      - name: Preserve shell browser outcomes immediately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-seventeen-shell-outcomes-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-seventeen/shell-results.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Require all seventeen actual-browser acceptance matrices
         if: ${{ !cancelled() }}
         run: node scripts/verify-ui-seventeen-browser.mjs "$UI_SEVENTEEN_EVIDENCE_DIR" "$(git rev-parse HEAD)"

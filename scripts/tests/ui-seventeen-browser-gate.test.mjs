@@ -61,3 +61,24 @@ test('UI evidence path uses runtime runner variables, not unavailable job expres
   assert.equal(readFileSync(file,'utf8'),`UI_SEVENTEEN_EVIDENCE_DIR=${directory}/ui-seventeen\n`)
  } finally {rmSync(directory,{recursive:true,force:true})}
 })
+
+test('each completed UI suite publishes its own outcome JSON before the next suite, retaining the final gate',()=>{
+ const workflow=readFileSync('.github/workflows/ci.yml','utf8')
+ const job=workflow.split('  ui-seventeen-browser:')[1]?.split('\n  care-plan-mysql:')[0]||''
+ const groups=[['care','careDraftDialogBacklog'],['monitoring','uiSeventeenMonitoring'],['clinical','uiSeventeenClinical'],['shell','uiSeventeenShell']]
+ for(let i=0;i<groups.length;i++){
+  const [group,harness]=groups[i],start=job.indexOf(`run: node frontend/tests/${harness}.browser.mjs`)
+  const next=i+1<groups.length?job.indexOf(`run: node frontend/tests/${groups[i+1][1]}.browser.mjs`):job.indexOf('run: node scripts/verify-ui-seventeen-browser.mjs')
+  assert.ok(start>=0&&next>start)
+  const between=job.slice(start,next)
+  assert.ok(between.includes(`name: Preserve ${group} browser outcomes immediately`),group)
+  assert.match(between,/if: always\(\)/)
+  assert.match(between,/uses: actions\/upload-artifact@v4/)
+  assert.ok(between.includes(`name: ui-seventeen-${group}-outcomes-\${{ github.sha }}`))
+  assert.ok(between.includes(`path: \${{ runner.temp }}/ui-seventeen/${group}-results.json`))
+  assert.match(between,/if-no-files-found: error/)
+  assert.doesNotMatch(between,/continue-on-error|\|\|\s*true/)
+ }
+ assert.match(job,/name: Preserve synthetic screenshots and per-item outcomes/)
+ assert.match(job,/run: node scripts\/verify-ui-seventeen-browser\.mjs/)
+})

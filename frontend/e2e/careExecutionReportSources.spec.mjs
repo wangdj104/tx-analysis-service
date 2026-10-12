@@ -9,6 +9,8 @@ import { reportPatientOptionLabel } from './reportBrowser.mjs'
 const cn = language === 'cn'
 const text = (en, zh) => cn ? zh : en
 const patient = 9101, otherPatient = 9102, crossPatient = 9104, missingSource = 91999999
+// 身份展示包含档案编号；精确核对姓名和编号，避免把同名患者当成原记录。
+const medicalSourceIdentity = `Synthetic exact report medical source · ${text('Record', '档案')} #${patient}`
 const reportPath = `/care-plans/reports?patientId=${patient}`
 const sourceKinds = [
   {
@@ -136,7 +138,7 @@ async function assertSourceVisible(page, source) {
     await expect(medicalDialog(page)).toBeVisible()
     await expect(medicalDialog(page)).toContainText('Synthetic exact report medical source')
     await expect(medicalDialog(page)).not.toContainText('Synthetic outside medical source')
-    await assertMedicalDialogReady(medicalDialog(page), 'Synthetic exact report medical source')
+    await assertMedicalDialogReady(medicalDialog(page), medicalSourceIdentity)
     const resultCards = medicalDialog(page).locator('.medical-result-cards')
     const resultTable = medicalDialog(page).locator('.medical-result-table')
     if (page.viewportSize().width <= 600) {
@@ -176,7 +178,7 @@ async function assertSourceVisible(page, source) {
 
 async function closeMedicalDialog(page, source) {
   if (source.kind === 'medical') {
-    await assertMedicalDialogReady(medicalDialog(page), 'Synthetic exact report medical source')
+    await assertMedicalDialogReady(medicalDialog(page), medicalSourceIdentity)
     await page.keyboard.press('Escape')
     await expect(medicalDialog(page)).toBeHidden()
     await expect(page.locator('.el-overlay:visible')).toHaveCount(0)

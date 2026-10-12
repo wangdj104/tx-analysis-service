@@ -14,7 +14,7 @@ function fixture() {
   const html = node('html'), body = node('body', html), module = node('module', body), overlay = node('overlay', module), root = node('dialog', overlay), panel = node('panel', root)
   overlay.classList = { contains: value => overlay.classes.includes(value) }; overlay.classes = []
   const title = node('title', panel), source = node('source', panel), close = node('close', panel)
-  source.textContent = 'Synthetic exact report medical source'
+  source.textContent = `Synthetic exact report medical source · ${helpers.language === 'cn' ? '档案' : 'Record'} #9101`
   root.querySelector = selector => ({ '.el-dialog': panel, '.el-dialog__title': title, '.el-dialog__headerbtn': close })[selector]
   root.querySelectorAll = () => [source]
   root.closest = () => overlay
@@ -26,7 +26,7 @@ function fixture() {
 }
 function readiness(v) {
   assert.equal(typeof helpers.readMedicalDialogReadiness, 'function', 'The native fixture needs a real settled-dialog readiness predicate')
-  return helpers.readMedicalDialogReadiness(v.root, 'Synthetic exact report medical source')
+  return helpers.readMedicalDialogReadiness(v.root, `Synthetic exact report medical source · ${helpers.language === 'cn' ? '档案' : 'Record'} #9101`)
 }
 
 test('fully opaque settled medical title, exact source and close targets are ready', () => assert.equal(readiness(fixture()), 'ready'))
@@ -65,7 +65,8 @@ test('completed animations permit a fully opaque unobscured dialog', () => {
 })
 test('medical source acceptance waits for genuine visual readiness before captures and dismissal', () => {
   const spec = fs.readFileSync(new URL('../e2e/careExecutionReportSources.spec.mjs', import.meta.url), 'utf8')
-  assert.match(spec, /await assertMedicalDialogReady\(medicalDialog\(page\), 'Synthetic exact report medical source'\)/)
+  assert.match(spec, /await assertMedicalDialogReady\(medicalDialog\(page\), medicalSourceIdentity\)/)
+  assert.match(spec, /const medicalSourceIdentity = `Synthetic exact report medical source · \$\{text\('Record', '档案'\)\} #\$\{patient\}`/)
   const close = spec.slice(spec.indexOf('async function closeMedicalDialog'), spec.indexOf('async function assertUnavailable'))
   assert.match(close, /assertMedicalDialogReady[\s\S]*keyboard\.press\('Escape'\)/)
   assert.equal((spec.match(/source\.kind}-\$\{mobile \? '390' : 'desktop'\}-exact-source\.png/g) || []).length, 1)
@@ -73,4 +74,8 @@ test('medical source acceptance waits for genuine visual readiness before captur
 
 for (const name of ['title', 'source', 'close']) test(`partial medical ${name} opacity is not readable even when the panel is opaque`, () => {
   const v = fixture(); v[name].style.opacity = '0.2'; assert.equal(readiness(v), 'not-opaque')
+})
+
+test('same source name on another record cannot authorize the medical screenshot', () => {
+  const v = fixture(); v.source.textContent = v.source.textContent.replace('#9101', '#9102'); assert.equal(readiness(v), 'missing-target')
 })

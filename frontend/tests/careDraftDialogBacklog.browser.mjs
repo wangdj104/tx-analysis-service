@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, mkdirSync, renameSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join, relative } from 'node:path'
-import { createServer, build } from 'vite'
+import { build, preview } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
 
@@ -135,7 +135,7 @@ function makeHarness(editionName) {
     function storage(key){window.dispatchEvent(new StorageEvent('storage',{key,newValue:key===null?null:'synthetic-boundary'}));}
     const button=(id,label,action)=>h('button',{'data-qa':id,type:'button',onClick:action},label);
     const App={setup(){return()=>h('div',{class:'care-workspace'},[
-      h('aside',{'data-qa-tools':'',style:'position:fixed;z-index:9999;bottom:0;left:0;max-width:100vw;background:var(--paper);border:1px solid var(--line);font:12px sans-serif;'},[
+      h('aside',{'data-qa-tools':'',hidden:true,inert:true,style:'position:fixed;z-index:9999;bottom:0;left:0;max-width:100vw;background:var(--paper);border:1px solid var(--line);font:12px sans-serif;'},[
         h('details',[h('summary','Synthetic QA controls'),h('div',{style:'display:flex;flex-wrap:wrap;max-height:140px;overflow:auto;gap:4px;'},[
           ...Object.entries(routes).map(([id,path])=>button('nav-'+id,id,()=>router.push(path))),
           button('patient','Change patient',changePatient),button('force-patient','External patient change',()=>patients.currentPatientId.value=22),
@@ -169,8 +169,15 @@ function makeHarness(editionName) {
 
 async function qaClick(page, id) {
   const tools = page.locator('[data-qa-tools]')
-  if (await tools.locator('details').getAttribute('open') === null) await tools.locator('summary').click()
-  await page.locator(`[data-qa="${id}"]`).click()
+  // Test-only controls may overlay a modal only for their own real DOM action.
+  // They must never intercept the following production Save/Cancel/input click.
+  await tools.evaluate(element => { element.hidden = false; element.inert = false })
+  try {
+    if (await tools.locator('details').getAttribute('open') === null) await tools.locator('summary').click()
+    await page.locator(`[data-qa="${id}"]`).click()
+  } finally {
+    await tools.evaluate(element => { element.querySelector('details').open = false; element.hidden = true; element.inert = true })
+  }
 }
 async function routeIs(page, path) { await page.waitForFunction(expected => document.querySelector('[data-qa-route]')?.textContent === expected, path) }
 async function waitOutput(page, id, value) { await page.waitForFunction(({ id, value }) => document.querySelector(`[data-qa-${id}]`)?.textContent === value, { id, value: String(value) }) }
@@ -201,12 +208,10 @@ async function checkPaper(target, theme) { assert.equal(await target.evaluate(el
 async function screenshot(page, result, suffix) {
   const filename = `care/${result.edition}-${result.viewport}-${result.theme}-item${result.itemIds[0]}-${suffix}.png`
   const tools = page.locator('[data-qa-tools]')
-  await tools.evaluate(element => element.style.visibility = 'hidden')
-  try {
-    await page.screenshot({ path: join(evidence, filename), fullPage: true, animations: 'disabled' })
-    result.screenshots.push(filename)
-    result.screenshotSha256[filename] = sha256(readFileSync(join(evidence, filename)))
-  } finally { await tools.evaluate(element => element.style.visibility = '') }
+  assert.equal(await tools.evaluate(element => element.hidden && element.inert), true, 'test controls remain hidden/inert during product capture')
+  await page.screenshot({ path: join(evidence, filename), fullPage: true, animations: 'disabled' })
+  result.screenshots.push(filename)
+  result.screenshotSha256[filename] = sha256(readFileSync(join(evidence, filename)))
 }
 async function closeCleanDialog(page) { await page.locator('.el-dialog:visible .el-dialog__headerbtn').click(); await page.locator('.el-dialog:visible').waitFor({ state: 'hidden' }) }
 async function associated(control, id, invalid = true) {
@@ -506,7 +511,8 @@ async function newPage(browser, base, cell) {
   await context.routeWebSocket('**/*', socket => {
     const url = new URL(socket.url())
     if (url.host !== new URL(base).host) errors.push(`Blocked external WebSocket: ${url.origin}${url.pathname}`)
-    // HMR is disabled; close any remaining dev handshake without upstream connection.
+    // Preview serves no dev client. Close every socket without an upstream connection;
+    // unexpected foreign endpoints remain a failed acceptance boundary.
     socket.close()
   })
   try {
@@ -519,6 +525,15 @@ async function newPage(browser, base, cell) {
 
 }
 
+function assertCompiledNoDevClient(compiled) {
+  const output = (Array.isArray(compiled) ? compiled : [compiled]).flatMap(bundle => bundle.output || [])
+  assert.ok(output.some(file => file.type === 'chunk'), 'real compiled JavaScript must exist')
+  for (const file of output) {
+    if (file.type === 'chunk') assert.deepEqual(Object.keys(file.modules).filter(id => /\/vite\/dist\/client\//.test(id)), [], 'compiled artifact contains no injected Vite dev client')
+    if (file.fileName.endsWith('.html')) assert.equal(String(file.source).includes('/@vite/client'), false, 'compiled HTML must not inject HMR')
+  }
+}
+
 let browser, failed = false
 try {
   if (!compileOnly) browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), headless: true })
@@ -526,12 +541,16 @@ try {
     const harness = makeHarness(edition)
     let server
     try {
-      if (compileOnly) {
-        await build({ ...harness.config, build: { outDir: join(harness.root, 'compiled'), emptyOutDir: true, minify: false } })
-        report.compilation.push({ edition, status: 'compiled', fixtureSha256: harness.fixtureSha256 })
-        saveReport(); continue
-      }
-      server = await createServer(harness.config); await server.listen()
+      // A dev server injects @vite/client even with hmr:false and can create a
+      // port-zero handshake. Serve the actual compiled artifact with preview;
+      // do not relax the external HTTP/WebSocket boundary to hide that symptom.
+      const config = { ...harness.config, build: { outDir: join(harness.root, 'compiled'), emptyOutDir: true, minify: false } }
+      const compiled = await build(config)
+      assertCompiledNoDevClient(compiled)
+      report.compilation.push({ edition, status: 'compiled', fixtureSha256: harness.fixtureSha256, devClientAbsent: true, browserServing: 'vite-preview' })
+      saveReport()
+      if (compileOnly) continue
+      server = await preview({ ...config, preview: { host: '127.0.0.1', port: 0 } })
       const base = `http://127.0.0.1:${server.httpServer.address().port}`
       for (const viewport of widths) for (const theme of themes) {
         const cell = { edition, viewport, theme }, copy = labels[edition]
