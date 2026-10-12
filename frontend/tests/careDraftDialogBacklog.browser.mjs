@@ -212,6 +212,14 @@ async function tab(page, container, name) {
   await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('aria-selected') === 'true', `${container} #tab-${name}`)
 }
 async function checkTheme(page, theme) {
+  // A visible component only proves Vue mounted. Wait for the shipped preset's
+  // computed page and token values before taking the first style signature.
+  // This remains a read-only, exact oracle; persistent CSS errors time out.
+  await page.waitForFunction(({ theme, body, tokens }) => {
+    const root = document.documentElement, css = getComputedStyle(root)
+    return root.dataset.healthTheme === theme && getComputedStyle(document.body).backgroundColor === body &&
+      ['--paper', '--surface-subtle', '--care-50', '--care-700'].every((token, index) => css.getPropertyValue(token).trim().toLowerCase() === tokens[index])
+  }, { theme, body: expectedPageColors[theme], tokens: themeOracle[theme] }, { polling: 'raf', timeout: 10000 })
   const actual = await page.evaluate(() => ({ theme: document.documentElement.dataset.healthTheme, body: getComputedStyle(document.body).backgroundColor, tokens: ['--paper', '--surface-subtle', '--care-50', '--care-700'].map(token => getComputedStyle(document.documentElement).getPropertyValue(token).trim().toLowerCase()), ink: getComputedStyle(document.body).color, accent: getComputedStyle(document.documentElement).getPropertyValue('--care-700').trim(), innerWidth: window.innerWidth, innerHeight: window.innerHeight, devicePixelRatio: window.devicePixelRatio }))
   assert.equal(actual.theme, theme, 'real initializeAppearance applies saved preset')
   assert.equal(actual.body, expectedPageColors[theme], 'shipped CSS changes actual page background')

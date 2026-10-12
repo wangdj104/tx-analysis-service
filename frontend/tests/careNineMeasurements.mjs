@@ -78,6 +78,47 @@ export function assertSubmittingState(enabled, pending) {
   assert.ok(pending.opacity !== enabled.opacity || pending.background !== enabled.background || pending.color !== enabled.color, 'Disabled submitting action is visually distinguishable')
   touch(pending.bounds, 'Submitting action')
 }
+export function assertReceiptHover(neutral, hovered) {
+  assert.equal(hovered.controls.length, neutral.controls.length, 'Hover retains every actual action')
+  const targets = hovered.controls.filter(row => row.hovered)
+  assert.equal(targets.length, 1, 'Exactly one native pointer hover is measured')
+  assert.equal(targets[0].role, 'remove', 'The actual reference remove action is hovered')
+  const primary = neutral.controls.find(row => row.testId === 'submit-receipt')
+  for (const [index, row] of hovered.controls.entries()) {
+    const before = neutral.controls[index]
+    for (const key of ['testId', 'role', 'disabled', 'text', 'describedBy', 'color', 'borderColor', 'textDecorationLine']) assert.equal(row[key], before[key], `Hover keeps ${key} unchanged`)
+    if (!row.hovered) { assert.equal(row.background, before.background, 'Other action backgrounds stay unchanged'); continue }
+    assert.deepEqual(rgb(row.background), rgb(hovered.hoverToken), 'Remove hover uses the actual lightweight surface-hover token')
+    assert.notDeepEqual(rgb(row.background), rgb(primary.background), 'Hover must not imitate the solid primary')
+    assert.ok(unfilled(row.borderColor, neutral.surface), 'Hovered remove keeps its lightweight border')
+    assert.ok(row.textDecorationLine.split(/\s+/).includes('underline'), 'Hovered remove remains a text-like action')
+    assert.ok(contrastRatio(row.color, row.background) >= 4.5, 'Hovered remove text remains legible')
+    touch(row.bounds, 'Hovered remove reference')
+  }
+  assert.deepEqual(hovered.referenceControls.map(row => [row.referenceId, row.referenceText, row.describedBy, row.sameRow]), neutral.referenceControls.map(row => [row.referenceId, row.referenceText, row.describedBy, row.sameRow]), 'Hover retains local reference associations')
+}
+
+// Read-only frame predicate. Reduced-motion still uses a nonzero .01ms CSS
+// duration, so a native mouse move or disabled-property update is not proof that
+// the rendered transition has finished. Never cancel animations or restyle DOM.
+export function receiptStylesReady({ dialog, phase }) {
+  const buttons = [...dialog.querySelectorAll('button')]
+  const observations = buttons.map(node => {
+    const background = getComputedStyle(node).backgroundColor // Flush pending style changes before getAnimations().
+    return { node, background, hovered: node.matches(':hover'), active: node.getAnimations().some(animation => animation.pending || animation.playState === 'running') }
+  })
+  if (!observations.length || observations.some(row => row.active)) return false
+  if (phase === 'neutral') return observations.every(row => !row.hovered)
+  if (phase === 'remove-hover') {
+    const hovered = observations.filter(row => row.hovered)
+    return hovered.length === 1 && hovered[0].node.matches('.remove-reference')
+  }
+  if (phase === 'submitting') {
+    const submit = dialog.querySelector('[data-testid="submit-receipt"]')
+    return Boolean(submit?.matches(':disabled') && submit.getAttribute('aria-busy') === 'true')
+  }
+  throw new Error(`Unknown receipt observation phase: ${phase}`)
+}
 
 // Standalone observation functions passed directly into Playwright evaluate.
 export function measureTaskGroups(nodes) {
@@ -106,12 +147,12 @@ export function measureReceiptControls(dialog) {
   const rect = node => { const box = node.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height } }
   const measure = node => {
     const css = getComputedStyle(node), box = node.getBoundingClientRect()
-    return { testId: node.dataset.testid || '', role: node.matches('.remove-reference') ? 'remove' : node.type === 'submit' ? 'primary' : 'secondary', text: node.innerText.trim(), bounds: { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height, visible: box.width > 0 && box.height > 0 && css.visibility !== 'hidden' }, background: css.backgroundColor, color: css.color, border: css.border, disabled: node.matches(':disabled'), opacity: css.opacity, ariaBusy: node.getAttribute('aria-busy') }
+    return { testId: node.dataset.testid || '', role: node.matches('.remove-reference') ? 'remove' : node.type === 'submit' ? 'primary' : 'secondary', text: node.innerText.trim(), bounds: { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height, visible: box.width > 0 && box.height > 0 && css.visibility !== 'hidden' }, background: css.backgroundColor, color: css.color, border: css.border, borderColor: css.borderColor, textDecorationLine: css.textDecorationLine, describedBy: node.getAttribute('aria-describedby') || '', hovered: node.matches(':hover'), animations: node.getAnimations().map(animation => ({ playState: animation.playState, pending: animation.pending, property: animation.transitionProperty || '' })), disabled: node.matches(':disabled'), opacity: css.opacity, ariaBusy: node.getAttribute('aria-busy') }
   }
   const controls = [...dialog.querySelectorAll('button')].filter(node => node.getClientRects().length).map(measure)
   const referenceControls = [...dialog.querySelectorAll('.evidence-row')].map(row => {
     const button = row.querySelector('.remove-reference'), text = row.querySelector('p'), describedBy = button?.getAttribute('aria-describedby') || ''
     return { textBounds: text ? rect(text) : null, rowBounds: rect(row), referenceId: text?.id, referenceText: text?.innerText, describedBy, sameRow: Boolean(text?.id && describedBy.split(/\s+/).map(id => document.getElementById(id)).includes(text) && row.contains(button)), bounds: button ? measure(button).bounds : null }
   })
-  return { surface: getComputedStyle(dialog).backgroundColor, controls, referenceControls }
+  return { surface: getComputedStyle(dialog).backgroundColor, hoverToken: getComputedStyle(dialog).getPropertyValue('--surface-hover').trim(), controls, referenceControls }
 }

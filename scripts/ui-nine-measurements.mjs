@@ -56,3 +56,34 @@ export function assertNineVisualMeasurement(group,id,m,viewport){
   assert.notEqual(m.primary.background,m.secondary.background);assert.deepEqual(m.activation,['keyboard-expand','keyboard-collapse'])
  }else throw Error(`Unsupported visual measurement ${group}/${id}`)
 }
+
+
+// Independently consume the raw option observations, even when a browser row
+// claims it passed. They must match the same identities accepted for item 4.
+export function assertPatientOptionBounds(entries, item, viewport, edition) {
+ assert.ok(Array.isArray(entries), 'Both actual patient dropdown options are required')
+ assert.deepEqual(entries.map(entry=>entry?.id), [99011,99012], 'Two distinct expected patient options are required')
+ assert.equal(item.duplicateName, 'Synthetic Same Name Alexandra Catherine Montgomery-Sutherland', 'The long duplicate-name fixture cannot be shortened')
+ assert.ok(['en','cn'].includes(edition))
+ for(const {id,dropdown,name,identity} of entries) {
+  real(dropdown)
+  for(const field of ['left','right','top','bottom'])assert.ok(Number.isFinite(dropdown[field]), `Patient popup ${field} must be measured`)
+  assert.ok(close(dropdown.width,dropdown.right-dropdown.left)&&close(dropdown.height,dropdown.bottom-dropdown.top), 'Patient popup dimensions must match its edges')
+  assert.equal(dropdown.viewport,viewport, 'Patient popup must be measured in the requested viewport')
+  assert.ok(dropdown.left>=-1&&dropdown.right<=viewport+1&&dropdown.top>=-1&&dropdown.bottom<=901, 'The whole patient popup must fit the actual viewport')
+  assert.ok(Number.isFinite(dropdown.scrollWidth)&&dropdown.scrollWidth>0&&dropdown.scrollWidth<=viewport+1, 'Patient popup cannot cause horizontal page overflow')
+  assert.match(dropdown.placement,/^(top|bottom|left|right)(-(start|end))?$/, 'Patient popup placement must be observed')
+  assert.equal(dropdown.opacity,1);assert.equal(dropdown.animating,false)
+  assertReadableBox(name,viewport,`Full patient name for #${id}`)
+  assertReadableBox(identity,viewport,`Patient option #${id}`)
+  assert.equal(name.text,item.duplicateName, 'Both patients retain the exact full duplicate name')
+  assert.equal(identity.text,`· ${edition==='cn'?'档案':'Record'} #${id}`, 'The full localized record label is untruncated')
+  assert.equal(identity.whiteSpace,'nowrap', 'The patient record ID remains unbroken')
+  assert.equal(new Set(identity.textBoxes.map(box=>Math.round(box.top))).size,1, 'The patient record ID occupies one line')
+  for(const box of [name,identity])assert.ok(box.left>=dropdown.left-1&&box.right<=dropdown.right+1&&box.top>=dropdown.top-1&&box.bottom<=dropdown.bottom+1, 'Patient name and record ID must be inside the measured popup')
+  const coreOption=item.options.find(option=>option.id===id)
+  assert.ok(coreOption, 'The popup identity must also be recorded in item 4')
+  const {id:recordId,...coreIdentity}=coreOption
+  assert.deepEqual(identity,coreIdentity, 'Popup and item 4 must contain the same observed identity geometry')
+ }
+}

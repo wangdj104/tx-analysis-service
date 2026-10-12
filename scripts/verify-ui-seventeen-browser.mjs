@@ -5,8 +5,9 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { inflateSync } from 'node:zlib'
-import { assertNineVisualMeasurement } from './ui-nine-measurements.mjs'
-import { assertTaskHierarchy, assertTaskDensity, assertMedicationSemantics, assertReceiptHierarchy, assertSubmittingState } from '../frontend/tests/careNineMeasurements.mjs'
+import { assertVitalsChartText } from './ui-chart-text-geometry.mjs'
+import { assertNineVisualMeasurement, assertPatientOptionBounds } from './ui-nine-measurements.mjs'
+import { assertTaskHierarchy, assertTaskDensity, assertMedicationSemantics, assertReceiptHierarchy, assertReceiptHover, assertSubmittingState } from '../frontend/tests/careNineMeasurements.mjs'
 const [directory, commit]=process.argv.slice(2)
 assert.ok(directory && /^[0-9a-f]{40}$/.test(commit||''),'Usage: evidence directory and full checkout SHA required')
 const repo=realpathSync(fileURLToPath(new URL('../',import.meta.url)))
@@ -68,6 +69,13 @@ for(const [group,required] of Object.entries(groups)) {
    assert.ok(ended&&imageData.length&&inflateSync(Buffer.concat(imageData),{maxOutputLength:128*1024*1024}).length>0,`${group}: PNG pixels missing`)
   }
   if(group==='monitoring'){
+   assert.equal(row.chartTextGeometry?.length,2,'Both BP and BG rendered chart-text observations required')
+   const names=row.edition==='cn'?[['收缩压','舒张压'],['血糖']]:[['Systolic Pressure','Diastolic Pressure'],['Blood Glucose']]
+   for(const [index,measurement]of row.chartTextGeometry.entries()){
+    assert.deepEqual(measurement.seriesNames,names[index],'Evidence must cover each BP/BG series')
+    assert.deepEqual(measurement.endpoints,['09-13 08:00','10-11 07:30'],'Evidence must preserve full synthetic history endpoints')
+    assertVitalsChartText(measurement)
+   }
    assert.equal(row.responsiveEditReturns?.length,2,'Both responsive Cancel and Save evidence required')
    for(const action of ['cancel','save']){
     const entries=row.responsiveEditReturns.filter(e=>e.action===action);assert.equal(entries.length,1)
@@ -90,6 +98,7 @@ for(const [group,required] of Object.entries(groups)) {
     const measured=row.nineMeasurements?.[id]
     assert.ok(measured&&typeof measured==='object'&&!Array.isArray(measured)&&hasMeasuredValue(measured),`${group}: item ${id} lacks actual DOM measurements`)
     if(['monitoring','shell'].includes(group))assertNineVisualMeasurement(group,id,measured,row.viewport)
+    if(group==='shell'&&id===4)assertPatientOptionBounds(row.patientOptionBounds,measured,row.viewport,row.edition)
     if(group==='care'&&id===5){
      assertTaskHierarchy(measured.actions,row.viewport);assertTaskDensity(measured.density)
      assert.equal(measured.density.baselineSourceSha256,densityBaselineHashes[row.edition],'Frozen previous release source cannot drift with fixture file')
@@ -97,7 +106,7 @@ for(const [group,required] of Object.entries(groups)) {
      assert.equal(measured.density.baselineSourceSha256,sourceHash(`frontend/tests/fixtures/care-density-baseline/${row.edition}.vue`),'Density baseline source does not match the rendered edition')
     }
     if(group==='care'&&id===6)assertMedicationSemantics(measured.statuses)
-    if(group==='clinical'&&id===9){assertReceiptHierarchy(measured);assertSubmittingState(measured.enabledSubmit,measured.submittingSubmit)}
+    if(group==='clinical'&&id===9){assertReceiptHierarchy(measured);assertReceiptHover(measured,measured.hoverMeasurements);assertReceiptHierarchy(measured.neutralAfterHover);assertSubmittingState(measured.enabledSubmit,measured.submittingSubmit)}
     const key=`${id}/${row.edition}/${row.viewport}/${row.theme}`;nineCells.add(key);nineCoverage.add(key)
    }
   }

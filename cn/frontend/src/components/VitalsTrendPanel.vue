@@ -29,7 +29,22 @@ const hasBgData = computed(() => sorted.value.some(row => positiveReading(glucos
 const hasData = computed(() => mode.value === 'bp' ? hasBpData.value : mode.value === 'bg' ? hasBgData.value : hasBpData.value || hasBgData.value);
 const emptyDescription = computed(() => ({ bp: '暂无可用于分析的血压记录', bg: '暂无可用于分析的血糖记录', both: '暂无可用于分析的生命体征记录' })[mode.value]);
 const labels=computed(()=>sorted.value.map(x=>`${x.recordDate.slice(5)}${x.recordTime?' '+x.recordTime:''}`));
-const base={tooltip:{trigger:'axis'},legend:{bottom:0},grid:{left:46,right:20,top:30,bottom:54},xAxis:{type:'category',data:labels.value,boundaryGap:false},yAxis:{type:'value',scale:true}};
+const base = {
+  tooltip: { trigger: 'axis' },
+  legend: { bottom: 0 },
+  // containLabel reserves the measured date/time height; the remaining inset
+  // keeps both native legend rows clear when their names wrap on narrow cards.
+  grid: { left: 16, right: 16, top: 30, bottom: 56, containLabel: true },
+  xAxis: {
+    type: 'category', data: labels.value, boundaryGap: false,
+    axisLabel: {
+      formatter: value => value.replace(' ', '\n'),
+      showMinLabel: true, showMaxLabel: true, hideOverlap: true,
+      alignMinLabel: 'left', alignMaxLabel: 'right',
+    },
+  },
+  yAxis: { type: 'value', scale: true },
+};
 const bpOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmHg',min:40},series:[{name:'收缩压',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>x.systolicBp),itemStyle:{color:'#ef4444'},markLine:{symbol:'none',label:{show:false,formatter:'参考上限 140'},data:[{yAxis:140,lineStyle:{type:'dashed',color:'#f59e0b'}}]}},{name:'舒张压',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>x.diastolicBp),itemStyle:{color:'#2563eb'}}]}));
 const bgOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmol/L',min:0},series:[{name:'血糖',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>glucoseInMmol(x.bloodGlucose,x.bgUnit)),itemStyle:{color:'#059669'},markLine:{symbol:'none',label:{show:false},data:[{name:'空腹参考值',yAxis:6.1,lineStyle:{type:'dashed',color:'#f59e0b'}},{name:'餐后参考值',yAxis:7.8,lineStyle:{type:'dashed',color:'#ef4444'}}]}}]}));
 function bpAbnormal(x){return x.systolicBp&&(x.systolicBp>140||x.systolicBp<90||x.diastolicBp>90||x.diastolicBp<60)}

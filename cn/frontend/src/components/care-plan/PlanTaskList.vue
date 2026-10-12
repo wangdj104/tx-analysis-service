@@ -118,7 +118,7 @@ header,.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify
 .plan-card{min-width:0;border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
 .plan-card h3{margin:0;font-size:1.125em;line-height:1.5}
 .plan-card>p{margin:8px 0}
-.action-group{min-width:0;margin:10px 0;border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--surface-subtle)}
+.action-group{min-width:0;margin:8px 0;border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--surface-subtle)}
 .action-group>summary,.action-event-history>summary{box-sizing:border-box;min-height:44px;line-height:1.5;cursor:pointer;overflow-wrap:anywhere;padding:8px 0;font-weight:600}
 .action-group>summary:focus-visible,.action-event-history>summary:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
 .action-summary__title{font-weight:700;color:var(--ink-950)}

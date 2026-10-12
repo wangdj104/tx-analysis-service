@@ -290,7 +290,18 @@ async function restoreEditOrigin(origin, context) {
   if (!target) return;
   if (typeof window !== 'undefined') window.scrollTo?.({ top: origin.scrollY, behavior: 'auto' });
   // A responsive reflow can hide the original surface and move its same-record counterpart.
-  if (target !== preferred && target !== origin.opener) target.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
+  if (target !== preferred && target !== origin.opener) {
+    target.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
+    // Native edge alignment can round fractional layout coordinates. Keep the
+    // responsive counterpart comfortably inside the viewport before focusing it.
+    const rect = target.getBoundingClientRect?.();
+    if (rect && typeof window !== 'undefined' && Number.isFinite(window.innerHeight)) {
+      const inset = 8;
+      const offset = rect.top < inset ? Math.floor(rect.top - inset)
+        : rect.bottom > window.innerHeight - inset ? Math.ceil(rect.bottom - window.innerHeight + inset) : 0;
+      if (offset) window.scrollTo?.({ top: window.scrollY + offset, behavior: 'auto' });
+    }
+  }
   target.focus?.({ preventScroll: true });
 }
 async function cancelEdit() {

@@ -7,11 +7,11 @@
         <span v-if="patients.some(patient => patient.id === modelValue)" class="patient-switcher__record" :aria-label="`档案 #${modelValue}`">#{{ modelValue }}</span>
       </div>
       <el-select :id="inputId" :model-value="patients.length ? modelValue : undefined" :disabled="!patients.length" filterable :placeholder="patients.length ? '选择患者' : '暂无授权患者'"
-        aria-label="切换当前患者" @change="$emit('update:modelValue', $event)">
-        <el-option v-for="patient in patients" :key="patient.id" :value="patient.id" :label="`${patient.patientName || patient.name} · 档案 #${patient.id}`">
+        popper-class="patient-switcher-popper" aria-label="切换当前患者" @change="$emit('update:modelValue', $event)">
+        <el-option class="patient-switcher-option" v-for="patient in patients" :key="patient.id" :value="patient.id" :label="`${patient.patientName || patient.name} · 档案 #${patient.id}`">
           <span class="patient-option"><span class="patient-option__name">{{ patient.patientName || patient.name }}</span><span class="patient-option__record"> · 档案 #{{ patient.id }}</span></span>
         </el-option>
-        <el-option v-if="patients.length && allowAll" label="全部患者" :value="0" />
+        <el-option class="patient-switcher-option" v-if="patients.length && allowAll" label="全部患者" :value="0" />
         <template #empty><span class="patient-switcher__empty">暂无患者</span></template>
       </el-select>
     </div>
@@ -35,7 +35,12 @@ defineEmits(['update:modelValue'])
   font-weight: 700;
   line-height: 1.5;
 }
-.patient-option { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
-.patient-option__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The popup is teleported outside this component. Bound its own width before
+   wrapping the name, otherwise the long option sets an intrinsic desktop width. */
+:global(.el-popper.patient-switcher-popper) { width: min(38rem, calc(100vw - 24px)); }
+:global(.el-select-dropdown.patient-switcher-popper) { width: 100%; min-width: 0 !important; }
+.patient-switcher-option { height: auto; min-height: 44px; padding: 8px 12px; line-height: 1.5; white-space: normal; }
+.patient-option { display: flex; align-items: flex-start; gap: 4px; min-width: 0; max-width: 100%; }
+.patient-option__name { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .patient-option__record { flex-shrink: 0; white-space: nowrap; font-weight: 600; }
 </style>

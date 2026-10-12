@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium, expect } from '@playwright/test'
 import { build, preview } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { assertReceiptHierarchy, assertSubmittingState, measureReceiptControls } from './careNineMeasurements.mjs'
+import { assertReceiptHierarchy, assertReceiptHover, assertSubmittingState, measureReceiptControls, receiptStylesReady } from './careNineMeasurements.mjs'
 
 const repo = fileURLToPath(new URL('../../', import.meta.url))
 const dependencyRoot = join(repo, 'frontend')
@@ -296,8 +296,8 @@ function assertVisibleCaptureTargets(geometry) {
   }
 }
 
-async function captureDialogSnapshot(page, dialog, targets, path) {
-  await dialog.evaluate(readDialogCaptureGeometry, { targets, scroll: true })
+async function captureDialogSnapshot(page, dialog, targets, path, scroll = true) {
+  await dialog.evaluate(readDialogCaptureGeometry, { targets, scroll })
   const geometry = await dialog.evaluate(readDialogCaptureGeometry, { targets, scroll: false })
   assertVisibleCaptureTargets(geometry)
   // Full-page screenshots can reset the overlay scroll context on desktop.
@@ -318,6 +318,17 @@ async function assertVisibleToastBounds(page, viewport) {
       `Visible notification must fit the horizontal viewport: ${JSON.stringify(toast)}`)
   }
   return toasts
+}
+
+async function waitForReceiptStyles(page, receipt, phase, diagnostics, sample = phase) {
+  if (phase === 'neutral') await page.mouse.move(0, 0)
+  diagnostics[sample] = { before: await receipt.evaluate(measureReceiptControls) }
+  try {
+    await page.waitForFunction(receiptStylesReady, { dialog: await receipt.elementHandle(), phase }, { polling: 'raf', timeout: 15000 })
+  } finally {
+    diagnostics[sample].after = await receipt.evaluate(measureReceiptControls)
+  }
+  return diagnostics[sample].after
 }
 
 async function verifyCell(browser, harness, edition, viewport, theme) {
@@ -358,7 +369,7 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
   const snapshot = async (name, capture = {}) => {
     const path = `${edition}-${viewport}-${theme}-clinical-${name}.png`
     if (capture.dialog) {
-      const geometry = await captureDialogSnapshot(page, capture.dialog, capture.targets, join(evidenceDir, path))
+      const geometry = await captureDialogSnapshot(page, capture.dialog, capture.targets, join(evidenceDir, path), capture.scroll !== false)
       assert.equal(geometry.viewport.width, viewport)
       result.screenshotGeometry[path] = geometry
     } else {
@@ -514,11 +525,24 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     await snapshot('receipt-references-3-4', { dialog: receipt, targets: [{ selector: '.evidence-row', index: 2, label: 'reference 3 of 5' }, { selector: '.evidence-row', index: 3, label: 'reference 4 of 5' }] })
     await snapshot('receipt-reference-5', { dialog: receipt, targets: [{ selector: '.evidence-row', index: 4, label: 'reference 5 of 5' }] })
     await snapshot('receipt-footer', { dialog: receipt, targets: [{ selector: '[data-testid="submit-receipt"]', label: 'receipt submit control' }, { selector: '[data-testid="close-receipt"]', label: 'receipt close control' }] })
-    // Read actual hierarchy and local reference associations before dispatch.
-    await page.mouse.move(0, 0)
-    const receiptMeasurements = await receipt.evaluate(measureReceiptControls)
+    // Read the neutral rendered hierarchy after native pointer exit and real
+    // CSS transitions settle. Keep before/after diagnostics even on timeout.
+    result.receiptStyleReadiness = {}
+    const receiptMeasurements = await waitForReceiptStyles(page, receipt, 'neutral', result.receiptStyleReadiness)
     result.nineMeasurements[9] = { ...receiptMeasurements }
     assertReceiptHierarchy(receiptMeasurements)
+    // A real pointer hover is a separate state: its light theme surface is
+    // allowed only on that local text-like remove control, never on Close.
+    await receipt.locator('.remove-reference').last().hover()
+    const hoverMeasurements = await waitForReceiptStyles(page, receipt, 'remove-hover', result.receiptStyleReadiness)
+    result.nineMeasurements[9].hoverMeasurements = hoverMeasurements
+    assertReceiptHover(receiptMeasurements, hoverMeasurements)
+    // Native hover has already scrolled this actual button into view. A second
+    // capture scroll would move the button away from the pointer being tested.
+    await snapshot('receipt-reference-5-hover', { dialog: receipt, scroll: false, targets: [{ selector: '.remove-reference', index: 4, label: 'lightweight hovered reference 5 remove control' }] })
+    const neutralAfterHover = await waitForReceiptStyles(page, receipt, 'neutral', result.receiptStyleReadiness, 'neutral-after-hover')
+    result.nineMeasurements[9].neutralAfterHover = neutralAfterHover
+    assertReceiptHierarchy(neutralAfterHover)
     const enabledSubmit = receiptMeasurements.controls.find(control => control.testId === 'submit-receipt')
     const disabledAddReference = receiptMeasurements.controls.find(control => control.testId === 'add-existing-reference')
     assert.equal(disabledAddReference.disabled, true, 'The full five-reference cap has a real disabled action')
@@ -528,7 +552,7 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     await page.getByTestId('submit-receipt').click()
     await expect.poll(() => !!fixture.releaseReceipt).toBe(true)
     await expect(page.getByTestId('submit-receipt')).toBeDisabled()
-    const submittingSubmit = (await receipt.evaluate(measureReceiptControls)).controls.find(control => control.testId === 'submit-receipt')
+    const submittingSubmit = (await waitForReceiptStyles(page, receipt, 'submitting', result.receiptStyleReadiness)).controls.find(control => control.testId === 'submit-receipt')
     Object.assign(result.nineMeasurements[9], { enabledSubmit, submittingSubmit, disabledAddReference })
     assertSubmittingState(enabledSubmit, submittingSubmit)
     await snapshot('receipt-submitting', { dialog: receipt, targets: [{ selector: '[data-testid="submit-receipt"]', label: 'disabled busy submit control' }, { selector: '[data-testid="close-receipt"]', label: 'secondary close during submission' }] })
@@ -554,6 +578,7 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     checked('Revoked record access clears selectable and selected protected references; closing does not write')
 
     result.nineMeasurements[9] = { ...receiptMeasurements, enabledSubmit, submittingSubmit, disabledAddReference }
+    Object.assign(result.nineMeasurements[9], { hoverMeasurements, neutralAfterHover })
     result.nineItemIds = [9]
 
     if (!receiptOnly) {

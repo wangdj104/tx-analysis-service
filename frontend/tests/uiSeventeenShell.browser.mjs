@@ -405,13 +405,35 @@ async function exerciseCase(s, cell, result) {
 
   await page.locator('.patient-switcher .el-select').click()
   const optionIdentities = []
+  result.patientOptionBounds = []
   for (const id of [99011, 99012]) {
     const option = page.getByRole('option', { name: `${patientDisplayName} · ${t('Record', '档案')} #${id}`, exact: true })
     await expect(option).toBeVisible()
-    const [identity] = await option.locator('.patient-option__record').evaluateAll(measureReadableElements)
+    const measurement = { id }
+    result.patientOptionBounds.push(measurement)
+    // Wait only for the real popup's placement/transition, never for acceptable
+    // bounds. Save every last observation before an assertion can fail.
+    await expect.poll(async () => {
+      const [identity] = await option.locator('.patient-option__record').evaluateAll(measureReadableElements)
+      const [name] = await option.locator('.patient-option__name').evaluateAll(measureReadableElements)
+      const dropdown = await option.evaluate(element => {
+        const popup = element.closest('.el-popper'), box = popup.getBoundingClientRect()
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height,
+          placement: popup.getAttribute('data-popper-placement'), opacity: Number(getComputedStyle(popup).opacity),
+          animating: popup.getAnimations().some(animation => animation.playState === 'running'),
+          scrollWidth: document.documentElement.scrollWidth, viewport: innerWidth }
+      })
+      Object.assign(measurement, { identity, name, dropdown })
+      return Boolean(dropdown.placement) && dropdown.opacity === 1 && !dropdown.animating
+    }, { message: 'Patient dropdown has finished its real opening layout' }).toBe(true)
+    const { identity, name, dropdown } = measurement
+    assert.ok(dropdown.left >= -1 && dropdown.right <= cell.viewport + 1, 'The whole patient dropdown stays inside the viewport')
     assertReadableBox(identity, cell.viewport, `Long-name patient option #${id}`)
+    assertReadableBox(name, cell.viewport, `Full patient name for #${id}`)
+    assert.equal(name.text, patientDisplayName, 'The full long name remains readable without hover')
     assert.ok(identity.text.endsWith(`#${id}`)); optionIdentities.push({ id, ...identity })
   }
+  await fit()
   await capture('patient-identities')
   await page.keyboard.press('Escape')
   await choose(page.locator('.patient-switcher .el-select'), t('All patients', '全部患者'))

@@ -55,6 +55,20 @@ for (const mobile of [false, true]) test(`${mobile ? '375px native dialog' : '13
   guard(geometry)
 })
 
+for (const visible of [true, false]) test(`native hover capture preserves scroll and ${visible ? 'captures a visible target' : 'rejects a clipped target'}`, async () => {
+  const fixture = layoutFixture({ mobile: true }), events = []
+  const targets = [{ selector: '.capture-target', label: 'native hovered remove action' }]
+  if (visible) fixture.measure(fixture.root, { targets, scroll: true })
+  const initialScroll = fixture.scroller.scrollTop
+  const capture = helper('captureDialogSnapshot', { readDialogCaptureGeometry: fixture.measure, assertVisibleCaptureTargets: helper('assertVisibleCaptureTargets') })
+  const dialog = { async evaluate(callback, options) { assert.equal(options.scroll, false); events.push('measure'); return callback(fixture.root, options) } }
+  const page = { async screenshot(options) { assert.equal(options.fullPage, false); events.push('capture') } }
+  if (visible) await capture(page, dialog, targets, 'hover-viewport.png', false)
+  else await assert.rejects(() => capture(page, dialog, targets, 'must-not-exist.png', false), /fit completely/)
+  assert.equal(fixture.scroller.scrollTop, initialScroll, 'Capture must not move the button away from the native pointer')
+  assert.deepEqual(events, visible ? ['measure', 'measure', 'capture'] : ['measure', 'measure'])
+})
+
 test('an oversized original body uses a real text range without changing its DOM', () => {
   const fixture = layoutFixture({ mobile: true, fragment: true }), original = fixture.node.textContent
   const geometry = fixture.measure(fixture.root, { targets: [{ selector: '.capture-target', label: 'original body', text: 'Saved source paragraph 6' }], scroll: true })

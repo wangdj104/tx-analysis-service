@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {assertNineVisualMeasurement as verify} from '../ui-nine-measurements.mjs'
-import {visualMeasurement as fixture} from './fixtures/nine-visual-measurements.mjs'
+import {assertNineVisualMeasurement as verify, assertPatientOptionBounds} from '../ui-nine-measurements.mjs'
+import {visualMeasurement as fixture, patientOptionBounds} from './fixtures/nine-visual-measurements.mjs'
 for(const [group,ids] of Object.entries({monitoring:[1,2,7,8],shell:[3,4,9]}))for(const id of ids){
  test(`${group}/${id} accepts complete measured shape at all five widths`,()=>{for(const width of [320,375,390,768,1365])verify(group,id,fixture(group,id,width),width)})
  test(`${group}/${id} rejects generic unrelated objects`,()=>assert.throws(()=>verify(group,id,{viewport:375},375)))
@@ -16,3 +16,11 @@ const mutations={
  'shell/9':[m=>m.primary.height=43,m=>m.primary.background=m.secondary.background,m=>m.activation=[]],
 }
 for(const [key,mutateAll] of Object.entries(mutations))test(`${key} rejects corrupted actual geometry and behavior`,()=>{const[group,raw]=key.split('/'),id=Number(raw);for(const mutate of mutateAll){const m=fixture(group,id);mutate(m);assert.throws(()=>verify(group,id,m,375))}})
+
+test('patient option guard accepts a classic scrollbar without accepting horizontal overflow',()=>{
+ const item=fixture('shell',4,375), entries=patientOptionBounds(375,item)
+ for(const entry of entries)entry.dropdown.scrollWidth=360
+ assertPatientOptionBounds(entries,item,375,'en')
+ entries[0].dropdown.scrollWidth=377
+ assert.throws(()=>assertPatientOptionBounds(entries,item,375,'en'))
+})

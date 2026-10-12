@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, writeFile, rename, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rename, rm, realpath } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join, relative, resolve } from 'node:path'
 import { build, preview } from 'vite'
@@ -14,6 +14,7 @@ import vue from '@vitejs/plugin-vue'
 import { chromium, expect } from '@playwright/test'
 import { assertReadableBox, assertTouchTarget, measureReadableElements } from './uiNineGeometry.mjs'
 import { assertNineVisualMeasurement } from '../../scripts/ui-nine-measurements.mjs'
+import { assertVitalsChartText } from '../../scripts/ui-chart-text-geometry.mjs'
 
 const repo = fileURLToPath(new URL('../../', import.meta.url))
 const dependencyRoot = join(repo, 'frontend')
@@ -48,11 +49,12 @@ for (const edition of ['en', 'cn']) {
     report.sourceHashes[relative(repo, filename)] = createHash('sha256').update(await readFile(filename)).digest('hex')
   }
 }
-for (const filename of [fileURLToPath(import.meta.url), fileURLToPath(new URL('./uiNineGeometry.mjs', import.meta.url)), fileURLToPath(new URL('../../scripts/ui-nine-measurements.mjs', import.meta.url))]) report.sourceHashes[relative(repo, filename)] = createHash('sha256').update(await readFile(filename)).digest('hex')
+for (const filename of [fileURLToPath(import.meta.url), fileURLToPath(new URL('./uiNineGeometry.mjs', import.meta.url)), fileURLToPath(new URL('../../scripts/ui-nine-measurements.mjs', import.meta.url)), fileURLToPath(new URL('../../scripts/ui-chart-text-geometry.mjs', import.meta.url))]) report.sourceHashes[relative(repo, filename)] = createHash('sha256').update(await readFile(filename)).digest('hex')
 
 async function makeHarness(edition) {
   const frontend = join(repo, edition === 'en' ? 'frontend' : 'cn/frontend')
   const directory = await mkdtemp(join(dependencyRoot, '.ui-seventeen-monitoring-'))
+  const editionEchartsCore = await realpath(join(frontend, 'node_modules/echarts/core.js'))
   await writeFile(join(directory, 'index.html'), `<!doctype html><html lang="${edition === 'en' ? 'en' : 'zh-CN'}"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="/main.js"></script></body></html>`)
   await writeFile(join(directory, 'main.js'), `
     import {createApp,h} from 'vue';
@@ -75,6 +77,14 @@ async function makeHarness(edition) {
     import PlanTaskList from '/@fs/${frontend}/src/components/care-plan/PlanTaskList.vue';
     import {useCurrentPatient} from '/@fs/${frontend}/src/composables/useCurrentPatient.js';
     import {initializeAppearance} from '/@fs/${frontend}/src/utils/healthAppearance.js';
+    import {getInstanceByDom} from '/@fs/${editionEchartsCore}';
+    import {measureVitalsChartText} from '/@fs/${repo}/scripts/ui-chart-text-geometry.mjs';
+    // Test-only read access to real renderer text; never change chart options.
+    window.__measureVitalsChartText=()=>[...document.querySelectorAll('.chart-card .chart')].map(element=>{
+      const chart=getInstanceByDom(element);
+      if(!chart)throw new Error('Vital chart is not initialized');
+      return measureVitalsChartText(chart);
+    });
     initializeAppearance();
     const scope=useCurrentPatient();
     scope.setPatientList([{id:1,patientName:'Fictional patient A'},{id:2,patientName:'Fictional patient B'}]);
@@ -94,7 +104,21 @@ async function makeHarness(edition) {
   `)
   const config = {
     configFile: false, root: directory, plugins: [vue(), {
-      name: 'monitoring-qa-no-api-upstream', configurePreviewServer(server) {
+      name: 'monitoring-qa-no-api-upstream',
+      generateBundle() {
+        // EN/CN dependencies are independent in CI. Prove the observation API
+        // and vue-echarts resolve the same instance registry for this edition.
+        const observer = this.getModuleInfo(join(directory, 'main.js'))
+        const rendererIds = [...this.getModuleIds()].filter(id => id.endsWith('/vue-echarts/dist/index.js'))
+        assert.equal(rendererIds.length, 1, 'The harness must use one native vue-echarts renderer')
+        const core = info => info.importedIds.find(id => id.endsWith('/echarts/core.js'))
+        const observerCore = core(observer), rendererCore = core(this.getModuleInfo(rendererIds[0]))
+        assert.ok(observerCore && rendererCore, 'Both observation and rendering must import ECharts')
+        assert.equal(observerCore, rendererCore, 'Chart observation must share the real edition ECharts registry')
+        report.chartModuleIdentity ||= {}
+        report.chartModuleIdentity[edition] = { observerCore: relative(repo, observerCore), rendererCore: relative(repo, rendererCore), sameRegistry: true }
+      },
+      configurePreviewServer(server) {
         server.middlewares.use((req, res, next) => {
           if (!new URL(req.url, 'http://localhost').pathname.startsWith('/api/')) return next()
           res.statusCode = 599; res.setHeader('Content-Type', 'application/json')
@@ -279,6 +303,8 @@ async function waitForMonitoringLayout(page) {
         moving: visible.some(element => /(?:enter|leave)-(?:active|from|to)/.test(element.className) || element.getAnimations().some(animation => animation.playState === 'running' || animation.pending)),
         rectangles: visible.map(element => { const rect = element.getBoundingClientRect(); return [rect.left, rect.right, rect.top, rect.bottom] }),
         width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight,
+        scrollX: document.defaultView?.scrollX ?? 0, scrollY: document.defaultView?.scrollY ?? 0,
+        focusedRectangle: document.activeElement ? (() => { const rect = document.activeElement.getBoundingClientRect(); return [rect.left, rect.right, rect.top, rect.bottom] })() : null,
       }
     }
     const before = snapshot()
@@ -453,6 +479,16 @@ async function referenceGeometry(page, selector, values, viewport) {
     measurements.push({ value, ...box })
   }
   return measurements
+}
+async function verifyVitalsChartText(page, result) {
+  await expect(page.locator('.chart-card canvas')).toHaveCount(2)
+  await waitForMonitoringLayout(page)
+  result.chartTextGeometry = await page.evaluate(() => window.__measureVitalsChartText())
+  // Persist the actual failing bounds too, before strict assertions stop a cell.
+  await persist()
+  assert.equal(result.chartTextGeometry.length, 2, 'Both BP and BG plots need rendered text evidence')
+  for (const measurement of result.chartTextGeometry) assertVitalsChartText(measurement)
+  result.checks.push('Actual ECharts text bounds keep complete endpoint timestamps and every series legend inside each canvas, with separate non-overlapping rows')
 }
 async function monitoringSummaryAndNavigation(page, cell, result) {
   await page.locator('.monitor-metrics').scrollIntoViewIfNeeded()
@@ -671,26 +707,35 @@ async function editHistory(page, state, result, words, surface) {
 async function responsiveBpEditReturn(page, state, cell, result, words) {
   const alternateViewport = cell.viewport <= 768 ? 1365 : 375
   const note = 'Fictional BP history 17'
-  const measurements = []
+  const measurements = result.responsiveEditReturns = []
   for (const action of ['cancel', 'save']) {
     const source = bpRecordRows(page, cell.viewport).filter({ hasText: note }).getByRole('button', { name: words.edit, exact: true })
     await source.scrollIntoViewIfNeeded()
     const origin = await readEditClickOrigin(source)
     assert.equal(origin?.trusted, true)
     await expect(page.locator('.editor-heading')).toBeFocused()
+    const observation = { action, fromViewport: cell.viewport, toViewport: alternateViewport, origin, recordId: 217 }
+    measurements.push(observation)
     try {
       await page.setViewportSize({ width: alternateViewport, height: 900 }); await waitForMonitoringLayout(page)
       const target = bpRecordRows(page, alternateViewport).filter({ hasText: note }).getByRole('button', { name: words.edit, exact: true })
+      const observeReturn = () => target.evaluate(element => {
+        const rect = element.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+        const describe = node => node ? { tag: node.tagName, className: node.className, text: node.textContent?.trim().slice(0, 160), recordId: node.closest('[data-record-id]')?.getAttribute('data-record-id') } : null
+        return { viewport: innerWidth, viewportHeight: innerHeight, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height, focused: document.activeElement === element, unobscured: Boolean(hit && element.contains(hit)), scrollY, scrollHeight: document.documentElement.scrollHeight, activeElement: describe(document.activeElement), hit: describe(hit) }
+      })
       if (action === 'cancel') await page.locator('.form-actions').getByRole('button', { name: words.cancel, exact: true }).click()
       else {
         await page.locator('.remark-field textarea').fill(`${note} updated by fictional responsive acceptance`)
         await page.locator('.form-actions').getByRole('button', { name: words.update, exact: true }).click()
       }
+      // Retain both observations even when layout readiness or an assertion fails.
+      // This reads geometry only; it never scrolls, focuses, or hides the target.
+      observation.initial = observation.returned = await observeReturn()
+      await waitForMonitoringLayout(page)
+      observation.returned = await observeReturn()
       await expect(target).toBeFocused(); await expect(target).toBeVisible()
-      const returned = await target.evaluate(element => {
-        const rect = element.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
-        return { viewport: innerWidth, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height, focused: document.activeElement === element, unobscured: Boolean(hit && element.contains(hit)), scrollY }
-      })
+      const returned = observation.returned = await observeReturn()
       assert.equal(returned.viewport, alternateViewport)
       assert.ok(returned.focused && returned.unobscured && returned.top >= 0 && returned.bottom <= 900, 'Responsive edit return focuses the visible same-record counterpart')
       assert.ok(returned.left >= 0 && returned.right <= alternateViewport, 'Responsive return target stays inside the new width')
@@ -698,10 +743,8 @@ async function responsiveBpEditReturn(page, state, cell, result, words) {
         const mutation = state.requests.filter(request => request.path === '/api/bp-self-monitor/update').at(-1)
         assert.equal(mutation.method, 'PUT'); assert.equal(mutation.body.patientId, 1); assert.equal(mutation.body.id, 217)
       }
-      measurements.push({ action, fromViewport: cell.viewport, toViewport: alternateViewport, origin, returned, recordId: 217 })
     } finally { await page.setViewportSize({ width: cell.viewport, height: 900 }) }
   }
-  result.responsiveEditReturns = measurements
   await capture(page, result, 'bp-responsive-editor-return')
 }
 async function bpCase(page, origin, state, cell, result, words) {
@@ -730,6 +773,7 @@ async function bpCase(page, origin, state, cell, result, words) {
   await expect(raw.locator('tbody tr').filter({ hasText: '2026-10-09 20:00' })).toContainText('5.1 mmol/L')
   await bpRecordGeometry(page, cell, result, words)
   const bpReferences = await referenceGeometry(page, '.chart-reference-legend', [140, 6.1, 7.8], cell.viewport)
+  await verifyVitalsChartText(page, result)
   acceptNine(result, 2, { monitoring: result.monitoringReferences, bp: bpReferences })
   await capture(page, result, 'nine-bp-reference-legends')
   await verifyTheme(page, cell, result, 'bp'); await capture(page, result, 'bp-independent-summary-trend')
@@ -849,6 +893,7 @@ try {
       const origin = `http://127.0.0.1:${address.port}`
       for (const cell of cells.filter(cell => cell.edition === edition)) {
         const result = { ...cell, itemIds, status: 'failed', screenshots: [], checks: [] }
+        report.results.push(result)
         const state = fixture(), context = await browser.newContext({ viewport: { width: cell.viewport, height: 900 }, reducedMotion: 'reduce', timezoneId: 'UTC', serviceWorkers: 'block' })
         const errors = []
         let page
@@ -881,7 +926,7 @@ try {
         } finally {
           state.release(); result.apiReads = state.requests.filter(request => request.method === 'GET').map(({ path, query }) => ({ path, query }))
           result.unexpectedApi = state.unexpected; result.blockedNetwork = state.blockedNetwork; result.browserErrors = errors
-          await context.close(); report.results.push(result); report.browserAssertions = 'executed'; await persist()
+          await context.close(); report.browserAssertions = 'executed'; await persist()
         }
         console.log(`${edition} ${cell.viewport}px ${cell.theme}: ${result.status}`)
       }

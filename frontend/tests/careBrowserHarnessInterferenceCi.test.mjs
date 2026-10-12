@@ -65,7 +65,7 @@ test('care WebSocket guard still closes every socket and flags genuinely foreign
   const newPage = new Function('assert', code + ';return newPage')(assert)
   let guard
   const signature = { theme: 'platform', body: 'rgb(245, 247, 251)', tokens: ['#ffffff', '#f4f7f6', '#f0f7f3', '#176b59'], innerWidth: 375, innerHeight: 900 }
-  const page = { setDefaultTimeout() {}, on() {}, async addInitScript() {}, async goto() {}, locator: () => ({ async waitFor() {} }), async evaluate() { return signature } }
+  const page = { setDefaultTimeout() {}, on() {}, async addInitScript() {}, async goto() {}, locator: () => ({ async waitFor() {} }), async waitForFunction() {}, async evaluate() { return signature } }
   const context = { async newPage() { return page }, async route() {}, async routeWebSocket(pattern, handler) { guard = handler }, async close() {} }
   const session = await newPage({ async newContext(options) { assert.equal(options.serviceWorkers, 'block'); return context } }, 'http://127.0.0.1:43123', { viewport: 375, theme: 'platform' })
   for (const endpoint of ['ws://127.0.0.1:43123/', 'ws://outside.invalid:443/socket', 'ws://127.0.0.1:0/']) {
