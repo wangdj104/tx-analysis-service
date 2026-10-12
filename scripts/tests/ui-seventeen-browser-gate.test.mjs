@@ -47,3 +47,17 @@ test('unexecuted assertions cannot pass',()=>{assert.notEqual(fixture((g,d)=>d.b
 test('wrong actual screenshot width fails',()=>{assert.notEqual(fixture((g,d)=>{d.results[0].screenshots=['375.png'];d.results[0].screenshotHashes={'375.png':hash(png(375))}}).status,0)})
 
 test('failed rerun replaces any old passed summary',()=>{const run=fixture((g,d)=>d.error='fatal');assert.notEqual(run.status,0);assert.equal(run.summary.status,'failed')})
+
+test('UI evidence path uses runtime runner variables, not unavailable job expression context',()=>{
+ const workflow=readFileSync('.github/workflows/ci.yml','utf8')
+ const job=workflow.split('  ui-seventeen-browser:')[1]?.split('\n  care-plan-mysql:')[0]||''
+ assert.doesNotMatch(job.split('    steps:')[0],/\$\{\{\s*runner\./)
+ const command=job.match(/- name: Set synthetic evidence directory\n\s+run: ([^\n]+)/)?.[1]
+ assert.ok(command,'runtime evidence initialization is required')
+ const directory=mkdtempSync(join(tmpdir(),'ui17-runtime-env-')),file=join(directory,'github-env')
+ try {
+  const result=spawnSync('bash',['-euo','pipefail','-c',command],{encoding:'utf8',env:{PATH:process.env.PATH,RUNNER_TEMP:directory,GITHUB_ENV:file}})
+  assert.equal(result.status,0,result.stderr)
+  assert.equal(readFileSync(file,'utf8'),`UI_SEVENTEEN_EVIDENCE_DIR=${directory}/ui-seventeen\n`)
+ } finally {rmSync(directory,{recursive:true,force:true})}
+})

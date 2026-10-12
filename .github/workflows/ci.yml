@@ -88,10 +88,10 @@ jobs:
     name: Seventeen UI workflows (EN/CN, desktop/mobile, six themes)
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    env:
-      UI_SEVENTEEN_EVIDENCE_DIR: ${{ runner.temp }}/ui-seventeen
     steps:
       - uses: actions/checkout@v4
+      - name: Set synthetic evidence directory
+        run: printf 'UI_SEVENTEEN_EVIDENCE_DIR=%s/ui-seventeen\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
