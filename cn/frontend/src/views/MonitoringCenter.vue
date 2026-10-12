@@ -21,7 +21,7 @@
         </label>
         <label class="control-field control-field--switch">
           <span>自动检查</span>
-          <el-tooltip :content="autoRefresh ? '每 30 秒检查一次新记录' : '自动刷新已关闭'">
+          <el-tooltip popper-class="monitoring-auto-refresh-tooltip" :trigger="['hover', 'focus']" :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 8 } }] }" :content="autoRefresh ? '每 30 秒检查一次新记录' : '自动刷新已关闭'">
             <el-switch v-model="autoRefresh" inline-prompt active-text="开" inactive-text="关" @change="resetTimer" />
           </el-tooltip>
         </label>

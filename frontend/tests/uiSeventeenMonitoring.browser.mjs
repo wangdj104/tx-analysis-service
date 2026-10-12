@@ -41,7 +41,7 @@ await persist() // Never leave a prior successful run masquerading as this run.
 
 const files = ['views/MonitoringCenter.vue', 'views/BpSelfMonitorManager.vue', 'views/NutritionDiaryManager.vue', 'components/care-plan/PlanTaskList.vue']
 for (const edition of ['en', 'cn']) {
-  for (const file of [...files, 'utils/healthAppearance.js', 'styles/health-appearance.css']) {
+  for (const file of [...files, 'App.vue', 'utils/healthAppearance.js', 'styles/health-appearance.css']) {
     const filename = join(repo, edition === 'en' ? 'frontend' : 'cn/frontend', 'src', file)
     report.sourceHashes[relative(repo, filename)] = createHash('sha256').update(await readFile(filename)).digest('hex')
   }
@@ -58,6 +58,8 @@ async function makeHarness(edition) {
     import ElementPlus from 'element-plus';
     import locale from 'element-plus/es/locale/lang/${edition === 'en' ? 'en' : 'zh-cn'}';
     import * as icons from '@element-plus/icons-vue';
+    // Reuse the actual App global reset in main.js order without running App behavior.
+    import '/@fs/${frontend}/src/App.vue?vue&type=style&index=0&lang.css';
     import 'element-plus/dist/index.css';
     import '/@fs/${frontend}/src/styles/app-theme.css';
     import '/@fs/${frontend}/src/styles/mobile-optimization.css';
@@ -239,8 +241,8 @@ function verifyFixtureContracts() {
 report.fixtureContracts = verifyFixtureContracts()
 
 const copy = {
-  en: { data: 'Data', refresh: 'Refresh', edit: 'Edit', cancel: 'Cancel editing', update: 'Update record', bp: 'Blood Pressure', bg: 'Blood Glucose', all: 'All', thirty: 'Last 30 days', marker: 'Abnormal', emptyMonitoring: 'No vital-sign records in this time range', emptyBp: 'No records', emptyTasks: 'No authorized tasks in this queue.', disabled: 'Plan collaboration is not enabled in this session.', forbidden: 'You do not have access to plan collaboration.', capabilityError: 'Plan access could not be checked. Try again.', loadingMonitoring: 'Loading monitoring data', loadingBp: 'Loading records', loadingTasks: 'Loading authorized plan tasks', latestBp: 'Latest blood pressure', latestBg: 'Latest blood glucose', dated: 'Edit record from' },
-  cn: { data: '数据', refresh: '刷新', edit: '编辑', cancel: '取消编辑', update: '更新记录', bp: '血压', bg: '血糖', all: '全部', thirty: '近 30 天', marker: '异常', emptyMonitoring: '当前时间范围内暂无生命体征记录', emptyBp: '暂无记录', emptyTasks: '当前队列没有已授权的事项。', disabled: '当前会话未启用计划协作。', forbidden: '没有访问计划协作的权限。', capabilityError: '无法检查计划访问权限，请重试。', loadingMonitoring: '正在加载监测数据', loadingBp: '正在加载记录', loadingTasks: '正在加载已授权的计划事项', latestBp: '最近血压', latestBg: '最近血糖', dated: '编辑' },
+  en: { tooltipOff: 'Automatic refresh is off', data: 'Data', refresh: 'Refresh', edit: 'Edit', cancel: 'Cancel editing', update: 'Update record', bp: 'Blood Pressure', bg: 'Blood Glucose', all: 'All', thirty: 'Last 30 days', marker: 'Abnormal', emptyMonitoring: 'No vital-sign records in this time range', emptyBp: 'No records', emptyTasks: 'No authorized tasks in this queue.', disabled: 'Plan collaboration is not enabled in this session.', forbidden: 'You do not have access to plan collaboration.', capabilityError: 'Plan access could not be checked. Try again.', loadingMonitoring: 'Loading monitoring data', loadingBp: 'Loading records', loadingTasks: 'Loading authorized plan tasks', latestBp: 'Latest blood pressure', latestBg: 'Latest blood glucose', dated: 'Edit record from' },
+  cn: { tooltipOff: '自动刷新已关闭', data: '数据', refresh: '刷新', edit: '编辑', cancel: '取消编辑', update: '更新记录', bp: '血压', bg: '血糖', all: '全部', thirty: '近 30 天', marker: '异常', emptyMonitoring: '当前时间范围内暂无生命体征记录', emptyBp: '暂无记录', emptyTasks: '当前队列没有已授权的事项。', disabled: '当前会话未启用计划协作。', forbidden: '没有访问计划协作的权限。', capabilityError: '无法检查计划访问权限，请重试。', loadingMonitoring: '正在加载监测数据', loadingBp: '正在加载记录', loadingTasks: '正在加载已授权的计划事项', latestBp: '最近血压', latestBg: '最近血糖', dated: '编辑' },
 }
 const expectedThemes = {
   platform: ['#f5f7fb', '#ffffff', '#f4f7f6'], white: ['#f5f7fb', '#ffffff', '#f5f7fa'],
@@ -261,11 +263,63 @@ async function verifyTheme(page, cell, result, surface) {
   assert.equal(signature.reducedMotion, true)
   result.styleSignatures ||= {}; result.styleSignatures[surface] = signature
 }
-async function capture(page, result, suffix) {
+// Wait for actual font/layout and Element Plus transition completion. Stable
+// visible overflow still fails below; this never removes or hides application DOM.
+async function waitForMonitoringLayout(page) {
+  await page.waitForFunction(async () => {
+    await (document.fonts?.ready || Promise.resolve())
+    const snapshot = () => {
+      const visible = [...document.querySelectorAll('.el-popper.el-tooltip')].filter(element => {
+        const style = getComputedStyle(element)
+        return style.display !== 'none' && style.visibility !== 'hidden'
+      })
+      return {
+        moving: visible.some(element => /(?:enter|leave)-(?:active|from|to)/.test(element.className) || element.getAnimations().some(animation => animation.playState === 'running' || animation.pending)),
+        rectangles: visible.map(element => { const rect = element.getBoundingClientRect(); return [rect.left, rect.right, rect.top, rect.bottom] }),
+        width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight,
+      }
+    }
+    const before = snapshot()
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const after = snapshot()
+    return !before.moving && !after.moving && JSON.stringify(before) === JSON.stringify(after)
+  }, null, { timeout: 15000 })
+}
+function assertBpSummaryBounds(geometry, viewport) {
+  assert.equal(geometry.containers.length, 5, 'All BP summary containers must be rendered')
+  assert.equal(geometry.cards.length, 3, 'All three BP summary cards must be rendered')
+  for (const element of [...geometry.containers, ...geometry.cards]) {
+    assert.ok(element.width > 0 && element.height > 0, `${element.name} must actually be rendered`)
+    assert.equal(element.boxSizing, 'border-box', `${element.name} must use the actual App border-box reset`)
+    assert.ok(element.left >= 0 && element.right <= viewport, `${element.name} must fit the viewport`)
+  }
+  for (const card of geometry.cards) {
+    for (const ancestor of card.clippingAncestors) {
+      assert.ok(card.left >= ancestor.left && card.right <= ancestor.right, `${card.name} must not be clipped by ${ancestor.name}`)
+    }
+  }
+}
+async function capture(page, result, suffix, { preserveHover = false } = {}) {
+  if (!preserveHover) await page.mouse.move(0, 0)
+  await waitForMonitoringLayout(page)
   const path = `monitoring/${commit}/${runId}/${result.edition}-${result.viewport}-${result.theme}-${suffix}.png`
   const geometry = await page.evaluate(() => {
-    const describe = element => { const rect = element.getBoundingClientRect(); return { tag: element.tagName, className: typeof element.className === 'string' ? element.className : '', left: rect.left, right: rect.right, width: rect.width } }
-    return { innerWidth, scrollWidth: document.documentElement.scrollWidth, bodyScrollWidth: document.body.scrollWidth, scrollY, scrollHeight: document.documentElement.scrollHeight, controls: [...document.querySelectorAll('.monitoring-controls')].map(describe), outsideViewport: [...document.querySelectorAll('.fixture-toolbar,.monitoring-head,.monitoring-controls,.monitor-panel,.el-popper')].map(describe).filter(rect => rect.width && (rect.left < 0 || rect.right > innerWidth)) }
+    const describe = element => { const rect = element.getBoundingClientRect(); return { tag: element.tagName, className: typeof element.className === 'string' ? element.className : '', left: rect.left, right: rect.right, width: rect.width, height: rect.height, boxSizing: getComputedStyle(element).boxSizing } }
+    const bp = document.querySelector('.bp-monitor-page')
+    const bpSummary = bp ? {
+      containers: ['.bp-monitor-page', '.main-content', '.page-inner', '.bp-hero', '.bp-summary'].map(selector => { const element = selector === '.bp-monitor-page' ? bp : bp.querySelector(selector); return { name: selector, ...describe(element) } }),
+      cards: [...bp.querySelectorAll('.bp-summary .summary-item')].map(element => {
+        const clippingAncestors = []
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          if (['hidden', 'clip', 'auto', 'scroll'].includes(getComputedStyle(parent).overflowX)) {
+            const rect = parent.getBoundingClientRect(), left = rect.left + parent.clientLeft
+            clippingAncestors.push({ name: parent.className || parent.tagName, left, right: left + parent.clientWidth })
+          }
+        }
+        return { name: element.textContent.trim(), ...describe(element), clippingAncestors }
+      }),
+    } : null
+    return { innerWidth, scrollWidth: document.documentElement.scrollWidth, bodyScrollWidth: document.body.scrollWidth, scrollY, scrollHeight: document.documentElement.scrollHeight, bpSummary, controls: [...document.querySelectorAll('.monitoring-controls')].map(describe), outsideViewport: [...document.querySelectorAll('.fixture-toolbar,.monitoring-head,.monitoring-controls,.monitor-panel,.el-popper,.bp-monitor-page .page-inner,.bp-summary .summary-item')].map(describe).filter(rect => rect.width && (rect.left < 0 || rect.right > innerWidth)) }
   })
   result.geometry ||= []; result.geometry.push({ suffix, ...geometry })
   await mkdir(join(evidence, 'monitoring', commit, runId), { recursive: true })
@@ -277,11 +331,43 @@ async function capture(page, result, suffix) {
   assert.ok(geometry.scrollWidth <= geometry.innerWidth, 'Document content must not overflow the viewport')
   assert.equal(bytes.readUInt32BE(16), result.viewport, 'Screenshot must use the actual requested viewport width')
   assert.ok(bytes.readUInt32BE(20) >= 900, 'Screenshot must retain full-page height at least the viewport height')
+  if (geometry.bpSummary) assertBpSummaryBounds(geometry.bpSummary, result.viewport)
 }
 async function waitGate(gate) { await expect.poll(() => gate.waiting).toBe(true) }
 async function open(page, origin, surface) { await page.goto(`${origin}/?surface=${surface}`); await page.getByTestId('fixture-patient').waitFor() }
-async function stopMonitoringTimer(page) { const control = page.locator('.control-field--switch .el-switch'); if (await control.getAttribute('aria-checked') === 'true' || await control.locator('input').isChecked()) await control.click() }
+async function stopMonitoringTimer(page) {
+  const control = page.locator('.control-field--switch .el-switch')
+  if (await control.getAttribute('aria-checked') === 'true' || await control.locator('input').isChecked()) await control.click()
+  // Move both actual hover and keyboard focus away without changing reading data.
+  await page.mouse.move(0, 0); await page.locator('.refresh-button').focus()
+  await expect(page.locator('.monitoring-auto-refresh-tooltip')).toBeHidden()
+  await waitForMonitoringLayout(page)
+}
 async function filter(page, label) { await page.locator('.filter-switch .el-radio-button').filter({ hasText: new RegExp(`^${label}$`) }).click() }
+
+function assertMonitoringTooltipBounds(geometry, viewport) {
+  assert.ok(geometry.width > 0 && geometry.height > 0, 'Tooltip must actually be rendered')
+  assert.ok(geometry.left >= 0 && geometry.right <= viewport, 'Visible tooltip must stay inside the viewport')
+  assert.ok(geometry.scrollWidth <= viewport, 'Visible tooltip must not overflow the viewport')
+}
+async function verifyMonitoringTooltip(page, result, words) {
+  const control = page.locator('.control-field--switch .el-switch')
+  const tooltip = page.locator('.monitoring-auto-refresh-tooltip')
+  for (const mode of ['hover', 'focus']) {
+    if (mode === 'hover') await control.hover()
+    else { await control.getByRole('switch').focus(); await expect(control.getByRole('switch')).toBeFocused() }
+    await expect(tooltip).toBeVisible(); await expect(tooltip).toContainText(words.tooltipOff)
+    await waitForMonitoringLayout(page)
+    const geometry = await tooltip.evaluate(element => { const rect = element.getBoundingClientRect(); return { left: rect.left, right: rect.right, width: rect.width, height: rect.height, scrollWidth: document.documentElement.scrollWidth } })
+    result.tooltipGeometry ||= []; result.tooltipGeometry.push({ mode, ...geometry })
+    assertMonitoringTooltipBounds(geometry, result.viewport)
+    if (mode === 'hover') await capture(page, result, 'monitoring-visible-tooltip', { preserveHover: true })
+    else await capture(page, result, 'monitoring-keyboard-tooltip', { preserveHover: true })
+    await page.mouse.move(0, 0); await page.locator('.refresh-button').focus()
+    await expect(tooltip).toBeHidden(); await waitForMonitoringLayout(page)
+  }
+  result.checks.push('Monitoring help is visible through native hover and keyboard focus, fits the exact viewport, and finishes its real leave transition before unrelated screenshots')
+}
 
 async function monitoringCase(page, origin, state, cell, result, words) {
   const gate = state.hold(paths.monitoring)
@@ -293,6 +379,7 @@ async function monitoringCase(page, origin, state, cell, result, words) {
   await expect(page.locator('.alert-panel .alert-row')).toHaveCount(8)
   await stopMonitoringTimer(page)
   await verifyTheme(page, cell, result, 'monitoring')
+  await verifyMonitoringTooltip(page, result, words)
   await expect(page.getByTestId('alert-count')).toContainText(/8\s*\/.*9/)
   if (cell.edition === 'en') await expect(page.getByTestId('alert-count')).toHaveText('Showing 8 / 9 loaded alerts')
   const allAlerts = page.getByTestId('view-all-alerts'), href = new URL(await allAlerts.getAttribute('href'), origin)

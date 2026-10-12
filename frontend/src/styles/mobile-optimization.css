@@ -185,10 +185,18 @@
 /* ========== mobilemessageNoticeoptimize ========== */
 @media (max-width: 768px) {
   .el-message {
-    min-width: calc(100vw - 32px) !important;
+    width: calc(100vw - 32px) !important;
+    min-width: 0 !important;
     left: 16px !important;
     right: 16px !important;
-    max-width: none !important;
+    max-width: calc(100vw - 32px) !important;
+    /* Side insets replace Element Plus's 50% centering and fade transforms. */
+    transform: none !important;
+  }
+
+  .el-message__content {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .el-message-box {

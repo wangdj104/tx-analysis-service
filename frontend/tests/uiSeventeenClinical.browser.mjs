@@ -42,6 +42,7 @@ const report = { commit, mode: compileOnly ? 'compile-only' : 'browser', harness
     excluded: [{ itemId: 10, reason: 'BP/nutrition history-edit focus belongs to the monitoring browser harness' }] } }
 report.sourceHashes = {}
 for (const prefix of ['frontend', 'cn/frontend']) for (const file of [
+  'App.vue',
   'components/care-plan/AiAnalysisReviewDialog.vue', 'components/care-plan/ReceiptDialog.vue',
   'views/MedicalRecordManager.vue', 'components/MedicalRecordReviewDialog.vue',
   'utils/healthAppearance.js', 'styles/health-appearance.css'
@@ -93,6 +94,7 @@ function mainSource(frontend, edition, data) {
     import ElementPlus from 'element-plus';
     import locale from 'element-plus/es/locale/lang/${edition === 'en' ? 'en' : 'zh-cn'}';
     import * as icons from '@element-plus/icons-vue';
+    import ${src('App.vue?vue&type=style&index=0&lang.css')};
     import 'element-plus/dist/index.css';
     ${['app-theme', 'mobile-optimization', 'health-redesign', 'care-accessibility', 'health-appearance'].map(name => `import ${src(`styles/${name}.css`)};`).join('\n')}
     import AiReview from ${src('components/care-plan/AiAnalysisReviewDialog.vue')};
@@ -221,8 +223,100 @@ async function assertNativeReferenceDeduplication(receipt, picker, id, expectedC
   assert.deepEqual(await receipt.locator('.evidence-row p').allTextContents(), originalRows, 'A duplicate attempt must retain the exact original reference rows')
 }
 
+function readDialogCaptureGeometry(root, { targets, scroll }) {
+  const rect = box => ({ left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height })
+  const clientBox = node => {
+    const box = node.getBoundingClientRect(), left = box.left + node.clientLeft, top = box.top + node.clientTop
+    return { left, top, right: left + node.clientWidth, bottom: top + node.clientHeight }
+  }
+  const selected = targets.flatMap(spec => {
+    let nodes = [...root.querySelectorAll(spec.selector)]
+    if (spec.matchText) nodes = nodes.filter(node => node.textContent.includes(spec.matchText))
+    if (spec.index != null) nodes = nodes.slice(spec.index, spec.index + 1)
+    if (!nodes.length) throw new Error(`Screenshot target missing: ${spec.label}`)
+    return nodes.map((node, index) => {
+      let range
+      if (spec.text) {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+        for (let textNode; (textNode = walker.nextNode());) {
+          const start = textNode.textContent.indexOf(spec.text)
+          if (start < 0) continue
+          range = document.createRange(); range.setStart(textNode, start); range.setEnd(textNode, start + spec.text.length); break
+        }
+        if (!range) throw new Error(`Screenshot text range missing: ${spec.label}`)
+      }
+      return { node, range, spec, index }
+    })
+  })
+  const measure = () => ({
+    viewport: { width: innerWidth, height: innerHeight },
+    dialog: { box: rect(root.getBoundingClientRect()), scrollTop: root.scrollTop, scrollLeft: root.scrollLeft, clientHeight: root.clientHeight, scrollHeight: root.scrollHeight },
+    targets: selected.map(({ node, range, spec, index }) => {
+      const clip = { left: 0, top: 0, right: innerWidth, bottom: innerHeight }, scrollports = []
+      for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const style = getComputedStyle(ancestor), clipsX = /auto|scroll|overlay|hidden|clip/.test(style.overflowX), clipsY = /auto|scroll|overlay|hidden|clip/.test(style.overflowY)
+        if (ancestor !== root && !clipsX && !clipsY) continue
+        const box = clientBox(ancestor)
+        if (ancestor === root || clipsX) { clip.left = Math.max(clip.left, box.left); clip.right = Math.min(clip.right, box.right) }
+        if (ancestor === root || clipsY) { clip.top = Math.max(clip.top, box.top); clip.bottom = Math.min(clip.bottom, box.bottom) }
+        scrollports.push({ tag: ancestor.tagName, className: ancestor.className, box, scrollTop: ancestor.scrollTop, scrollLeft: ancestor.scrollLeft, clientHeight: ancestor.clientHeight, scrollHeight: ancestor.scrollHeight })
+      }
+      const style = getComputedStyle(node)
+      return { label: spec.label, selector: spec.selector, index: spec.index ?? index, ...(spec.text ? { text: spec.text } : {}),
+        box: rect((range || node).getBoundingClientRect()), elementBox: rect(node.getBoundingClientRect()), clip, scrollports,
+        rendered: style.visibility === 'visible' && style.display !== 'none' && Number(style.opacity) > 0 }
+    })
+  })
+  if (scroll && selected.length) {
+    const before = measure(), top = Math.min(...before.targets.map(target => target.box.top)), bottom = Math.max(...before.targets.map(target => target.box.bottom))
+    const clipTop = Math.max(...before.targets.map(target => target.clip.top)), clipBottom = Math.min(...before.targets.map(target => target.clip.bottom))
+    // Scroll only the existing real scrollport. Never resize, restyle, clone or
+    // hide content. A text Range permits an honest viewport of an oversized pre.
+    for (let ancestor = selected[0].node.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      if (!/auto|scroll|overlay/.test(getComputedStyle(ancestor).overflowY) || ancestor.scrollHeight <= ancestor.clientHeight) continue
+      ancestor.scrollBy({ top: (top + bottom - clipTop - clipBottom) / 2, behavior: 'instant' }); break
+    }
+  }
+  return measure()
+}
+
+function assertVisibleCaptureTargets(geometry) {
+  assert.ok(geometry.targets.length, 'At least one actual screenshot target is required')
+  for (const target of geometry.targets) {
+    const { box, clip } = target
+    assert.ok(target.rendered && box.width > 0 && box.height > 0, `${target.label} must be rendered, with positive area`)
+    assert.ok(clip.right > clip.left && clip.bottom > clip.top, `${target.label} needs a visible dialog scrollport`)
+    assert.ok(box.left >= clip.left - 1 && box.right <= clip.right + 1 && box.top >= clip.top - 1 && box.bottom <= clip.bottom + 1,
+      `${target.label} must fit completely inside the visible dialog scrollport: ${JSON.stringify({ box, clip })}`)
+  }
+}
+
+async function captureDialogSnapshot(page, dialog, targets, path) {
+  await dialog.evaluate(readDialogCaptureGeometry, { targets, scroll: true })
+  const geometry = await dialog.evaluate(readDialogCaptureGeometry, { targets, scroll: false })
+  assertVisibleCaptureTargets(geometry)
+  // Full-page screenshots can reset the overlay scroll context on desktop.
+  // Geometry is checked immediately before capturing the actual visible viewport.
+  await page.screenshot({ path, fullPage: false })
+  return geometry
+}
+
+async function assertVisibleToastBounds(page, viewport) {
+  const toasts = await page.locator('.el-message:visible').evaluateAll(nodes => nodes.map(node => {
+    const box = node.getBoundingClientRect()
+    return { text: node.textContent, width: innerWidth, box: { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height } }
+  }))
+  assert.ok(toasts.length, 'Expected the actual notification to remain visible for its evidence capture')
+  for (const toast of toasts) {
+    assert.equal(toast.width, viewport, 'Toast geometry uses the actual viewport width')
+    assert.ok(toast.box.width > 0 && toast.box.left >= -1 && toast.box.right <= viewport + 1,
+      `Visible notification must fit the horizontal viewport: ${JSON.stringify(toast)}`)
+  }
+  return toasts
+}
+
 async function verifyCell(browser, harness, edition, viewport, theme) {
-  const result = { itemIds, edition, viewport, theme, status: 'failed', screenshots: [], screenshotHashes: {}, assertions: [] }
+  const result = { itemIds, edition, viewport, theme, status: 'failed', screenshots: [], screenshotHashes: {}, screenshotGeometry: {}, toastGeometry: {}, assertions: [] }
   const context = await browser.newContext({ viewport: { width: viewport, height: 900 },
     timezoneId: 'America/Los_Angeles', locale: edition === 'en' ? 'en-US' : 'zh-CN', reducedMotion: 'reduce' })
   const { data, base } = harness
@@ -255,11 +349,19 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     assert.equal(rendered.colorScheme, theme === 'dark' ? 'dark' : 'light')
     result.renderedTheme = rendered
   }
-  const snapshot = async name => {
+  const snapshot = async (name, capture = {}) => {
     const path = `${edition}-${viewport}-${theme}-clinical-${name}.png`
-    await page.screenshot({ path: join(evidenceDir, path), fullPage: true })
+    if (capture.dialog) {
+      const geometry = await captureDialogSnapshot(page, capture.dialog, capture.targets, join(evidenceDir, path))
+      assert.equal(geometry.viewport.width, viewport)
+      result.screenshotGeometry[path] = geometry
+    } else {
+      if (capture.toasts) result.toastGeometry[path] = await assertVisibleToastBounds(page, viewport)
+      await page.screenshot({ path: join(evidenceDir, path), fullPage: !capture.toasts && name !== 'failure' })
+    }
     result.screenshots.push(path)
     result.screenshotHashes[path] = createHash('sha256').update(readFileSync(join(evidenceDir, path))).digest('hex')
+    return path
   }
   const checked = text => result.assertions.push(text)
   const noWrites = count => assert.equal(fixture.writes.length, count, 'Opening, reading and closing must not write')
@@ -294,15 +396,24 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     }), true)
     await expect(page.getByTestId('approve-ai-review')).toBeDisabled(); await expect(page.getByTestId('reject-ai-review')).toBeDisabled()
     await expect(ai).toContainText(t('not a guarantee of clinical reliability', '不保证临床可靠性'))
-    await responsive('.el-dialog'); await snapshot('ai-original-analysis')
+    const aiDialog = page.locator('.el-dialog'), aiCapturePaths = []
+    await responsive('.el-dialog')
+    await snapshot('ai-original-analysis-start', { dialog: aiDialog, targets: [{ selector: '.ai-review h2', label: 'authorized original patient identity' }, { selector: '[data-testid="ai-original-analysis"]', label: 'original analysis start', text: 'SYNTHETIC ORIGINAL START' }] })
+    aiCapturePaths.push(await snapshot('ai-original-analysis', { dialog: aiDialog, targets: [{ selector: '[data-testid="ai-original-analysis"]', label: 'original analysis body', text: 'Saved source paragraph 6' }] }))
+    await snapshot('ai-original-analysis-end', { dialog: aiDialog, targets: [{ selector: '[data-testid="ai-original-analysis"]', label: 'original analysis end', text: 'SYNTHETIC ORIGINAL END' }] })
     await ai.locator('dl dd').filter({ hasText: 'SYNTHETIC AGGREGATE EVIDENCE' }).scrollIntoViewIfNeeded()
-    await snapshot('ai-saved-evidence')
-    await page.getByTestId('approve-ai-review').scrollIntoViewIfNeeded(); await snapshot('ai-acknowledgement-gate'); noWrites(0)
+    aiCapturePaths.push(await snapshot('ai-saved-evidence', { dialog: aiDialog, targets: [{ selector: 'dl dd', matchText: 'SYNTHETIC AGGREGATE EVIDENCE', label: 'saved aggregate evidence' }] }))
+    await page.getByTestId('approve-ai-review').scrollIntoViewIfNeeded(); aiCapturePaths.push(await snapshot('ai-acknowledgement-gate', { dialog: aiDialog, targets: [{ selector: '.acknowledgement', label: 'unchecked acknowledgement' }, { selector: '.review-controls', label: 'disabled decision controls' }] })); noWrites(0)
+    assert.equal(new Set(aiCapturePaths.map(path => result.screenshotHashes[path])).size, 3, 'Original body, saved evidence and unchecked decision gate must be distinct actual views')
     await ai.getByRole('button', { name: t('Close', '关闭'), exact: true }).click(); await expect(ai).toHaveCount(0); noWrites(0)
     checked('Full original analysis, saved evidence/provenance, authorized name+ID, inert source text, acknowledgement gate and read-only open/close')
     for (const decision of ['APPROVED', 'REJECTED']) {
       await page.getByTestId('open-ai').click(); await expect(page.getByTestId('ai-original-analysis')).toHaveText(data.analysisContent)
       await ai.locator('input[type="checkbox"]').check(); await ai.locator('textarea').fill('Synthetic explicit review note')
+      if (decision === 'APPROVED') {
+        aiCapturePaths.push(await snapshot('ai-ready-decision', { dialog: aiDialog, targets: [{ selector: '.acknowledgement', label: 'checked acknowledgement' }, { selector: '.review-controls', label: 'enabled decision controls' }] }))
+        assert.equal(new Set(aiCapturePaths.map(path => result.screenshotHashes[path])).size, 4, 'The explicit ready-to-decide view must differ from the unchecked gate')
+      }
       await page.getByTestId(decision === 'APPROVED' ? 'approve-ai-review' : 'reject-ai-review').click()
       await expect(ai).toHaveCount(0)
       assert.deepEqual(fixture.writes.at(-1).body, { sourceType: 'AI_ANALYSIS', sourceId: 51, decision, reviewNote: 'Synthetic explicit review note' })
@@ -340,7 +451,7 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     for (const text of ['SYNTHETIC ORIGINAL RECORD NOTE', 'SYNTHETIC RECOGNIZED SOURCE', 'SYNTHETIC-EXTERNAL-901', 'synthetic-original.pdf', '101', 'g/L']) await expect(medical).toContainText(text)
     await expect(medical.locator('.medical-review-context dd').first()).toHaveText('7')
     await expect(page.getByTestId('confirm-medical-approve')).toBeDisabled(); await expect(page.getByTestId('confirm-medical-reject')).toBeDisabled()
-    await responsive('.el-dialog'); await snapshot('medical-original-review')
+    await responsive('.el-dialog'); await snapshot('medical-original-review', { dialog: page.locator('.el-dialog'), targets: [{ selector: '.medical-review h2', label: 'medical original patient identity' }, { selector: '.medical-review-context', label: 'original record context' }] })
     const beforeClose = fixture.writes.length
     await medical.getByRole('button', { name: t('Close', '关闭'), exact: true }).click(); await expect(medical).toHaveCount(0); noWrites(beforeClose)
     checked('Actual medical-review dialog shows source version, original values, attachment metadata and patient identity without writing')
@@ -362,12 +473,12 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     await expect(receipt.locator('form > [role="alert"]')).toHaveCount(1)
     await offset.selectOption('-420'); await expect(receipt.locator('form > [role="alert"]')).toHaveCount(0)
     await offset.selectOption('-480'); await expect(receipt.locator('form > [role="alert"]')).toHaveCount(0)
-    await snapshot('receipt-dst-explicit-offset')
+    await snapshot('receipt-dst-explicit-offset', { dialog: receipt, targets: [{ selector: '[data-testid="receipt-execution-time"]', label: 'repeated local time' }, { selector: '[data-testid="receipt-time-offset"]', label: 'explicit repeated-time offset' }] })
     await clock.fill('2026-03-08T02:30')
     await expect(offset).toBeDisabled()
     await expect(offset.locator('option[value="-420"],option[value="-480"]')).toHaveCount(0)
     await expect(receipt.locator('form > [role="alert"]')).toHaveCount(1)
-    await snapshot('receipt-dst-skipped-time')
+    await snapshot('receipt-dst-skipped-time', { dialog: receipt, targets: [{ selector: '[data-testid="receipt-execution-time"]', label: 'skipped local time' }, { selector: '[data-testid="receipt-time-offset"]', label: 'unavailable skipped-time offset' }, { selector: 'form > [role="alert"]', label: 'skipped-time validation' }] })
     checked('Repeated daylight-saving local time requires either explicit UTC offset; skipped local time is rejected in the actual controls')
     await clock.fill('2026-10-10T08:30:15.123'); await expect(page.getByTestId('receipt-time-offset')).toHaveValue('-420')
     await page.getByTestId('receipt-note').fill('Synthetic receipt: completed existing instruction')
@@ -389,7 +500,12 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     await picker.selectOption('901'); await page.getByTestId('add-existing-reference').click()
     await expect(receipt.locator('.evidence-row')).toHaveCount(5)
     await picker.selectOption('902'); await expect(page.getByTestId('add-existing-reference')).toBeDisabled()
-    await responsive('dialog.receipt-dialog'); await snapshot('receipt-friendly-controls')
+    await responsive('dialog.receipt-dialog'); await snapshot('receipt-friendly-controls', { dialog: receipt, targets: [{ selector: '[data-testid="receipt-execution-time"]', label: 'actual execution datetime' }, { selector: '[data-testid="receipt-time-offset"]', label: 'actual execution offset' }] })
+    await snapshot('receipt-record-picker', { dialog: receipt, targets: [{ selector: '[data-testid="receipt-existing-record"]', label: 'recognizable authorized record picker' }, { selector: '[data-testid="add-existing-reference"]', label: 'five-reference cap control' }] })
+    await snapshot('receipt-references-1-2', { dialog: receipt, targets: [{ selector: '.evidence-row', index: 0, label: 'reference 1 of 5' }, { selector: '.evidence-row', index: 1, label: 'reference 2 of 5' }] })
+    await snapshot('receipt-references-3-4', { dialog: receipt, targets: [{ selector: '.evidence-row', index: 2, label: 'reference 3 of 5' }, { selector: '.evidence-row', index: 3, label: 'reference 4 of 5' }] })
+    await snapshot('receipt-reference-5', { dialog: receipt, targets: [{ selector: '.evidence-row', index: 4, label: 'reference 5 of 5' }] })
+    await snapshot('receipt-footer', { dialog: receipt, targets: [{ selector: '[data-testid="submit-receipt"]', label: 'receipt submit control' }, { selector: '[data-testid="close-receipt"]', label: 'receipt close control' }] })
     await page.getByTestId('submit-receipt').click(); await expect(receipt).toHaveCount(0)
     const receiptWrite = fixture.writes.at(-1)
     assert.equal(receiptWrite.path, '/care-plans/actions/61/receipts')
@@ -426,8 +542,10 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     fixture.releaseTrend(); fixture.holdTrend = false
     await expect(state).toContainText(t('No historical records', '暂无历史记录'))
     await expect(state).toContainText(data.record.items[0].itemName); await expect(state).toContainText(`${data.patientName} · ${recordId}`)
+    await expect(page.locator('.el-message').first()).toBeVisible(); await snapshot('lab-empty-toast', { toasts: true })
     await expect(trend.locator('.trend-chart-wrap')).toHaveCount(0); await snapshot('lab-empty')
     fixture.trend = 'error'; await query.click(); await expect(state.getByRole('alert')).toBeVisible()
+    await expect(page.locator('.el-message--error').first()).toBeVisible(); await snapshot('lab-error-toast', { toasts: true })
     await expect(page.getByTestId('retry-trend')).toBeVisible(); await snapshot('lab-error-retry')
     fixture.trend = 'loaded'; await page.getByTestId('retry-trend').click()
     await expect(state.getByRole('alert')).toHaveCount(0)

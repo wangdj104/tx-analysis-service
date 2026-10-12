@@ -21,7 +21,7 @@
         </label>
         <label class="control-field control-field--switch">
           <span>Run checks</span>
-          <el-tooltip :content="autoRefresh ? 'Check for new records every 30 seconds' : 'Automatic refresh is off'">
+          <el-tooltip popper-class="monitoring-auto-refresh-tooltip" :trigger="['hover', 'focus']" :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 8 } }] }" :content="autoRefresh ? 'Check for new records every 30 seconds' : 'Automatic refresh is off'">
             <el-switch v-model="autoRefresh" inline-prompt active-text="On" inactive-text="Off" @change="resetTimer" />
           </el-tooltip>
         </label>

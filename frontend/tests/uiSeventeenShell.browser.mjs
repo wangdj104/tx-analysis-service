@@ -67,7 +67,7 @@ async function compileSources() {
       assert.deepEqual(template.errors, [], `${edition}/${file}: template compilation`)
       compiled.push(relative(repo, filename))
     }
-    for (const file of ['utils/exportPresentation.js', 'utils/healthAppearance.js', 'styles/health-appearance.css']) {
+    for (const file of ['utils/exportPresentation.js', 'utils/healthAppearance.js', 'styles/health-appearance.css', 'styles/mobile-optimization.css']) {
       const filename = join(root, 'src', file)
       manifest.sourceHashes[relative(repo, filename)] = sha(await readFile(filename))
     }
@@ -217,11 +217,11 @@ async function openCase(browser, host, cell, result) {
   page.on('download', download => state.downloads.push(download.suggestedFilename()))
   const t = (en, cn) => cell.edition === 'en' ? en : cn
   const go = async path => { await page.goto(host.origin + host.prefix + path); await expect(page.locator('.patient-switcher')).toBeVisible() }
-  async function capture(name) {
+  async function capture(name, { fullPage = true } = {}) {
     const file = join('shell', runId, `${cell.edition}-${cell.viewport}-${cell.theme}-${name}.png`)
     const destination = join(evidence, file)
     await mkdir(dirname(destination), { recursive: true })
-    await page.screenshot({ path: destination, fullPage: true, animations: 'disabled' })
+    await page.screenshot({ path: destination, fullPage, animations: 'disabled' })
     const digest = sha(await readFile(destination))
     result.screenshots.push(file); result.screenshotHashes[file] = digest
   }
@@ -231,6 +231,58 @@ async function openCase(browser, host, cell, result) {
     assert.ok(dimensions.scroll <= dimensions.viewport + 1, `Page overflows: ${JSON.stringify(dimensions)}`)
     result.renderedViewport = dimensions
   }
+  async function guideBounds(name) {
+    // Visibility alone accepts a button clipped below the viewport. Measure
+    // without scrolling/clicking it into view, and hit-test enabled controls.
+    let snapshot
+    await expect.poll(async () => {
+      snapshot = await page.locator('.guide-card').evaluate(card => {
+        const rect = node => {
+          const box = node.getBoundingClientRect()
+          return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height }
+        }
+        const within = box => box.width > 0 && box.height > 0 && box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight
+        const controls = [...card.querySelectorAll('.guide-close, footer button')].map(node => {
+          const box = rect(node), hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+          return { label: node.getAttribute('aria-label'), disabled: node.disabled, ...box, inViewport: within(box), unobscured: Boolean(hit && node.contains(hit)) }
+        })
+        const parts = [card, card.querySelector('h2'), card.querySelector('footer')].map(node => {
+          const box = rect(node)
+          return { tag: node.tagName, ...box, inViewport: within(box) }
+        })
+        const content = card.querySelector('.guide-content')
+        return { viewport: { width: innerWidth, height: innerHeight }, parts, controls,
+          content: content ? { ...rect(content), scrollHeight: content.scrollHeight, clientHeight: content.clientHeight } : null }
+      })
+      ;(result.guideBounds ||= {})[name] = snapshot
+      return snapshot.viewport.width === cell.viewport && snapshot.controls.length === 3 &&
+        snapshot.parts.every(part => part.inViewport) && snapshot.controls.every(control => control.inViewport && (control.disabled || control.unobscured))
+    }, { message: `${name}: guide, heading, footer and navigation must be inside the viewport with usable controls` }).toBe(true)
+  }
+  async function toastBounds(id) {
+    const measurements = result.patientSwitchToastBounds ||= []
+    const measurement = { patientId: id }; measurements.push(measurement)
+    await expect(page.locator('.el-message').filter({ hasText: t('Switched to Synthetic Same Name.', '已切换到Synthetic Same Name。') }).first()).toBeVisible()
+    let snapshot
+    await expect.poll(async () => {
+      snapshot = await page.locator('.el-message:visible').evaluateAll(nodes => ({
+        viewport: { width: innerWidth, height: innerHeight },
+        messages: nodes.map(node => {
+          const box = node.getBoundingClientRect(), content = node.querySelector('.el-message__content')
+          const textBox = content?.getBoundingClientRect()
+          return { text: node.textContent, left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+            opacity: Number(getComputedStyle(node).opacity), transform: getComputedStyle(node).transform,
+            contentLeft: textBox?.left, contentRight: textBox?.right,
+            contentScrollWidth: content?.scrollWidth, contentClientWidth: content?.clientWidth }
+        }),
+      }))
+      Object.assign(measurement, snapshot)
+      return snapshot.viewport.width === cell.viewport && snapshot.messages.length > 0 && snapshot.messages.every(message =>
+        message.opacity === 1 && message.left >= 0 && message.right <= snapshot.viewport.width &&
+        message.top >= 0 && message.bottom <= snapshot.viewport.height && message.contentLeft >= message.left &&
+        message.contentRight <= message.right && message.contentScrollWidth <= message.contentClientWidth + 1)
+    }, { message: 'Actual patient-switch notifications and their full text must fit the viewport' }).toBe(true)
+  }
   async function choose(select, name) {
     await select.click()
     await page.getByRole('option', { name, exact: true }).click()
@@ -239,6 +291,7 @@ async function openCase(browser, host, cell, result) {
     await choose(page.locator('.patient-switcher .el-select'), `Synthetic Same Name · ${t('Record', '档案')} #${id}`)
     await expect.poll(() => page.evaluate(() => localStorage.getItem('currentPatientId'))).toBe(String(id))
     await expect(page.locator('.patient-switcher')).toContainText(`#${id}`)
+    await toastBounds(id)
   }
   async function date(scope, value = '2026-10') {
     const input = page.locator('.el-date-editor input').first()
@@ -251,11 +304,11 @@ async function openCase(browser, host, cell, result) {
     await page.waitForTimeout(250)
     assert.equal(state.downloads.length, count, 'No stale, failed, or empty download may start')
   }
-  return { page, context, state, t, go, capture, fit, choose, patient, date, noExtraDownload, csv }
+  return { page, context, state, t, go, capture, fit, guideBounds, choose, patient, date, noExtraDownload, csv }
 }
 
 async function exerciseCase(s, cell, result) {
-  const { page, state, t, go, capture, fit, choose, patient, date, noExtraDownload } = s
+  const { page, state, t, go, capture, fit, guideBounds, choose, patient, date, noExtraDownload } = s
   const checked = name => result.assertions.push(name)
   await go('/health-analysis?tab=data-export')
   await expect(page.locator('.export-scope')).toBeVisible()
@@ -280,10 +333,10 @@ async function exerciseCase(s, cell, result) {
   for (const id of [99011, 99012]) await expect(page.getByRole('option', { name: `Synthetic Same Name · ${t('Record', '档案')} #${id}`, exact: true })).toBeVisible()
   await capture('patient-identities')
   await page.keyboard.press('Escape')
-  await patient(99012); await patient(99011)
+  await patient(99012); await capture('patient-switch-toast', { fullPage: false }); await patient(99011)
   await expect(page.locator('.export-scope')).toContainText('Synthetic Same Name')
   await expect(page.locator('.export-scope')).toContainText('#99011')
-  checked('Duplicate-name authorized patients are disambiguated by record ID and selection stays in scope')
+  checked('Duplicate-name authorized patients are disambiguated by record ID, selection stays in scope, and actual patient-switch toasts and text fit the viewport')
 
   const opener = page.locator('[data-guide="feature-search"]:visible')
   await expect(opener).toHaveCount(1)
@@ -331,14 +384,14 @@ async function exerciseCase(s, cell, result) {
   await expect(page.locator('.guide-card h2')).toHaveText(t('Review nursing follow-up tasks', '查看护理随访任务'))
   await expect.poll(() => new URL(page.url()).pathname).toBe(`${cell.edition === 'cn' ? '/cn' : ''}/nurse-workspace`)
   await expect(page.locator('[data-testid="collaboration-tasks"].guide-target')).toBeVisible()
-  await capture('nurse-guide')
+  await guideBounds('nurse-guide'); await capture('nurse-guide', { fullPage: false })
   await page.getByRole('button', { name: t('Confirm step and continue', '确认本步骤并继续'), exact: true }).click()
   const guidedSearch = page.locator('[data-guide="feature-search"].guide-target')
   await expect(guidedSearch).toHaveCount(1); await expect(guidedSearch).toBeVisible()
   assert.equal(await guidedSearch.evaluate(node => getComputedStyle(node).visibility), 'visible')
   const target = await guidedSearch.boundingBox()
   assert.ok(target && target.x >= 0 && target.x + target.width <= cell.viewport + 1 && target.y >= 0 && target.y + target.height <= 901, 'Guide highlights a visible in-viewport search control')
-  await capture('visible-search-guide')
+  await guideBounds('visible-search-guide'); await capture('visible-search-guide', { fullPage: false })
   await page.getByRole('button', { name: t('Pause guide', '暂停指引'), exact: true }).click()
   state.capabilities = false
   await page.evaluate(() => localStorage.removeItem('care-onboarding:99001:nurse'))
@@ -347,7 +400,7 @@ async function exerciseCase(s, cell, result) {
   // disabled; do not invent an absent target from a disabled service state.
   await expect(page.locator('[data-testid="collaboration-tasks"].guide-target')).toBeVisible()
   await expect(page.locator('.guide-card [role="status"]')).toHaveCount(0)
-  await capture('disabled-nurse-guide-target')
+  await guideBounds('disabled-nurse-guide-target'); await capture('disabled-nurse-guide-target', { fullPage: false })
   await page.getByRole('button', { name: t('Pause guide', '暂停指引'), exact: true }).click()
   state.capabilities = true
   // Exercise the real missing-target branch using an empty doctor review queue.
@@ -364,11 +417,11 @@ async function exerciseCase(s, cell, result) {
   await expect(page.locator('.guide-card [role="status"]')).toContainText(t('No actionable target', '当前没有可操作的目标'))
   await expect(page.locator('.guide-target')).toHaveCount(0)
   await expect(page.locator('.guide-anchor')).toHaveCount(0)
-  await capture('empty-doctor-guide-target')
+  await guideBounds('empty-doctor-guide-target'); await capture('empty-doctor-guide-target', { fullPage: false })
   await page.getByRole('button', { name: t('Pause guide', '暂停指引'), exact: true }).click()
   state.role = 'nurse'
   await page.evaluate(() => localStorage.setItem('userRoleCodes', '["nurse"]'))
-  checked('Nurse guide uses nursing scope, highlights the actual responsive search control, retains the disabled nursing region, and explains the genuinely absent empty doctor review target')
+  checked('Guide card, heading, close and footer controls fit the viewport and enabled controls are unobscured. Nurse guide uses nursing scope, highlights the actual responsive search control, retains the disabled nursing region, and explains the genuinely absent empty doctor review target')
 
   await go('/care'); await patient(99012)
   const questions = page.getByRole('tab', { name: t('Questions', '就诊问题'), exact: true })
