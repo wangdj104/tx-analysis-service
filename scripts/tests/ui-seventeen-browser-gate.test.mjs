@@ -98,7 +98,7 @@ test('UI evidence path uses runtime runner variables, not unavailable job expres
 test('each completed UI suite publishes its own outcome JSON before the next suite, retaining the final gate',()=>{
  const workflow=readFileSync('.github/workflows/ci.yml','utf8')
  const job=workflow.split('  ui-seventeen-browser:')[1]?.split('\n  care-plan-mysql:')[0]||''
- const groups=[['care','careDraftDialogBacklog'],['monitoring','uiSeventeenMonitoring'],['clinical','uiSeventeenClinical'],['shell','uiSeventeenShell']]
+ const groups=[['shell','uiSeventeenShell'],['care','careDraftDialogBacklog'],['monitoring','uiSeventeenMonitoring'],['clinical','uiSeventeenClinical']]
  for(let i=0;i<groups.length;i++){
   const [group,harness]=groups[i],start=job.indexOf(`run: node frontend/tests/${harness}.browser.mjs`)
   const next=i+1<groups.length?job.indexOf(`run: node frontend/tests/${groups[i+1][1]}.browser.mjs`):job.indexOf('run: node scripts/verify-ui-seventeen-browser.mjs')
@@ -112,7 +112,7 @@ test('each completed UI suite publishes its own outcome JSON before the next sui
   assert.match(between,/if-no-files-found: error/)
   assert.doesNotMatch(between,/continue-on-error|\|\|\s*true/)
  }
- assert.match(job,/name: Preserve synthetic screenshots and per-item outcomes/)
+ assert.match(job,/name: Preserve synthetic reports and acceptance summary/)
  assert.match(job,/run: node scripts\/verify-ui-seventeen-browser\.mjs/)
 })
 

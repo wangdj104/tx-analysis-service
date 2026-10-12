@@ -108,7 +108,30 @@ jobs:
           cd frontend
           npx --no-install playwright install --with-deps chromium
       - name: Verify fail-closed synthetic evidence gate
-        run: node --test scripts/tests/ui-seventeen-browser-gate.test.mjs scripts/tests/ui-nine-measurements.test.mjs
+        run: node --test scripts/tests/ui-seventeen-browser-gate.test.mjs scripts/tests/ui-nine-measurements.test.mjs scripts/tests/ui-seventeen-browser-artifacts.test.mjs
+      # Keep shell first so the narrowest responsive regressions surface early.
+      # Each screenshot archive includes its root report to preserve evidence paths.
+      - name: Verify shell search, onboarding, summary and export scope
+        if: ${{ !cancelled() }}
+        run: node frontend/tests/uiSeventeenShell.browser.mjs
+      - name: Preserve shell browser outcomes immediately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-seventeen-shell-outcomes-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-seventeen/shell-results.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve shell synthetic screenshots immediately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-seventeen-shell-screenshots-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/ui-seventeen/shell/**/*.png
+            ${{ runner.temp }}/ui-seventeen/shell-results.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify care drafts, identity, hierarchy and required fields
         if: ${{ !cancelled() }}
         run: node frontend/tests/careDraftDialogBacklog.browser.mjs
@@ -118,6 +141,16 @@ jobs:
         with:
           name: ui-seventeen-care-outcomes-${{ github.sha }}
           path: ${{ runner.temp }}/ui-seventeen/care-results.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve care synthetic screenshots immediately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-seventeen-care-screenshots-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/ui-seventeen/care/**/*.png
+            ${{ runner.temp }}/ui-seventeen/care-results.json
           if-no-files-found: error
           retention-days: 14
       - name: Verify monitoring states, readings, history and trend data
@@ -131,6 +164,16 @@ jobs:
           path: ${{ runner.temp }}/ui-seventeen/monitoring-results.json
           if-no-files-found: error
           retention-days: 14
+      - name: Preserve monitoring synthetic screenshots immediately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-seventeen-monitoring-screenshots-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/ui-seventeen/monitoring/**/*.png
+            ${{ runner.temp }}/ui-seventeen/monitoring-results.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify AI source review, receipt controls and lab states
         if: ${{ !cancelled() }}
         run: node frontend/tests/uiSeventeenClinical.browser.mjs
@@ -142,27 +185,30 @@ jobs:
           path: ${{ runner.temp }}/ui-seventeen/clinical-results.json
           if-no-files-found: error
           retention-days: 14
-      - name: Verify shell search, onboarding, summary and export scope
-        if: ${{ !cancelled() }}
-        run: node frontend/tests/uiSeventeenShell.browser.mjs
-      - name: Preserve shell browser outcomes immediately
+      - name: Preserve clinical synthetic screenshots immediately
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ui-seventeen-shell-outcomes-${{ github.sha }}
-          path: ${{ runner.temp }}/ui-seventeen/shell-results.json
+          name: ui-seventeen-clinical-screenshots-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/ui-seventeen/*-clinical-*.png
+            ${{ runner.temp }}/ui-seventeen/clinical-results.json
           if-no-files-found: error
           retention-days: 14
       - name: Require all seventeen actual-browser acceptance matrices
         if: ${{ !cancelled() }}
         run: node scripts/verify-ui-seventeen-browser.mjs "$UI_SEVENTEEN_EVIDENCE_DIR" "$(git rev-parse HEAD)"
-      - name: Preserve synthetic screenshots and per-item outcomes
+      # Download all four ui-seventeen-<suite>-screenshots-SHA archives and this
+      # JSON-only ui-seventeen-SHA archive from the same run and commit. Merge
+      # their contents at one evidence root, preserving paths; repeated JSON must
+      # match exactly. Run the strict collector against that root and checkout.
+      # Never recombine the PNGs into a single upload: it exceeds download limits.
+      - name: Preserve synthetic reports and acceptance summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ui-seventeen-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/ui-seventeen/**/*.png
             ${{ runner.temp }}/ui-seventeen/*-results.json
             ${{ runner.temp }}/ui-seventeen/acceptance-summary.json
           if-no-files-found: error

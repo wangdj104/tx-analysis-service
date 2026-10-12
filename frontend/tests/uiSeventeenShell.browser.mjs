@@ -248,9 +248,23 @@ async function openCase(browser, host, cell, result) {
           return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height }
         }
         const within = box => box.width > 0 && box.height > 0 && box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight
+        const describe = node => {
+          if (!node) return null
+          const style = getComputedStyle(node)
+          return { tag: node.tagName, id: node.getAttribute('id'), classes: node.getAttribute('class'),
+            role: node.getAttribute('role'), label: node.getAttribute('aria-label'), testId: node.getAttribute('data-testid'),
+            ...rect(node), position: style.position, zIndex: style.zIndex, pointerEvents: style.pointerEvents,
+            opacity: style.opacity, transform: style.transform, isolation: style.isolation }
+        }
+        const ancestors = node => {
+          const chain = []
+          for (let parent = node?.parentElement; parent; parent = parent.parentElement) chain.push(describe(parent))
+          return chain
+        }
         const controls = [...card.querySelectorAll('.guide-close, footer button')].map(node => {
           const box = rect(node), hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
-          return { label: node.getAttribute('aria-label'), disabled: node.disabled, ...box, inViewport: within(box), unobscured: Boolean(hit && node.contains(hit)) }
+          return { label: node.getAttribute('aria-label'), disabled: node.disabled, ...box, inViewport: within(box), unobscured: Boolean(hit && node.contains(hit)),
+            hitElement: describe(hit), hitAncestors: ancestors(hit) }
         })
         const parts = [card, card.querySelector('h2'), card.querySelector('footer')].map(node => {
           const box = rect(node)
@@ -258,6 +272,7 @@ async function openCase(browser, host, cell, result) {
         })
         const content = card.querySelector('.guide-content')
         return { viewport: { width: innerWidth, height: innerHeight }, parts, controls,
+          layer: describe(card.closest('.guide-layer')), highlightedTargets: [...document.querySelectorAll('.guide-target')].map(describe),
           content: content ? { ...rect(content), scrollHeight: content.scrollHeight, clientHeight: content.clientHeight } : null }
       })
       ;(result.guideBounds ||= {})[name] = snapshot
