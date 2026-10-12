@@ -97,7 +97,7 @@ final class Mysql57UpgradeAssertions {
         execute(c, "CREATE TABLE cp57_synthetic_extra(id BIGINT PRIMARY KEY, note VARCHAR(100)) ENGINE=InnoDB");
         execute(c, "INSERT INTO cp57_synthetic_extra VALUES(6750,'Synthetic unrelated extra table')");
         execute(c, "INSERT INTO patient(id,user_id,name) VALUES(6750,6750,'Synthetic migration retained patient')");
-        execute(c, "INSERT INTO medication(id,patient_id,user_id,drug_name) VALUES(6750,6750,6750,'Synthetic migration medication')");
+        execute(c, "INSERT INTO medication(id,patient_id,user_id,drug_name,created_at,updated_at) VALUES(6750,6750,6750,'Synthetic migration medication','2026-09-20 12:34:56','2026-09-21 13:45:57')");
         execute(c, "INSERT INTO medication_stock(id,patient_id,medication_id,quantity) VALUES(6750,6750,6750,12.500)");
         execute(c, "INSERT INTO medical_record(id,patient_name,patient_id,user_id,record_date,record_type,remark) VALUES(6750,'Synthetic migration patient',6750,6750,'2026-10-10','OTHER','Synthetic original medical text')");
         execute(c, "INSERT INTO medical_record_attachment(id,record_id,file_path,file_content) VALUES(6750,6750,'synthetic/retained.txt','c3ludGhldGlj')");
@@ -122,13 +122,19 @@ final class Mysql57UpgradeAssertions {
         execute(c, "ALTER TABLE alert_record ADD KEY idx_alert_dedupe(status)");
         assertRejectedWithoutTableMutation(c, 1644);
         execute(c, "ALTER TABLE alert_record DROP INDEX idx_alert_dedupe");
+        // Deliberate fixture changes must not advance native ON UPDATE audit timestamps.
+        // MySQL preserves an automatic timestamp only when it is explicitly assigned its current value.
         // Missing/ambiguous seed identities must not grant permission to unknown content.
-        execute(c,"UPDATE sys_role SET role_code='cp57_synthetic_admin' WHERE role_code='admin'");
+        List<String> adminBefore=rows(c,"SELECT * FROM sys_role WHERE role_code='admin'");
+        execute(c,"UPDATE sys_role SET role_code='cp57_synthetic_admin',update_time=update_time WHERE role_code='admin'");
         assertRejectedWithoutTableMutation(c,1644);
-        execute(c,"UPDATE sys_role SET role_code='admin' WHERE role_code='cp57_synthetic_admin'");
+        execute(c,"UPDATE sys_role SET role_code='admin',update_time=update_time WHERE role_code='cp57_synthetic_admin'");
+        assertEquals(adminBefore,rows(c,"SELECT * FROM sys_role WHERE role_code='admin'"),"Restore complete admin fixture including audit time");
+        List<String> parentMenuBefore=rows(c,"SELECT * FROM sys_menu WHERE id=8");
         execute(c,"UPDATE sys_menu SET menu_code='cp57_synthetic_parent' WHERE id=8");
         assertRejectedWithoutTableMutation(c,1644);
         execute(c,"UPDATE sys_menu SET menu_code='patient-profile' WHERE id=8");
+        assertEquals(parentMenuBefore,rows(c,"SELECT * FROM sys_menu WHERE id=8"),"Restore complete parent-menu fixture");
         assertEquals("0",scalar(c,"SELECT COUNT(*) FROM sys_menu WHERE menu_code='care-plan-nursing'"));
         execute(c,"INSERT INTO sys_menu(id,parent_id,menu_name,menu_code,menu_path,permission,menu_type,status) VALUES(6759,0,'Synthetic unknown menu','care-plan-nursing','/unknown','synthetic:unknown',1,1)");
         assertRejectedWithoutTableMutation(c,1644);
@@ -147,9 +153,10 @@ final class Mysql57UpgradeAssertions {
         assertRejectedWithoutTableMutation(c, 1644);
         execute(c, "DELETE FROM medication_stock WHERE id=6751");
         execute(c, "ALTER TABLE medication_stock ADD UNIQUE KEY uk_medication_stock(medication_id)");
-        execute(c, "UPDATE medication SET patient_id=6751 WHERE id=6750");
+        execute(c, "UPDATE medication SET patient_id=6751,updated_at=updated_at WHERE id=6750");
         assertRejectedWithoutTableMutation(c, 1644);
-        execute(c, "UPDATE medication SET patient_id=6750 WHERE id=6750");
+        execute(c, "UPDATE medication SET patient_id=6750,updated_at=updated_at WHERE id=6750");
+        assertEquals(original,data(c),"Synthetic blocker fixtures must restore all original rows before migration");
 
         apply(c);
         applyScript(c, "sql/mysql57_postcheck_20261012.sql");

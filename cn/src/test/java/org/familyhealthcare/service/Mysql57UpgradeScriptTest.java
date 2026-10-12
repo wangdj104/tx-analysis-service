@@ -122,6 +122,18 @@ class Mysql57UpgradeScriptTest {
         assertTrue(parts.get(1).endsWith("END"));
     }
 
+    @Test void legacyBlockerFixturesPreserveAutomaticAuditTimestamps() throws Exception {
+        String helper=new String(Files.readAllBytes(Paths.get("src/test/java/org/familyhealthcare/service/Mysql57UpgradeAssertions.java")),StandardCharsets.UTF_8);
+        assertTrue(helper.contains("UPDATE medication SET patient_id=6751,updated_at=updated_at WHERE id=6750"));
+        assertTrue(helper.contains("UPDATE medication SET patient_id=6750,updated_at=updated_at WHERE id=6750"));
+        assertTrue(helper.contains("UPDATE sys_role SET role_code='cp57_synthetic_admin',update_time=update_time WHERE role_code='admin'"));
+        assertTrue(helper.contains("UPDATE sys_role SET role_code='admin',update_time=update_time WHERE role_code='cp57_synthetic_admin'"));
+        assertTrue(helper.contains("'Synthetic migration medication','2026-09-20 12:34:56','2026-09-21 13:45:57'"),
+                "Historical audit times make accidental ON UPDATE mutation deterministic");
+        assertTrue(helper.contains("Synthetic blocker fixtures must restore all original rows before migration"));
+        assertTrue(helper.contains("All original data and extra tables survive"));
+    }
+
     private int count(String text, String regex) {
         java.util.regex.Matcher matcher = Pattern.compile(regex).matcher(text);
         int count = 0; while (matcher.find()) count++; return count;
