@@ -1,3 +1,5 @@
+import { visualMeasurement } from './fixtures/nine-visual-measurements.mjs'
+import { contrastRatio } from '../../frontend/tests/careNineMeasurements.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
@@ -7,6 +9,19 @@ import { createHash } from 'node:crypto'
 import { deflateSync } from 'node:zlib'
 import { spawnSync } from 'node:child_process'
 const sha='a'.repeat(40)
+const nineGroups={care:[5,6],monitoring:[1,2,7,8],clinical:[9],shell:[3,4,9]}
+const widths=[320,375,390,768,1365]
+function measuredItem(id,group,viewport,edition){
+ const box={visible:true,left:12,right:132,top:0,bottom:44,width:120,height:44}
+ if(group==='care'&&id===5)return {actions:[{id:'synthetic-action',titleOccurrences:1,statusOccurrences:1,borderedAncestorDepth:2,bounds:box}],density:{baselineCommit:'c8756525dd7f7892dc4a836ac22d677af764c132',baselineSourceSha256:hash(readFileSync(`frontend/tests/fixtures/care-density-baseline/${edition}.vue`)),baselineContainerWidth:280,currentContainerWidth:280,baselineHeights:[200],currentHeights:[120]}}
+ if(group==='care'&&id===6)return {statuses:[['PENDING','rgb(0, 0, 0)'],['MISSED','rgb(100, 0, 0)'],['SNOOZED','rgb(0, 0, 100)']].map(([status,color])=>({status,label:status,icon:status,color,background:'rgb(255, 255, 255)',contrast:contrastRatio(color,'rgb(255, 255, 255)'),semanticTokenColor:color,bounds:box}))}
+ if(group==='clinical'&&id===9){
+  const control=(testId,role,background)=>({testId,role,bounds:box,background,color:'rgb(0, 0, 0)',disabled:false,text:testId,opacity:'1',ariaBusy:'false'})
+  const enabled=control('submit-receipt','primary','rgb(23, 107, 89)')
+  return {surface:'rgb(255, 255, 255)',controls:[enabled,control('close-receipt','secondary','rgb(255, 255, 255)'),control('remove','remove','rgba(0, 0, 0, 0)')],referenceControls:[{referenceId:'ref1',referenceText:'Synthetic record',describedBy:'ref1',sameRow:true,bounds:box}],enabledSubmit:enabled,submittingSubmit:{...enabled,disabled:true,ariaBusy:'true',text:'Submitting...',opacity:'0.5'}}
+ }
+ return visualMeasurement(group,id,viewport)
+}
 const groups={care:[1,3,6,7],monitoring:[2,4,8,10,13,17],clinical:[3,5,11,15,17],shell:[3,9,12,14,16,17]}
 const hash=value=>createHash('sha256').update(value).digest('hex')
 const harnesses={care:'careDraftDialogBacklog',monitoring:'uiSeventeenMonitoring',clinical:'uiSeventeenClinical',shell:'uiSeventeenShell'}
@@ -17,12 +32,16 @@ function png(width,height=900){
  return Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),chunk('IHDR',header),chunk('IDAT',deflateSync(Buffer.alloc((width*4+1)*height))),chunk('IEND',Buffer.alloc(0))])
 }
 function fixture(mutator=()=>{}) {
- const dir=mkdtempSync(join(tmpdir(),'ui17-gate-')),images=Object.fromEntries([1365,375].map(width=>[width,png(width)]))
+ const dir=mkdtempSync(join(tmpdir(),'ui17-gate-')),images=Object.fromEntries(widths.map(width=>[width,png(width)]))
  for(const [width,bytes] of Object.entries(images))writeFileSync(join(dir,`${width}.png`),bytes)
  for(const [group,itemIds] of Object.entries(groups)){
   const harness=`frontend/tests/${harnesses[group]}.browser.mjs`
   const doc={commit:sha,mode:'browser',harnessSha256:hash(readFileSync(harness)),sourceHashes:{'frontend/src/App.vue':hash(readFileSync('frontend/src/App.vue'))},results:[]}
-  for(const edition of ['en','cn'])for(const viewport of [1365,375])for(const theme of ['platform','white','blue','mint','sand','dark'])doc.results.push({itemIds,edition,viewport,theme,status:'passed',screenshots:[`${viewport}.png`],screenshotHashes:{[`${viewport}.png`]:hash(images[viewport])}})
+  for(const edition of ['en','cn'])for(const viewport of widths)for(const theme of ['platform','white','blue','mint','sand','dark'])doc.results.push({itemIds,nineItemIds:[...nineGroups[group]],nineMeasurements:Object.fromEntries(nineGroups[group].map(id=>[id,measuredItem(id,group,viewport,edition)])),edition,viewport,theme,status:'passed',screenshots:[`${viewport}.png`],screenshotHashes:{[`${viewport}.png`]:hash(images[viewport])}})
+  for(const row of doc.results){
+   if(group==='monitoring')row.responsiveEditReturns=['cancel','save'].map(action=>({action,fromViewport:row.viewport,toViewport:row.viewport<=768?1365:375,recordId:217,origin:{trusted:true},returned:{viewport:row.viewport<=768?1365:375,left:10,right:120,top:100,bottom:144,focused:true,unobscured:true}}))
+   if(group==='shell'&&row.viewport<=768)row.monitoringShellAnchors=['monitoring-alerts','monitoring-trends','monitoring-tasks'].flatMap(id=>['click','keyboard'].map(action=>({id,action,viewport:row.viewport,target:{top:150,bottom:180},header:{bottom:140},focused:true,unobscured:true})))
+  }
   mutator(group,doc,dir);writeFileSync(join(dir,`${group}-results.json`),JSON.stringify(doc))
  }
  writeFileSync(join(dir,'acceptance-summary.json'),JSON.stringify({status:'passed',commit:sha}))
@@ -38,7 +57,7 @@ test('screenshots outside synthetic evidence directory cannot pass',()=>{assert.
 test('CI runs all four new harnesses and fail-closed matrix collector',()=>{const workflow=readFileSync('.github/workflows/ci.yml','utf8'); const job=workflow.split('  ui-seventeen-browser:')[1]?.split('\n  care-plan-mysql:')[0]||''; for(const file of ['careDraftDialogBacklog','uiSeventeenMonitoring','uiSeventeenClinical','uiSeventeenShell'])assert.ok(job.includes(`node frontend/tests/${file}.browser.mjs`),file);assert.match(job,/node scripts\/verify-ui-seventeen-browser\.mjs/);assert.match(job,/if-no-files-found: error/);assert.doesNotMatch(job,/continue-on-error|\|\|\s*true/);assert.match(job,/npm ci --prefix cn\/frontend/);assert.match(job,/playwright install --with-deps chromium/)})
 
 test('a PNG header without image pixels is rejected',()=>{assert.notEqual(fixture((g,d,dir)=>{if(g==='care'){const fake=Buffer.alloc(24);Buffer.from('89504e470d0a1a0a','hex').copy(fake);fake.write('IHDR',12);fake.writeUInt32BE(1365,16);fake.writeUInt32BE(900,20);writeFileSync(join(dir,'1365.png'),fake);for(const row of d.results)if(row.viewport===1365)row.screenshotHashes['1365.png']=hash(fake)}}).status,0)})
-test('wrong screenshot hashes fail',()=>{assert.notEqual(fixture((g,d)=>d.results[0].screenshotHashes['1365.png']='0'.repeat(64)).status,0)})
+test('wrong screenshot hashes fail',()=>{assert.notEqual(fixture((g,d)=>d.results[0].screenshotHashes[d.results[0].screenshots[0]]='0'.repeat(64)).status,0)})
 test('wrong source hashes fail',()=>{assert.notEqual(fixture((g,d)=>d.sourceHashes['frontend/src/App.vue']='0'.repeat(64)).status,0)})
 test('wrong harness hashes fail',()=>{assert.notEqual(fixture((g,d)=>d.harnessSha256='0'.repeat(64)).status,0)})
 test('fatal top-level error cannot be masked by passed row labels',()=>{assert.notEqual(fixture((g,d)=>d.error='fatal').status,0)})
@@ -82,3 +101,20 @@ test('each completed UI suite publishes its own outcome JSON before the next sui
  assert.match(job,/name: Preserve synthetic screenshots and per-item outcomes/)
  assert.match(job,/run: node scripts\/verify-ui-seventeen-browser\.mjs/)
 })
+
+// New acceptance remains additive: original 408 cells plus all nine items at five widths.
+test('nine improvements require all 540 new measured browser cells',()=>{const r=fixture();assert.equal(r.status,0,r.stderr);assert.equal(r.summary.nineCoverageCells,540);assert.equal(r.summary.coverageCells,408);assert.equal(r.summary.nineItemCount,9)})
+test('old 408 cells without the nine improvements cannot pass',()=>{assert.notEqual(fixture((g,d)=>{for(const row of d.results){delete row.nineItemIds;delete row.nineMeasurements}}).status,0)})
+test('missing 320px new item coverage fails',()=>{assert.notEqual(fixture((g,d)=>{if(g==='monitoring')d.results=d.results.filter(r=>r.viewport!==320)}).status,0)})
+test('a claimed new item without actual measurements fails',()=>{assert.notEqual(fixture((g,d)=>{if(g==='care')delete d.results[0].nineMeasurements[5]}).status,0)})
+test('empty or Boolean-only measurements cannot stand in for measured geometry',()=>{for(const value of [{},{passed:true},true])assert.notEqual(fixture((g,d)=>{if(g==='care')d.results[0].nineMeasurements[5]=value}).status,0)})
+test('unknown new item and unsupported viewport cannot pass',()=>{assert.notEqual(fixture((g,d)=>{if(g==='care')d.results[0].nineItemIds.push(10)}).status,0);assert.notEqual(fixture((g,d)=>{if(g==='care')d.results[0].viewport=400}).status,0)})
+
+test('gate independently rejects insufficient measured density despite passed case status',()=>{assert.notEqual(fixture((g,d)=>{if(g==='care')d.results[0].nineMeasurements[5].density.currentHeights=[199]}).status,0)})
+test('gate independently rejects fabricated contrast and duplicate rendered medication icons',()=>{for(const field of ['contrast','icon'])assert.notEqual(fixture((g,d)=>{if(g==='care'){const rows=d.results[0].nineMeasurements[6].statuses;rows[0][field]=field==='contrast'?20:rows[1].icon}}).status,0)})
+test('gate rejects wrong baseline source provenance',()=>{assert.notEqual(fixture((g,d)=>{if(g==='care')d.results[0].nineMeasurements[5].density.baselineSourceSha256='0'.repeat(64)}).status,0)})
+test('gate rejects an unmeasured or enabled submitting receipt',()=>{assert.notEqual(fixture((g,d)=>{if(g==='clinical')d.results[0].nineMeasurements[9].submittingSubmit.disabled=false}).status,0)})
+
+test('collector rejects a generic monitoring or shell object even with passed row status',()=>{for(const group of ['monitoring','shell'])assert.notEqual(fixture((g,d)=>{if(g===group)d.results[0].nineMeasurements[d.results[0].nineItemIds[0]]={viewport:320}}).status,0)})
+
+test('responsive focus and actual-shell anchor evidence are mandatory',()=>{for(const group of ['monitoring','shell'])assert.notEqual(fixture((g,d)=>{if(g===group)delete d.results[0][g==='monitoring'?'responsiveEditReturns':'monitoringShellAnchors']}).status,0)})

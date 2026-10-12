@@ -18,19 +18,19 @@
             <p v-if="referencesError" role="alert">{{ referencesError }}</p><p v-else-if="referencesQueried && !referencesLoading && !referenceOptions.length">No accessible records of this type for this patient.</p>
             <label v-if="referenceOptions.length">Select an existing record<select v-model.number="selectedReferenceId" data-testid="receipt-existing-record"><option :value="null">Select an existing record</option><option v-for="record in referenceOptions" :key="record.id" :value="record.id" :disabled="form.evidence.some(e => e.sourceType === referenceType && e.sourceId === record.id)">{{ record.label }}</option></select></label>
             <button type="button" data-testid="add-existing-reference" :disabled="form.evidence.length>=5 || !selectedReferenceId || referencesLoading" @click="addReference">Add existing reference</button>
-            <div v-for="(e,index) in form.evidence" :key="e.sourceType+':'+e.sourceId" class="evidence-row"><p>{{ referenceLabels[e.sourceType+':'+e.sourceId] || referenceFallback(e) }}</p><button type="button" @click="form.evidence.splice(index,1)">Remove reference</button></div>
+            <div v-for="(e,index) in form.evidence" :key="e.sourceType+':'+e.sourceId" class="evidence-row"><p :id="`receipt-reference-${e.sourceType}-${e.sourceId}`">{{ referenceLabels[e.sourceType+':'+e.sourceId] || referenceFallback(e) }}</p><button type="button" class="remove-reference" :aria-describedby="`receipt-reference-${e.sourceType}-${e.sourceId}`" @click="form.evidence.splice(index,1)">Remove reference</button></div>
             <p>The server verifies patient ownership and current permission. A reference does not grant access.</p>
           </fieldset>
         </template>
         <label v-if="command==='followUp'">Follow-up type<select v-model="form.kind" :disabled="busy"><option value="CONTACTED">Contacted</option><option value="AWAITING_INFORMATION">Waiting for more information</option><option value="DOCTOR_NOTIFIED">Doctor notified</option></select></label>
         <p v-if="!canSubmit" role="status">Read-only or unavailable action. Current permission is required.</p>
-        <div class="controls"><button v-if="canSubmit" type="submit" data-testid="submit-receipt" :disabled="busy || unresolved || needsReload" @click.prevent="submit">Submit record</button><button type="button" data-testid="close-receipt" @click="requestClose">Close</button><button v-if="needsReload" type="button" data-testid="reload-receipt" :disabled="busy" @click="reloadCurrent">Reload server state</button></div>
+        <div class="controls"><button v-if="canSubmit" type="submit" class="receipt-submit" data-testid="submit-receipt" :aria-busy="busy" :disabled="busy || unresolved || needsReload" @click.prevent="submit">{{ busy ? 'Submitting record…' : 'Submit record' }}</button><button type="button" class="receipt-close" data-testid="close-receipt" @click="requestClose">Close</button><button v-if="needsReload" type="button" data-testid="reload-receipt" :disabled="busy" @click="reloadCurrent">Reload server state</button></div>
       </form>
     </template>
     <p v-if="message" role="status">{{ message }}</p>
     <section v-if="unresolved" class="notice" role="alert"><p>The result is unknown. The original submission may already exist. Retry sends the original frozen command and original input, even if you edited this form.</p><button type="button" data-testid="retry-original" :disabled="busy" @click="retryOriginal">Retry original submission</button></section>
     <section v-if="abandonIntent" class="notice" role="alert"><p>Closing does not cancel a server submission. You may lose its retry key. Acknowledge and reload server state before a fresh command.</p><button type="button" data-testid="confirm-abandon" :disabled="busy" @click="confirmAbandon">Acknowledge and reload</button><button type="button" data-testid="keep-editing" @click="abandonIntent=false">Keep editing</button></section>
-    <button v-if="!state.editor" type="button" data-testid="close-receipt" @click="emit('closed')">Close</button>
+    <button v-if="!state.editor" type="button" class="receipt-close" data-testid="close-receipt" @click="emit('closed')">Close</button>
   </dialog>
 </template>
 <script setup>
@@ -128,5 +128,23 @@ onUnmounted(()=>{generation++;identityController?.abort();resetReferences();wind
 defineExpose({guardLeave,requestClose})
 </script>
 <style scoped>
-.receipt-dialog{box-sizing:border-box;width:min(640px,94vw);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--paper);color:var(--ink-800)}.receipt-dialog::backdrop{background:#10282c88}h2,p{overflow-wrap:anywhere}p{line-height:1.6}label{display:grid;gap:6px;margin:14px 0}textarea,input,select{width:100%;min-width:0;box-sizing:border-box;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--paper);color:inherit}button{min-height:44px;max-width:100%;padding:10px 14px;cursor:pointer;font:inherit;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800)}button:disabled{opacity:.5;cursor:default}button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.controls{display:flex;gap:10px;flex-wrap:wrap}.notice{padding:12px;margin:12px 0;border:1px solid var(--line);background:var(--care-50)}fieldset{min-width:0;margin:12px 0;border:1px solid var(--line)}.evidence-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.evidence-row{align-items:center}.evidence-row p{margin:0;overflow-wrap:anywhere}@media(max-width:600px){.receipt-dialog{padding:14px}.controls button{width:100%}.evidence-row{grid-template-columns:1fr}}
+.receipt-dialog{box-sizing:border-box;width:min(640px,94vw);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--paper);color:var(--ink-800)}
+.receipt-dialog::backdrop{background:#10282c88}h2,p{overflow-wrap:anywhere}p{line-height:1.6}
+label{display:grid;gap:6px;margin:14px 0}
+textarea,input,select{width:100%;min-width:0;box-sizing:border-box;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--paper);color:inherit}
+button{min-height:44px;max-width:100%;padding:10px 14px;cursor:pointer;font:inherit;line-height:1.5;white-space:normal;overflow-wrap:anywhere;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800)}
+.receipt-submit{background:var(--care-700);border-color:var(--care-700);color:var(--on-accent);font-weight:700}
+.receipt-submit:not(:disabled):hover{background:var(--care-800);border-color:var(--care-800)}
+.receipt-close{background:var(--paper);color:var(--ink-800);border-color:var(--control-border)}
+.remove-reference{background:transparent;border-color:transparent;color:var(--care-800);text-decoration:underline;text-underline-offset:3px;justify-self:end}
+.remove-reference:not(:disabled):hover{background:var(--surface-hover)}
+button:disabled{opacity:1;background:var(--disabled-bg);color:var(--disabled-text);border-color:var(--disabled-border);cursor:not-allowed}
+fieldset:disabled button{color:var(--disabled-text);cursor:not-allowed}
+button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.notice{padding:12px;margin:12px 0;border:1px solid var(--line);background:var(--care-50)}
+fieldset{min-width:0;margin:12px 0;border:1px solid var(--line)}
+.evidence-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin:8px 0;padding:8px 0;border-bottom:1px solid var(--line)}
+.evidence-row p{min-width:0;margin:0;overflow-wrap:anywhere}
+@media(max-width:600px){.receipt-dialog{padding:14px}.controls button{width:100%}.evidence-row{grid-template-columns:1fr}.remove-reference{justify-self:start}}
 </style>

@@ -1,6 +1,6 @@
 /**
  * Scoped, real Vue/Element Plus DOM acceptance for UI items 1, 3, 6 and 7.
- * EN + CN × six shipped appearance themes × 1365/375px. Synthetic data only.
+ * EN + CN × six shipped appearance themes × 320/375/390/768/1365px (legacy draft cases retain 375/1365). Synthetic data only.
  * Run: UI_SEVENTEEN_EVIDENCE_DIR=/path/to/evidence node frontend/tests/careDraftDialogBacklog.browser.mjs
  * Compile without launching a browser: append --compile-only
  * Optional CHROMIUM_PATH selects a browser; otherwise Playwright's installed Chromium is used.
@@ -15,15 +15,24 @@ import { join, relative } from 'node:path'
 import { build, preview } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
+import { contrastRatio, assertTaskHierarchy, assertTaskDensity, assertMedicationSemantics, measureTaskGroups, measureMedicationStatuses } from './careNineMeasurements.mjs'
 
 const repo = fileURLToPath(new URL('../../', import.meta.url))
 const evidence = process.env.UI_SEVENTEEN_EVIDENCE_DIR || process.env.CARE_DRAFT_EVIDENCE_DIR || join(repo, 'frontend/test-results/ui-seventeen')
 const compileOnly = process.argv.includes('--compile-only')
 const themes = ['platform', 'white', 'blue', 'mint', 'sand', 'dark']
-const widths = [1365, 375], editions = ['en', 'cn'], itemIds = [1, 3, 6, 7]
+const widths = [320, 375, 390, 768, 1365], legacyWidths = [375, 1365], editions = ['en', 'cn'], itemIds = [1, 3, 6, 7]
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim()
 const sha256 = value => createHash('sha256').update(value).digest('hex')
 const harnessSha256 = sha256(readFileSync(fileURLToPath(import.meta.url)))
+const densityBaselineCommit = 'c8756525dd7f7892dc4a836ac22d677af764c132'
+const densityBaselineDigests = { en: 'a9f32af9e90a781388d82e8db8891c2e6c015fa11f5e8c7164cb92db5edd74d1', cn: '76f7667b8b054ee1af9353566e50d1978e8c338f553dd962a4d77fab3ac08e4c' }
+const baselineSources = Object.fromEntries(['en', 'cn'].map(edition => {
+  const path = `frontend/tests/fixtures/care-density-baseline/${edition}.vue`
+  const digest = sha256(readFileSync(join(repo, path)))
+  assert.equal(digest, densityBaselineDigests[edition], 'Frozen baseline must remain byte-identical to source commit c8756525')
+  return [edition, { path, sha256: digest }]
+}))
 const sourceFiles = []
 function sourceTree(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -33,15 +42,16 @@ function sourceTree(directory) {
   }
 }
 sourceTree(join(repo, 'frontend/src')); sourceTree(join(repo, 'cn/frontend/src'))
+sourceFiles.push(...Object.values(baselineSources), { path: 'frontend/tests/careNineMeasurements.mjs', sha256: sha256(readFileSync(join(repo, 'frontend/tests/careNineMeasurements.mjs'))) })
 const sourceSha256 = sha256(JSON.stringify(sourceFiles))
-const matrix = editions.flatMap(edition => widths.flatMap(viewport => themes.map(theme => ({ itemIds, edition, viewport, theme }))))
+const matrix = editions.flatMap(edition => widths.flatMap(viewport => themes.map(theme => ({ itemIds: legacyWidths.includes(viewport) ? itemIds : [1], nineItemIds: [5, 6], edition, viewport, theme }))))
 mkdirSync(evidence, { recursive: true })
 mkdirSync(join(evidence, 'care'), { recursive: true })
 const report = {
   schemaVersion: 1, commit, mode: compileOnly ? 'compile-only' : 'browser', harnessSha256, sourceSha256,
   startedAt: new Date().toISOString(), results: [],
   planned: matrix.map(cell => ({ ...cell, status: 'not-run' })),
-  sourceFiles,
+  sourceFiles, densityBaseline: { commit: densityBaselineCommit, sources: baselineSources },
   scope: 'Actual care, entry, consultation and CareJourney components with shipped CSS/appearance application; synthetic API responses and a test-only router toolbar. No production App/auth/server acceptance or assistive-technology claim.',
   fixture: 'Fictional adults, authorized records #11/#22, unchanged synthetic medication instructions. No real health data or external API calls.',
   limitations: compileOnly ? ['Browser launch is deliberately not attempted: the confirmed process_singleton socket permission denial remains. DOM assertions/screenshots are unexecuted.'] : [],
@@ -96,6 +106,7 @@ function makeHarness(editionName) {
     import Care from '/@fs/${edition}/src/views/CareCenter.vue';
     import Entry from '/@fs/${edition}/src/components/CareEntryDialog.vue';
     import Journey from '/@fs/${edition}/src/views/CareJourneyManager.vue';
+    import BaselinePlan from '/@fs/${join(repo, baselineSources[editionName].path)}';
     initializeAppearance();
     const patients=useCurrentPatient(); patients.setPatientList([{id:11,patientName:'Synthetic patient'},{id:22,patientName:'Synthetic second patient'}]);
     const state=reactive({writes:[],reads:[],failTarget:false,delayTarget:false,pending:0,revoked:false,deferRoomWrite:false,routePending:0});
@@ -103,7 +114,7 @@ function makeHarness(editionName) {
     const room=id=>({id,patient_id:patients.currentPatientId.value,patient_name:patients.currentPatientName.value,doctor_name:'Synthetic doctor',symptom:'Synthetic room '+id,status:'OPEN',mode:'TEXT',can_message:true,can_close:true,messages:[],participants:[]});
     const patient=id=>({id,userId:id,name:id===11?'Synthetic patient':'Synthetic second patient'});
     const context=id=>({patient:patient(id),medications:[{id:17,drugName:'Synthetic medication'}],members:[],reports:[],actions:[],stocks:[{id:17,medicationId:17,drugName:'Synthetic medication',quantity:5,unit:'tablet',low:false}],intakes:['PENDING','MISSED','SNOOZED','TAKEN','SKIPPED','CANCELLED'].map((status,index)=>({id:101+index,status,drugName:'Synthetic '+status+' medication',scheduledAt:'2026-10-11 08:00:00',snoozeUntil:'2026-10-11 08:15:00',dosage:'Synthetic unchanged dose'})),items:[{id:31,kind:'HANDOVER',title:'Synthetic completed task',status:'DONE',details:{note:'Synthetic task context'}},{id:32,kind:'APPOINTMENT',title:'Synthetic cancelled appointment',status:'CANCELLED',details:{}},{id:33,kind:'APPOINTMENT',title:'Synthetic pending appointment',status:'OPEN',details:{}}]});
-    const plan={id:71,patientId:11,title:'Synthetic doctor plan',revisionNo:2,instructions:'Synthetic unchanged instructions',version:{id:72},actions:[{id:701,ordinal:1,instruction:'Synthetic reviewed history',status:'CONFIRMED',allowedActions:[]},{id:702,ordinal:2,instruction:'Synthetic pending execution',status:'OPEN',assignedUserId:11,dueAt:'2026-10-11T08:00:00Z',allowedActions:['SUBMIT_RECEIPT'],allowedEntryModes:['SELF']},{id:703,ordinal:3,instruction:'Synthetic waiting review',status:'SUBMITTED',allowedActions:[]}]};
+    const plan={id:71,patientId:11,title:'Synthetic doctor plan',revisionNo:2,instructions:'Synthetic unchanged instructions',version:2,actions:[{id:701,ordinal:1,instruction:'Synthetic reviewed history',status:'CONFIRMED',allowedActions:[]},{id:702,patientId:11,patientName:'Synthetic patient',ordinal:2,instruction:'Synthetic pending execution',status:'OPEN',assignedUserId:11,dueAt:'2026-10-11T08:00:00Z',events:[{id:1702,eventType:'FOLLOW_UP_RECORDED',actorName:'Synthetic care member',actorRole:'nurse',note:'Synthetic existing activity note',recordedAt:'2026-10-10T08:00:00Z'}],allowedActions:['SUBMIT_RECEIPT'],allowedEntryModes:['SELF']},{id:703,ordinal:3,instruction:'Synthetic waiting review',status:'SUBMITTED',allowedActions:[]}]};
     window.careQa={
       state,
       async careApi(name,args){state.reads.push({name,args});if(name==='getCareHome')return {data:[{patient:patient(11),intakes:[]},{patient:patient(22),intakes:[]}]};if(name==='getCareContext')return {data:context(args[0])};if(name==='getStockHistory')return {data:[]};state.writes.push({name,args});return {data:{}}},
@@ -126,8 +137,9 @@ function makeHarness(editionName) {
       resolve(){state.delayTarget=false;const old=pending;pending=[];old.forEach(resolve=>resolve());},
     };
     const EntryHost={setup(){const route=useRoute(),visible=ref(true);return()=>h(Entry,{modelValue:visible.value,'onUpdate:modelValue':value=>visible.value=value,patientId:patients.currentPatientId.value,patientName:patients.currentPatientName.value,kind:route.query.kind||'ORDER',medications:[{id:17,drugName:'Synthetic medication'}]})}};
+    const BaselineHost={setup(){const route=useRoute();return()=>h('div',{'data-qa-baseline':'',style:{width:route.query.width+'px',fontSize:route.query.fontSize,fontFamily:route.query.fontFamily,lineHeight:route.query.lineHeight}},[h(BaselinePlan,{patientId:11,mode:'PATIENT'})])}};
     const Other={render:()=>h('main',{'data-qa-other':''},'Synthetic destination')};
-    const router=createRouter({history:createWebHistory(),routes:[{path:'/',redirect:'/care'},{path:'/care',component:Care},{path:'/entry',component:EntryHost},{path:'/care-journey',component:Journey},{path:'/other',component:Other}]});
+    const router=createRouter({history:createWebHistory(),routes:[{path:'/',redirect:'/care'},{path:'/baseline',component:BaselineHost},{path:'/care',component:Care},{path:'/entry',component:EntryHost},{path:'/care-journey',component:Journey},{path:'/other',component:Other}]});
     let routeResolvers=[];
     router.beforeEach(async to=>{if(state.deferRoomWrite&&to.query.consultationId==='2'){state.routePending++;await new Promise(resolve=>routeResolvers.push(resolve));state.routePending--;}});
     const routes={care:'/care',entry:'/entry?kind=ORDER',appointment:'/entry?kind=APPOINTMENT',journey:'/care-journey?tab=consultation&consultationId=1',room2:'/care-journey?tab=consultation&consultationId=2',other:'/other'};
@@ -160,11 +172,13 @@ function makeHarness(editionName) {
   }
   const config = {
     configFile: false, root,
-    plugins: [{ name: 'synthetic-care-dom-api', resolveId: id => id in virtual ? id : null, load: id => virtual[id] }, vue()],
+    plugins: [{ name: 'frozen-density-baseline', enforce: 'pre', transform(code, id) {
+      if (id === join(repo, baselineSources[editionName].path)) return code.replace("from './ReceiptDialog.vue'", `from '/@fs/${edition}/src/components/care-plan/ReceiptDialog.vue'`)
+    } }, { name: 'synthetic-care-dom-api', resolveId: id => id in virtual ? id : null, load: id => virtual[id] }, vue()],
     resolve: { alias: { '@/api/care': 'care-dom-fixture', '@/api/careJourney': 'journey-dom-fixture', '@/api/carePlan': 'plan-dom-fixture', '@': join(edition, 'src') }, dedupe: ['vue', 'vue-router', 'element-plus'] },
     server: { host: '127.0.0.1', port: 0, hmr: false, fs: { allow: [repo] } }, logLevel: 'error',
   }
-  return { root, config, fixtureSha256: sha256(main + JSON.stringify(virtual)) }
+  return { root, config, fixtureSha256: sha256(main + JSON.stringify(virtual) + JSON.stringify(baselineSources)) }
 }
 
 async function qaClick(page, id) {
@@ -258,11 +272,12 @@ async function todayAcceptance(page, labels, result) {
   assert.notEqual(await plans.locator('[data-testid="plan-action-702"]').getAttribute('open'), null)
   assert.equal(await plans.locator('[data-testid="plan-action-701"]').getAttribute('open'), null)
   assert.equal(await history.getAttribute('open'), null, 'medication/care history starts closed')
-  const pending = page.locator('.care-columns .care-task').filter({ has: page.locator('.el-tag') })
+  const pending = page.locator('.care-columns .care-task').filter({ has: page.locator('.medication-status') })
   assert.equal(await pending.count(), 3)
   for (const status of ['PENDING', 'MISSED', 'SNOOZED']) assert.equal(await pending.filter({ hasText: `Synthetic ${status} medication` }).count(), 1)
   assert.equal(await history.locator('.care-task').count(), 5, 'taken/skipped/cancelled doses and done/cancelled tasks retained')
   assert.equal(await history.locator('.care-task').first().isVisible(), false)
+  const measurements = await careVisualMeasurements(page, result)
   await screenshot(page, result, 'today-collapsed')
   await history.locator('summary').focus(); await history.locator('summary').press('Enter')
   for (const status of ['TAKEN', 'SKIPPED', 'CANCELLED']) assert.equal(await history.locator('.care-task').filter({ hasText: `Synthetic ${status} medication` }).isVisible(), true)
@@ -271,7 +286,61 @@ async function todayAcceptance(page, labels, result) {
   assert.equal(await plans.locator('[data-testid="plan-action-701"] .action-card').isVisible(), true)
   await screenshot(page, result, 'history-expanded')
   await history.locator('summary').press('Enter'); assert.equal(await history.getAttribute('open'), null)
+  await plans.locator('[data-testid="plan-action-702"] .action-event-history > summary').click()
+  assert.equal(await plans.getByText('Synthetic existing activity note', { exact: true }).isVisible(), true, 'Existing activity history expands through its real disclosure')
+  await plans.locator('[data-testid="plan-action-702"] .action-event-history > summary').click()
+  await page.getByTestId('record-702').click()
+  await page.locator('dialog.receipt-dialog[open]').waitFor()
+  assert.match(await page.locator('dialog.receipt-dialog').innerText(), /Synthetic pending execution/)
+  await page.getByTestId('close-receipt').click(); await page.locator('dialog.receipt-dialog').waitFor({ state: 'hidden' })
+  await waitOutput(page, 'writes', 0)
+  result.nineMeasurements = { 5: measurements.hierarchy, 6: measurements.medication }
+  result.nineItemIds = [5, 6]
   result.checks.push('Quick recording first; pending/waiting plans first; all six intake statuses retained; closed history accessible by keyboard; original history actions retained')
+}
+
+async function careVisualMeasurements(page, result) {
+  const plans = page.locator('.plan-tasks')
+  const actions = await plans.locator('.action-group').evaluateAll(measureTaskGroups)
+  result.nineMeasurements[5] = { actions }
+  assertTaskHierarchy(actions, result.viewport)
+  const statuses = (await page.locator('.care-columns .medication-status').evaluateAll(measureMedicationStatuses)).map(row => ({ ...row, contrast: contrastRatio(row.color, row.background) }))
+  result.nineMeasurements[6] = { theme: result.theme, statuses }
+  assertMedicationSemantics(statuses)
+  const expectedLabels = result.edition === 'en' ? { PENDING: 'Due', MISSED: 'Missed', SNOOZED: 'Snoozed' } : { PENDING: '待服用', MISSED: '已漏服', SNOOZED: '已稍后提醒' }
+  for (const status of statuses) assert.equal(status.label, expectedLabels[status.status], 'Medication status retains its actual localized meaning')
+  const measureDensity = node => {
+    const css = getComputedStyle(node), box = node.getBoundingClientRect()
+    return { width: box.width, fontSize: css.fontSize, fontFamily: css.fontFamily, lineHeight: css.lineHeight,
+      regionHeight: box.height, planCardHeight: node.querySelector('.plan-card').getBoundingClientRect().height,
+      openActionHeights: [...node.querySelectorAll('.action-group[open]')].map(action => action.getBoundingClientRect().height),
+      actionIds: [...node.querySelectorAll('.action-group')].map(action => action.dataset.testid) }
+  }
+  const current = await plans.evaluate(measureDensity)
+  const baselinePage = await page.context().newPage()
+  let baseline
+  try {
+    const url = new URL('/baseline', page.url())
+    for (const key of ['width', 'fontSize', 'fontFamily', 'lineHeight']) url.searchParams.set(key, String(current[key]))
+    await baselinePage.goto(url.href)
+    await baselinePage.getByTestId('plan-action-702').waitFor()
+    baseline = await baselinePage.locator('.plan-tasks').evaluate(measureDensity)
+    assert.deepEqual(baseline.actionIds, current.actionIds, 'Density compares the same real API fixture in the same order')
+    for (const property of ['fontSize', 'fontFamily', 'lineHeight']) assert.equal(baseline[property], current[property], `Baseline inherits identical ${property}`)
+    // Actual baseline pixels accompany numeric evidence; no historical heights are invented.
+    await screenshot(baselinePage, result, 'density-frozen-baseline')
+  } finally { await baselinePage.close() }
+  const density = { measuredSelector: '.plan-card', baselineCommit: densityBaselineCommit, baselineSourceSha256: baselineSources[result.edition].sha256,
+    baselineSourcePath: baselineSources[result.edition].path, baselineHeights: [baseline.planCardHeight], currentHeights: [current.planCardHeight],
+    baselineContainerWidth: baseline.width, currentContainerWidth: current.width,
+    baselineRegionHeight: baseline.regionHeight, currentRegionHeight: current.regionHeight,
+    baselineOpenActionHeights: baseline.openActionHeights, currentOpenActionHeights: current.openActionHeights,
+    actionIds: current.actionIds, fontSize: current.fontSize, fontFamily: current.fontFamily, lineHeight: current.lineHeight }
+  result.nineMeasurements[5].density = density
+  density.regionReductionRatio = 1 - current.regionHeight / baseline.regionHeight
+  density.reductionRatio = 1 - current.planCardHeight / baseline.planCardHeight
+  assertTaskDensity(density)
+  return { hierarchy: { actions, density }, medication: { theme: result.theme, statuses } }
 }
 
 async function identityAcceptance(page, labels, result) {
@@ -502,6 +571,9 @@ async function newPage(browser, base, cell) {
       errors.push(`Blocked external request: ${url.origin}${url.pathname}`)
       return route.abort('blockedbyclient')
     }
+    if (url.pathname === '/api/patient/names' && route.request().method() === 'GET' && route.request().headers().authorization === 'Bearer synthetic-only') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 200, data: [{ id: 11, patientName: 'Synthetic patient' }, { id: 22, patientName: 'Synthetic second patient' }] }) })
+    }
     if (/^\/api(?:\/|$)/.test(url.pathname)) {
       errors.push(`Unexpected real API request: ${url.pathname}`)
       return route.fulfill({ status: 500, contentType: 'application/json', body: '{"code":500}' })
@@ -554,8 +626,8 @@ try {
       const base = `http://127.0.0.1:${server.httpServer.address().port}`
       for (const viewport of widths) for (const theme of themes) {
         const cell = { edition, viewport, theme }, copy = labels[edition]
-        for (const item of itemIds) {
-          const result = { ...cell, itemIds: [item], status: 'failed', commit, sourceSha256, harnessSha256, fixtureSha256: harness.fixtureSha256, screenshots: [], screenshotSha256: {}, checks: [] }
+        for (const item of legacyWidths.includes(viewport) ? itemIds : [1]) {
+          const result = { ...cell, itemIds: [item], nineMeasurements: {}, status: 'failed', commit, sourceSha256, harnessSha256, fixtureSha256: harness.fixtureSha256, screenshots: [], screenshotSha256: {}, checks: [] }
           let session
           try {
             session = await newPage(browser, base, cell)

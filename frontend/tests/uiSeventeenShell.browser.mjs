@@ -13,6 +13,8 @@ import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
 import { chromium, expect } from '@playwright/test'
 import { build, preview } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { assertReadableBox, assertDisjointBoxes, assertTouchTarget, measureReadableElements } from './uiNineGeometry.mjs'
+import { assertNineVisualMeasurement } from '../../scripts/ui-nine-measurements.mjs'
 
 const repo = fileURLToPath(new URL('../../', import.meta.url))
 const evidence = resolve(process.env.UI_SEVENTEEN_EVIDENCE_DIR || join(repo, 'frontend/test-results/ui-seventeen'))
@@ -30,7 +32,7 @@ const themeOracle = {
   sand: ['#fffdf9', '#f8f2e9', '#f8f0e3', '#7a5429'],
   dark: ['#18262e', '#203139', '#203e37', '#7cd3b5'],
 }
-const matrix = ['en', 'cn'].flatMap(edition => [1365, 375].flatMap(viewport => themes.map(theme => ({ edition, viewport, theme }))))
+const matrix = ['en', 'cn'].flatMap(edition => [320, 375, 390, 768, 1365].flatMap(viewport => themes.map(theme => ({ edition, viewport, theme }))))
 const runId = new Date().toISOString().replace(/[^0-9A-Za-z]/g, '-')
 const sha = value => createHash('sha256').update(value).digest('hex')
 const manifest = {
@@ -50,7 +52,7 @@ await persist() // Replace any old success report before doing work.
 const ownedFiles = [
   'App.vue', 'components/PatientSwitcher.vue', 'components/OnboardingGuide.vue',
   'components/AppearanceSelector.vue', 'views/DoctorWorkspace.vue', 'views/CareCenter.vue', 'views/FamilyHealthManager.vue',
-  'views/DataExportManager.vue', 'views/HealthReportManager.vue', 'views/MedicalRecordManager.vue',
+  'views/DataExportManager.vue', 'views/HealthReportManager.vue', 'views/MedicalRecordManager.vue', 'views/MonitoringCenter.vue',
 ]
 async function compileSources() {
   const compiled = []
@@ -72,11 +74,12 @@ async function compileSources() {
       manifest.sourceHashes[relative(repo, filename)] = sha(await readFile(filename))
     }
   }
-  manifest.sourceHashes[relative(repo, fileURLToPath(import.meta.url))] = sha(await readFile(fileURLToPath(import.meta.url)))
+  for (const filename of [fileURLToPath(import.meta.url), fileURLToPath(new URL('./uiNineGeometry.mjs', import.meta.url)), fileURLToPath(new URL('../../scripts/ui-nine-measurements.mjs', import.meta.url))]) manifest.sourceHashes[relative(repo, filename)] = sha(await readFile(filename))
   manifest.compiledFiles = compiled
 }
 
-const patients = [{ id: 99011, patientName: 'Synthetic Same Name' }, { id: 99012, patientName: 'Synthetic Same Name' }]
+const patientDisplayName = 'Synthetic Same Name Alexandra Catherine Montgomery-Sutherland'
+const patients = [{ id: 99011, patientName: patientDisplayName }, { id: 99012, patientName: patientDisplayName }]
 function menusFor(edition) {
   const rows = [
     [1, 0, 'Family Care', '家庭照护', '/care', 'care'],
@@ -178,9 +181,12 @@ async function openCase(browser, host, cell, result) {
         '/api/doctor-workspace/summary': { patients: [], reviewQueue: [], assignedPatients: 0, pendingReviews: 0 },
         '/api/care-plans': { items: [], nextCursor: null },
         '/api/care/home': patients.map(patient => ({ patient: { id: patient.id, name: patient.patientName }, intakes: [] })),
-        '/api/care/context': { patient: { id: patientId, name: 'Synthetic Same Name', userId: 99001 }, medications: [], members: [], reports: [], stocks: [], intakes: [], items: [] },
+        '/api/care/context': { patient: { id: patientId, name: patientDisplayName, userId: 99001 }, medications: [], members: [], reports: [], stocks: [], intakes: [], items: [] },
         '/api/family-health/intakes': [], '/api/family-health/timeline': [], '/api/family-health/target': {},
         '/api/medical-record/list': [], '/api/medical-record/items': ['Synthetic laboratory item'],
+        '/api/monitoring/snapshot': { patient: { id: patientId, name: patientDisplayName }, generatedAt: '2026-10-11T08:00:00Z', lastDataAt: '2026-10-11T07:30:00Z', overallStatus: 'STABLE', statusLabel: 'Synthetic stable status', signals: [], metrics: { activeAlertCount: 9, todayTaskCount: 0 },
+          activeAlerts: Array.from({ length: 9 }, (_, index) => ({ id: 99040 + index, patientId, title: `Synthetic alert ${index + 1}`, level: 'INFO', value: 'Synthetic source evidence only', triggeredAt: '2026-10-11T07:30:00Z', status: 'PENDING' })), todayTasks: [], recentEvents: [], careSuggestions: [],
+          vitalTrend: [{ date: '2026-10-10', time: '09:15', systolic: 144, diastolic: 83, glucose: 108, glucoseUnit: 'mg/dL', abnormal: true }, { date: '2026-10-11', time: '07:30', systolic: 120, diastolic: 80, glucose: 5.2, glucoseUnit: 'mmol/L', abnormal: false }] },
         // HealthAnalysisManager mounts its default complication pane before
         // onMounted selects the requested export/report tab. Keep those
         // transient reads explicit; never permit a generic API fallback.
@@ -262,15 +268,20 @@ async function openCase(browser, host, cell, result) {
   async function toastBounds(id) {
     const measurements = result.patientSwitchToastBounds ||= []
     const measurement = { patientId: id }; measurements.push(measurement)
-    await expect(page.locator('.el-message').filter({ hasText: t('Switched to Synthetic Same Name.', '已切换到Synthetic Same Name。') }).first()).toBeVisible()
+    await expect(page.locator('.patient-switch-toast:visible')).toHaveCount(1)
+    await expect(page.locator('.patient-switch-toast:visible')).toContainText(t('Switched to', '已切换到'))
+    await expect(page.locator('.patient-switch-toast:visible')).toContainText(patientDisplayName)
+    await expect(page.locator('.patient-switch-toast:visible')).toContainText(`#${id}`)
     let snapshot
     await expect.poll(async () => {
       snapshot = await page.locator('.el-message:visible').evaluateAll(nodes => ({
         viewport: { width: innerWidth, height: innerHeight },
+        patientContext: (() => { const box = document.querySelector('.patient-switcher').getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height } })(),
+        topbar: (() => { const box = document.querySelector('.workspace-topbar').getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height } })(),
         messages: nodes.map(node => {
           const box = node.getBoundingClientRect(), content = node.querySelector('.el-message__content')
           const textBox = content?.getBoundingClientRect()
-          return { text: node.textContent, left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+          return { patientSwitch: node.classList.contains('patient-switch-toast'), text: node.textContent, left: box.left, right: box.right, top: box.top, bottom: box.bottom,
             opacity: Number(getComputedStyle(node).opacity), transform: getComputedStyle(node).transform,
             contentLeft: textBox?.left, contentRight: textBox?.right,
             contentScrollWidth: content?.scrollWidth, contentClientWidth: content?.clientWidth }
@@ -282,13 +293,26 @@ async function openCase(browser, host, cell, result) {
         message.top >= 0 && message.bottom <= snapshot.viewport.height && message.contentLeft >= message.left &&
         message.contentRight <= message.right && message.contentScrollWidth <= message.contentClientWidth + 1)
     }, { message: 'Actual patient-switch notifications and their full text must fit the viewport' }).toBe(true)
+    const patientMessages = snapshot.messages.filter(message => message.patientSwitch)
+    assert.equal(patientMessages.length, 1, 'Repeated patient switches keep exactly one current patient notification')
+    for (const message of patientMessages) {
+      assertDisjointBoxes(message, snapshot.patientContext, 'Patient toast and selected identity')
+      assertDisjointBoxes(message, snapshot.topbar, 'Patient toast and fixed header')
+      assert.ok(message.top >= snapshot.topbar.bottom + 11, 'Patient toast follows the post-render toolbar with its intended 12px gap')
+      assert.match(message.text, new RegExp(`#${id}\\b`))
+      assert.doesNotMatch(message.text, new RegExp(`#${id === 99011 ? 99012 : 99011}\\b`), 'No stale contradictory record identity remains')
+    }
+    const [identity] = await page.locator('.patient-switcher__record').evaluateAll(measureReadableElements)
+    assertReadableBox(identity, cell.viewport, 'Persistent current patient record ID')
+    assert.equal(identity.text, `#${id}`)
+    measurement.identity = identity
   }
   async function choose(select, name) {
     await select.click()
     await page.getByRole('option', { name, exact: true }).click()
   }
   async function patient(id) {
-    await choose(page.locator('.patient-switcher .el-select'), `Synthetic Same Name · ${t('Record', '档案')} #${id}`)
+    await choose(page.locator('.patient-switcher .el-select'), `${patientDisplayName} · ${t('Record', '档案')} #${id}`)
     await expect.poll(() => page.evaluate(() => localStorage.getItem('currentPatientId'))).toBe(String(id))
     await expect(page.locator('.patient-switcher')).toContainText(`#${id}`)
     await toastBounds(id)
@@ -304,11 +328,59 @@ async function openCase(browser, host, cell, result) {
     await page.waitForTimeout(250)
     assert.equal(state.downloads.length, count, 'No stale, failed, or empty download may start')
   }
-  return { page, context, state, t, go, capture, fit, guideBounds, choose, patient, date, noExtraDownload, csv }
+  return { page, context, state, t, go, capture, fit, guideBounds, choose, patient, toastBounds, date, noExtraDownload, csv }
+}
+
+function acceptNine(result, item, measurement) {
+  assertNineVisualMeasurement('shell', item, measurement, result.viewport)
+  ;(result.nineMeasurements ||= {})[item] = measurement
+  result.nineItemIds = [...new Set([...(result.nineItemIds || []), item])].sort((a, b) => a - b)
+}
+async function formLabelGeometry(page, cell, surface) {
+  const labels = page.locator('.report-export-form .el-form-item__label:visible')
+  assert.ok(await labels.count() >= 4, `${surface} exercises at least four actual form labels`)
+  const measured = []
+  for (const label of await labels.all()) {
+    await label.scrollIntoViewIfNeeded()
+    const [box] = await label.evaluateAll(measureReadableElements)
+    assertReadableBox(box, cell.viewport, `${surface}: ${box.text}`)
+    const layout = await label.evaluate(element => {
+      const item = element.closest('.el-form-item'), content = item.querySelector('.el-form-item__content'), box = content.getBoundingClientRect()
+      const pseudo = getComputedStyle(element, '::before'), style = getComputedStyle(element)
+      return { content: { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height }, required: item.classList.contains('is-required'), marker: pseudo.content, markerWidth: parseFloat(pseudo.width) || 0, markerMargin: parseFloat(pseudo.marginRight) || 0, lineHeight: parseFloat(style.lineHeight), labelWidth: style.width, labelWhiteSpace: style.whiteSpace }
+    })
+    assert.ok(layout.content.width > 0 && layout.content.left >= -1 && layout.content.right <= cell.viewport + 1, `${surface} control fits the actual viewport`)
+    if (cell.viewport <= 768) assert.ok(box.bottom <= layout.content.top + 1, `${surface} mobile labels are above their controls`)
+    else assert.ok(box.right <= layout.content.left + 1, `${surface} desktop labels have their own adaptive column`)
+    const lineTops = [...new Set(box.textBoxes.map(text => Math.round(text.top)))]
+    assert.equal(lineTops.length, 1, `${surface} label text is a complete unbroken line`)
+    if (layout.required) {
+      assert.match(layout.marker, /\*/, `${surface} required marker is still present`)
+      assert.ok(box.textBoxes[0].top < box.top + layout.lineHeight, `${surface} required marker cannot occupy a separate first line`)
+      assert.ok(box.width >= box.textBoxes[0].right - box.textBoxes[0].left + layout.markerWidth + layout.markerMargin - 1, `${surface} label reserves actual width for marker and text`)
+    }
+    measured.push({ ...box, ...layout })
+  }
+  assert.ok(measured.some(label => label.required), `${surface} measures actual required labels`)
+  return { surface, layout: cell.viewport <= 768 ? 'labels-above-controls' : 'adaptive-label-columns', labels: measured }
+}
+async function reportActionGeometry(page, cell) {
+  const mode = page.locator('.execution-report-choice'), generate = page.locator('.report-export-actions .el-button--primary')
+  await expect(mode).toHaveClass(/el-button/); await expect(mode).not.toHaveClass(/el-button--primary/)
+  await expect(generate).toHaveCount(1); await expect(generate).toBeEnabled()
+  const [secondary] = await mode.evaluateAll(measureReadableElements), [primary] = await generate.evaluateAll(measureReadableElements)
+  for (const [name, box] of [['Secondary report mode', secondary], ['Generate report', primary]]) { assertReadableBox(box, cell.viewport, name); assertTouchTarget(box, name) }
+  assert.notEqual(primary.background, secondary.background, 'Generate is visually primary and report mode uses a distinct secondary treatment')
+  // Native keyboard activation proves the secondary control has kept its action.
+  await mode.focus(); await expect(mode).toBeFocused(); await page.keyboard.press('Enter')
+  await expect(mode).toHaveAttribute('aria-expanded', 'true'); await expect(page.locator('.report-export-form')).toHaveCount(0)
+  await mode.focus(); await page.keyboard.press('Enter')
+  await expect(mode).toHaveAttribute('aria-expanded', 'false'); await expect(generate).toBeVisible()
+  return { secondary, primary, activation: ['keyboard-expand', 'keyboard-collapse'] }
 }
 
 async function exerciseCase(s, cell, result) {
-  const { page, state, t, go, capture, fit, guideBounds, choose, patient, date, noExtraDownload } = s
+  const { page, state, t, go, capture, fit, guideBounds, choose, patient, toastBounds, date, noExtraDownload } = s
   const checked = name => result.assertions.push(name)
   await go('/health-analysis?tab=data-export')
   await expect(page.locator('.export-scope')).toBeVisible()
@@ -328,13 +400,33 @@ async function exerciseCase(s, cell, result) {
   result.styleSignature = sha(JSON.stringify({ tokens: result.themeTokens, rendered: result.renderedScopeStyle }))
   await fit()
   checked('The real theme selector applies the requested theme and stylesheet tokens')
+  const exportLabels = await formLabelGeometry(page, cell, 'data-export')
+  await capture('nine-export-labels')
 
   await page.locator('.patient-switcher .el-select').click()
-  for (const id of [99011, 99012]) await expect(page.getByRole('option', { name: `Synthetic Same Name · ${t('Record', '档案')} #${id}`, exact: true })).toBeVisible()
+  const optionIdentities = []
+  for (const id of [99011, 99012]) {
+    const option = page.getByRole('option', { name: `${patientDisplayName} · ${t('Record', '档案')} #${id}`, exact: true })
+    await expect(option).toBeVisible()
+    const [identity] = await option.locator('.patient-option__record').evaluateAll(measureReadableElements)
+    assertReadableBox(identity, cell.viewport, `Long-name patient option #${id}`)
+    assert.ok(identity.text.endsWith(`#${id}`)); optionIdentities.push({ id, ...identity })
+  }
   await capture('patient-identities')
   await page.keyboard.press('Escape')
-  await patient(99012); await capture('patient-switch-toast', { fullPage: false }); await patient(99011)
-  await expect(page.locator('.export-scope')).toContainText('Synthetic Same Name')
+  await choose(page.locator('.patient-switcher .el-select'), t('All patients', '全部患者'))
+  await expect(page.locator('.patient-switcher__record')).toHaveCount(0)
+  await expect(page.locator('.patient-switch-toast:visible')).toContainText(t('Showing all patients.', '正在显示全部患者。'))
+  const allPatientsHeader = await page.locator('.workspace-topbar').evaluate(element => { const box = element.getBoundingClientRect(); return { top: box.top, bottom: box.bottom, height: box.height, width: box.width } })
+  await patient(99012)
+  result.patientSwitchAllContext = { allPatientsHeader, selected: result.patientSwitchToastBounds.at(-1) }
+  await capture('patient-switch-toast', { fullPage: false }); await patient(99011)
+  // Two actual selections within one notification lifetime must not leave a stale identity.
+  await choose(page.locator('.patient-switcher .el-select'), `${patientDisplayName} · ${t('Record', '档案')} #99012`)
+  await choose(page.locator('.patient-switcher .el-select'), `${patientDisplayName} · ${t('Record', '档案')} #99011`)
+  await toastBounds(99011)
+  result.patientRapidSwitch = result.patientSwitchToastBounds.at(-1)
+  await expect(page.locator('.export-scope')).toContainText(patientDisplayName)
   await expect(page.locator('.export-scope')).toContainText('#99011')
   checked('Duplicate-name authorized patients are disambiguated by record ID, selection stays in scope, and actual patient-switch toasts and text fit the viewport')
 
@@ -376,7 +468,7 @@ async function exerciseCase(s, cell, result) {
   checked('Search count, Up/Down wrapping, selected Enter, query reset, IME, Tab, and Escape focus work through DOM controls')
 
   async function startGuide() {
-    if (cell.viewport === 375) await page.getByRole('button', { name: t('Open navigation menu', '打开导航菜单'), exact: true }).click()
+    if (cell.viewport <= 768) await page.getByRole('button', { name: t('Open navigation menu', '打开导航菜单'), exact: true }).click()
     await page.getByRole('button', { name: t('Start guided tour', '开始操作指引'), exact: true }).click()
     await expect(page.locator('.guide-card')).toBeVisible()
   }
@@ -477,6 +569,11 @@ async function exerciseCase(s, cell, result) {
   await choose(reportForm.locator('.el-select').first(), t('Nutrition diary report', '营养日记报告'))
   await date(reportScope)
   await expect(reportScope).toContainText('#99011'); await expect(reportScope).toContainText(t('not anonymized', '不是匿名数据'))
+  const reportLabels = await formLabelGeometry(page, cell, 'health-report')
+  acceptNine(result, 3, { export: exportLabels, report: reportLabels })
+  const reportActions = await reportActionGeometry(page, cell)
+  acceptNine(result, 9, reportActions)
+  await capture('nine-report-labels-actions')
   const reportDownload = page.waitForEvent('download')
   await reportForm.getByRole('button', { name: t('Generate and download report', '生成并下载报告'), exact: true }).click()
   const report = await reportDownload
@@ -485,6 +582,33 @@ async function exerciseCase(s, cell, result) {
   await fit(); await capture('report-scope')
   checked('HTML report scope and filename use captured patient-independent date/type labels')
 
+  if (cell.viewport <= 768) {
+    await go('/monitoring')
+    await expect(page.locator('.alert-row')).toHaveCount(8)
+    const autoRefresh = page.locator('.control-field--switch .el-switch')
+    if (await autoRefresh.getByRole('switch').isChecked()) await autoRefresh.click()
+    const anchors = []
+    for (const id of ['monitoring-alerts', 'monitoring-trends', 'monitoring-tasks']) {
+      const link = page.locator(`.monitoring-section-nav a[href="#${id}"]`), heading = page.locator(`#${id}`)
+      for (const action of ['click', 'keyboard']) {
+        if (action === 'click') await link.click()
+        else { await link.focus(); await expect(link).toBeFocused(); await page.keyboard.press('Enter') }
+        await expect(heading).toBeFocused()
+        const snapshot = await heading.evaluate(element => {
+          const rect = node => { const box = node.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height } }
+          const target = rect(element), header = rect(document.querySelector('.workspace-topbar')), hit = document.elementFromPoint(target.left + Math.min(40, target.width / 2), target.top + target.height / 2)
+          return { viewport: innerWidth, target, header, focused: document.activeElement === element, unobscured: Boolean(hit && element.contains(hit)), scrollY }
+        })
+        assert.equal(snapshot.viewport, cell.viewport)
+        assert.ok(snapshot.focused && snapshot.unobscured, 'The real app region receives unobscured keyboard focus')
+        assert.ok(snapshot.target.top >= snapshot.header.bottom && snapshot.target.bottom <= 900, 'Monitoring anchor clears the actual wrapped sticky toolbar')
+        anchors.push({ id, action, ...snapshot })
+      }
+    }
+    result.monitoringShellAnchors = anchors
+    await fit(); await capture('nine-monitoring-real-header-anchors', { fullPage: false })
+    checked('Monitoring click and keyboard anchors clear the actual responsive app toolbar, including long duplicate patient context')
+  }
   await go('/medical-record?tab=trend')
   await expect(page.getByRole('button', { name: t('View trend', '查询趋势'), exact: true })).toBeVisible()
   await expect(page.locator('.trend-query-state')).toContainText(t('Not queried yet', '尚未查询'))
@@ -493,6 +617,7 @@ async function exerciseCase(s, cell, result) {
   checked('English trend terminology is readable and the Chinese edition keeps its localized action')
   assert.deepEqual(state.errors, [], 'No uncaught browser error is allowed')
   assert.deepEqual(state.violations, [], 'Every API call must match an explicit synthetic fixture; every external request is forbidden')
+  acceptNine(result, 4, { duplicateName: patientDisplayName, options: optionIdentities, switches: result.patientSwitchToastBounds, allPatientsTransition: result.patientSwitchAllContext, rapidSwitchFinal: result.patientRapidSwitch })
   result.apiCalls = state.apiCalls; result.downloads = state.downloads
 }
 

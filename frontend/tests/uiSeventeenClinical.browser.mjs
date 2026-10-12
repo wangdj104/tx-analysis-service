@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium, expect } from '@playwright/test'
 import { build, preview } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { assertReceiptHierarchy, assertSubmittingState, measureReceiptControls } from './careNineMeasurements.mjs'
 
 const repo = fileURLToPath(new URL('../../', import.meta.url))
 const dependencyRoot = join(repo, 'frontend')
@@ -34,11 +35,11 @@ const themeOracle = {
   sand: ['#fffdf9', '#f8f2e9', '#f8f0e3', '#7a5429'],
   dark: ['#18262e', '#203139', '#203e37', '#7cd3b5']
 }
-const viewports = [1365, 375]
+const viewports = [320, 375, 390, 768, 1365], legacyViewports = [375, 1365]
 const harnessSha256 = createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url))).digest('hex')
 const report = { commit, mode: compileOnly ? 'compile-only' : 'browser', harnessSha256,
   syntheticDataOnly: true, startedAt: new Date().toISOString(), results: [], compilation: [],
-  coverage: { itemIds, editions: ['en', 'cn'], viewports, themes,
+  coverage: { itemIds, nineItemIds: [9], editions: ['en', 'cn'], viewports, themes,
     excluded: [{ itemId: 10, reason: 'BP/nutrition history-edit focus belongs to the monitoring browser harness' }] } }
 report.sourceHashes = {}
 for (const prefix of ['frontend', 'cn/frontend']) for (const file of [
@@ -47,6 +48,7 @@ for (const prefix of ['frontend', 'cn/frontend']) for (const file of [
   'views/MedicalRecordManager.vue', 'components/MedicalRecordReviewDialog.vue',
   'utils/healthAppearance.js', 'styles/health-appearance.css'
 ]) report.sourceHashes[`${prefix}/src/${file}`] = createHash('sha256').update(readFileSync(join(repo, prefix, 'src', file))).digest('hex')
+report.sourceHashes['frontend/tests/careNineMeasurements.mjs'] = createHash('sha256').update(readFileSync(join(repo, 'frontend/tests/careNineMeasurements.mjs'))).digest('hex')
 mkdirSync(evidenceDir, { recursive: true })
 const writeReport = () => writeFileSync(join(evidenceDir, 'clinical-results.json'), JSON.stringify(report, null, 2) + '\n')
 assert.ok(process.argv.slice(2).every(arg => arg === '--compile-only'), 'Only --compile-only is supported')
@@ -164,7 +166,7 @@ async function startHarness(edition, compile) {
 
 async function attachApiFixtures(context, data, base) {
   const fixture = { reads: [], writes: [], unexpected: [], trend: 'empty', denyReferences: false,
-    historyMissing: false, holdDecision: false, releaseDecision: null, decisionsSettled: 0, holdTrend: false, releaseTrend: null }
+    holdReceipt: false, releaseReceipt: null, historyMissing: false, holdDecision: false, releaseDecision: null, decisionsSettled: 0, holdTrend: false, releaseTrend: null }
   await context.routeWebSocket('**/*', socket => { fixture.unexpected.push({ reason: 'Blocked WebSocket', url: socket.url() }); socket.close() })
   await context.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice(4)
@@ -201,7 +203,10 @@ async function attachApiFixtures(context, data, base) {
       if (fixture.denyReferences) return json(null, 403, 403)
       return json(path === '/medical-record/list' ? data.records : data.measurements)
     }
-    if (path === '/care-plans/actions/61/receipts' && method === 'POST') return json({ id: 801, status: 'REVIEW_REQUIRED' })
+    if (path === '/care-plans/actions/61/receipts' && method === 'POST') {
+      if (fixture.holdReceipt) await new Promise(resolve => { fixture.releaseReceipt = resolve })
+      return json({ id: 801, status: 'REVIEW_REQUIRED' })
+    }
     fixture.unexpected.push(event)
     return json(null, 404, 404)
   })
@@ -316,7 +321,8 @@ async function assertVisibleToastBounds(page, viewport) {
 }
 
 async function verifyCell(browser, harness, edition, viewport, theme) {
-  const result = { itemIds, edition, viewport, theme, status: 'failed', screenshots: [], screenshotHashes: {}, screenshotGeometry: {}, toastGeometry: {}, assertions: [] }
+  const receiptOnly = !legacyViewports.includes(viewport)
+  const result = { itemIds: receiptOnly ? [5] : itemIds, nineMeasurements: {}, edition, viewport, theme, status: 'failed', screenshots: [], screenshotHashes: {}, screenshotGeometry: {}, toastGeometry: {}, assertions: [] }
   const context = await browser.newContext({ viewport: { width: viewport, height: 900 },
     timezoneId: 'America/Los_Angeles', locale: edition === 'en' ? 'en-US' : 'zh-CN', reducedMotion: 'reduce' })
   const { data, base } = harness
@@ -382,6 +388,7 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     result.renderedSurfaces ??= []; result.renderedSurfaces.push({ selector: surfaceSelector, ...surface })
   }
   try {
+    if (!receiptOnly) {
     // Original, escaped source and every saved provenance/evidence field precede decisions.
     await visit('ai'); await page.getByTestId('open-ai').click()
     await expect(page.getByTestId('ai-original-analysis')).toHaveText(data.analysisContent)
@@ -456,6 +463,7 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     await medical.getByRole('button', { name: t('Close', '关闭'), exact: true }).click(); await expect(medical).toHaveCount(0); noWrites(beforeClose)
     checked('Actual medical-review dialog shows source version, original values, attachment metadata and patient identity without writing')
 
+    }
     // Native friendly controls, existing scoped records, unchanged explicit-offset payload.
     await visit('receipt'); const opener = page.getByTestId('open-receipt'); await opener.click()
     const receipt = page.locator('dialog.receipt-dialog')
@@ -506,7 +514,26 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     await snapshot('receipt-references-3-4', { dialog: receipt, targets: [{ selector: '.evidence-row', index: 2, label: 'reference 3 of 5' }, { selector: '.evidence-row', index: 3, label: 'reference 4 of 5' }] })
     await snapshot('receipt-reference-5', { dialog: receipt, targets: [{ selector: '.evidence-row', index: 4, label: 'reference 5 of 5' }] })
     await snapshot('receipt-footer', { dialog: receipt, targets: [{ selector: '[data-testid="submit-receipt"]', label: 'receipt submit control' }, { selector: '[data-testid="close-receipt"]', label: 'receipt close control' }] })
-    await page.getByTestId('submit-receipt').click(); await expect(receipt).toHaveCount(0)
+    // Read actual hierarchy and local reference associations before dispatch.
+    await page.mouse.move(0, 0)
+    const receiptMeasurements = await receipt.evaluate(measureReceiptControls)
+    result.nineMeasurements[9] = { ...receiptMeasurements }
+    assertReceiptHierarchy(receiptMeasurements)
+    const enabledSubmit = receiptMeasurements.controls.find(control => control.testId === 'submit-receipt')
+    const disabledAddReference = receiptMeasurements.controls.find(control => control.testId === 'add-existing-reference')
+    assert.equal(disabledAddReference.disabled, true, 'The full five-reference cap has a real disabled action')
+    assert.notEqual(disabledAddReference.background, enabledSubmit.background, 'Disabled cap action does not imitate the filled submit')
+    // Hold only the fictional response so real production pending state can be measured.
+    fixture.holdReceipt = true
+    await page.getByTestId('submit-receipt').click()
+    await expect.poll(() => !!fixture.releaseReceipt).toBe(true)
+    await expect(page.getByTestId('submit-receipt')).toBeDisabled()
+    const submittingSubmit = (await receipt.evaluate(measureReceiptControls)).controls.find(control => control.testId === 'submit-receipt')
+    Object.assign(result.nineMeasurements[9], { enabledSubmit, submittingSubmit, disabledAddReference })
+    assertSubmittingState(enabledSubmit, submittingSubmit)
+    await snapshot('receipt-submitting', { dialog: receipt, targets: [{ selector: '[data-testid="submit-receipt"]', label: 'disabled busy submit control' }, { selector: '[data-testid="close-receipt"]', label: 'secondary close during submission' }] })
+    fixture.releaseReceipt(); fixture.holdReceipt = false
+    await expect(receipt).toHaveCount(0)
     const receiptWrite = fixture.writes.at(-1)
     assert.equal(receiptWrite.path, '/care-plans/actions/61/receipts')
     assert.equal(receiptWrite.body.occurredAt, '2026-10-10T08:30:15.123-07:00')
@@ -526,6 +553,10 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     await page.getByTestId('close-receipt').click(); await expect(receipt).toHaveCount(0); await expect(opener).toBeFocused(); noWrites(beforeReceiptClose)
     checked('Revoked record access clears selectable and selected protected references; closing does not write')
 
+    result.nineMeasurements[9] = { ...receiptMeasurements, enabledSubmit, submittingSubmit, disabledAddReference }
+    result.nineItemIds = [9]
+
+    if (!receiptOnly) {
     // Actual manager state machine and a same-name authorized selector, never setup-state edits.
     await visit('trend'); const trend = page.locator('.trend-panel'), state = trend.locator('.trend-query-state')
     await expect(state).toContainText(t('Not queried yet', '尚未查询'))
@@ -573,6 +604,7 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     await expect(page.getByRole('option', { name: t('Urinalysis', '尿液检查'), exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
     checked('Actual submission identity and edition-specific recognizable report terminology')
+    }
     assert.deepEqual(fixture.unexpected, [], 'Every API read is from the bounded synthetic fixture contract')
     assert.deepEqual(errors, [], 'No uncaught browser runtime errors')
     result.status = 'passed'
@@ -580,7 +612,7 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
     result.error = { name: error.name, message: error.message }
     try { await snapshot('failure') } catch (screenshotError) { result.screenshotError = screenshotError.message }
   } finally {
-    fixture.releaseDecision?.(); fixture.releaseTrend?.()
+    fixture.releaseDecision?.(); fixture.releaseTrend?.(); fixture.releaseReceipt?.()
     result.api = { reads: fixture.reads, writes: fixture.writes, unexpected: fixture.unexpected }
     result.pageErrors = errors
     await context.close()
@@ -591,7 +623,7 @@ async function verifyCell(browser, harness, edition, viewport, theme) {
 let browser
 try {
   if (process.env.UI_SEVENTEEN_EXPECTED_COMMIT) assert.equal(commit, process.env.UI_SEVENTEEN_EXPECTED_COMMIT, 'Acceptance must run against the requested full source SHA')
-  assert.equal(execFileSync('git', ['status', '--porcelain', '--', 'frontend/src', 'cn/frontend/src'], { cwd: repo, encoding: 'utf8' }).trim(), '', 'Production source must remain frozen')
+  if (!compileOnly) assert.equal(execFileSync('git', ['status', '--porcelain', '--', 'frontend/src', 'cn/frontend/src'], { cwd: repo, encoding: 'utf8' }).trim(), '', 'Production source must remain frozen')
   if (!compileOnly) browser = await chromium.launch({ headless: true,
     ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) })
   for (const edition of ['en', 'cn']) {

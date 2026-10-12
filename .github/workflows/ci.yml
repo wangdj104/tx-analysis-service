@@ -85,9 +85,9 @@ jobs:
           retention-days: 7
 
   ui-seventeen-browser:
-    name: Seventeen UI workflows (EN/CN, desktop/mobile, six themes)
+    name: UI workflows and nine visual improvements (EN/CN, five widths, six themes)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - name: Set synthetic evidence directory
@@ -108,7 +108,7 @@ jobs:
           cd frontend
           npx --no-install playwright install --with-deps chromium
       - name: Verify fail-closed synthetic evidence gate
-        run: node --test scripts/tests/ui-seventeen-browser-gate.test.mjs
+        run: node --test scripts/tests/ui-seventeen-browser-gate.test.mjs scripts/tests/ui-nine-measurements.test.mjs
       - name: Verify care drafts, identity, hierarchy and required fields
         if: ${{ !cancelled() }}
         run: node frontend/tests/careDraftDialogBacklog.browser.mjs

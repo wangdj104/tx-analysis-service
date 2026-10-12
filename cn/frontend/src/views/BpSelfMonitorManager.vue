@@ -147,7 +147,31 @@
             </div>
           </div>
 
-          <div v-if="lastSuccessAt" class="table-wrap">
+          <div v-if="lastSuccessAt" class="mobile-record-list">
+            <p v-if="!records.length" class="record-list-empty">暂无记录</p>
+            <article v-for="row in records" :key="row.id" class="mobile-record-card" :data-record-id="row.id">
+              <div class="record-card-meta">
+                <time>{{ row.recordDate }} {{ row.recordTime || '时间未记录' }}</time>
+                <abbr class="record-card-type" :title="measureLabel(row.measureType)" :aria-label="measureLabel(row.measureType)">{{ row.measureType === 'BP' ? '血压' : row.measureType === 'BG' ? '血糖' : '血压 + 血糖' }}</abbr>
+              </div>
+              <div class="record-card-readings">
+                <span v-if="row.systolicBp != null || row.diastolicBp != null" class="record-card-bp">{{ row.systolicBp ?? '—' }}/{{ row.diastolicBp ?? '—' }} mmHg</span>
+                <span v-if="row.bloodGlucose != null" class="record-card-glucose">{{ row.bloodGlucose }} {{ row.bgUnit || 'mmol/L' }}</span>
+                <span v-if="row.systolicBp == null && row.diastolicBp == null && row.bloodGlucose == null">—</span>
+              </div>
+              <details v-if="row.measurePeriod || row.remark" class="record-card-details">
+                <summary>测量详情</summary><p v-if="row.measurePeriod">{{ row.measurePeriod }}</p><p v-if="row.remark">{{ row.remark }}</p>
+              </details>
+              <div class="record-card-actions">
+                <el-button link type="primary" :ref="node => setEditOpener(row.id, node, 'mobile')" @click="handleEdit(row, $event, 'mobile')" :disabled="saving || accessDenied">编辑</el-button>
+                <el-popconfirm title="确认删除这条记录？" @confirm="handleDelete(row)">
+                  <template #reference><el-button link type="danger">删除</el-button></template>
+                </el-popconfirm>
+              </div>
+            </article>
+          </div>
+
+          <div v-if="lastSuccessAt" class="table-wrap records-desktop-table">
             <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="暂无记录">
               <el-table-column prop="recordDate" label="日期" width="112" />
               <el-table-column prop="recordTime" label="时间" width="86">
@@ -238,9 +262,10 @@ const editorHeading = ref(null);
 const editRecordLabel = ref('');
 const editOpeners = new Map();
 let editOrigin = null;
-function setEditOpener(id, node) {
-  if (node) editOpeners.set(id, node.$el || node);
-  else editOpeners.delete(id);
+function setEditOpener(id, node, surface = 'desktop') {
+  const key = surface === 'mobile' ? `mobile:${id}` : id;
+  if (node) editOpeners.set(key, node.$el || node);
+  else editOpeners.delete(key);
 }
 function focusEditor(context) {
   Promise.resolve().then(() => {
@@ -255,9 +280,17 @@ function focusEditor(context) {
 async function restoreEditOrigin(origin, context) {
   await Promise.resolve();
   if (!origin || !isCurrentContext(context) || editingId.value) return;
-  const target = editOpeners.get(origin.id) || origin.opener;
-  if (!target?.isConnected || target.matches?.(':disabled') || target.closest?.('[hidden],[inert]')) return;
+  const preferred = editOpeners.get(origin.key ?? origin.id);
+  const candidates = [preferred, origin.opener, editOpeners.get(origin.id), editOpeners.get(`mobile:${origin.id}`)];
+  const target = candidates.find(node => {
+    if (!node?.isConnected || node.matches?.(':disabled') || node.closest?.('[hidden],[inert]') || node.getClientRects?.().length === 0) return false;
+    const visibility = typeof window === 'undefined' ? '' : window.getComputedStyle?.(node).visibility;
+    return visibility !== 'hidden' && visibility !== 'collapse';
+  });
+  if (!target) return;
   if (typeof window !== 'undefined') window.scrollTo?.({ top: origin.scrollY, behavior: 'auto' });
+  // A responsive reflow can hide the original surface and move its same-record counterpart.
+  if (target !== preferred && target !== origin.opener) target.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
   target.focus?.({ preventScroll: true });
 }
 async function cancelEdit() {
@@ -495,11 +528,12 @@ async function handleSave() {
   } finally { if (isCurrentSave()) saving.value = false; }
 }
 
-function handleEdit(row, event) {
+function handleEdit(row, event, surface = 'desktop') {
   if (saving.value || disposed || !ensureReaderSession() || accessDenied.value || !currentPatientId.value || row.patientId !== currentPatientId.value) return;
   invalidateEditor();
   editingId.value = row.id;
-  editOrigin = { id: row.id, opener: event?.currentTarget || editOpeners.get(row.id), scrollY: typeof window === 'undefined' ? 0 : window.scrollY };
+  const key = surface === 'mobile' ? `mobile:${row.id}` : row.id;
+  editOrigin = { id: row.id, key, opener: event?.currentTarget || editOpeners.get(key), scrollY: typeof window === 'undefined' ? 0 : window.scrollY };
   editRecordLabel.value = '编辑 ' + row.recordDate + (row.recordTime ? ' ' + row.recordTime : '');
   focusEditor(captureContext());
   Object.assign(form, {
@@ -818,4 +852,24 @@ onUnmounted(() => {
     width: 100%;
   }
 }
+/* The desktop table remains available at wide widths; mobile cards keep the source reading in view. */
+.mobile-record-list { display: none; }
+@media (max-width: 768px) {
+  .records-desktop-table { display: none; }
+  .mobile-record-list { display: grid; gap: 10px; padding: 12px; }
+  .mobile-record-card { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+  .record-card-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; color: var(--ink-700); font-size: 12px; line-height: 1.5; }
+  .record-card-meta time { font-variant-numeric: tabular-nums; }
+  .record-card-type { color: var(--ink-800); text-decoration: none; font-weight: 700; }
+  .record-card-readings { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 7px; color: var(--ink-950); font-size: 14px; font-weight: 700; line-height: 1.5; }
+  .record-card-readings > span { white-space: nowrap; }
+  .record-card-details { margin-top: 6px; color: var(--ink-700); font-size: 12px; overflow-wrap: anywhere; }
+  .record-card-details summary { min-height: 32px; display: list-item; align-content: center; cursor: pointer; }
+  .record-card-details p { margin: 6px 0; }
+  .record-card-actions { display: flex; justify-content: flex-end; gap: 18px; margin-top: 4px; }
+  .record-card-actions :deep(.el-button) { min-width: 44px; min-height: 44px; margin-left: 0; }
+  .record-card-details summary:focus-visible { outline: 3px solid var(--care-600); outline-offset: 2px; }
+  .record-list-empty { color: var(--ink-700); text-align: center; }
+}
+
 </style>

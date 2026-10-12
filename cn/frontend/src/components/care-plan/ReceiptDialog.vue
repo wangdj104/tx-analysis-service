@@ -18,19 +18,19 @@
             <p v-if="referencesError" role="alert">{{ referencesError }}</p><p v-else-if="referencesQueried && !referencesLoading && !referenceOptions.length">该患者暂无可访问的此类记录。</p>
             <label v-if="referenceOptions.length">选择既有记录<select v-model.number="selectedReferenceId" data-testid="receipt-existing-record"><option :value="null">选择既有记录</option><option v-for="record in referenceOptions" :key="record.id" :value="record.id" :disabled="form.evidence.some(e => e.sourceType === referenceType && e.sourceId === record.id)">{{ record.label }}</option></select></label>
             <button type="button" data-testid="add-existing-reference" :disabled="form.evidence.length>=5 || !selectedReferenceId || referencesLoading" @click="addReference">添加既有引用</button>
-            <div v-for="(e,index) in form.evidence" :key="e.sourceType+':'+e.sourceId" class="evidence-row"><p>{{ referenceLabels[e.sourceType+':'+e.sourceId] || referenceFallback(e) }}</p><button type="button" @click="form.evidence.splice(index,1)">移除引用</button></div>
+            <div v-for="(e,index) in form.evidence" :key="e.sourceType+':'+e.sourceId" class="evidence-row"><p :id="`receipt-reference-${e.sourceType}-${e.sourceId}`">{{ referenceLabels[e.sourceType+':'+e.sourceId] || referenceFallback(e) }}</p><button type="button" class="remove-reference" :aria-describedby="`receipt-reference-${e.sourceType}-${e.sourceId}`" @click="form.evidence.splice(index,1)">移除引用</button></div>
             <p>服务器会验证患者归属和当前权限；引用不会授予访问权限。</p>
           </fieldset>
         </template>
         <label v-if="command==='followUp'">跟进类型<select v-model="form.kind" :disabled="busy"><option value="CONTACTED">已联系</option><option value="AWAITING_INFORMATION">等待补充信息</option><option value="DOCTOR_NOTIFIED">已通知医生</option></select></label>
         <p v-if="!canSubmit" role="status">此操作只读或不可用，需要有效的当前权限。</p>
-        <div class="controls"><button v-if="canSubmit" type="submit" data-testid="submit-receipt" :disabled="busy || unresolved || needsReload" @click.prevent="submit">提交记录</button><button type="button" data-testid="close-receipt" @click="requestClose">关闭</button><button v-if="needsReload" type="button" data-testid="reload-receipt" :disabled="busy" @click="reloadCurrent">重新加载服务器状态</button></div>
+        <div class="controls"><button v-if="canSubmit" type="submit" class="receipt-submit" data-testid="submit-receipt" :aria-busy="busy" :disabled="busy || unresolved || needsReload" @click.prevent="submit">{{ busy ? '正在提交记录…' : '提交记录' }}</button><button type="button" class="receipt-close" data-testid="close-receipt" @click="requestClose">关闭</button><button v-if="needsReload" type="button" data-testid="reload-receipt" :disabled="busy" @click="reloadCurrent">重新加载服务器状态</button></div>
       </form>
     </template>
     <p v-if="message" role="status">{{ message }}</p>
     <section v-if="unresolved" class="notice" role="alert"><p>结果不明，原提交可能已存在。重试会发送原始冻结命令和原始输入，即使您已修改此表单。</p><button type="button" data-testid="retry-original" :disabled="busy" @click="retryOriginal">重试原始提交</button></section>
     <section v-if="abandonIntent" class="notice" role="alert"><p>关闭不会取消服务器提交，可能丢失重试键。发起新命令前，请确认并重新加载服务器状态。</p><button type="button" data-testid="confirm-abandon" :disabled="busy" @click="confirmAbandon">确认并重新加载</button><button type="button" data-testid="keep-editing" @click="abandonIntent=false">继续编辑</button></section>
-    <button v-if="!state.editor" type="button" data-testid="close-receipt" @click="emit('closed')">关闭</button>
+    <button v-if="!state.editor" type="button" class="receipt-close" data-testid="close-receipt" @click="emit('closed')">关闭</button>
   </dialog>
 </template>
 <script setup>
@@ -128,5 +128,23 @@ onUnmounted(()=>{generation++;identityController?.abort();resetReferences();wind
 defineExpose({guardLeave,requestClose})
 </script>
 <style scoped>
-.receipt-dialog{box-sizing:border-box;width:min(640px,94vw);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--paper);color:var(--ink-800)}.receipt-dialog::backdrop{background:#10282c88}h2,p{overflow-wrap:anywhere}p{line-height:1.6}label{display:grid;gap:6px;margin:14px 0}textarea,input,select{width:100%;min-width:0;box-sizing:border-box;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--paper);color:inherit}button{min-height:44px;max-width:100%;padding:10px 14px;cursor:pointer;font:inherit;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800)}button:disabled{opacity:.5;cursor:default}button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.controls{display:flex;gap:10px;flex-wrap:wrap}.notice{padding:12px;margin:12px 0;border:1px solid var(--line);background:var(--care-50)}fieldset{min-width:0;margin:12px 0;border:1px solid var(--line)}.evidence-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.evidence-row{align-items:center}.evidence-row p{margin:0;overflow-wrap:anywhere}@media(max-width:600px){.receipt-dialog{padding:14px}.controls button{width:100%}.evidence-row{grid-template-columns:1fr}}
+.receipt-dialog{box-sizing:border-box;width:min(640px,94vw);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--paper);color:var(--ink-800)}
+.receipt-dialog::backdrop{background:#10282c88}h2,p{overflow-wrap:anywhere}p{line-height:1.6}
+label{display:grid;gap:6px;margin:14px 0}
+textarea,input,select{width:100%;min-width:0;box-sizing:border-box;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--paper);color:inherit}
+button{min-height:44px;max-width:100%;padding:10px 14px;cursor:pointer;font:inherit;line-height:1.5;white-space:normal;overflow-wrap:anywhere;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800)}
+.receipt-submit{background:var(--care-700);border-color:var(--care-700);color:var(--on-accent);font-weight:700}
+.receipt-submit:not(:disabled):hover{background:var(--care-800);border-color:var(--care-800)}
+.receipt-close{background:var(--paper);color:var(--ink-800);border-color:var(--control-border)}
+.remove-reference{background:transparent;border-color:transparent;color:var(--care-800);text-decoration:underline;text-underline-offset:3px;justify-self:end}
+.remove-reference:not(:disabled):hover{background:var(--surface-hover)}
+button:disabled{opacity:1;background:var(--disabled-bg);color:var(--disabled-text);border-color:var(--disabled-border);cursor:not-allowed}
+fieldset:disabled button{color:var(--disabled-text);cursor:not-allowed}
+button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.notice{padding:12px;margin:12px 0;border:1px solid var(--line);background:var(--care-50)}
+fieldset{min-width:0;margin:12px 0;border:1px solid var(--line)}
+.evidence-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin:8px 0;padding:8px 0;border-bottom:1px solid var(--line)}
+.evidence-row p{min-width:0;margin:0;overflow-wrap:anywhere}
+@media(max-width:600px){.receipt-dialog{padding:14px}.controls button{width:100%}.evidence-row{grid-template-columns:1fr}.remove-reference{justify-self:start}}
 </style>

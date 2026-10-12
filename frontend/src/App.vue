@@ -93,7 +93,7 @@
 <script setup>
 import { useMedicationNotifications } from '@/composables/useMedicationNotifications';
 useMedicationNotifications();
-import { ref, reactive, computed, onMounted, onUnmounted, watch, provide } from 'vue';
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Search, ArrowRight, Menu, Close, Guide, ChatDotRound } from '@element-plus/icons-vue';
 import WorkspaceNav from '@/components/WorkspaceNav.vue';
@@ -173,6 +173,7 @@ function specialtyChanged() {
 }
 
 function resetNavState() {
+  closePatientSwitchToast();
   carePlanNavController?.abort();carePlanNavigationEnabled.value=false;
   menuRequestEpoch++;
   patientRequestEpoch++;
@@ -291,6 +292,7 @@ onMounted(() => {
   window.addEventListener('care-patients-changed', loadPatientList);
 });
 onUnmounted(() => {
+  closePatientSwitchToast();
   carePlanNavController?.abort();
   window.removeEventListener('keydown', onSearchShortcut);
   window.removeEventListener('auth-session-cleared', resetNavState);
@@ -639,6 +641,13 @@ async function loadPatientList() {
 }
 
 // switchPatient
+let patientSwitchToast = null;
+let patientSwitchNoticeEpoch = 0;
+function closePatientSwitchToast() {
+  patientSwitchNoticeEpoch++;
+  patientSwitchToast?.close();
+  patientSwitchToast = null;
+}
 function switchPatient(id) {
   id = id || null;
   if (currentPatientId.value === id) return;
@@ -647,12 +656,26 @@ function switchPatient(id) {
   // Invalidate report work at the accepted selection boundary, before Router can
   // coalesce a same-tick A→B→A replacement back to the already-current URL.
   window.dispatchEvent(new Event('care-report-selection-changed'));
-  if (id) {
-    const patient = appPatientList.value.find(p => p.id === id);
-    ElMessage.success(`Switched to ${patient?.patientName || patient?.name || 'patient'}.`);
-  } else {
-    ElMessage.info('Showing all patients.');
-  }
+  closePatientSwitchToast();
+  const noticeEpoch = patientSwitchNoticeEpoch;
+  const patients = route.path === '/care' ? patientList.value : appPatientList.value;
+  const patient = patients.find(p => p.id === id);
+  // The selected identity can wrap the toolbar. Measure only after Vue updates it.
+  nextTick(() => {
+    if (noticeEpoch !== patientSwitchNoticeEpoch || currentPatientId.value !== id) return;
+    const toolbarBottom = document.querySelector?.('.workspace-topbar')?.getBoundingClientRect().bottom || 64;
+    const noticeOptions = {
+      customClass: 'patient-switch-toast',
+      offset: Math.max(16, Math.ceil(toolbarBottom) + 12),
+      duration: 2500,
+      showClose: true
+    };
+    if (id) {
+      patientSwitchToast = ElMessage.success({ ...noticeOptions, message: `Switched to ${patient?.patientName || patient?.name || 'patient'} · Record #${id}.` });
+    } else {
+      patientSwitchToast = ElMessage.info({ ...noticeOptions, message: 'Showing all patients.' });
+    }
+  });
   // CareCenter watches the patient itself; preserve its selected tab and filters.
   if (parseReportRoute(route.fullPath)) router.replace(id ? `/care-plans/reports?patientId=${id}` : '/care');
   if (route.path !== '/care' && !isNarrowCareRoute(route.fullPath)) {
@@ -739,3 +762,10 @@ select {
 </style>
 
 <style scoped>.workspace-search-results .is-search-active{background:var(--care-50);outline:2px solid var(--care-600);outline-offset:-2px}.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}</style>
+
+<style>
+.patient-switch-toast { max-width: calc(100vw - 24px); }
+.patient-switch-toast .el-message__content { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+/* A superseded patient must not remain visible during the old notice's exit. */
+.patient-switch-toast.el-message-fade-leave-active { display: none; transition: none; }
+</style>

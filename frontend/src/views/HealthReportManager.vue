@@ -14,19 +14,19 @@
         </div>
 
         <div class="content-panel">
-          <button class="execution-report-choice" type="button" :aria-expanded="showCareExecution" @click="showCareExecution=!showCareExecution">Care execution report · Current actions CSV / Period events CSV</button>
+          <el-button class="execution-report-choice" :aria-expanded="showCareExecution" @click="showCareExecution=!showCareExecution">Care execution report · Current actions CSV / Period events CSV</el-button>
           <ExecutionReportPanel v-if="showCareExecution && currentPatientId" :patient-id="currentPatientId"/>
           <p v-else-if="showCareExecution" role="status">Select a patient first</p>
-          <el-form v-if="!showCareExecution" :model="form" label-width="110px" ref="formRef" :rules="rules" :disabled="exporting || previewing">
+          <el-form v-if="!showCareExecution" :model="form" label-width="auto" class="report-export-form" ref="formRef" :rules="rules" :disabled="exporting || previewing">
             <el-row :gutter="16">
-              <el-col :xs="24" :sm="8">
+              <el-col :xs="24" :md="12">
                 <el-form-item label="Report type" prop="reportType">
                   <el-select v-model="form.reportType" style="width: 100%">
                     <el-option v-for="opt in reportTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                   </el-select>
                 </el-form-item>
               </el-col>
-              <el-col :xs="24" :sm="8">
+              <el-col :xs="24" :md="12">
                 <el-form-item label="Export format" prop="format">
                   <el-select v-model="form.format" style="width: 100%">
                     <el-option label="HTML page" value="html" />
@@ -36,7 +36,7 @@
               </el-col>
             </el-row>
             <el-row :gutter="16">
-              <el-col :xs="24" :sm="8">
+              <el-col :xs="24" :md="12">
                 <el-form-item label="Time dimension" prop="timeType">
                   <el-select v-model="form.timeType" style="width: 100%">
                     <el-option label="Monthly" value="month" />
@@ -45,7 +45,7 @@
                   </el-select>
                 </el-form-item>
               </el-col>
-              <el-col :xs="24" :sm="8">
+              <el-col :xs="24" :md="12">
                 <el-form-item label="Time range" prop="timeValue">
                   <el-date-picker
                     v-model="form.timeValue"
@@ -64,7 +64,7 @@
               <p>Inclusive dates：{{ reportDateRange ? `${reportDateRange.from} – ${reportDateRange.to}` : 'Select a date range' }}</p>
               <p>This report contains personal health information and is not anonymized. Check its contents and recipient before sharing.</p>
             </section>
-            <el-form-item>
+            <el-form-item class="report-export-actions">
               <el-button type="primary" @click="handleExport" :loading="exporting">
                 <el-icon><Download /></el-icon>Generate and download report
               </el-button>
@@ -411,6 +411,42 @@ function lineOption(dates = [], series = []) {
 }
 </style>
 
-<style scoped>.execution-report-choice{min-height:44px;padding:10px 16px;margin-bottom:16px;max-width:100%;font:inherit;white-space:normal}.execution-report-choice:focus-visible{outline:3px solid var(--care-600)}</style>
+<style scoped>
+.execution-report-choice {
+  min-height: 44px;
+  height: auto;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.5;
+}
+.execution-report-choice:focus-visible { outline: 3px solid var(--care-600); outline-offset: 2px; }
+.report-export-form :deep(.el-form-item__label) { white-space: nowrap; flex-shrink: 0; }
+.report-export-form :deep(.el-form-item__content) { min-width: 0; }
+.report-export-actions :deep(.el-form-item__content) { gap: 12px; }
+.report-export-actions :deep(.el-button) {
+  min-height: 44px;
+  height: auto;
+  max-width: 100%;
+  margin-left: 0;
+  padding-block: 10px;
+  white-space: normal;
+  line-height: 1.5;
+}
+@media (max-width: 768px) {
+  .report-export-form :deep(.el-form-item) { display: block; }
+  .report-export-form :deep(.el-form-item__label-wrap) { margin-left: 0 !important; }
+  .report-export-form :deep(.el-form-item__label) {
+    justify-content: flex-start;
+    height: auto;
+    margin-bottom: 8px;
+    padding-right: 0;
+    line-height: 1.5;
+  }
+  .report-export-form :deep(.el-form-item__content) { margin-left: 0 !important; }
+}
+</style>
 
 <style scoped>.report-export-scope{padding:16px;margin-bottom:16px;background:var(--care-50);border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}.report-export-scope p{line-height:1.6;margin:8px 0}</style>

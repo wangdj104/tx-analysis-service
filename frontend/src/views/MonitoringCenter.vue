@@ -85,6 +85,12 @@
         </article>
       </section>
 
+      <nav class="monitoring-section-nav" aria-label="Monitoring sections">
+        <a href="#monitoring-alerts" @click.prevent="focusSection('monitoring-alerts')">Alerts</a>
+        <a href="#monitoring-trends" @click.prevent="focusSection('monitoring-trends')">Trends</a>
+        <a href="#monitoring-tasks" @click.prevent="focusSection('monitoring-tasks')">Tasks</a>
+      </nav>
+
       <section class="signal-grid">
         <article v-for="signal in snapshot.signals || []" :key="signal.key" class="signal-card" :class="`signal-card--${signalTone(signal.status)}`">
           <header><span>{{ signal.label }}</span><em><i></i>{{ signal.statusLabel }}</em></header>
@@ -94,32 +100,61 @@
       </section>
 
       <section class="monitoring-main-grid">
-        <article class="monitor-panel trend-panel">
-          <header class="panel-head">
-            <div><span class="panel-kicker">Trend monitoring</span><h2>Vital-sign trends</h2><p>Abnormal data points are marked with diamonds.</p></div>
-            <div class="chart-legend"><span><i class="legend-systolic"></i>Systolic Pressure</span><span><i class="legend-diastolic"></i>Diastolic Pressure</span><span><i class="legend-glucose"></i>Blood Glucose</span></div>
-          </header>
-          <div class="trend-view-controls" role="group" aria-label="Trend presentation">
-            <button type="button" :aria-pressed="trendView === 'chart'" @click="trendView = 'chart'">Chart</button>
-            <button type="button" :aria-pressed="trendView === 'data'" @click="trendView = 'data'">Data</button>
-          </div>
-          <p class="trend-context">Patient record #{{ patientId }} · Last {{ loadedDays }} days</p>
-          <div v-if="trendView === 'data' && hasTrendData" class="trend-data-wrap" tabindex="0" role="region" aria-label="Raw trend data">
-            <table data-testid="monitoring-trend-data">
-              <caption>Source readings in the same chart range; glucose retains its original unit</caption>
-              <thead><tr><th scope="col">Date and time</th><th scope="col">Systolic (mmHg)</th><th scope="col">Diastolic (mmHg)</th><th scope="col">Glucose (source unit)</th><th scope="col">Existing marker</th></tr></thead>
-              <tbody><tr v-for="(row, index) in trendRows" :key="index"><th scope="row">{{ row.date }} {{ row.time || '—' }}</th><td>{{ row.systolic ?? '—' }}</td><td>{{ row.diastolic ?? '—' }}</td><td>{{ row.glucose ?? '—' }} {{ row.glucose != null ? (row.glucoseUnit || 'mmol/L') : '' }}</td><td>{{ row.abnormal ? 'Abnormal' : '—' }}</td></tr></tbody>
-            </table>
-          </div>
-          <v-chart v-else-if="hasTrendData" class="monitor-chart" :option="chartOption" autoresize />
-          <el-empty v-else description="No vital-sign records in this time range">
-            <el-button type="primary" @click="$router.push('/bp-self-monitor')">Record blood pressure or glucose</el-button>
-          </el-empty>
-        </article>
+        <div class="monitoring-primary-column">
+          <article class="monitor-panel trend-panel">
+            <header class="panel-head">
+              <div><span class="panel-kicker">Trend monitoring</span><h2 id="monitoring-trends" tabindex="-1" class="monitor-section-heading">Vital-sign trends</h2><p>Abnormal data points are marked with diamonds.</p></div>
+              <div class="chart-legend"><span><i class="legend-systolic"></i>Systolic Pressure</span><span><i class="legend-diastolic"></i>Diastolic Pressure</span><span><i class="legend-glucose"></i>Blood Glucose</span></div>
+            </header>
+            <div class="trend-view-controls" role="group" aria-label="Trend presentation">
+              <button type="button" :aria-pressed="trendView === 'chart'" @click="trendView = 'chart'">Chart</button>
+              <button type="button" :aria-pressed="trendView === 'data'" @click="trendView = 'data'">Data</button>
+            </div>
+            <p class="trend-context">Patient record #{{ patientId }} · Last {{ loadedDays }} days</p>
+            <div v-if="trendView === 'chart' && hasTrendData" class="monitoring-reference-legend"><span data-reference-value="140"><i></i>Blood-pressure reference: 140 mmHg</span></div>
+            <div v-if="trendView === 'data' && hasTrendData" class="trend-data-wrap" tabindex="0" role="region" aria-label="Raw trend data">
+              <table data-testid="monitoring-trend-data">
+                <caption>Source readings in the same chart range; glucose retains its original unit</caption>
+                <thead><tr><th scope="col">Date and time</th><th scope="col">Systolic (mmHg)</th><th scope="col">Diastolic (mmHg)</th><th scope="col">Glucose (source unit)</th><th scope="col">Existing marker</th></tr></thead>
+                <tbody><tr v-for="(row, index) in trendRows" :key="index"><th scope="row">{{ row.date }} {{ row.time || '—' }}</th><td>{{ row.systolic ?? '—' }}</td><td>{{ row.diastolic ?? '—' }}</td><td>{{ row.glucose ?? '—' }} {{ row.glucose != null ? (row.glucoseUnit || 'mmol/L') : '' }}</td><td>{{ row.abnormal ? 'Abnormal' : '—' }}</td></tr></tbody>
+              </table>
+            </div>
+            <v-chart v-else-if="hasTrendData" class="monitor-chart" :option="chartOption" autoresize />
+            <el-empty v-else description="No vital-sign records in this time range">
+              <el-button type="primary" @click="$router.push('/bp-self-monitor')">Record blood pressure or glucose</el-button>
+            </el-empty>
+          </article>
+
+          <article class="monitor-panel task-panel">
+            <header class="panel-head panel-head--compact"><div><span class="panel-kicker">Care plan</span><h2 id="monitoring-tasks" tabindex="-1" class="monitor-section-heading">Today's tasks</h2></div><span class="panel-count">{{ todayTasks.length }} items</span></header>
+            <div v-if="todayTasks.length" class="task-list">
+              <article v-for="task in todayTasks" :key="`${task.taskType}-${task.id}`" class="task-item" :class="{ 'task-item--done': isTaskDone(task) }">
+                <span class="task-time">{{ timeOnly(task.scheduledAt) }}</span>
+                <span class="task-icon"><el-icon><component :is="task.taskType === 'MEDICATION' ? 'FirstAidKit' : 'Calendar'" /></el-icon></span>
+                <div><strong>{{ task.title }}</strong><p>{{ task.dosage || task.description || taskTypeText(task.taskType) }}</p></div>
+                <el-tag :type="taskTagType(task.status)" effect="light">{{ taskStatusText(task.status) }}</el-tag>
+                <el-button v-if="task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">Mark as taken</el-button>
+                <el-button v-if="task.taskType === 'DIALYSIS'" size="small" @click="$router.push('/family-health')">Manage schedule</el-button>
+              </article>
+            </div>
+            <div v-else class="simple-empty">No tasks need attention today</div>
+          </article>
+
+          <article class="monitor-panel event-panel">
+            <header class="panel-head panel-head--compact"><div><span class="panel-kicker">Health timeline</span><h2>Recent events</h2></div><el-button text type="primary" @click="$router.push('/family-health')">Record an event</el-button></header>
+            <div v-if="recentEvents.length" class="event-list">
+              <article v-for="event in recentEvents.slice(0, 7)" :key="`${event.sourceType}-${event.id}`" class="event-item">
+                <span class="event-dot"></span>
+                <div><strong>{{ event.title || eventTypeText(event.type) }}</strong><p>{{ event.summary || 'No additional details' }}</p><small>{{ event.date }} {{ event.time || '' }} · {{ eventTypeText(event.type) }}</small></div>
+              </article>
+            </div>
+            <div v-else class="simple-empty">No health events</div>
+          </article>
+        </div>
 
         <article class="monitor-panel alert-panel">
           <header class="panel-head panel-head--compact">
-            <div><span class="panel-kicker">Risk review</span><h2>Active alerts</h2></div>
+            <div><span class="panel-kicker">Risk review</span><h2 id="monitoring-alerts" tabindex="-1" class="monitor-section-heading">Active alerts</h2></div>
             <el-button text type="primary" :loading="checking" @click="runCheck">Run checks</el-button>
           </header>
           <div class="alert-list-summary"><span data-testid="alert-count">Showing {{ shownAlerts.length }} / {{ activeAlerts.length }} loaded alerts</span><router-link v-if="canViewAllAlerts" :to="allAlertsRoute" data-testid="view-all-alerts">View all alerts</router-link></div>
@@ -134,34 +169,6 @@
             </article>
           </div>
           <div v-else class="safe-empty"><el-icon :size="30"><CircleCheckFilled /></el-icon><strong>No active alerts</strong><span>Keep recording your data; abnormal changes will appear here.</span></div>
-        </article>
-      </section>
-
-      <section class="monitoring-lower-grid">
-        <article class="monitor-panel task-panel">
-          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">Care plan</span><h2>Today's tasks</h2></div><span class="panel-count">{{ todayTasks.length }} items</span></header>
-          <div v-if="todayTasks.length" class="task-list">
-            <article v-for="task in todayTasks" :key="`${task.taskType}-${task.id}`" class="task-item" :class="{ 'task-item--done': isTaskDone(task) }">
-              <span class="task-time">{{ timeOnly(task.scheduledAt) }}</span>
-              <span class="task-icon"><el-icon><component :is="task.taskType === 'MEDICATION' ? 'FirstAidKit' : 'Calendar'" /></el-icon></span>
-              <div><strong>{{ task.title }}</strong><p>{{ task.dosage || task.description || taskTypeText(task.taskType) }}</p></div>
-              <el-tag :type="taskTagType(task.status)" effect="light">{{ taskStatusText(task.status) }}</el-tag>
-              <el-button v-if="task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">Mark as taken</el-button>
-              <el-button v-if="task.taskType === 'DIALYSIS'" size="small" @click="$router.push('/family-health')">Manage schedule</el-button>
-            </article>
-          </div>
-          <div v-else class="simple-empty">No tasks need attention today</div>
-        </article>
-
-        <article class="monitor-panel event-panel">
-          <header class="panel-head panel-head--compact"><div><span class="panel-kicker">Health timeline</span><h2>Recent events</h2></div><el-button text type="primary" @click="$router.push('/family-health')">Record an event</el-button></header>
-          <div v-if="recentEvents.length" class="event-list">
-            <article v-for="event in recentEvents.slice(0, 7)" :key="`${event.sourceType}-${event.id}`" class="event-item">
-              <span class="event-dot"></span>
-              <div><strong>{{ event.title || eventTypeText(event.type) }}</strong><p>{{ event.summary || 'No additional details' }}</p><small>{{ event.date }} {{ event.time || '' }} · {{ eventTypeText(event.type) }}</small></div>
-            </article>
-          </div>
-          <div v-else class="simple-empty">No health events</div>
         </article>
       </section>
 
@@ -214,6 +221,26 @@ const lastSuccessAt = ref('')
 const hasSnapshot = computed(() => !!lastSuccessAt.value)
 const trendView = ref('chart')
 const trendRows = computed(() => snapshot.value.vitalTrend || [])
+
+function focusSection(id) {
+  const target = document.getElementById(id)
+  if (!target) return
+  const toolbar = document.querySelector?.('.workspace-topbar')
+  const clearance = () => {
+    const bounds = toolbar?.getBoundingClientRect()
+    return bounds ? Math.max(0, bounds.bottom) + 16 : 88
+  }
+  target.style?.setProperty('scroll-margin-top', `${clearance()}px`)
+  target.scrollIntoView({ behavior: 'auto', block: 'start' })
+  // Measure again after scrolling: the real toolbar may have reached its sticky position.
+  const requiredTop = clearance()
+  if (target.getBoundingClientRect?.().top < requiredTop) {
+    target.style?.setProperty('scroll-margin-top', `${requiredTop}px`)
+    target.scrollIntoView({ behavior: 'auto', block: 'start' })
+  }
+  target.focus({ preventScroll: true })
+}
+
 const shownAlerts = computed(() => activeAlerts.value.slice(0, 8))
 const allAlertsRoute = computed(() => ({ path: '/health-analysis', query: { tab: 'alert', patientId: patientId.value } }))
 const canViewAllAlerts = computed(() => {
@@ -310,7 +337,7 @@ const chartOption = computed(() => {
       { type: 'value', name: 'mmol/L', min: 0, axisLabel: { color: '#708783' }, splitLine: { show: false } }
     ],
     series: [
-      { name: 'Systolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.systolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.5, color: '#236b63' }, itemStyle: { color: '#236b63' }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d6a642', type: 'dashed' }, label: { color: '#8a6110', formatter: 'Reference 140' }, data: [{ yAxis: 140 }] } },
+      { name: 'Systolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.systolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.5, color: '#236b63' }, itemStyle: { color: '#236b63' }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d6a642', type: 'dashed' }, label: { show: false, color: '#8a6110', formatter: 'Reference 140' }, data: [{ yAxis: 140 }] } },
       { name: 'Diastolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.diastolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#589b91' }, itemStyle: { color: '#589b91' } },
       { name: 'Blood Glucose', type: 'line', yAxisIndex: 1, smooth: .25, connectNulls: true, data: rows.map(p => ({ value: glucoseInMmol(p.glucose, p.glucoseUnit), symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#d59c2f' }, itemStyle: { color: '#d59c2f' } }
     ]
@@ -978,6 +1005,7 @@ function handleVisibility() { return refreshSnapshotInBackground() }
 }
 
 .monitoring-main-grid {
+  align-items: start;
   grid-template-columns: minmax(0, 1.5fr) minmax(350px, .82fr);
 }
 
@@ -1489,7 +1517,10 @@ function handleVisibility() { return refreshSnapshotInBackground() }
 @media (max-width: 480px) {
   .illustrated-shortcuts { grid-template-columns: 1fr; }
 
-  .monitor-metrics,
+  .monitor-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .signal-grid {
     grid-template-columns: 1fr;
   }
@@ -1534,4 +1565,24 @@ function handleVisibility() { return refreshSnapshotInBackground() }
     justify-self: stretch;
   }
 }
+.monitoring-primary-column { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.monitoring-section-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.monitoring-section-nav a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 16px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--care-800); background: var(--paper); text-decoration: none; font-weight: 650; }
+.monitor-section-heading { scroll-margin-top: 88px; }
+.monitor-section-heading:focus { outline: 3px solid var(--care-600); outline-offset: 5px; border-radius: 3px; }
+.monitoring-section-nav a:focus-visible { outline: 3px solid var(--care-600); outline-offset: 3px; }
+.monitoring-reference-legend { margin: 8px 0; color: var(--ink-700); font-size: 12px; line-height: 1.5; }
+.monitoring-reference-legend span { display: inline-flex; align-items: baseline; gap: 7px; overflow-wrap: anywhere; }
+.monitoring-reference-legend i { flex: 0 0 18px; border-top: 2px dashed var(--warning); }
+@media (max-width: 768px) {
+  .monitoring-page .monitor-metric { min-height: 96px; padding: 10px; gap: 8px; align-items: flex-start; }
+  .monitoring-page .monitor-metric__icon { width: 24px; height: 24px; border-radius: 7px; }
+  .monitoring-page .monitor-metric > div { grid-template-columns: minmax(0, 1fr); row-gap: 3px; }
+  .monitoring-page .monitor-metric strong { font-size: 20px; line-height: 1.1; }
+  .monitoring-page .monitor-metric span { line-height: 1.25; overflow-wrap: anywhere; }
+  .monitoring-page .monitor-metric small { margin-top: 0; font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; }
+  .monitoring-page .monitor-metric__time { max-width: none; overflow: visible; white-space: normal; text-overflow: clip; font-size: 17px !important; overflow-wrap: anywhere; }
+  .monitoring-section-nav a { flex: 1; padding-inline: 8px; }
+}
+
 </style>

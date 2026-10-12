@@ -12,6 +12,8 @@ import { join, relative, resolve } from 'node:path'
 import { build, preview } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { chromium, expect } from '@playwright/test'
+import { assertReadableBox, assertTouchTarget, measureReadableElements } from './uiNineGeometry.mjs'
+import { assertNineVisualMeasurement } from '../../scripts/ui-nine-measurements.mjs'
 
 const repo = fileURLToPath(new URL('../../', import.meta.url))
 const dependencyRoot = join(repo, 'frontend')
@@ -20,7 +22,7 @@ const compileOnly = process.argv.includes('--compile-only')
 assert.ok(process.argv.slice(2).every(arg => arg === '--compile-only'), 'Only --compile-only is supported')
 const themes = ['platform', 'white', 'blue', 'mint', 'sand', 'dark']
 const itemIds = [2, 4, 8, 10, 13, 17]
-const cells = ['en', 'cn'].flatMap(edition => [1365, 375].flatMap(viewport => themes.map(theme => ({ edition, viewport, theme }))))
+const cells = ['en', 'cn'].flatMap(edition => [320, 375, 390, 768, 1365].flatMap(viewport => themes.map(theme => ({ edition, viewport, theme }))))
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim()
 assert.match(commit, /^[a-f0-9]{40}$/)
 const runId = new Date().toISOString().replace(/[^A-Za-z0-9]/g, '-')
@@ -39,14 +41,14 @@ async function persist() {
 }
 await persist() // Never leave a prior successful run masquerading as this run.
 
-const files = ['views/MonitoringCenter.vue', 'views/BpSelfMonitorManager.vue', 'views/NutritionDiaryManager.vue', 'components/care-plan/PlanTaskList.vue']
+const files = ['views/MonitoringCenter.vue', 'views/BpSelfMonitorManager.vue', 'views/NutritionDiaryManager.vue', 'components/care-plan/PlanTaskList.vue', 'components/VitalsTrendPanel.vue']
 for (const edition of ['en', 'cn']) {
-  for (const file of [...files, 'App.vue', 'utils/healthAppearance.js', 'styles/health-appearance.css']) {
+  for (const file of [...files, 'App.vue', 'utils/healthAppearance.js', 'styles/health-appearance.css', 'styles/mobile-optimization.css']) {
     const filename = join(repo, edition === 'en' ? 'frontend' : 'cn/frontend', 'src', file)
     report.sourceHashes[relative(repo, filename)] = createHash('sha256').update(await readFile(filename)).digest('hex')
   }
 }
-report.sourceHashes[relative(repo, fileURLToPath(import.meta.url))] = createHash('sha256').update(await readFile(fileURLToPath(import.meta.url))).digest('hex')
+for (const filename of [fileURLToPath(import.meta.url), fileURLToPath(new URL('./uiNineGeometry.mjs', import.meta.url)), fileURLToPath(new URL('../../scripts/ui-nine-measurements.mjs', import.meta.url))]) report.sourceHashes[relative(repo, filename)] = createHash('sha256').update(await readFile(filename)).digest('hex')
 
 async function makeHarness(edition) {
   const frontend = join(repo, edition === 'en' ? 'frontend' : 'cn/frontend')
@@ -432,6 +434,113 @@ async function verifyMonitoringTooltip(page, result, words) {
   result.checks.push('Monitoring help is visible through native hover and keyboard focus, fits the exact viewport, and finishes its real leave transition before unrelated screenshots')
 }
 
+function acceptNine(result, item, measurement) {
+  assertNineVisualMeasurement('monitoring', item, measurement, result.viewport)
+  ;(result.nineMeasurements ||= {})[item] = measurement
+  result.nineItemIds = [...new Set([...(result.nineItemIds || []), item])].sort((a, b) => a - b)
+}
+async function referenceGeometry(page, selector, values, viewport) {
+  const measurements = []
+  for (const value of values) {
+    const reference = page.locator(`${selector} [data-reference-value="${value}"]`)
+    await expect(reference).toHaveCount(1); await expect(reference).toBeVisible(); await reference.scrollIntoViewIfNeeded()
+    const [box] = await reference.evaluateAll(measureReadableElements)
+    assertReadableBox(box, viewport, `Reference ${value}`)
+    assert.match(box.text, new RegExp(String(value).replace('.', '\\.')))
+    assert.match(box.text, value === 140 ? /mmHg/ : /mmol\/L/)
+    const meaning = box.text.replace(/mmHg|mmol\/L|[\d\s.,:;·()—-]/g, '')
+    assert.ok(meaning.length >= 3, `Reference ${value} includes its visible name, not only a number and unit`)
+    measurements.push({ value, ...box })
+  }
+  return measurements
+}
+async function monitoringSummaryAndNavigation(page, cell, result) {
+  await page.locator('.monitor-metrics').scrollIntoViewIfNeeded()
+  const [summary] = await page.locator('.monitor-metrics').evaluateAll(measureReadableElements)
+  const cards = await page.locator('.monitor-metric').evaluateAll(measureReadableElements)
+  assert.equal(cards.length, 4)
+  cards.forEach((card, index) => assertReadableBox(card, cell.viewport, `Monitoring summary ${index + 1}`))
+  if (cell.viewport <= 768) {
+    assert.ok(Math.abs(cards[0].top - cards[1].top) <= 1 && Math.abs(cards[2].top - cards[3].top) <= 1, 'Mobile summary is exactly two cards per row')
+    assert.ok(cards[2].top >= cards[0].bottom && cards[1].left >= cards[0].right, 'Mobile summary has two distinct rows and columns')
+    if (cell.viewport === 375) assert.ok(summary.height <= 220, 'The complete four-card summary is no taller than 220px at 375px')
+  }
+  const navigation = [], nav = page.locator('.monitoring-section-nav')
+  if (cell.viewport <= 768) await expect(nav).toBeVisible()
+  if (await nav.isVisible()) {
+    for (const id of ['monitoring-alerts', 'monitoring-trends', 'monitoring-tasks']) {
+      const link = nav.locator(`a[href="#${id}"]`), heading = page.locator(`#${id}`)
+      for (const action of ['click', 'keyboard']) {
+        await expect(link).toBeVisible()
+        const [linkBox] = await link.evaluateAll(measureReadableElements)
+        assertReadableBox(linkBox, cell.viewport, `${id} navigation`); assertTouchTarget(linkBox, `${id} navigation`)
+        if (action === 'click') await link.click()
+        else { await link.focus(); await expect(link).toBeFocused(); await page.keyboard.press('Enter') }
+        await expect(heading).toBeFocused()
+        const measurement = await heading.evaluate(element => {
+          const box = element.getBoundingClientRect(), x = box.left + Math.min(box.width / 2, 40), y = box.top + box.height / 2
+          const hit = document.elementFromPoint(x, y)
+          return { id: element.id, tag: element.tagName, text: element.textContent, left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height, focused: document.activeElement === element, unobscured: Boolean(hit && element.contains(hit)), viewportHeight: innerHeight, scrollY }
+        })
+        assert.equal(measurement.tag, 'H2'); assert.ok(measurement.focused && measurement.unobscured, `${id} receives actual region focus without obstruction`)
+        assert.ok(measurement.top >= 0 && measurement.bottom <= measurement.viewportHeight, `${id} heading is in the visible viewport`)
+        navigation.push({ action, link: linkBox, target: measurement })
+      }
+    }
+  }
+  acceptNine(result, 8, { layout: cell.viewport <= 768 ? 'mobile-2x2' : 'wide-summary', summary, cards, navigation })
+  await capture(page, result, 'nine-summary-navigation')
+}
+async function monitoringColumnGeometry(page, cell, result) {
+  const geometry = await page.evaluate(() => {
+    const rect = selector => { const element = document.querySelector(selector); if (!element) return null; const box = element.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height } }
+    return { primary: rect('.monitoring-primary-column'), trend: rect('.trend-panel'), lastRow: rect('[data-testid="monitoring-trend-data"] tbody tr:last-child'), tasks: rect('.task-panel'), events: rect('.event-panel'), alerts: rect('.alert-panel') }
+  })
+  for (const [name, box] of Object.entries(geometry)) assert.ok(box?.width > 0 && box.height > 0, `${name} is a real rendered monitoring region`)
+  const { primary, trend, lastRow, tasks, events, alerts } = geometry
+  const taskGap = tasks.top - lastRow.bottom, eventGap = events.top - tasks.bottom
+  assert.ok(tasks.top >= trend.bottom - 1 && events.top >= tasks.bottom - 1, 'Tasks and events follow the trend in the independent left flow')
+  assert.ok(Math.abs(tasks.left - trend.left) <= 1 && Math.abs(events.left - trend.left) <= 1, 'Trend, tasks and events share the same left column')
+  assert.ok(taskGap >= -1 && taskGap <= 48, 'The next left section starts within 48px of the last trend data row')
+  if (cell.viewport === 1365) {
+    assert.ok(alerts.left >= primary.right - 1, 'Alerts form the independent right column')
+    assert.ok(tasks.top < alerts.bottom, 'Tasks do not wait for the taller right alert column')
+  } else assert.ok(alerts.bottom <= primary.top + 1 || primary.bottom <= alerts.top + 1, 'Narrow columns stack without intersection')
+  acceptNine(result, 7, { layout: cell.viewport === 1365 ? 'independent-columns' : 'stacked-flow', ...geometry, taskGap, eventGap })
+  await capture(page, result, 'nine-monitoring-column-flow')
+}
+const bpRecordRows = (page, viewport) => page.locator(viewport <= 768 ? '.records-panel .mobile-record-card' : '.records-panel .el-table__row')
+async function bpRecordGeometry(page, cell, result, words) {
+  const mobile = cell.viewport <= 768, records = []
+  const expected = (mobile ? bpRows(1) : bpRows(1).slice(0, 3)).map(row => ({
+    id: row.id, date: `${row.recordDate} ${row.recordTime}`, type: row.measureType === 'BP_BG' ? 'BP+BG' : row.measureType,
+    readings: [row.systolicBp != null ? `${row.systolicBp}/${row.diastolicBp}` : null, row.bloodGlucose != null ? `${row.bloodGlucose} ${row.bgUnit}` : null].filter(Boolean),
+  }))
+  await expect(bpRecordRows(page, cell.viewport)).toHaveCount(21)
+  if (mobile) { await expect(page.locator('.mobile-record-list')).toBeVisible(); await expect(page.locator('.records-desktop-table')).toBeHidden() }
+  for (const row of expected) {
+    const record = mobile ? page.locator(`.mobile-record-card[data-record-id="${row.id}"]`) : bpRecordRows(page, cell.viewport).filter({ hasText: row.date.split(' ')[0] })
+    await expect(record).toHaveCount(1); await expect(record).toBeVisible(); await record.scrollIntoViewIfNeeded()
+    const fields = mobile ? record.locator('.record-card-meta time, .record-card-type, .record-card-readings') : record.locator('.el-table__cell:nth-child(1) .cell, .el-table__cell:nth-child(2) .cell, .el-table__cell:nth-child(4) .cell, .el-table__cell:nth-child(5) .cell')
+    const measured = await fields.evaluateAll(measureReadableElements)
+    measured.forEach(box => assertReadableBox(box, cell.viewport, `Record ${row.id}: ${box.text}`))
+    if (mobile) {
+      await expect(record.locator('time')).toHaveText(row.date)
+      const type = cell.edition === 'cn' ? { BP: '血压', BG: '血糖', 'BP+BG': '血压+血糖' }[row.type] : row.type
+      assert.equal((await record.locator('.record-card-type').innerText()).replace(/\s/g, ''), type)
+      for (const reading of row.readings) await expect(record.locator('.record-card-readings')).toContainText(reading)
+      if (row.type.includes('BP')) await expect(record.locator('.record-card-bp')).toContainText('mmHg')
+    }
+    const edit = record.getByRole('button', { name: words.edit, exact: true })
+    const [editBox] = await edit.evaluateAll(measureReadableElements)
+    assertReadableBox(editBox, cell.viewport, `Record ${row.id} edit`)
+    if (mobile) assertTouchTarget(editBox, `Record ${row.id} edit`)
+    records.push({ id: row.id, fields: measured, edit: editBox })
+  }
+  acceptNine(result, 1, { presentation: mobile ? 'record-cards' : 'desktop-table', records })
+  await capture(page, result, 'nine-complete-records')
+}
+
 async function monitoringCase(page, origin, state, cell, result, words) {
   const gate = state.hold(paths.monitoring)
   await open(page, origin, 'monitoring'); await waitGate(gate)
@@ -443,6 +552,9 @@ async function monitoringCase(page, origin, state, cell, result, words) {
   await stopMonitoringTimer(page)
   await verifyTheme(page, cell, result, 'monitoring')
   await verifyMonitoringTooltip(page, result, words)
+  result.monitoringReferences = await referenceGeometry(page, '.monitoring-reference-legend', [140], cell.viewport)
+  await capture(page, result, 'nine-monitoring-reference-legend')
+  await monitoringSummaryAndNavigation(page, cell, result)
   await expect(page.getByTestId('alert-count')).toContainText(/8\s*\/.*9/)
   if (cell.edition === 'en') await expect(page.getByTestId('alert-count')).toHaveText('Showing 8 / 9 loaded alerts')
   const allAlerts = page.getByTestId('view-all-alerts'), href = new URL(await allAlerts.getAttribute('href'), origin)
@@ -458,6 +570,7 @@ async function monitoringCase(page, origin, state, cell, result, words) {
   await expect(page.locator('.trend-context')).toContainText(/#1.*30/)
   assert.equal(state.requests.filter(request => request.path === paths.monitoring).at(-1).query.days, '30')
   await capture(page, result, 'monitoring-trend-alerts')
+  await monitoringColumnGeometry(page, cell, result)
   state.override(paths.monitoring, { httpStatus: 500 })
   await page.locator('.refresh-button').click()
   await expect(page.getByTestId('monitoring-stale')).toContainText(/\d{4}-\d{2}-\d{2}/)
@@ -515,7 +628,7 @@ async function readEditClickOrigin(opener) {
 async function editHistory(page, state, result, words, surface) {
   const note = surface === 'bp' ? 'Fictional BP history 17' : 'Fictional nutrition history 17'
   const recordId = surface === 'bp' ? 217 : 317, path = surface === 'bp' ? '/api/bp-self-monitor/update' : '/api/nutrition-diary/update'
-  const row = page.locator('.records-panel .el-table__row').filter({ hasText: note })
+  const row = (surface === 'bp' ? bpRecordRows(page, result.viewport) : page.locator('.records-panel .el-table__row')).filter({ hasText: note })
   const opener = row.getByRole('button', { name: words.edit, exact: true })
   for (const action of ['cancel', 'save']) {
     await opener.scrollIntoViewIfNeeded()
@@ -555,50 +668,93 @@ async function editHistory(page, state, result, words, surface) {
   await capture(page, result, `${surface}-origin-restored`)
   result.checks.push(`${surface}: real history edit, dated heading focus/scroll, explicit cancel, save/cancel original row focus/scroll, reduced motion and exact mutation ownership`)
 }
+async function responsiveBpEditReturn(page, state, cell, result, words) {
+  const alternateViewport = cell.viewport <= 768 ? 1365 : 375
+  const note = 'Fictional BP history 17'
+  const measurements = []
+  for (const action of ['cancel', 'save']) {
+    const source = bpRecordRows(page, cell.viewport).filter({ hasText: note }).getByRole('button', { name: words.edit, exact: true })
+    await source.scrollIntoViewIfNeeded()
+    const origin = await readEditClickOrigin(source)
+    assert.equal(origin?.trusted, true)
+    await expect(page.locator('.editor-heading')).toBeFocused()
+    try {
+      await page.setViewportSize({ width: alternateViewport, height: 900 }); await waitForMonitoringLayout(page)
+      const target = bpRecordRows(page, alternateViewport).filter({ hasText: note }).getByRole('button', { name: words.edit, exact: true })
+      if (action === 'cancel') await page.locator('.form-actions').getByRole('button', { name: words.cancel, exact: true }).click()
+      else {
+        await page.locator('.remark-field textarea').fill(`${note} updated by fictional responsive acceptance`)
+        await page.locator('.form-actions').getByRole('button', { name: words.update, exact: true }).click()
+      }
+      await expect(target).toBeFocused(); await expect(target).toBeVisible()
+      const returned = await target.evaluate(element => {
+        const rect = element.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+        return { viewport: innerWidth, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height, focused: document.activeElement === element, unobscured: Boolean(hit && element.contains(hit)), scrollY }
+      })
+      assert.equal(returned.viewport, alternateViewport)
+      assert.ok(returned.focused && returned.unobscured && returned.top >= 0 && returned.bottom <= 900, 'Responsive edit return focuses the visible same-record counterpart')
+      assert.ok(returned.left >= 0 && returned.right <= alternateViewport, 'Responsive return target stays inside the new width')
+      if (action === 'save') {
+        const mutation = state.requests.filter(request => request.path === '/api/bp-self-monitor/update').at(-1)
+        assert.equal(mutation.method, 'PUT'); assert.equal(mutation.body.patientId, 1); assert.equal(mutation.body.id, 217)
+      }
+      measurements.push({ action, fromViewport: cell.viewport, toViewport: alternateViewport, origin, returned, recordId: 217 })
+    } finally { await page.setViewportSize({ width: cell.viewport, height: 900 }) }
+  }
+  result.responsiveEditReturns = measurements
+  await capture(page, result, 'bp-responsive-editor-return')
+}
 async function bpCase(page, origin, state, cell, result, words) {
   // Change the list filter before the initial summary supplier completes.
   const gate = state.hold(paths.bp, request => !request.query.measureType)
   await open(page, origin, 'bp'); await waitGate(gate)
   await expect(page.locator('.bp-monitor-page [role=status]').filter({ hasText: words.loadingBp })).toBeVisible()
   await expect(page.locator('.records-panel .table-wrap')).toHaveCount(0)
+  await expect(page.locator('.mobile-record-card')).toHaveCount(0)
   await filter(page, words.bp)
-  await expect(page.locator('.records-panel .el-table__row')).toHaveCount(19)
+  await expect(bpRecordRows(page, cell.viewport)).toHaveCount(19)
   gate.release(); state.clear(paths.bp)
   const summary = page.locator('.bp-summary .summary-item')
   await expect(summary.nth(1)).toContainText('144/83 mmHg'); await expect(summary.nth(1)).toContainText('2026-10-10 09:15')
   await expect(summary.nth(2)).toContainText('108 mg/dL'); await expect(summary.nth(2)).toContainText('2026-10-11 07:30')
   if (cell.edition === 'en') { await expect(summary.nth(0)).toContainText('Record count in list'); await expect(summary.nth(1)).toContainText(words.latestBp); await expect(summary.nth(2)).toContainText(words.latestBg) }
   const before = [await summary.nth(1).textContent(), await summary.nth(2).textContent()]
-  await filter(page, words.bg); await expect(page.locator('.records-panel .el-table__row')).toHaveCount(1)
+  await filter(page, words.bg); await expect(bpRecordRows(page, cell.viewport)).toHaveCount(1)
   assert.deepEqual([await summary.nth(1).textContent(), await summary.nth(2).textContent()], before)
   const raw = page.getByTestId('bp-trend-data'), disclosure = raw.locator('summary')
   await disclosure.focus(); await page.keyboard.press('Enter'); await expect(raw).toHaveAttribute('open', '')
   await expect(raw.locator('tbody tr')).toHaveCount(1); await expect(raw).toContainText('108 mg/dL'); await expect(raw).toContainText('#1')
-  await filter(page, words.all); await expect(page.locator('.records-panel .el-table__row')).toHaveCount(21)
+  await filter(page, words.all); await expect(bpRecordRows(page, cell.viewport)).toHaveCount(21)
   await expect(raw.locator('tbody tr')).toHaveCount(21)
   await expect(raw.locator('tbody tr').filter({ hasText: '2026-10-10 09:15' })).toContainText(words.marker)
   await expect(raw.locator('tbody tr').filter({ hasText: '2026-10-09 20:00' })).toContainText('5.1 mmol/L')
+  await bpRecordGeometry(page, cell, result, words)
+  const bpReferences = await referenceGeometry(page, '.chart-reference-legend', [140, 6.1, 7.8], cell.viewport)
+  acceptNine(result, 2, { monitoring: result.monitoringReferences, bp: bpReferences })
+  await capture(page, result, 'nine-bp-reference-legends')
   await verifyTheme(page, cell, result, 'bp'); await capture(page, result, 'bp-independent-summary-trend')
   state.override(paths.bp, { httpStatus: 500 })
   await page.locator('.records-tools').getByRole('button', { name: words.refresh, exact: true }).click()
   await expect(page.getByTestId('bp-stale')).toContainText(/\d{4}-\d{2}-\d{2}T/)
-  await expect(page.locator('.records-panel .el-table__row')).toHaveCount(21)
+  await expect(bpRecordRows(page, cell.viewport)).toHaveCount(21)
   await capture(page, result, 'bp-stale-retry')
   state.clear(paths.bp); await page.getByTestId('retry-bp-records').click(); await expect(page.getByTestId('bp-stale')).toHaveCount(0)
   // Close the accessible table before testing history restoration, so chart/list
   // positions are realistic and the same native disclosure remains available.
   await disclosure.click()
   await editHistory(page, state, result, words, 'bp')
+  await responsiveBpEditReturn(page, state, cell, result, words)
   state.override(paths.bp, { data: [] }); await page.locator('.records-tools').getByRole('button', { name: words.refresh, exact: true }).click()
-  await expect(page.locator('.records-panel .el-table__empty-block')).toContainText(words.emptyBp)
+  await expect(page.locator(cell.viewport <= 768 ? '.mobile-record-list' : '.records-panel .el-table__empty-block')).toContainText(words.emptyBp)
   await expect(summary.nth(1).locator('strong')).toHaveText('-'); await expect(summary.nth(2).locator('strong')).toHaveText('-')
   state.clear(paths.bp); await page.locator('.records-tools').getByRole('button', { name: words.refresh, exact: true }).click()
-  await expect(page.locator('.records-panel .el-table__row')).toHaveCount(21)
-  await page.locator('.records-panel .el-table__row').filter({ hasText: 'Fictional BP history 17' }).getByRole('button', { name: words.edit, exact: true }).click()
+  await expect(bpRecordRows(page, cell.viewport)).toHaveCount(21)
+  await bpRecordRows(page, cell.viewport).filter({ hasText: 'Fictional BP history 17' }).getByRole('button', { name: words.edit, exact: true }).click()
   await expect(page.locator('.editor-heading')).toBeFocused()
   state.override(paths.bp, { httpStatus: 403 }); await page.locator('.records-tools').getByRole('button', { name: words.refresh, exact: true }).click()
   await expect(page.getByTestId('retry-bp-records')).toBeVisible()
   await expect(page.locator('.records-panel .table-wrap')).toHaveCount(0)
+  await expect(page.locator('.mobile-record-card')).toHaveCount(0)
   await expect(page.getByTestId('bp-trend-data')).toHaveCount(0)
   await expect(page.getByTestId('bp-stale')).toHaveCount(0)
   await expect(page.locator('.editor-heading')).not.toContainText(dateAt(17))
@@ -731,7 +887,7 @@ try {
       }
     } finally { if (server) await new Promise((resolve, reject) => server.httpServer.close(error => error ? reject(error) : resolve())); await rm(harness.directory, { recursive: true, force: true }) }
   }
-  if (!compileOnly) { assert.equal(report.results.length, 24); assert.ok(report.results.every(result => result.status === 'passed'), 'One or more real-browser acceptance cells failed') }
+  if (!compileOnly) { assert.equal(report.results.length, cells.length); assert.ok(report.results.every(result => result.status === 'passed'), 'One or more real-browser acceptance cells failed') }
 } catch (error) {
   report.error = { message: error.message, stack: error.stack }; process.exitCode = 1
   console.error(error.message)

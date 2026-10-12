@@ -14,19 +14,19 @@
         </div>
 
         <div class="content-panel">
-          <button class="execution-report-choice" type="button" :aria-expanded="showCareExecution" @click="showCareExecution=!showCareExecution">照护执行报告 · 当前事项CSV / 期间事件CSV</button>
+          <el-button class="execution-report-choice" :aria-expanded="showCareExecution" @click="showCareExecution=!showCareExecution">照护执行报告 · 当前事项CSV / 期间事件CSV</el-button>
           <ExecutionReportPanel v-if="showCareExecution && currentPatientId" :patient-id="currentPatientId"/>
           <p v-else-if="showCareExecution" role="status">请先选择患者</p>
-          <el-form v-if="!showCareExecution" :model="form" label-width="110px" ref="formRef" :rules="rules" :disabled="exporting || previewing">
+          <el-form v-if="!showCareExecution" :model="form" label-width="auto" class="report-export-form" ref="formRef" :rules="rules" :disabled="exporting || previewing">
             <el-row :gutter="16">
-              <el-col :xs="24" :sm="8">
+              <el-col :xs="24" :md="12">
                 <el-form-item label="报告类型" prop="reportType">
                   <el-select v-model="form.reportType" style="width: 100%">
                     <el-option v-for="opt in reportTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                   </el-select>
                 </el-form-item>
               </el-col>
-              <el-col :xs="24" :sm="8">
+              <el-col :xs="24" :md="12">
                 <el-form-item label="导出格式" prop="format">
                   <el-select v-model="form.format" style="width: 100%">
                     <el-option label="HTML 网页" value="html" />
@@ -36,7 +36,7 @@
               </el-col>
             </el-row>
             <el-row :gutter="16">
-              <el-col :xs="24" :sm="8">
+              <el-col :xs="24" :md="12">
                 <el-form-item label="时间维度" prop="timeType">
                   <el-select v-model="form.timeType" style="width: 100%">
                     <el-option label="按月" value="month" />
@@ -45,7 +45,7 @@
                   </el-select>
                 </el-form-item>
               </el-col>
-              <el-col :xs="24" :sm="8">
+              <el-col :xs="24" :md="12">
                 <el-form-item label="时间范围" prop="timeValue">
                   <el-date-picker
                     v-model="form.timeValue"
@@ -64,7 +64,7 @@
               <p>日期范围（含首尾）：{{ reportDateRange ? `${reportDateRange.from} – ${reportDateRange.to}` : '请选择日期范围' }}</p>
               <p>报告包含个人健康信息，不是匿名数据。分享前请核对内容和接收人。</p>
             </section>
-            <el-form-item>
+            <el-form-item class="report-export-actions">
               <el-button type="primary" @click="handleExport" :loading="exporting">
                 <el-icon><Download /></el-icon>生成并下载报告
               </el-button>
@@ -411,6 +411,42 @@ function lineOption(dates = [], series = []) {
 }
 </style>
 
-<style scoped>.execution-report-choice{min-height:44px;padding:10px 16px;margin-bottom:16px;max-width:100%;font:inherit;white-space:normal}.execution-report-choice:focus-visible{outline:3px solid var(--care-600)}</style>
+<style scoped>
+.execution-report-choice {
+  min-height: 44px;
+  height: auto;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.5;
+}
+.execution-report-choice:focus-visible { outline: 3px solid var(--care-600); outline-offset: 2px; }
+.report-export-form :deep(.el-form-item__label) { white-space: nowrap; flex-shrink: 0; }
+.report-export-form :deep(.el-form-item__content) { min-width: 0; }
+.report-export-actions :deep(.el-form-item__content) { gap: 12px; }
+.report-export-actions :deep(.el-button) {
+  min-height: 44px;
+  height: auto;
+  max-width: 100%;
+  margin-left: 0;
+  padding-block: 10px;
+  white-space: normal;
+  line-height: 1.5;
+}
+@media (max-width: 768px) {
+  .report-export-form :deep(.el-form-item) { display: block; }
+  .report-export-form :deep(.el-form-item__label-wrap) { margin-left: 0 !important; }
+  .report-export-form :deep(.el-form-item__label) {
+    justify-content: flex-start;
+    height: auto;
+    margin-bottom: 8px;
+    padding-right: 0;
+    line-height: 1.5;
+  }
+  .report-export-form :deep(.el-form-item__content) { margin-left: 0 !important; }
+}
+</style>
 
 <style scoped>.report-export-scope{padding:16px;margin-bottom:16px;background:var(--care-50);border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}.report-export-scope p{line-height:1.6;margin:8px 0}</style>

@@ -65,7 +65,7 @@ function setupApp(getUserInfo, getPatientNames = async () => ({ code: 200, data:
     useRoute: () => route,
     useRouter: () => ({ resolve: path => { const url = new URL(path || '/', 'http://test'); return { path: url.pathname, query: Object.fromEntries(url.searchParams) }; }, replace: path => redirects.push(path), isReady: ready }),
     useMobile: () => ({ isMobile: ref(false) }),
-    useCurrentPatient: () => ({ currentPatientId: ref(null), setPatientList: value => { patientList.value = value; } }),
+    useCurrentPatient: () => ({ currentPatientId: ref(null), patientList, setPatientList: value => { patientList.value = value; } }),
     getUserInfo, getPatientNames, loadPatientSpecialtyScope: specialtyReader, ElMessage: { success() {}, info() {} }
   }, ['loadUserMenus', 'resetNavState', 'userInfo', 'userMenus', 'appPatientList', 'navItems', 'menuLoadError', 'switchPatient', 'routerViewKey', 'currentPatientId', 'specialtyScope']);
   return { ...app, patientList, route, redirects };

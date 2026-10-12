@@ -14,13 +14,13 @@
     <p v-if="queueLoaded && !state.loading && !taskError && !taskItems.length">No authorized tasks in this queue.</p>
     <article v-for="plan in state.loading ? [] : taskItems" :key="plan.id" class="plan-card"><header><h3>{{plan.title}}</h3><router-link :to="`/care-plans/${plan.id}`" :data-testid="`open-plan-${plan.id}`">Open plan and version history</router-link></header><p>Published version {{plan.revisionNo}} · {{plan.instructions}}</p>
       <router-link :to="`/care-plans/reports?patientId=${plan.patientId || patientId}&planId=${plan.id}`" :data-testid="`plan-execution-report-${plan.id}`">Execution report for this plan</router-link>
-      <details v-for="action in orderedActions(plan)" :key="action.id" :open="!isHistoryAction(action)" class="action-group" :data-testid="`plan-action-${action.id}`"><summary><span v-if="isHistoryAction(action)">Reviewed and ended history · </span>{{ action.ordinal }}. {{ action.instruction }} · {{ statusLabel(action.status) }}</summary><article class="action-card"><h4>{{action.ordinal}}. {{action.instruction}}</h4><p>{{statusLabel(action.status)}}<strong v-if="action.overdue"> · Currently overdue</strong></p><p>Responsible account #{{action.assignedUserId}} · Deadline {{displayTime(action.dueAt)}}</p><p v-if="action.firstSubmittedAt">Original submission {{displayTime(action.firstSubmittedAt)}} · {{originalTiming(action)}}</p><p v-if="action.latestSubmittedAt">Latest submission {{displayTime(action.latestSubmittedAt)}}</p><p v-if="action.reviewWaitingSince">Waiting for doctor review since {{displayTime(action.reviewWaitingSince)}}. This review wait is not patient delay.</p>
-        <ul><li v-for="(e,index) in action.evidence || []" :key="index"><span v-if="e.restricted">A restricted linked record exists</span><a v-else-if="safeLink(e.detailLink)" :href="e.detailLink">{{e.title || 'Existing record'}}</a><span v-else>{{e.title || 'Existing record'}} #{{e.sourceId}}</span></li></ul>
+      <details v-for="action in orderedActions(plan)" :key="action.id" :open="!isHistoryAction(action)" class="action-group" :data-testid="`plan-action-${action.id}`"><summary><span class="action-summary__title"><span v-if="isHistoryAction(action)">Reviewed and ended history · </span>{{ action.ordinal }}. {{ action.instruction }}</span><span class="action-summary__status">{{ statusLabel(action.status) }}<strong v-if="action.overdue"> · Currently overdue</strong></span></summary><div class="action-card"><p>Responsible account #{{action.assignedUserId}} · Deadline {{displayTime(action.dueAt)}}</p><p v-if="action.firstSubmittedAt">Original submission {{displayTime(action.firstSubmittedAt)}} · {{originalTiming(action)}}</p><p v-if="action.latestSubmittedAt">Latest submission {{displayTime(action.latestSubmittedAt)}}</p><p v-if="action.reviewWaitingSince">Waiting for doctor review since {{displayTime(action.reviewWaitingSince)}}. This review wait is not patient delay.</p>
+        <ul v-if="action.evidence?.length"><li v-for="(e,index) in action.evidence || []" :key="index"><span v-if="e.restricted">A restricted linked record exists</span><a v-else-if="safeLink(e.detailLink)" :href="e.detailLink">{{e.title || 'Existing record'}}</a><span v-else>{{e.title || 'Existing record'}} #{{e.sourceId}}</span></li></ul>
         <details v-if="action.events?.length" class="action-event-history"><summary>View activity history ({{ action.events.length }} events)</summary>
         <div v-for="event in action.events || []" :key="event.id" class="event"><p>{{eventLabel(event.eventType)}} · {{event.actorName}} · {{roleLabel(event.actorRole)}}<template v-if="event.entryMode"> · {{event.entryMode==='ASSISTED'?'Assisted entry':'Account-owner self-entry declaration'}}</template></p><p v-if="event.note">{{event.note}}</p><p>{{displayTime(event.recordedAt)}}</p></div>
         </details>
         <div class="controls"><button v-if="action.allowedActions?.includes('SUBMIT_RECEIPT') && action.allowedEntryModes?.length" type="button" :data-testid="`record-${action.id}`" :ref="node=>setReceiptOpener(action.id,'submitReceipt',node)" @click="openReceipt(plan,action,'submitReceipt')">{{mode==='PATIENT'?'Record execution':'Record assisted execution'}}</button><button v-if="action.allowedActions?.includes('REQUEST_HELP')" type="button" :data-testid="`help-${action.id}`" :ref="node=>setReceiptOpener(action.id,'requestHelp',node)" @click="openReceipt(plan,action,'requestHelp')">Ask for help</button><button v-if="mode==='NURSE' && action.allowedActions?.includes('FOLLOW_UP')" type="button" :data-testid="`followup-${action.id}`" :ref="node=>setReceiptOpener(action.id,'followUp',node)" @click="openReceipt(plan,action,'followUp')">Record follow-up</button></div>
-      </article></details>
+      </div></details>
     </article>
     <button v-if="state.nextCursor && !taskError" type="button" data-testid="more-tasks" :disabled="state.loading" @click="loadMore">More plan tasks</button>
     <ReceiptDialog v-if="selected" ref="receipt" :action="selected.action" :plan-version="selected.version" :command="selected.command" @submitted="receiptSubmitted" @closed="receiptClosed" />
@@ -113,5 +113,28 @@ onMounted(()=>{timer=setInterval(reload,60000);window.addEventListener('focus',f
 onUnmounted(()=>{receiptEpoch++;receiptOpeners.clear();generation++;controller?.abort();clearInterval(timer);window.removeEventListener('focus',focusReload);window.removeEventListener('auth-session-cleared',sessionChanged);window.removeEventListener('storage',sessionChanged)})
 </script>
 <style scoped>
-.action-group>summary,.action-event-history>summary{min-height:44px;line-height:1.6;cursor:pointer;overflow-wrap:anywhere;font-weight:600}.action-group>summary:focus-visible,.action-event-history>summary:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.action-group{margin:14px 0;border:1px solid var(--line);border-radius:10px;padding:10px}.action-group .action-card{margin:8px 0}.plan-tasks{min-width:0;margin:18px 0;color:var(--ink-800)}header,.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between}.plan-card,.action-card{min-width:0;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}.action-card{background:var(--surface-subtle)}h2,h3,h4,p,li{overflow-wrap:anywhere}p,li{line-height:1.6}.event{border-left:3px solid var(--care-600);padding-left:12px}.controls{justify-content:flex-start}button,a{min-height:44px;box-sizing:border-box;padding:10px 14px;font:inherit;color:var(--care-800);border:1px solid var(--care-600);border-radius:8px;background:var(--paper)}a{display:inline-flex;align-items:center}button{cursor:pointer}button:disabled{opacity:.5}button:focus-visible,a:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}@media(max-width:600px){.plan-card,.action-card{padding:12px}.controls button{width:100%}header>a{width:100%;justify-content:center}}
+.plan-tasks{min-width:0;margin:18px 0;color:var(--ink-800)}
+header,.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between}
+.plan-card{min-width:0;border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.plan-card h3{margin:0;font-size:1.125em;line-height:1.5}
+.plan-card>p{margin:8px 0}
+.action-group{min-width:0;margin:10px 0;border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--surface-subtle)}
+.action-group>summary,.action-event-history>summary{box-sizing:border-box;min-height:44px;line-height:1.5;cursor:pointer;overflow-wrap:anywhere;padding:8px 0;font-weight:600}
+.action-group>summary:focus-visible,.action-event-history>summary:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
+.action-summary__title{font-weight:700;color:var(--ink-950)}
+.action-summary__status{display:block;font-weight:400;color:var(--ink-700);margin-top:2px}
+.action-summary__status strong{color:var(--danger)}
+.action-card{min-width:0;border:0;border-radius:0;padding:0;margin:0;background:transparent}
+.action-card p{margin:4px 0;line-height:1.5}
+.action-card ul{margin:6px 0;padding-left:22px}
+.action-card .controls{margin-top:8px}
+.action-event-history{margin:4px 0}
+.action-event-history>summary{font-weight:400;color:var(--care-800)}
+h2,h3,p,li{overflow-wrap:anywhere}p,li{line-height:1.5}
+.event{border-left:3px solid var(--care-600);padding-left:12px;margin:8px 0}
+.controls{justify-content:flex-start}
+button,a{min-height:44px;box-sizing:border-box;padding:10px 14px;font:inherit;color:var(--care-800);border:1px solid var(--care-600);border-radius:8px;background:var(--paper)}
+a{display:inline-flex;align-items:center}button{cursor:pointer}button:disabled{opacity:.5}
+button:focus-visible,a:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
+@media(max-width:600px){.plan-card{padding:12px}.action-group{padding:6px 10px}.controls button{width:100%}header>a{width:100%;justify-content:center}}
 </style>

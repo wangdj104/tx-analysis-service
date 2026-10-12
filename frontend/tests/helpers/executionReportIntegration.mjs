@@ -65,8 +65,8 @@ export async function mountedReport(t,{family=false,journey=false,initialRoute,s
  for(const tag of new Set((source('views/FamilyHealthManager.vue')+source('views/CareJourneyManager.vue')).match(/el-[a-z-]+/g)))app.component(tag,{setup(props,{slots}){return()=>h('div',{},tag==='el-table-column'?[]:slots.default?.())}})
  app.directive('loading',{});app.config.warnHandler=message=>warnings.push(message);app.use(router)
  await router.push(initialRoute||(family?'/family-health?tab=summary':journey?'/care-journey?tab=measurements&patientId=10&measurementId=17':'/care-plans/reports?patientId=1'));await router.isReady();app.mount(root);await flush()
- const route=new Proxy({},{get:(_,key)=>router.currentRoute.value[key]}),switchCode=source('App.vue').match(/function switchPatient\(id\) \{([\s\S]*?)\n\}/)[0]
- const deps={currentPatientId,window,appPatientList:ref([{id:1},{id:2}]),ElMessage:{success(){},info(){}},parseReportRoute,isNarrowCareRoute,router,route,routerViewKey:ref('7'),getAuthSessionKey:()=> '7'}
+ const route=new Proxy({},{get:(_,key)=>router.currentRoute.value[key]}),appSource=source('App.vue'),switchCode=appSource.slice(appSource.indexOf('// switchPatient'),appSource.indexOf('// Sign Out'))
+ const deps={currentPatientId,nextTick,window,document,patientList:ref([{id:1},{id:2}]),appPatientList:ref([{id:1},{id:2}]),ElMessage:{success(){},info(){}},parseReportRoute,isNarrowCareRoute,router,route,routerViewKey:ref('7'),getAuthSessionKey:()=> '7'}
  const switchPatient=new Function(...Object.keys(deps),switchCode+';return switchPatient')(...Object.values(deps))
  t.after(()=>{app.unmount();delete globalThis[slot]})
  const instance=name=>findComponent(root._vnode,name)
