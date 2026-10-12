@@ -26,7 +26,7 @@ public final class MedicalRecordMysqlAssertions {
         jdbc.update("INSERT INTO sys_user_role(user_id,role_id) SELECT ?,id FROM sys_role WHERE role_code='doctor'",DOCTOR);
         jdbc.update("INSERT INTO patient(id,name,user_id) VALUES(?,'Synthetic medical integrity patient',?)",PATIENT,OWNER);
         jdbc.update("INSERT INTO doctor_patient_assignment(doctor_user_id,patient_id,assigned_by,status) VALUES(?,?,?,'ACTIVE')",DOCTOR,PATIENT,OWNER);
-        boolean constraint=false;
+        boolean faultTrigger=false;
         RequestContextHolder.resetRequestAttributes();
         NativeAttachmentObserver observer=new NativeAttachmentObserver();
         try(GenericApplicationContext context=MedicalRecordPersistenceHarness.create(dataSource,observer)) {
@@ -53,14 +53,25 @@ public final class MedicalRecordMysqlAssertions {
             observer.action=()->current.execute(status->{jdbc.update("UPDATE doctor_patient_assignment SET status='REVOKED' WHERE doctor_user_id=? AND patient_id=?",DOCTOR,PATIENT);return null;});
             assertThrows(IllegalStateException.class,()->CurrentUserUtil.runAsUser(DOCTOR,()->service.getReviewPreview(id)));jdbc.update("UPDATE doctor_patient_assignment SET status='ACTIVE' WHERE doctor_user_id=? AND patient_id=?",DOCTOR,PATIENT);
             verifyRace(context,service,workspace,jdbc,id);
-            // A native database insertion error must unwind the complete proxied transaction.
-            jdbc.execute("ALTER TABLE medical_record_attachment ADD CONSTRAINT ck_medical_risk_synthetic_length CHECK(file_name <> 'medical-risk-too-long.txt' OR CHAR_LENGTH(file_content)<=8)");constraint=true;
-            MedicalRecord fresh=newRecord(" New rollback body ");MedicalRecordAttachment bad=attachment("medical-risk-too-long.txt","TOO-LONG-SYNTHETIC-BYTES");fresh.setAttachments(Collections.singletonList(bad));assertThrows(RuntimeException.class,()->CurrentUserUtil.runAsUser(OWNER,()->service.saveRecordWithItems(fresh,Collections.emptyList())));assertEquals("TOO-LONG-SYNTHETIC-BYTES",bad.getFileContent());assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM medical_record WHERE id=?",Integer.class,fresh.getId()));
-            MedicalRecord old=service.getById(id);long oldVersion=old.getContentVersion();String oldBytes=jdbc.queryForObject("SELECT file_content FROM medical_record_attachment WHERE record_id=?",String.class,id);MedicalRecord failed=newRecord(" Failed replacement body ");failed.setId(id);failed.setAttachments(Collections.singletonList(attachment("medical-risk-too-long.txt","TOO-LONG-SYNTHETIC-BYTES")));assertThrows(RuntimeException.class,()->CurrentUserUtil.runAsUser(OWNER,()->service.updateRecordWithItems(failed,Collections.emptyList())));assertEquals(old.getRemark(),service.getById(id).getRemark());assertEquals(oldVersion,service.getById(id).getContentVersion());assertEquals(oldBytes,jdbc.queryForObject("SELECT file_content FROM medical_record_attachment WHERE record_id=?",String.class,id));
+            // A real native insertion error must unwind the complete proxied transaction on 5.7 and 8.
+            // MySQL 5.7 ignores CHECK constraints; a narrowly scoped trigger provides the same fault.
+            jdbc.execute("CREATE TRIGGER medical_risk_synthetic_attachment_failure BEFORE INSERT ON medical_record_attachment FOR EACH ROW BEGIN IF NEW.file_name='medical-risk-too-long.txt' AND CHAR_LENGTH(NEW.file_content)>8 THEN SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO=1644,MESSAGE_TEXT='Synthetic medical attachment failure'; END IF; END");faultTrigger=true;
+            MedicalRecord fresh=newRecord(" New rollback body ");MedicalRecordAttachment bad=attachment("medical-risk-too-long.txt","TOO-LONG-SYNTHETIC-BYTES");fresh.setAttachments(Collections.singletonList(bad));assertNativeAttachmentFailure(()->CurrentUserUtil.runAsUser(OWNER,()->service.saveRecordWithItems(fresh,Collections.emptyList())));assertEquals("TOO-LONG-SYNTHETIC-BYTES",bad.getFileContent());assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM medical_record WHERE id=?",Integer.class,fresh.getId()));
+            MedicalRecord old=service.getById(id);long oldVersion=old.getContentVersion();String oldBytes=jdbc.queryForObject("SELECT file_content FROM medical_record_attachment WHERE record_id=?",String.class,id);MedicalRecord failed=newRecord(" Failed replacement body ");failed.setId(id);failed.setAttachments(Collections.singletonList(attachment("medical-risk-too-long.txt","TOO-LONG-SYNTHETIC-BYTES")));assertNativeAttachmentFailure(()->CurrentUserUtil.runAsUser(OWNER,()->service.updateRecordWithItems(failed,Collections.emptyList())));assertEquals(old.getRemark(),service.getById(id).getRemark());assertEquals(oldVersion,service.getById(id).getContentVersion());assertEquals(oldBytes,jdbc.queryForObject("SELECT file_content FROM medical_record_attachment WHERE record_id=?",String.class,id));
         } finally {
-            if(constraint) jdbc.execute("ALTER TABLE medical_record_attachment DROP CHECK ck_medical_risk_synthetic_length");
+            if(faultTrigger) jdbc.execute("DROP TRIGGER medical_risk_synthetic_attachment_failure");
             jdbc.update("DELETE FROM doctor_review_log WHERE patient_id=?",PATIENT);jdbc.update("DELETE FROM medical_record WHERE patient_id=?",PATIENT);jdbc.update("DELETE FROM doctor_patient_assignment WHERE patient_id=?",PATIENT);jdbc.update("DELETE FROM patient WHERE id=?",PATIENT);jdbc.update("DELETE FROM sys_user_role WHERE user_id IN (?,?)",OWNER,DOCTOR);jdbc.update("DELETE FROM sys_user WHERE id IN (?,?)",OWNER,DOCTOR);RequestContextHolder.resetRequestAttributes();
         }
+    }
+    private static void assertNativeAttachmentFailure(org.junit.jupiter.api.function.Executable work) {
+        RuntimeException failure=assertThrows(RuntimeException.class,work);
+        java.sql.SQLException nativeFailure=null;
+        for(Throwable cause=failure;cause!=null;cause=cause.getCause()) {
+            if(cause instanceof java.sql.SQLException){nativeFailure=(java.sql.SQLException)cause;break;}
+        }
+        assertNotNull(nativeFailure,"The rollback must be caused by the native attachment fault");
+        assertEquals("45000",nativeFailure.getSQLState());assertEquals(1644,nativeFailure.getErrorCode());
+        assertTrue(nativeFailure.getMessage().contains("Synthetic medical attachment failure"));
     }
     @org.apache.ibatis.plugin.Intercepts(@org.apache.ibatis.plugin.Signature(type=org.apache.ibatis.executor.Executor.class,method="query",args={org.apache.ibatis.mapping.MappedStatement.class,Object.class,org.apache.ibatis.session.RowBounds.class,org.apache.ibatis.session.ResultHandler.class}))
     static final class NativeAttachmentObserver implements org.apache.ibatis.plugin.Interceptor {

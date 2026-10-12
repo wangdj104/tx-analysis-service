@@ -27,8 +27,9 @@ SELECT id,role_code,role_name,description,status,deleted FROM sys_role WHERE 1=0
 SELECT id,parent_id,menu_name,menu_code,menu_path,menu_icon,permission,menu_type,sort_order,status FROM sys_menu WHERE 1=0;
 SELECT role_id,menu_id FROM sys_role_menu WHERE 1=0;
 
+-- 触发器使用独立正文哈希，避免 MySQL body_utf8 解码嵌套引号使过程指纹失真。
 -- 已存在的过程必须与本脚本正文哈希一致；未知/不可读定义通过不存在的只读系统表明确中止，先于 DROP PROCEDURE。
-SET @cp57_owned_routine=NOT EXISTS(SELECT 1 FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='cp57_upgrade_preflight' AND routine_type='PROCEDURE') OR EXISTS(SELECT 1 FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='cp57_upgrade_preflight' AND routine_type='PROCEDURE' AND SHA2(ROUTINE_DEFINITION,256)='02864f30bbf542e5ce700f059d6d203ed561873608b1e3ccaca7be8c0b95d87b');
+SET @cp57_owned_routine=NOT EXISTS(SELECT 1 FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='cp57_upgrade_preflight' AND routine_type='PROCEDURE') OR EXISTS(SELECT 1 FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='cp57_upgrade_preflight' AND routine_type='PROCEDURE' AND SHA2(ROUTINE_DEFINITION,256)='3aaf9b68188f9290c6a72f7a368c17b0d438d6eac31e99243b0282259e39140b');
 SET @ddl=IF(@cp57_owned_routine,'SELECT 1','SELECT * FROM information_schema.CP57_UNKNOWN_ROUTINE_STOP_REVIEW');
 PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -546,60 +547,28 @@ BEGIN
   IF EXISTS(SELECT 1 FROM medication_stock s LEFT JOIN medication m ON m.id=s.medication_id LEFT JOIN patient p ON p.id=s.patient_id WHERE p.id IS NULL OR m.id IS NULL OR m.patient_id IS NULL OR m.patient_id<>s.patient_id) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Stock medication ownership mismatch; review before upgrade';
   END IF;
-  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_revision_bi' AND (event_object_table<>'care_plan_revision' OR event_manipulation<>'INSERT' OR action_timing<>'BEFORE' OR BINARY ACTION_STATEMENT<>BINARY 'BEGIN
-  IF NEW.revision_no <= 0 THEN
-    SIGNAL SQLSTATE ''45000'' SET MESSAGE_TEXT=''Care plan revision_no must be positive'';
-  END IF;
-END')) THEN
+  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_revision_bi' AND (event_object_table<>'care_plan_revision' OR event_manipulation<>'INSERT' OR action_timing<>'BEFORE' OR ACTION_STATEMENT IS NULL OR SHA2(ACTION_STATEMENT,256)<>'9a84d33dbf6ec47025f42bfe55abae4e7ae3fa0fa60b70479ef1d7e938e11329')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unknown trigger definition cp57_revision_bi; preserve and review';
   END IF;
-  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_revision_bu' AND (event_object_table<>'care_plan_revision' OR event_manipulation<>'UPDATE' OR action_timing<>'BEFORE' OR BINARY ACTION_STATEMENT<>BINARY 'BEGIN
-  IF NEW.revision_no <= 0 THEN
-    SIGNAL SQLSTATE ''45000'' SET MESSAGE_TEXT=''Care plan revision_no must be positive'';
-  END IF;
-END')) THEN
+  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_revision_bu' AND (event_object_table<>'care_plan_revision' OR event_manipulation<>'UPDATE' OR action_timing<>'BEFORE' OR ACTION_STATEMENT IS NULL OR SHA2(ACTION_STATEMENT,256)<>'9a84d33dbf6ec47025f42bfe55abae4e7ae3fa0fa60b70479ef1d7e938e11329')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unknown trigger definition cp57_revision_bu; preserve and review';
   END IF;
-  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_action_bi' AND (event_object_table<>'care_plan_action' OR event_manipulation<>'INSERT' OR action_timing<>'BEFORE' OR BINARY ACTION_STATEMENT<>BINARY 'BEGIN
-  IF NEW.ordinal NOT BETWEEN 1 AND 50 OR NEW.lock_version < 0 THEN
-    SIGNAL SQLSTATE ''45000'' SET MESSAGE_TEXT=''Care plan ordinal/version outside allowed range'';
-  END IF;
-END')) THEN
+  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_action_bi' AND (event_object_table<>'care_plan_action' OR event_manipulation<>'INSERT' OR action_timing<>'BEFORE' OR ACTION_STATEMENT IS NULL OR SHA2(ACTION_STATEMENT,256)<>'3c045e073b07cfeda8f6e35eb55548c311aeb3f7825791476556dfc029976f31')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unknown trigger definition cp57_action_bi; preserve and review';
   END IF;
-  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_action_bu' AND (event_object_table<>'care_plan_action' OR event_manipulation<>'UPDATE' OR action_timing<>'BEFORE' OR BINARY ACTION_STATEMENT<>BINARY 'BEGIN
-  IF NEW.ordinal NOT BETWEEN 1 AND 50 OR NEW.lock_version < 0 THEN
-    SIGNAL SQLSTATE ''45000'' SET MESSAGE_TEXT=''Care plan ordinal/version outside allowed range'';
-  END IF;
-END')) THEN
+  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_action_bu' AND (event_object_table<>'care_plan_action' OR event_manipulation<>'UPDATE' OR action_timing<>'BEFORE' OR ACTION_STATEMENT IS NULL OR SHA2(ACTION_STATEMENT,256)<>'3c045e073b07cfeda8f6e35eb55548c311aeb3f7825791476556dfc029976f31')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unknown trigger definition cp57_action_bu; preserve and review';
   END IF;
-  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_notification_bi' AND (event_object_table<>'care_plan_notification' OR event_manipulation<>'INSERT' OR action_timing<>'BEFORE' OR BINARY ACTION_STATEMENT<>BINARY 'BEGIN
-  IF NEW.attempt_count NOT BETWEEN 0 AND 3 OR CHAR_LENGTH(NEW.dispatch_key) = 0 THEN
-    SIGNAL SQLSTATE ''45000'' SET MESSAGE_TEXT=''Care plan notification attempts/dispatch invalid'';
-  END IF;
-END')) THEN
+  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_notification_bi' AND (event_object_table<>'care_plan_notification' OR event_manipulation<>'INSERT' OR action_timing<>'BEFORE' OR ACTION_STATEMENT IS NULL OR SHA2(ACTION_STATEMENT,256)<>'06658db989adc62e4f4fc1d0f1d662ef0b7a19514f079bef2c9a6d7cd1b4014f')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unknown trigger definition cp57_notification_bi; preserve and review';
   END IF;
-  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_notification_bu' AND (event_object_table<>'care_plan_notification' OR event_manipulation<>'UPDATE' OR action_timing<>'BEFORE' OR BINARY ACTION_STATEMENT<>BINARY 'BEGIN
-  IF NEW.attempt_count NOT BETWEEN 0 AND 3 OR CHAR_LENGTH(NEW.dispatch_key) = 0 THEN
-    SIGNAL SQLSTATE ''45000'' SET MESSAGE_TEXT=''Care plan notification attempts/dispatch invalid'';
-  END IF;
-END')) THEN
+  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_notification_bu' AND (event_object_table<>'care_plan_notification' OR event_manipulation<>'UPDATE' OR action_timing<>'BEFORE' OR ACTION_STATEMENT IS NULL OR SHA2(ACTION_STATEMENT,256)<>'06658db989adc62e4f4fc1d0f1d662ef0b7a19514f079bef2c9a6d7cd1b4014f')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unknown trigger definition cp57_notification_bu; preserve and review';
   END IF;
-  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_command_bi' AND (event_object_table<>'care_plan_command' OR event_manipulation<>'INSERT' OR action_timing<>'BEFORE' OR BINARY ACTION_STATEMENT<>BINARY 'BEGIN
-  IF NEW.expected_version < 0 THEN
-    SIGNAL SQLSTATE ''45000'' SET MESSAGE_TEXT=''Care plan command version must be nonnegative'';
-  END IF;
-END')) THEN
+  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_command_bi' AND (event_object_table<>'care_plan_command' OR event_manipulation<>'INSERT' OR action_timing<>'BEFORE' OR ACTION_STATEMENT IS NULL OR SHA2(ACTION_STATEMENT,256)<>'a4708d90af4dbcdc717d3a32eb01706037aaaeb9692f8372bfdc772125440404')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unknown trigger definition cp57_command_bi; preserve and review';
   END IF;
-  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_command_bu' AND (event_object_table<>'care_plan_command' OR event_manipulation<>'UPDATE' OR action_timing<>'BEFORE' OR BINARY ACTION_STATEMENT<>BINARY 'BEGIN
-  IF NEW.expected_version < 0 THEN
-    SIGNAL SQLSTATE ''45000'' SET MESSAGE_TEXT=''Care plan command version must be nonnegative'';
-  END IF;
-END')) THEN
+  IF EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema=DATABASE() AND trigger_name='cp57_command_bu' AND (event_object_table<>'care_plan_command' OR event_manipulation<>'UPDATE' OR action_timing<>'BEFORE' OR ACTION_STATEMENT IS NULL OR SHA2(ACTION_STATEMENT,256)<>'a4708d90af4dbcdc717d3a32eb01706037aaaeb9692f8372bfdc772125440404')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unknown trigger definition cp57_command_bu; preserve and review';
   END IF;
 END$$

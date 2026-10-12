@@ -18,11 +18,15 @@ final class Mysql57UpgradeAssertions {
     static void apply(Connection c) throws Exception { applyScript(c, SCRIPT); }
 
     private static void applyScript(Connection c, String path) throws Exception {
+        for (String sql : statements(readScript(path))) execute(c, sql);
+    }
+
+    private static String readScript(String path) throws Exception {
         try (InputStream input = new ClassPathResource(path).getInputStream()) {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             byte[] bytes = new byte[8192]; int read;
             while ((read = input.read(bytes)) != -1) output.write(bytes, 0, read);
-            for (String sql : statements(new String(output.toByteArray(), StandardCharsets.UTF_8))) execute(c, sql);
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 
@@ -236,8 +240,18 @@ final class Mysql57UpgradeAssertions {
         Map<String,List<String>> before = allData(c); List<String> definitions=metadata(c);
         SQLException failure=assertThrows(SQLException.class,()->apply(c));
         assertEquals(code,failure.getErrorCode(),failure.getMessage());
+        if (code==1644) assertStoredRoutineFingerprint(c);
         assertEquals(before,allData(c),"Rejected preflight must not alter table rows");
         assertEquals(definitions,metadata(c),"Rejected preflight must not alter table/index/FK/trigger structure");
+    }
+    private static void assertStoredRoutineFingerprint(Connection c) throws Exception {
+        String routine=statements(readScript(SCRIPT)).stream()
+                .filter(x->x.startsWith("CREATE PROCEDURE cp57_upgrade_preflight()")).findFirst().orElseThrow(AssertionError::new);
+        String body=routine.substring(routine.indexOf("BEGIN"));
+        byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(body.getBytes(StandardCharsets.UTF_8));
+        StringBuilder expected=new StringBuilder();for(byte b:digest)expected.append(String.format("%02x",b&255));
+        assertEquals(expected.toString(),scalar(c,"SELECT SHA2(routine_definition,256) FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='cp57_upgrade_preflight' AND routine_type='PROCEDURE'"),
+                "Native MySQL metadata must retain the owned routine fingerprint after a rejected preflight");
     }
     private static Map<String,List<String>> data(Connection c) throws SQLException {
         Map<String,List<String>> result=allData(c);

@@ -89,9 +89,29 @@ class Mysql57UpgradeScriptTest {
             if(!statement.startsWith("CREATE TRIGGER cp57_"))continue;
             triggers++;
             String triggerBody=statement.substring(statement.indexOf("FOR EACH ROW ")+13);
-            assertTrue(routine.contains("BINARY ACTION_STATEMENT<>BINARY '"+triggerBody.replace("'","''")+"'"),statement);
+            byte[] triggerHash=java.security.MessageDigest.getInstance("SHA-256").digest(triggerBody.getBytes(StandardCharsets.UTF_8));
+            StringBuilder triggerHex=new StringBuilder();for(byte b:triggerHash)triggerHex.append(String.format("%02x",b&255));
+            assertTrue(routine.contains("SHA2(ACTION_STATEMENT,256)<>'"+triggerHex+"'"),statement);
+            assertTrue(routine.contains("ACTION_STATEMENT IS NULL"),"Unavailable trigger definitions must fail closed");
         }
         assertEquals(8,triggers);
+    }
+
+    @Test void routineOwnershipFingerprintSurvivesMysqlMetadataLiteralDecoding() throws Exception {
+        // MySQL sql_lex.cc body_utf8_append_literal stores the decoded literal in INFORMATION_SCHEMA.
+        // https://bugs.mysql.com/bug.php?id=116354 (also affects MySQL 5.7).
+        String routine=Mysql57UpgradeAssertions.statements(script()).stream()
+                .filter(x->x.startsWith("CREATE PROCEDURE cp57_upgrade_preflight()")).findFirst().orElseThrow(AssertionError::new);
+        String body=routine.substring(routine.indexOf("BEGIN"));
+        java.util.regex.Matcher literals=Pattern.compile("'(?:''|[^'])*'").matcher(body);
+        StringBuffer metadataView=new StringBuffer();
+        while(literals.find()) {
+            String token=literals.group();
+            String decoded="'"+token.substring(1,token.length()-1).replace("''","'")+"'";
+            literals.appendReplacement(metadataView,java.util.regex.Matcher.quoteReplacement(decoded));
+        }
+        literals.appendTail(metadataView);
+        assertEquals(body,metadataView.toString(),"Routine fingerprint must not depend on escaped literals discarded by MySQL metadata");
     }
 
     @Test void delimiterParserIgnoresCommentsAndDirectivesInsideQuotedStrings() {
