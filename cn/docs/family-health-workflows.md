@@ -1,6 +1,6 @@
 # 日常家庭健康工作流
 
-本文介绍常见日常任务；详细家庭协作见[家庭照护指南](family-care-guide.md)。新库须按 `init.sql` → `doctor_workspace_20260921.sql` → `care_platform_upgrade_20260921.sql` → `care_plan_collaboration_20261003.sql` 安装，详见[安装说明](../README.md)。
+本文介绍常见日常任务；详细家庭协作见[家庭照护指南](family-care-guide.md)。新建空库只需运行完整 `init.sql`，详见[安装说明](../README.md)。
 
 ## 每日操作
 

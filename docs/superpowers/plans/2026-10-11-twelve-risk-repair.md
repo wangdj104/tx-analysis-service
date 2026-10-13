@@ -1,5 +1,7 @@
 # 十二项遗留风险修复方案与实施计划
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 基线：`d28b8fdae2dcdff6fa11a9c182334f4268379130`；依据：`docs/SQL_BUSINESS_AUDIT_20261011.md` 的十二行遗留风险。仅修改代码、合成数据测试及维护者线下执行的升级脚本，不操作真实患者数据库或生产部署。临床公式、阈值、原始患者文字不变；英文和中文版本同步。
 
 ## 选择的方案

@@ -16,7 +16,7 @@ Published instructions are immutable. A revised publication creates new actions 
 
 ## Installation, recovery and activation
 
-New databases run `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, then `care_plan_collaboration_20261003.sql`; `init.sql` alone is insufficient. Existing installations back up the complete database and attachment storage and apply applicable additive upgrades without rerunning the baseline. Optional fictional demo data must not enter production.
+New empty databases run only the complete `init.sql`. For existing installations, back up the complete database and attachments, compare tables, columns, indexes and permissions, and apply reviewed differences. Initialization does not repair arbitrary old schemas or grant patient access. Synthetic demo data must not enter production.
 
 `CARE_PLAN_ENABLED` defaults to `false`. Schema installation alone neither activates the workflow nor assigns nurse accounts or grants access. Disabling the feature retains published history; table deletion is not a rollback strategy. Family archive version 1 remains a limited export and excludes collaborative plans, revisions, actions, receipts, events/evidence, nursing assignments, notification outbox and commands. Full database and attachment backups are needed to recover the workflow.
 

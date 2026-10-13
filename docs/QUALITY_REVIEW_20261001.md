@@ -1,5 +1,7 @@
 # Ten-round functional and UI review — 2026-10-01
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 [简体中文](../cn/docs/QUALITY_REVIEW_20261001.md) · [English demo](https://wangdj104.github.io/tx-analysis-service/) · [中文演示](https://wangdj104.github.io/tx-analysis-service/cn/)
 
 ## Result

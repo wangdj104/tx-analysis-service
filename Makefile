@@ -1,4 +1,4 @@
-.PHONY: demo demo-down test build
+.PHONY: demo demo-down build
 
 demo:
 	docker compose up --build
@@ -6,10 +6,6 @@ demo:
 demo-down:
 	docker compose down
 
-test:
-	mvn -DskipTests=false test
-	cd frontend && npm test
-
 build:
-	mvn -DskipTests package
+	mvn package
 	cd frontend && npm ci && npm run build

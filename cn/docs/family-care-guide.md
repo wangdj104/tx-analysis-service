@@ -42,7 +42,7 @@ Receiving inbound WeCom messages requires a separate custom-application or long-
 
 ## Deployment and verification
 
-For an empty MySQL database, follow the [SQL execution catalog](../src/main/resources/sql/README.md): init, doctor workspace, care platform, care-plan collaboration, then `clinical_integrity_upgrade_20261011.sql`. Existing databases need a complete database/attachment backup and a restore rehearsal before applicable upgrades; do not rerun init as a reset. The current `patient_specialty_roles_20260923.sql` runs at every MySQL/MariaDB application startup, even after manual execution; this release has no disable switch. Other schema upgrades remain operator-run. Review role cleanup separately, and never import `demo-data.sql` or test fixtures into production.
+新建空 MySQL 库只需执行完整的 `init.sql`，详见 [SQL 初始化说明](../README.md#database-initialization)。应用启动不再执行结构迁移。已有库先备份完整数据库及附件并演练恢复，再核对和补齐结构差异；不要把初始化当作重置工具，也不要将演示或测试数据导入生产。
 
 After changes, rebuild and restart the backend, rebuild and publish the frontend, then verify patient isolation, medication idempotency, invitations, notifications, exports, and backup restore.
 

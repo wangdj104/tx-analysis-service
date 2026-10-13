@@ -4,24 +4,13 @@
 
 ## 1. 备份与 MySQL 准备
 
-使用 MySQL 8.0。升级已有系统前，备份**完整数据库**、保留当前镜像与配置，并在隔离库演练恢复；如另外配置了附件或对象存储，也须独立备份。应用内家庭备份不是完整灾备。`scripts/RunSqlMigration.java` 是历史照护平台辅助工具，只复制六张旧表并检查旧结构，不能凭它的成功提示认定完整备份或协作迁移已完成。
+推荐 MySQL 8.0。完整表结构、索引与基础角色字典均在单一 [init.sql](../src/main/resources/sql/init.sql)，详见 [SQL 初始化说明](../README.md#database-initialization)。新建空库由获授权的初始化账号执行此文件即可；通过 MySQL 客户端密码提示或安全凭据机制登录。
 
-新空库由获授权的迁移账号依次执行以下脚本。通过 MySQL 客户端密码提示或自己的安全凭据机制登录，勿把密码放进命令行参数：
+已有库操作前备份**完整数据库**、附件或对象存储、镜像和配置，并在隔离库演练恢复。应用内家庭导出不是完整灾备；历史 `scripts/RunSqlMigration.java` 只复制六张旧表，不是完整备份工具。
 
-1. `src/main/resources/sql/init.sql`
-2. `src/main/resources/sql/doctor_workspace_20260921.sql`
-3. `src/main/resources/sql/care_platform_upgrade_20260921.sql`
-4. `src/main/resources/sql/care_plan_collaboration_20261003.sql`
-5. `src/main/resources/sql/clinical_integrity_upgrade_20261011.sql`
-6. `src/main/resources/sql/patient_specialty_roles_20260923.sql`
+已有库先与当前初始化定义比对表、字段类型/默认值/可空性、索引和权限，只执行适用差异。`CREATE TABLE IF NOT EXISTS` 不会修复已有字段；MySQL DDL 隐式提交，失败后应逐项核验，不能假定事务已撤销全部变更。历史升级脚本已合并移除，应用启动不再执行专病或其他结构迁移。运行账号无需为了启动迁移额外持有 DDL 权限。
 
-第六个脚本在每次 MySQL/MariaDB 应用启动时还会自动执行。手动执行**不会**关闭此行为。运行账号除业务数据权限外，仍需启动脚本用到的 `CREATE`、`SELECT`、`INSERT`、`UPDATE`；创建外键还可能需要被引用表的 `REFERENCES` 权限。权限限定在应用库中。本版本没有关闭自动专病迁移的开关，其他结构升级由运维执行。
-
-已有库应先核对版本与结构，再按依赖顺序补充适用升级，不能重跑 `init.sql` 当作重置。较旧系统还可能需要 `functional_review_repair_20260922.sql`（导入、告警、用药安全表）及 `notification_language_preference_20260922.sql`（用户偏好）；当前新库基线已包含这些内容。`role_permission_cleanup_20260922.sql` 会改动角色和菜单分配并删除旧角色，须独立审查，不能当作通用纯增量脚本直接执行。生产环境禁止导入 `demo-data.sql`。
-
-执行报告不需要当前协作结构之外的新迁移。迁移不会为护理账号分配患者、授予患者权限或发布旧计划。准备期间保留 `CARE_PLAN_ENABLED=false`。
-
-2026-10-11 临床一致性升级应先按 [SQL 目录](../src/main/resources/sql/README.md#2026-10-11-临床一致性升级) 检查历史来源 ID 重复；SQLSTATE 45000（错误 1644）是重复预检阻止升级的错误；并发唯一键冲突 1062 同样不能忽略，禁止自动删除患者行或忽略错误继续。DDL 可能部分生效，维护者核对结构后再决定恢复或重跑。
+来源唯一身份为 `(patient_id, source_type, source_external_id)`；已有库新增唯一键前先检查重复，不能删除患者记录来通过升级。可选 `demo/sql/demo-data.sql` 仅用于隔离本地演示，禁止导入生产。初始化不分配护理账号、不授予患者权限、不发布旧计划。准备期间保留 `CARE_PLAN_ENABLED=false`。
 
 ## 2. 配置现有数据库部署
 
@@ -75,7 +64,7 @@ services:
 
 在 `.env.production` 设置 `REPORT_PDF_FONT_PATH=/app/fonts/report.ttf`，后续每条 Compose 命令都在主 `-f` 参数后加上 `-f compose.font.yml`。文件需允许容器 UID 10001 读取。根目录及独立中文版本地 Compose/.env 也支持相同映射。Maven/IDE 启动应配置真实进程环境变量，并填写本机字体路径。
 
-`scripts/prepare-care-report-font.py` 仅供 CI 使用，不是运维安装器，不能绕过其保护。已验收 CI 使用完整提取的 TTF，默认 Docker 使用已安装的 TTC，实际镜像须自行验收下载。严格报告渲染以指定字体为准，无效或缺字时明确报错，不会偷偷换字体。检查中英文 PDF，包括混合语言姓名和原文备注；HTML 预览不能证明 PDF 正常。不支持的复杂排版或字符仍会明确报错，可改用 HTML。
+请在实际镜像中检查中英文 PDF 下载，确认配置的完整字体可读且覆盖所需字符。
 
 ## 5. 启动、验收，再显式启用
 

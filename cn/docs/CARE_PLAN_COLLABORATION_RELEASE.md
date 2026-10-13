@@ -1,5 +1,7 @@
 # 照护计划协作发布证据
 
+> 2026-10-13：自动化测试文件及执行入口已移除。本文中的测试路径、命令和结果仅对应当时的历史版本，不代表当前仓库仍提供这些测试。
+
 **状态：最终运行时软件验收及所列录屏交付范围已通过。** 更新于 2026-10-03 UTC。后端**尚未生产部署或启用**，`CARE_PLAN_ENABLED` 默认 `false`。
 
 [机器可读证据](../../docs/verification/care-plan-collaboration.json)记录精确验收身份。最终已测试运行时提交为 `af06584b655b875ebfd16d0482a9712a99dc6cec`，完整树为 `f98e3ed9fe29800fabc13cae0ced4ac983761c92`；本地协调提交 `54848b6ac7cf67387900b51688afc15d1ecf478d` 具有相同树。该运行时已包含双版本备份警告／契约测试及已审查的 Logo／默认保存修正。[最终 CI 37137746134](https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134) 七个任务全部成功。后续证据文档提交与已测试运行时 SHA 分开记录。
@@ -60,14 +62,7 @@
 
 ## 安装、旧记录与恢复
 
-新库按顺序执行：
-
-1. `src/main/resources/sql/init.sql`
-2. `src/main/resources/sql/doctor_workspace_20260921.sql`
-3. `src/main/resources/sql/care_platform_upgrade_20260921.sql`
-4. `src/main/resources/sql/care_plan_collaboration_20261003.sql`
-
-独立中文版使用 `cn/` 下对应路径。`demo-data.sql` 仅为可选本地合成数据，禁止导入生产。已有库先备份完整数据库及附件，再应用适用幂等升级，不重跑基础脚本；已有前置结构时仅执行协作增量。
+新建空库仅执行完整的 `src/main/resources/sql/init.sql`，独立中文版从 `cn/` 目录操作。[初始化说明](../README.md#database-initialization) 说明结构和种子的边界。可选演示数据位于 `demo/sql/demo-data.sql`，禁止导入生产。已有库先备份完整数据库及附件并核对结构，仅应用适用差异。应用启动不执行迁移。
 
 旧 `workflow_version=0` 计划保留原 API 与可见范围，不自动发布、建事项或通知。复制后是新草稿，仍需明确发布。安装表结构不分配护理账号、不授权、不启用功能。需要停用时保留已发布表及历史，不能删表回滚。
 

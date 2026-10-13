@@ -1,5 +1,7 @@
 # Care Plan Collaboration Implementation Plan
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 打通医生发布计划、个人/家庭执行、护理跟进和医生复核的双语协作闭环。
@@ -104,7 +106,7 @@ actorId 均来自服务端认证或通知队列内部上下文；HTTP body 中�
 
 ## Task 1: 建立数据库契约与幂等升级
 
-**Files:** Create `src/main/resources/sql/care_plan_collaboration_20261003.sql`, `src/main/java/org/familyhealthcare/service/careplan/CarePlanContracts.java`, `src/test/java/org/familyhealthcare/service/CarePlanSchemaTest.java`, `src/test/java/org/familyhealthcare/service/CarePlanTestFixture.java`; Modify `docker-compose.yml`, `README.md`, `cn/README.md`。
+**Files:** Update the complete `src/main/resources/sql/init.sql` (historical increment consolidated), `src/main/java/org/familyhealthcare/service/careplan/CarePlanContracts.java`, `src/test/java/org/familyhealthcare/service/CarePlanSchemaTest.java`, `src/test/java/org/familyhealthcare/service/CarePlanTestFixture.java`; Modify `docker-compose.yml`, `README.md`, `cn/README.md`。
 
 **Interfaces:** Produces approved new tables/columns and shared validators `CarePlanContracts.validateDraft(Map)`, `validateReceipt(Map)`, `parseOffsetInstant(String):Instant`。测试 fixture 用合成账号/患者/角色和真实 JdbcTemplate；提供 `jdbc()`, `as(long userId)`, `now():Instant`, `advance(Duration)`，初始化 SQL 不接触外部数据库。
 

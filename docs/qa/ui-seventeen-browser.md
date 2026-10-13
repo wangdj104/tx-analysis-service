@@ -1,5 +1,7 @@
 # Seventeen-workflow browser acceptance
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 The dedicated `ui-seventeen-browser` CI job supplements existing backend, component, demo and care-plan browser checks. The older care-plan browser suite does not establish these seventeen UI acceptance items.
 
 ## Coverage

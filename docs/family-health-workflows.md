@@ -1,6 +1,6 @@
 # Everyday Family Health Workflows
 
-This guide describes the shortest reliable path through common daily tasks. For detailed family collaboration, see the [Family Care Guide](family-care-guide.md). New databases require `init.sql` → `doctor_workspace_20260921.sql` → `care_platform_upgrade_20260921.sql` → `care_plan_collaboration_20261003.sql`; see the [installation steps](../README.md#local-development).
+This guide describes the shortest reliable path through common daily tasks. For detailed family collaboration, see the [Family Care Guide](family-care-guide.md). New empty databases need only the complete `init.sql`; see the [installation steps](../README.md#local-development).
 
 ## Daily routine
 

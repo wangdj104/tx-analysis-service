@@ -5,11 +5,11 @@
 ## Development workflow
 
 1. Create a focused branch and keep unrelated changes separate.
-2. Update or add tests for behavior changes.
-3. Run `make test` and `make build`.
+2. Keep both editions aligned and verify changed workflows.
+3. Run `make build` and check the changed workflows manually.
 4. In the pull request, explain the user problem, implementation, verification, and any database or configuration impact.
 
-Keep fresh-install definitions and reviewed upgrades consistent, and document dependencies in the [SQL execution catalog](src/main/resources/sql/README.md). A complete new database requires init, doctor workspace, care platform, care-plan collaboration and `clinical_integrity_upgrade_20261011.sql` in that order. Existing databases need a complete backup and only applicable upgrades; init is not a reset tool. The current `patient_specialty_roles_20260923.sql` runs on every MySQL/MariaDB application startup, including after a manual run, and has no disable switch in this release. Document this existing write behavior and required schema-scoped privileges; do not add unreviewed startup migrations. Review role-permission cleanup separately because it deletes roles and assignments.
+将完整表结构、索引和初始字典统一维护在 [init.sql](src/main/resources/sql/init.sql)，执行边界见 [SQL 初始化说明](README.md#database-initialization)。中英文版本保持相同结构，种子显示文字分别本地化。新库仅执行此文件，应用启动不运行结构迁移。已有库先完整备份并比对结构，再执行经核对的差异；演示数据与生产初始化分开。
 
 ## Product and security expectations
 

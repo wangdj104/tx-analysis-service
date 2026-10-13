@@ -1,5 +1,7 @@
 # Seventeen UI workflow improvements
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 Baseline: `d845b993153cb595ca2f0d63b768d0209c39c187`.
 
 This change preserves clinical thresholds, server authorization, data ownership and existing source records. It does not deploy, migrate a database, change grants, or publish to a remote repository.

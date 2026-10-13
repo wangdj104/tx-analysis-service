@@ -11,12 +11,9 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
-      # Current init contains clinical integrity fields; its old-database upgrade is manual only.
+      # Initialize the complete system schema, then add optional local demo records.
       - ./src/main/resources/sql/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./src/main/resources/sql/doctor_workspace_20260921.sql:/docker-entrypoint-initdb.d/02-doctor-workspace.sql:ro
-      - ./src/main/resources/sql/care_platform_upgrade_20260921.sql:/docker-entrypoint-initdb.d/03-care-platform.sql:ro
-      - ./src/main/resources/sql/care_plan_collaboration_20261003.sql:/docker-entrypoint-initdb.d/04-care-plan-collaboration.sql:ro
-      - ./src/main/resources/sql/demo-data.sql:/docker-entrypoint-initdb.d/05-demo-data.sql:ro
+      - ./demo/sql/demo-data.sql:/docker-entrypoint-initdb.d/02-demo-data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
       interval: 5s

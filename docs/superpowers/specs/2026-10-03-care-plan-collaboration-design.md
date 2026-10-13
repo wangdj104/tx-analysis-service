@@ -1,5 +1,7 @@
 # 照护计划协作闭环：第一里程碑设计规格
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 - 日期：2026-10-03
 - 状态：待用户审阅；本文不是实施计划，也不代表功能已经实现
 - 代码核对基线：`b2767a22f268a9cfae54b61c71c2c4e73f7cdb75`

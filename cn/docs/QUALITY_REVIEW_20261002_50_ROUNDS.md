@@ -1,5 +1,7 @@
 # 健康平台五十轮质量审查 2026-10-02
 
+> 2026-10-13：自动化测试文件及执行入口已移除。本文中的测试路径、命令和结果仅对应当时的历史版本，不代表当前仓库仍提供这些测试。
+
 [English](../../docs/QUALITY_REVIEW_20261002_50_ROUNDS.md) · [中文演示](https://wangdj104.github.io/tx-analysis-service/cn/) · [English demo](https://wangdj104.github.io/tx-analysis-service/)
 
 ## 结果

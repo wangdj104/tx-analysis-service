@@ -1,10 +1,12 @@
 # SQL 与关键业务代码审查（2026-10-11）
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 ## 这次做什么
 
 按“先查明问题、补回归测试、再最小修复”的方式整理现有代码。审查基线是 `45af256b406f9542cf04308a33f1e537e79dab10`。数据库和部署由维护者线下处理：本轮不访问真实患者数据库、不运行生产迁移、不部署服务，也不修改临床公式、阈值或医嘱原文。
 
-SQL 文件保留原路径。分类和执行前提见 [SQL 目录](../src/main/resources/sql/README.md)；不要把目录中的文件一股脑执行。源码中的中文注释解释关键决定为什么这样做，英文界面及患者原始文字保持原样。
+Current installation uses the complete [init.sql](../src/main/resources/sql/init.sql); the historical upgrades referenced by this audit have been consolidated and removed. See the [SQL initialization guide](../README.md#database-initialization) for execution boundaries.
 
 ## 本轮五项修复范围
 
@@ -14,7 +16,7 @@ SQL 文件保留原路径。分类和执行前提见 [SQL 目录](../src/main/re
 2. **[自动分析的当前访问权](../src/main/java/org/familyhealthcare/service/HealthAnalysisAutomationService.java)**：任务属于创建人，并不表示创建人永远能看患者数据。列表按当前完整档案读取权限过滤；引用的分析还必须与任务属于同一个患者、同一个作者。审核在任何字段修改之前检查完整档案写权限。
 3. **[后台通知的实际接收人](../src/main/java/org/familyhealthcare/task/FamilyCareTask.java)**：发送前重新核对原定接收人的当前权限、账号及患者状态。旧成员关系、已撤销授权、失效医生角色不能单独恢复接收权；不会因此扩大群发范围。
 4. **[普通 CSV 的公式防护](../src/main/java/org/familyhealthcare/service/impl/DataExportServiceImpl.java)**：把危险开头的文本作为文字导出，防止表格软件把备注当公式执行；真正的数字保持数字，原始业务字段不被改写。
-5. **[中文版旧库升级漏列](../cn/src/main/resources/sql/care_platform_upgrade_20260921.sql)**：补齐英文脚本已有的 24 个条件新增列，保持类型、默认值、可空性和顺序。覆盖血压 3 列、病历 6 列、透析 4 列、临床排班 2 列、告警 9 列。
+5. **Chinese schema parity**: the complete [Chinese initializer](../cn/src/main/resources/sql/init.sql) now includes the same clinical import, dialysis, scheduling and alert fields as the English edition. The historical 24-column repair is represented directly in the final table definitions.
 
 ## 审查覆盖及边界
 

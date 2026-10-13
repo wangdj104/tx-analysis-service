@@ -1,5 +1,7 @@
 # Care Execution Report Implementation Plan
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让个人、授权家属、医生和护理团队生成口径一致、权限受控的就诊准备材料及中英文照护执行报告。

@@ -1,5 +1,7 @@
 # 就诊准备与照护执行报告设计规格
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 - 日期：2026-10-04
 - 状态：方向与分节设计已确认；本文待用户审阅，尚未进入实施计划或实现
 - 已验收运行基线：`af06584b655b875ebfd16d0482a9712a99dc6cec`

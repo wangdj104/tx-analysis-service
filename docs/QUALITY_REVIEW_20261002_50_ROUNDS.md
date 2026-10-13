@@ -1,5 +1,7 @@
 # Health platform 50 round quality review 2026-10-02
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 [简体中文](../cn/docs/QUALITY_REVIEW_20261002_50_ROUNDS.md) · [English demo](https://wangdj104.github.io/tx-analysis-service/) · [中文演示](https://wangdj104.github.io/tx-analysis-service/cn/)
 
 ## Result

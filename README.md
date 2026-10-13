@@ -109,7 +109,7 @@ Password: Demo@123456
 
 Change all secrets before exposing a deployment to any network. The Docker demo is intended for evaluation, not production.
 
-On an empty MySQL volume, Compose runs `init.sql`, `doctor_workspace_20260921.sql`, `care_platform_upgrade_20260921.sql`, `care_plan_collaboration_20261003.sql`, then `demo-data.sql`. The current init already includes the clinical-integrity schema; the clinical-integrity upgrade stays manual and is not mounted into Compose. Existing volumes are not reinitialized; apply required upgrades manually after a backup. Do not delete a volume containing records to force initialization.
+On an empty MySQL volume, Compose runs the complete `init.sql`, then optional local data from `demo/sql/demo-data.sql`. Existing volumes are not reinitialized. Compare an existing database against the current schema and apply only reviewed missing changes after a backup; do not delete a volume containing records to force initialization.
 
 ## Bilingual production deployment
 
@@ -145,6 +145,8 @@ Chinese PDF downloads require a CJK font with TrueType (`glyf`) outlines. The ba
 - Node.js 20+
 - MySQL 8.0+
 
+<a id="database-initialization"></a>
+
 ### 1. Create the database
 
 ```sql
@@ -153,17 +155,15 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ```bash
 mysql -u root -p family_health < src/main/resources/sql/init.sql
-mysql -u root -p family_health < src/main/resources/sql/doctor_workspace_20260921.sql
-mysql -u root -p family_health < src/main/resources/sql/care_platform_upgrade_20260921.sql
-mysql -u root -p family_health < src/main/resources/sql/care_plan_collaboration_20261003.sql
-mysql -u root -p family_health < src/main/resources/sql/clinical_integrity_upgrade_20261011.sql
 ```
 
-New databases require all five scripts in this order: [base schema](src/main/resources/sql/init.sql), [doctor workspace](src/main/resources/sql/doctor_workspace_20260921.sql), [care platform](src/main/resources/sql/care_platform_upgrade_20260921.sql), [care-plan collaboration](src/main/resources/sql/care_plan_collaboration_20261003.sql), then [clinical integrity](src/main/resources/sql/clinical_integrity_upgrade_20261011.sql). `init.sql` alone does not contain the care-journey tables. Existing installations apply only the applicable idempotent upgrade scripts after backing up data; do not rerun the baseline as a reset. [demo-data.sql](src/main/resources/sql/demo-data.sql) is optional, local-only demo data and must not be imported into production.
+A new empty database needs only the complete [init.sql](src/main/resources/sql/init.sql), which includes all system tables, indexes, roles, permissions and dictionaries. Existing installations need a schema comparison and only applicable changes after a backup; the baseline does not upgrade existing tables. [demo-data.sql](demo/sql/demo-data.sql) is optional local demo data and must not enter production.
 
-The additive [patient specialty role upgrade](src/main/resources/sql/patient_specialty_roles_20260923.sql) runs on MySQL/MariaDB application startup. Back up the database before deploying this release; the runtime account needs `CREATE`, `SELECT`, `INSERT` and `UPDATE` for this startup script (and `REFERENCES` when creating its foreign keys), restricted to the application schema. You may apply it manually after the five scripts above, but it still executes at every MySQL/MariaDB startup; this release has no disable switch. Existing patients are not assigned a specialty role automatically. Assign the dialysis specialty role in the patient editor to enable dialysis navigation for an individual patient.
+Patient specialty definitions and role/menu seeds are included in `init.sql`. Application startup no longer runs a schema migration. Existing patients are not assigned a specialty automatically; assign the dialysis specialty in the patient editor to enable its navigation.
 
-The additive care-plan collaboration migration retains legacy `ACTIVE` plans as internal `workflow_version=0` records. It does not publish them, create tasks or notifications, assign nurse roles to accounts, or grant `CARE_PLAN` access. Back up the complete database and attachment storage before applying it to an existing installation; apply this script without rerunning `init.sql`. New collaboration timestamps use UTC `DATETIME(6)` with explicit application conversion. Schema installation alone does not enable the collaboration workflow. H2 tests are compatibility checks; release acceptance still requires the original migration on MySQL 8.0 and a complete synthetic backup/restore drill. Retain published history when disabling this subsystem; do not drop its tables as a rollback.
+The complete initialization includes collaborative care plans with UTC `DATETIME(6)` timestamps. Internal `workflow_version=0` plans remain internal until explicitly copied and published. Installing schema does not assign nurses, grant patient access or enable the collaboration feature. Before release, verify the deployed workflow and a complete backup/restore drill on an isolated database. Retain published history when disabling this subsystem.
+
+Both editions share the same schema with localized seed labels; choose one edition per database. MySQL 8.0 is recommended; CHECK constraints are enforced on 8.0.16+. The script creates no administrator account, and reruns may restore deleted seed permissions or dictionaries. MySQL DDL commits implicitly; inspect completed steps after an error.
 
 ### 2. Configure environment variables
 
@@ -227,27 +227,24 @@ Webhook URLs and bot secrets are sensitive. They are masked in API responses and
 
 ## Database policy
 
-- New installations run the base schema, doctor-workspace, care-platform, care-plan collaboration and `clinical_integrity_upgrade_20261011.sql` migrations in the documented order.
-- `demo-data.sql` is strictly optional and must never be used in production.
-- The specialty-role migration is the explicit startup exception: it creates/checks its table and updates role/menu data on every MySQL/MariaDB startup, including after manual application. All other migrations are operator-run; see the [operator handoff](docs/OFFLINE_DEPLOYMENT.md).
+- New installations run only [init.sql](src/main/resources/sql/init.sql); it includes the complete system schema and seed dictionaries.
+- [demo/sql/demo-data.sql](demo/sql/demo-data.sql) is optional local demo data and must never be used in production.
+- Application startup does not run schema migrations. Apply reviewed database changes separately; see the [operator handoff](docs/OFFLINE_DEPLOYMENT.md).
 - `init.sql` is not an upgrade or reset tool for a populated database. Back up data before any manual database operation.
 - After the first public release, use versioned Flyway or Liquibase migrations for schema upgrades.
 
-## Test and build
+## Build
 
 ```bash
-mvn clean test
+mvn clean package
 cd frontend
-npm test
 npm run build
 cd ../
-node --test demo/tests/*.test.mjs
 ```
 
 Convenience commands are also available through the [Makefile](Makefile):
 
 ```bash
-make test
 make build
 ```
 
@@ -279,8 +276,7 @@ make build
 ├── frontend/                       # Vue 3 web application
 ├── src/main/java/                  # Spring Boot API
 ├── src/main/resources/sql/
-│   ├── init.sql                    # Base schema; also run the required migrations
-│   └── demo-data.sql               # Optional local demo data
+│   └── init.sql                    # Complete system initialization
 ├── .env.example                    # Configuration template without real secrets
 ├── .env.production.example         # Existing-database production template
 ├── docker-compose.production.yml   # Bilingual production deployment

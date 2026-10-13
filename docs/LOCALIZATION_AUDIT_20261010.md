@@ -1,5 +1,7 @@
 # Language-consistency audit — 10 October 2026
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 ## Contract
 
 - The root application and public demo use English interface text; `cn/` uses Simplified Chinese.

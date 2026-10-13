@@ -1,5 +1,7 @@
 # 平台功能与场景回归审查（2026-09-22）
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 ## 验证口径
 
 本次按患者、家属、医生、管理员四类角色，检查英文与中文正式应用、静态演示和部署配置。发现的问题已加入相应回归测试。审查不是“所有外部服务已经接通”或“任何输入都不会出错”的保证。
@@ -69,4 +71,4 @@ cd frontend && npm test && npm run build
 cd ../.. && node --test demo/tests/*.test.mjs
 ```
 
-生产补表使用 `src/main/resources/sql/functional_review_repair_20260922.sql`。执行前核对目标库；不得用 `init.sql` 重置现有库。
+Historical note: the repair tables and seeds are now included in the complete [init.sql](../src/main/resources/sql/init.sql). Existing databases require schema comparison and reviewed differences; see [SQL initialization](../README.md#database-initialization).

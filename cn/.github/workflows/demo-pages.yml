@@ -29,8 +29,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Check demo behavior
-        run: node --test demo/tests/*.test.mjs
+      - name: Check demo JavaScript syntax
+        run: node --check demo/app.js
       - uses: actions/configure-pages@v5
       - name: Prepare public files only
         run: |

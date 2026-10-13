@@ -32,15 +32,6 @@ From **Care plans**, **Care plan**, or the nurse's **Care-plan follow-up**, open
 - Closing the dialog or changing role, patient, route, reset or refresh clears the report view and date selection. Reopening uses current state. Administrator access is denied; nursing access still requires both assignment and a separate CARE_PLAN grant
 - This is a **synthetic, read-only walkthrough**, with no uploads, network calls, persistence or authenticated report exports. For server-validated HTML/PDF/actions CSV/events CSV, use **Visit preparation** in the full application at `/care-plans/reports`
 
-Optional report browser verification, using the existing frontend Playwright dependency:
-
-```bash
-cd frontend && npx playwright install chromium && cd ..
-node demo/tests/executionReport.browser.mjs
-```
-
-It covers both languages at 1440px and 390px, including draft privacy, identity, review transitions, activity filters, five roles, close/reopen, patient switch and reset/reload. Screenshots are written to `/tmp/care-execution-demo-qa` (override with `DEMO_QA_OUTPUT`). The scripts use the existing frontend Playwright dependency and its installed Chromium by default; set `CHROMIUM_PATH` to use an existing executable. Local launch was retried during the language audit and Chromium still exited before navigation because socket creation is blocked. Hosted CI runs the genuine-browser gate; a local browser pass or screenshots are not claimed.
-
 ## Publish with GitHub Pages
 
 The repository includes a [GitHub Pages workflow](../.github/workflows/demo-pages.yml).
@@ -56,12 +47,11 @@ GitHub reference: [Using custom workflows with GitHub Pages](https://docs.github
 
 ## Language consistency
 
-Both editions share the same display code and select labels from the page language. Care-plan status, event history, entry declarations, revision dialogs, report previews and audit feature names use readable localized labels. Protocol enums, stored values, actor identities and patient-entered notes remain unchanged. Regression coverage checks every role route, navigation, input hints, validation messages, locale-specific timestamps and literal mixed-language medical notes. The browser walkthrough additionally checks these rendered surfaces in both languages at desktop and phone widths.
+Both editions share the same display code and select labels from the page language. Care-plan status, event history, entry declarations, revision dialogs, report previews and audit feature names use readable localized labels. Protocol enums, stored values, actor identities and patient-entered notes remain unchanged. When checking changes manually, cover all five role routes in both languages at desktop and phone widths.
 
 ## Verify
 
 ```bash
-node --test demo/tests/*.test.mjs cn/demo/tests/*.test.mjs
 node --check demo/app.js
 node --check demo/model.js
 node --check cn/demo/app.js
@@ -71,11 +61,3 @@ node --check cn/demo/model.js
 For browser QA, switch all five roles and patients; approve or reject a review; add a care plan; complete a medication task and verify inventory; add a blood-pressure reading and verify the table, chart, and task state; run a module action and verify its audit event; toggle a demo user; open a record; export CSV; then reset.
 
 Images under `assets/` are copied from project-owned assets so the demo can deploy independently. Update the corresponding demo asset whenever the product logo or illustration changes.
-
-Optional genuine-browser QA (requires installed Playwright and an environment that allows Chromium processes):
-
-```bash
-node demo/tests/carePlanCollaboration.browser.mjs
-```
-
-The browser script exercises both editions at 1440px and 390px and writes synthetic screenshots to `/tmp/care-plan-demo-qa` (override with `DEMO_QA_OUTPUT`). It is separate from the dependency-free Node suite. In the implementation environment Chromium exited before page navigation because socket creation was prohibited, so no browser screenshots or passing browser result were obtained. This demo verification is not backend end-to-end acceptance.

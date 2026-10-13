@@ -1,5 +1,7 @@
 # Care-plan Collaboration Release Evidence
 
+> 2026-10-13: Automated test files and runners have been removed. Test paths, commands and results below describe historical revisions and are not current executable instructions.
+
 **Status: final runtime software acceptance and the listed recording-deliverable scope passed.** Updated 2026-10-03 UTC. The backend is **not deployed or activated in production**. `CARE_PLAN_ENABLED` defaults to `false`.
 
 The [machine-readable evidence](verification/care-plan-collaboration.json) records exact acceptance identities. Tested final runtime commit: `af06584b655b875ebfd16d0482a9712a99dc6cec`, complete tree `f98e3ed9fe29800fabc13cae0ced4ac983761c92`. Reconciled local commit `54848b6ac7cf67387900b51688afc15d1ecf478d` has the same tree. This runtime includes the mirrored backup warnings/contracts and reviewed logo/default-save corrections. [Final CI 37137746134](https://github.com/wangdj104/tx-analysis-service/actions/runs/37137746134) passed all seven jobs. The later evidence-only documentation commit remains distinct from the tested runtime SHA.
@@ -60,14 +62,7 @@ No arbitrary status-update endpoint is introduced. Receipt notes contain 1–200
 
 ## Installation, old records and recovery
 
-New databases run the raw SQL scripts in this order:
-
-1. `src/main/resources/sql/init.sql`
-2. `src/main/resources/sql/doctor_workspace_20260921.sql`
-3. `src/main/resources/sql/care_platform_upgrade_20260921.sql`
-4. `src/main/resources/sql/care_plan_collaboration_20261003.sql`
-
-Use the corresponding `cn/` paths for the independent Chinese edition. `demo-data.sql` is optional fictional local data and must not enter production. Existing databases require complete database/attachment backups and applicable idempotent upgrades, without rerunning the baseline. Apply only the collaboration increment when its prerequisites are already installed.
+New empty databases run only the complete `src/main/resources/sql/init.sql`; use the `cn/` edition for independent Chinese deployments. See the [initialization guide](../README.md#database-initialization) for schema and seed boundaries. Optional demo data lives in `demo/sql/demo-data.sql` and must not enter production. For an existing database, back up the complete database and attachments, compare the schema, and apply only reviewed differences. Application startup performs no migration.
 
 Legacy `workflow_version=0` internal plans keep their original API behavior and visibility, with no automatic publication/actions/notifications. Copying one creates a separate draft and still requires explicit publication. Installing schema does not assign nurse accounts, grant patient access or enable the feature. Disable the feature while retaining published tables/history if rollback is needed.
 

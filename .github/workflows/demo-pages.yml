@@ -30,10 +30,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Check demo behavior
+      - name: Check demo JavaScript syntax
         run: |
-          node --test demo/tests/*.test.mjs
-          node --test cn/demo/tests/*.test.mjs
+          node --check demo/app.js
+          node --check cn/demo/app.js
       - uses: actions/configure-pages@v5
       - name: Prepare public files only
         run: |

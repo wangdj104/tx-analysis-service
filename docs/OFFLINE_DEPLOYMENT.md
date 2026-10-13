@@ -4,25 +4,13 @@ These are operator-run instructions, not evidence that a database was migrated o
 
 ## 1. Back up and prepare MySQL
 
-Use MySQL 8.0. See the [SQL execution catalog](../src/main/resources/sql/README.md) for every production, demo and synthetic test script. Back up the **complete database**, retain the current application image/configuration, and rehearse restore on an isolated database before changing an existing installation. Include separately managed attachment/object storage, if any. The in-app family archive is not a complete backup. `scripts/RunSqlMigration.java` is a historical care-platform helper: it copies only six legacy tables and verifies older structures. Do not use its success message as proof of a complete backup or a collaboration migration.
+MySQL 8.0 is recommended. The single complete [init.sql](../src/main/resources/sql/init.sql) defines all tables, indexes, roles and initial dictionaries; see the [SQL initialization guide](../README.md#database-initialization). For a new empty database, execute that file with an authorized initialization account using the MySQL password prompt or an approved credential mechanism.
 
-For a new empty database, run these SQL files in order with your authorized migration account; use the MySQL client's password prompt or your approved credential mechanism, never a password in command-line arguments:
+Before modifying an existing installation, back up the **complete database**, attachments/object storage, application image and configuration, then rehearse restore in isolation. The in-app family archive is not a complete backup. The historical `scripts/RunSqlMigration.java` copies only six old tables and is not a complete backup tool.
 
-1. `src/main/resources/sql/init.sql`
-2. `src/main/resources/sql/doctor_workspace_20260921.sql`
-3. `src/main/resources/sql/care_platform_upgrade_20260921.sql`
-4. `src/main/resources/sql/care_plan_collaboration_20261003.sql`
-5. `src/main/resources/sql/clinical_integrity_upgrade_20261011.sql`
-6. `src/main/resources/sql/patient_specialty_roles_20260923.sql`
+Compare existing tables, column types/defaults/nullability, indexes and permissions with the current definitions, then apply only reviewed differences. `CREATE TABLE IF NOT EXISTS` does not repair existing columns. MySQL DDL implicitly commits: after a failure, inspect each completed change instead of assuming a transaction rolled everything back. Historical upgrades have been consolidated and removed. Application startup no longer runs specialty or other schema migrations, so it needs no DDL privileges for startup migration.
 
-The sixth script also runs automatically at every MySQL/MariaDB application startup. Running it manually does **not** disable that behavior. The runtime account still requires the application's data privileges plus `CREATE`, `SELECT`, `INSERT`, and `UPDATE` for that startup script; table creation with foreign keys can also require `REFERENCES` on the referenced tables. Restrict privileges to the application schema. There is no switch in this release to disable the startup migration. All other schema upgrades remain operator-run.
-
-For an existing database, inspect its release/schema and apply only missing applicable upgrades in the dependency order above; do not rerun `init.sql` as a reset. MySQL DDL implicitly commits: a transaction wrapper cannot make schema changes roll back together. Existence checks do not repair an existing column's type/default/nullability or all historical indexes; verify those explicitly before and after upgrading. Older installations may also need `functional_review_repair_20260922.sql` (import/alert/medication-safety tables) and `notification_language_preference_20260922.sql` (user preferences). These are already included in the current fresh baseline. Review `role_permission_cleanup_20260922.sql` separately: it changes role/menu assignments and removes obsolete roles, so it is not a blanket additive upgrade. Never import `demo-data.sql` into production.
-
-No report-specific migration is required beyond the current collaboration schema. Migration creates neither nurse-account assignments nor patient access grants, and does not publish legacy plans. Keep `CARE_PLAN_ENABLED=false` during preparation.
-
-
-The clinical-integrity upgrade is manual only. Check both import tables for duplicate `(patient_id, source_type, source_external_id)` identities as shown in the [SQL execution catalog](../src/main/resources/sql/README.md#2026-10-11-临床一致性升级), stop other writers and do not ignore SQLSTATE 45000/error 1644. It leaves all clinical rows intact and may leave its reserved temporary abort procedure after a failed preflight; the same script safely cleans it on a corrected rerun. Do not use `mysql --force`. DDL may partially commit, so verify structure after any later failure.
+Import identity is `(patient_id, source_type, source_external_id)`; check existing duplicates before adding unique keys and never delete patient rows to pass an upgrade. Optional `demo/sql/demo-data.sql` is for isolated local demos only and must not enter production. Initialization does not assign nurses, grant patient access or publish old plans. Keep `CARE_PLAN_ENABLED=false` during preparation.
 
 ## 2. Configure the existing-database deployment
 
@@ -76,7 +64,7 @@ services:
 
 Set `REPORT_PDF_FONT_PATH=/app/fonts/report.ttf` in `.env.production` and add `-f compose.font.yml` after the main `-f` argument to every Compose command. Make the file readable by container UID 10001. The same mapping is available in root/CN local Compose and `.env` templates. Maven/IDE runs require real process environment variables and a local filesystem font path.
 
-The CI-only `scripts/prepare-care-report-font.py` is not an operator installer; do not bypass its guard. The accepted CI font is a complete extracted TTF, whereas the default Docker font is the installed TTC. Verify actual downloads in your own image. A configured strict report font is authoritative: an invalid/incomplete override fails visibly instead of falling back. Test EN and CN PDF exports with mixed-language names and original notes. HTML preview does not prove PDF rendering. Unsupported shaping/characters remain a visible limitation with an HTML alternative.
+Verify actual downloads in your own image. A configured strict report font is authoritative: an invalid/incomplete override fails visibly instead of falling back. Test EN and CN PDF exports with mixed-language names and original notes. HTML preview does not prove PDF rendering. Unsupported shaping/characters remain a visible limitation with an HTML alternative.
 
 ## 5. Start, accept, then opt in
 

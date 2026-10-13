@@ -32,15 +32,6 @@
 - 关闭、切换身份、患者或页面，以及重置或刷新，都会清除报告内容及日期选择；重新打开会读取当前状态。管理员无权查看临床报告；护理仍同时需要有效分配和独立 CARE_PLAN 授权
 - 这是 **虚构、只读演示**，没有上传、网络调用、持久化或经认证的报告导出。服务端校验的 HTML / PDF / 事项 CSV / 事件 CSV，请在完整应用的 `/care-plans/reports` 就诊准备入口使用
 
-可选真实浏览器报告验收，使用前端已有的 Playwright 依赖：
-
-```bash
-cd frontend && npx playwright install chromium && cd ..
-node cn/demo/tests/executionReport.browser.mjs
-```
-
-脚本覆盖中英文 1440px / 390px、草稿隐私、身份、复核状态、日期筛选、五种身份、关闭重开、切换患者及重置刷新。截图默认写入 `/tmp/care-execution-demo-qa`，可用 `DEMO_QA_OUTPUT` 修改。脚本使用根目录 frontend 已有的 Playwright 依赖，默认启动其安装的 Chromium；也可通过 `CHROMIUM_PATH` 指定现有浏览器。本次语言排查重试后，Chromium 仍因禁止创建套接字而在导航前退出，不能宣称本地浏览器验收通过或已生成截图；真实浏览器门禁由托管 CI 执行。
-
 ## 使用 GitHub Pages 发布
 
 仓库已包含 [GitHub Pages 工作流](../../.github/workflows/demo-pages.yml)。
@@ -57,7 +48,6 @@ GitHub 参考文档：[通过自定义工作流使用 GitHub Pages](https://docs
 ## 验证
 
 ```bash
-node --test demo/tests/*.test.mjs cn/demo/tests/*.test.mjs
 node --check demo/app.js
 node --check demo/model.js
 node --check cn/demo/app.js
@@ -68,14 +58,6 @@ node --check cn/demo/model.js
 
 `assets/` 下的图片来自项目自有资源，以确保演示版可以独立部署。产品标志或插图更新时，请同步更新对应的演示资源。
 
-可选真实浏览器验收（需要已安装 Playwright，且环境允许启动 Chromium）：
-
-```bash
-node cn/demo/tests/carePlanCollaboration.browser.mjs
-```
-
-浏览器脚本覆盖双语版 1440px、390px 场景，将合成截图写入 `/tmp/care-plan-demo-qa`（可用 `DEMO_QA_OUTPUT` 指定目录）。它独立于不需要新依赖的 Node 测试。实施环境禁止创建套接字，Chromium 在打开页面前退出，因此未获得真实浏览器截图或通过结果；静态演示验证也不等于后端端到端验收。
-
 ## 语言一致性
 
-两种演示共用显示逻辑，按页面语言选择文字。照护状态、事件历史、录入声明、修订弹窗、报告预览和审计功能名称均使用对应语言的可读标签；协议枚举、已存值、操作者身份和用户录入的医疗文字保持原样。回归测试覆盖全部身份的页面与导航、输入提示、校验错误、本地化时间格式，以及中英混合原始记录。浏览器脚本在桌面和手机宽度下检查相应实际渲染内容。
+两种演示共用显示逻辑，按页面语言选择文字。照护状态、事件历史、录入声明、修订弹窗、报告预览和审计功能名称均使用对应语言的可读标签；协议枚举、已存值、操作者身份和用户录入的医疗文字保持原样。修改后请在桌面和手机宽度下手工核对全部身份的页面、导航、校验提示及中英混合原始记录。

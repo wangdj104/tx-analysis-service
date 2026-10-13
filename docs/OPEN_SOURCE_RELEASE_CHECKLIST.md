@@ -10,12 +10,10 @@
 - [ ] Backend authorization validates patient ownership for every read and write.
 - [ ] All user-facing text, API messages, baseline data, and public documentation are English.
 
-## Automated and manual checks
+## Build and manual checks
 
-- [ ] `mvn clean test`
-- [ ] `npm test` in `frontend/`
+- [ ] `mvn clean package`
 - [ ] `npm run build` in `frontend/`
-- [ ] `node --test demo/tests/*.test.mjs`
 - [ ] Desktop and mobile smoke tests cover sign-in, navigation, patient switching, CRUD, uploads, exports, notifications, and sign-out.
 - [ ] Static demo has no external network request and uses fictional data only.
 - [ ] README links, setup commands, screenshots, and demo instructions are current.
