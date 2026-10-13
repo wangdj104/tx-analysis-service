@@ -31,7 +31,7 @@ test('mobile onboarding anchors its natural card height inside the viewport', ()
   const block = guide.slice(guide.indexOf('const cardStyle'), guide.indexOf('const guideTitle'))
   for (const width of [375, 390, 719]) for (const height of [320, 600, 900]) {
     const viewport = reactive({ width, height }), placement = ref('right')
-    const style = new Function('computed', 'viewport', 'targetBox', 'cardPlacement', block + ';return cardStyle')(computed, viewport, { top: 410, left: 10, width: 351, height: 105 }, placement).value
+    const style = new Function('computed', 'viewport', 'targetBox', 'cardPlacement', 'mobileGuideAtTop', 'mobileCardMaxHeight', block + ';return cardStyle')(computed, viewport, { top: 410, left: 10, width: 351, height: 105 }, placement, ref(false), ref(null)).value
     assert.equal(style.top, 'auto', `${width}x${height}: mobile must not guess a content-dependent top`)
     assert.equal(style.bottom, '12px')
     assert.equal(style.left, '12px')
@@ -55,7 +55,7 @@ test('mobile guide scrolls only its description, keeping heading, close and navi
   const cardCss = declarations(rules, '.guide-card'), contentCss = declarations(rules, '.guide-content')
   assert.equal(cardCss.get('display')?.value, 'flex')
   assert.equal(cardCss.get('flex-direction')?.value, 'column')
-  assert.equal(cardCss.get('max-height')?.value, 'calc(100dvh - 24px)')
+  assert.equal(cardCss.get('max-height')?.value, 'min(50dvh, calc(100dvh - 24px))')
   assert.equal(contentCss.get('min-height')?.value, '0')
   assert.equal(contentCss.get('overflow-y')?.value, 'auto')
   assert.equal(declarations(rules, '.guide-card footer').get('flex-shrink')?.value, '0')

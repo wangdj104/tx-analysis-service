@@ -76,7 +76,7 @@ function setupSwitch(initialPatientId = 9101) {
     const call = { type, options, closed: false }; calls.push(call)
     return { close() { call.closed = true } }
   }
-  const deps = { ref, nextTick, currentPatientId, appPatientList, patientList, window: events, Event,
+  const deps = { ref, nextTick, searchVisible: ref(false), currentPatientId, appPatientList, patientList, window: events, Event,
     document: { querySelector: () => ({ getBoundingClientRect: () => toolbar }) },
     ElMessage: { success: message('success'), info: message('info') },
     route: { path: '/monitoring', fullPath: '/monitoring' }, router: { replace() {} },

@@ -431,7 +431,23 @@ async function entryDraftAcceptance(page, labels, result) {
     if (dismiss === 'cancel') await button(await dialog(page), labels.cancel)
     await page.locator('.draft-warning').waitFor()
     assert.equal(await titleControl(page).inputValue(), 'Synthetic unsaved prescription')
-    if (dismiss === 'escape') await screenshot(page, result, 'entry-keep-discard')
+    if (dismiss === 'escape') {
+      result.entryDraftActionBounds = await page.locator('.draft-warning-actions').evaluate(actions => {
+        const buttons = [...actions.querySelectorAll('button')].map(node => {
+          const box = node.getBoundingClientRect()
+          return { label: node.textContent, left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height,
+            unclipped: node.scrollWidth <= node.clientWidth + 1,
+            unobscured: node.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)) }
+        })
+        const [first, second] = buttons
+        return { buttons, gap: second.top >= first.bottom ? second.top - first.bottom : second.left - first.right }
+      })
+      const choices = result.entryDraftActionBounds
+      assert.equal(choices.buttons.length, 2)
+      assert.ok(choices.gap >= 8, 'Keep editing and Discard choices need an explicit gap when wrapping')
+      assert.ok(choices.buttons.every(button => button.height >= 44 && button.unclipped && button.unobscured), 'Both complete labels and touch targets must remain usable')
+      await screenshot(page, result, 'entry-keep-discard')
+    }
     await draftWarning(page, labels)
     assert.equal(await titleControl(page).inputValue(), 'Synthetic unsaved prescription', `${dismiss} Keep editing retains source`)
   }

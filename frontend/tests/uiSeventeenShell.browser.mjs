@@ -472,6 +472,13 @@ async function exerciseCase(s, cell, result) {
   await opener.click()
   const search = page.locator('.workspace-search-dialog input'), links = page.locator('#feature-search-results > a')
   await expect(search).toBeFocused()
+  await expect(page.locator('.patient-switch-toast:visible')).toHaveCount(0)
+  const searchActions = await links.evaluateAll(nodes => nodes.slice(0, 3).map(node => {
+    const box = node.getBoundingClientRect(), points = [[box.left + 4, box.top + 4], [box.right - 4, box.bottom - 4]]
+    return { label: node.textContent, top: box.top, bottom: box.bottom, unobscured: points.every(([x, y]) => node.contains(document.elementFromPoint(x, y))) }
+  }))
+  result.searchUpperActionBounds = searchActions
+  assert.ok(searchActions.length === 3 && searchActions.every(action => action.unobscured), 'Upper search results must stay clickable after a patient switch')
   const count = await links.count()
   assert.ok(count > 2, 'Synthetic permission menu provides multiple real search results')
   await expect(page.locator('.workspace-search-dialog [role="status"]')).toContainText(String(count))
@@ -513,7 +520,37 @@ async function exerciseCase(s, cell, result) {
   await expect(page.locator('.guide-card h2')).toHaveText(t('Review nursing follow-up tasks', '查看护理随访任务'))
   await expect.poll(() => new URL(page.url()).pathname).toBe(`${cell.edition === 'cn' ? '/cn' : ''}/nurse-workspace`)
   await expect(page.locator('[data-testid="collaboration-tasks"].guide-target')).toBeVisible()
-  await guideBounds('nurse-guide'); await capture('nurse-guide', { fullPage: false })
+  await guideBounds('nurse-guide')
+  const refreshTasks = page.getByTestId('reload-tasks')
+  await expect(refreshTasks).toBeEnabled()
+  await expect.poll(async () => {
+    result.nurseGuideActionBounds = await refreshTasks.evaluate(node => {
+      const box = node.getBoundingClientRect(), card = document.querySelector('.guide-card').getBoundingClientRect()
+      const points = [[box.left + 4, box.top + 4], [box.right - 4, box.top + 4], [box.left + 4, box.bottom - 4], [box.right - 4, box.bottom - 4]]
+      return { top: box.top, bottom: box.bottom, left: box.left, right: box.right, cardTop: card.top, cardBottom: card.bottom,
+        inViewport: box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth,
+        unobscured: points.every(([x, y]) => node.contains(document.elementFromPoint(x, y))),
+        clearOfCard: box.bottom + 8 <= card.top || box.top >= card.bottom + 8 }
+    })
+    return result.nurseGuideActionBounds.inViewport && result.nurseGuideActionBounds.unobscured && result.nurseGuideActionBounds.clearOfCard
+  }, { message: 'The nursing Refresh plan tasks action must remain visible and hit-testable while the guide is open' }).toBe(true)
+  await capture('nurse-guide', { fullPage: false })
+  if (cell.viewport < 720) {
+    const returnedScroll = await page.evaluate(() => { window.scrollTo({ top: 0, behavior: 'instant' }); return scrollY })
+    await expect.poll(async () => {
+      result.nurseGuideAfterScroll = await refreshTasks.evaluate(node => {
+        const box = node.getBoundingClientRect(), card = document.querySelector('.guide-card').getBoundingClientRect()
+        const points = [[box.left + 4, box.top + 4], [box.right - 4, box.top + 4], [box.left + 4, box.bottom - 4], [box.right - 4, box.bottom - 4]]
+        return { scrollY, top: box.top, bottom: box.bottom, cardTop: card.top, cardBottom: card.bottom,
+          clearOfCard: box.bottom + 8 <= card.top || box.top >= card.bottom + 8,
+          unobscured: points.every(([x, y]) => node.contains(document.elementFromPoint(x, y))) }
+      })
+      return result.nurseGuideAfterScroll.clearOfCard && result.nurseGuideAfterScroll.unobscured
+    }, { message: 'Ordinary scroll-back must keep the Refresh action clear without moving the page again' }).toBe(true)
+    assert.equal(result.nurseGuideAfterScroll.scrollY, returnedScroll, 'The passive guide cannot undo the user’s scroll position')
+    await guideBounds('nurse-guide-after-scroll'); await capture('nurse-guide-after-scroll', { fullPage: false })
+  }
+  await refreshTasks.click(); await expect(refreshTasks).toBeEnabled()
   await page.getByRole('button', { name: t('Confirm step and continue', '确认本步骤并继续'), exact: true }).click()
   const guidedSearch = page.locator('[data-guide="feature-search"].guide-target')
   await expect(guidedSearch).toHaveCount(1); await expect(guidedSearch).toBeVisible()
