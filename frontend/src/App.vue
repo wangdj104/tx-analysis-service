@@ -263,7 +263,7 @@ const searchResults = computed(() => {
 const activeSearchIndex = ref(0);
 watch(searchQuery, () => { activeSearchIndex.value = 0; });
 watch(searchResults, results => { activeSearchIndex.value = Math.min(activeSearchIndex.value, Math.max(0, results.length - 1)); });
-function openSearch() { searchQuery.value = ''; activeSearchIndex.value = 0; searchVisible.value = true; }
+function openSearch() { closePatientSwitchToast(); searchQuery.value = ''; activeSearchIndex.value = 0; searchVisible.value = true; }
 function moveSearchResult(direction, event) {
   if (event?.isComposing || event?.keyCode === 229) return;
   event?.preventDefault();
@@ -662,7 +662,7 @@ function switchPatient(id) {
   const patient = patients.find(p => p.id === id);
   // The selected identity can wrap the toolbar. Measure only after Vue updates it.
   nextTick(() => {
-    if (noticeEpoch !== patientSwitchNoticeEpoch || currentPatientId.value !== id) return;
+    if (noticeEpoch !== patientSwitchNoticeEpoch || currentPatientId.value !== id || searchVisible.value) return;
     const toolbarBottom = document.querySelector?.('.workspace-topbar')?.getBoundingClientRect().bottom || 64;
     const noticeOptions = {
       customClass: 'patient-switch-toast',

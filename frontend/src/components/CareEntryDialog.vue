@@ -10,7 +10,11 @@
     <div v-care-entry-lifecycle>
     <p class="entry-patient">Current patient: <strong>{{ patientName || '—' }}</strong> · Record ID: {{ patientId }}</p>
     <section v-if="discardVisible" class="draft-warning" role="alert">
-      <p>You have unsaved changes. Keep editing retains them for this patient. Discard clears this draft; a save already sent may still complete.</p><el-button @click="keepEditing">Keep editing</el-button><el-button type="danger" @click="discardChanges">Discard changes</el-button>
+      <p>You have unsaved changes. Keep editing retains them for this patient. Discard clears this draft; a save already sent may still complete.</p>
+      <div class="draft-warning-actions">
+        <el-button @click="keepEditing">Keep editing</el-button>
+        <el-button type="danger" @click="discardChanges">Discard changes</el-button>
+      </div>
     </section>
     <section v-if="Object.keys(errors).length" class="entry-errors" role="alert" aria-live="polite"><strong>Correct these fields before saving</strong><ul><li v-for="(message, field) in errors" :key="field">{{ message }}</li></ul></section>
     <el-form label-position="top" :model="form" class="care-entry">
@@ -253,7 +257,7 @@ async function submit() {
 <style scoped>
 .care-required-control{width:100%}
 
-.entry-patient{overflow-wrap:anywhere;line-height:1.6}.draft-warning,.entry-errors{padding:12px;margin-bottom:16px;border:1px solid var(--warning);border-radius:8px;background:var(--warning-soft);overflow-wrap:anywhere}.draft-warning p{margin:0 0 12px}.field-error{margin:4px 0;color:var(--el-color-danger);font-size:inherit;line-height:1.5}.entry-errors ul{padding-left:20px}.care-entry :deep(.el-form-item__error){position:static;padding-top:4px}
+.entry-patient{overflow-wrap:anywhere;line-height:1.6}.draft-warning,.entry-errors{padding:12px;margin-bottom:16px;border:1px solid var(--warning);border-radius:8px;background:var(--warning-soft);overflow-wrap:anywhere}.draft-warning p{margin:0 0 12px}.draft-warning-actions{display:flex;flex-wrap:wrap;gap:10px}.draft-warning-actions :deep(.el-button){margin:0;min-height:44px;max-width:100%;height:auto;white-space:normal;line-height:1.4}.field-error{margin:4px 0;color:var(--el-color-danger);font-size:inherit;line-height:1.5}.entry-errors ul{padding-left:20px}.care-entry :deep(.el-form-item__error){position:static;padding-top:4px}
 
 .entry-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}.care-entry :deep(.el-select),.care-entry :deep(.el-date-editor){width:100%}.dose-list{width:100%}.dose-row,.attachment-row{display:flex;gap:10px;align-items:center;margin-bottom:10px}.dose-row :deep(.el-date-editor){width:150px}.clinical-confirmation{display:flex;gap:8px;line-height:1.5;height:auto;align-items:flex-start;white-space:normal;padding:12px;border:1px solid var(--warning);border-radius:8px;background:var(--warning-soft)}.clinical-confirmation :deep(.el-checkbox__label){white-space:normal;line-height:1.5}.attachment-row{margin-top:8px}@media(max-width:600px){.entry-grid{grid-template-columns:1fr}.dose-row{flex-wrap:wrap}.dose-row :deep(.el-date-editor){width:100%}}
 </style>
