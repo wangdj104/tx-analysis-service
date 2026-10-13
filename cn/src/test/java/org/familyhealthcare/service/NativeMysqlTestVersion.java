@@ -16,4 +16,7 @@ final class NativeMysqlTestVersion {
         if ("8.0".equals(expected)) return actual.matches("8\\.0\\.[0-9]+(?:-[A-Za-z0-9.-]+)?");
         return false;
     }
+    static String normalizeIntegerDisplayWidth(String type) {
+        return type.replaceFirst("^(tinyint|smallint|mediumint|int|bigint)\\([0-9]+\\)", "$1");
+    }
 }

@@ -6,11 +6,11 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Version identity guard tests only; these are not native server evidence. */
 class NativeMysqlTestVersionTest {
     @Test void displayWidthNormalizationDoesNotHideTypeDifferences() {
-        assertEquals("bigint",CarePlanMysqlIntegrationTest.normalizeIntegerDisplayWidth("bigint(20)"));
-        assertEquals("int unsigned",CarePlanMysqlIntegrationTest.normalizeIntegerDisplayWidth("int(10) unsigned"));
-        assertEquals("tinyint",CarePlanMysqlIntegrationTest.normalizeIntegerDisplayWidth("tinyint(4)"));
-        assertEquals("varchar(64)",CarePlanMysqlIntegrationTest.normalizeIntegerDisplayWidth("varchar(64)"));
-        assertEquals("decimal(5,4)",CarePlanMysqlIntegrationTest.normalizeIntegerDisplayWidth("decimal(5,4)"));
+        assertEquals("bigint",NativeMysqlTestVersion.normalizeIntegerDisplayWidth("bigint(20)"));
+        assertEquals("int unsigned",NativeMysqlTestVersion.normalizeIntegerDisplayWidth("int(10) unsigned"));
+        assertEquals("tinyint",NativeMysqlTestVersion.normalizeIntegerDisplayWidth("tinyint(4)"));
+        assertEquals("varchar(64)",NativeMysqlTestVersion.normalizeIntegerDisplayWidth("varchar(64)"));
+        assertEquals("decimal(5,4)",NativeMysqlTestVersion.normalizeIntegerDisplayWidth("decimal(5,4)"));
     }
     @Test void acceptsOnlyTheExplicitlySelectedNativeVersion() {
         assertTrue(NativeMysqlTestVersion.matches("5.7.18", "5.7.18"));
