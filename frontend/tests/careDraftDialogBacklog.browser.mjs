@@ -394,11 +394,13 @@ async function requiredAcceptance(page, labels, result) {
   for (const field of ['title', 'medicationId', 'startDate', 'confirmed']) {
     const control = field === 'title' ? titleControl(page) : field === 'confirmed' ? page.locator('.clinical-confirmation input') : requiredControl(page, field)
     await associated(control, `care-entry-error-${field}`)
+    await page.locator(`#care-entry-error-${field}`).waitFor({ state: 'visible', timeout: 10000 })
   }
   await focused(page, 'care-entry-error-title'); await waitOutput(page, 'writes', 0)
   await screenshot(page, result, 'persistent-native-errors')
   // Persistent errors remain after ordinary focus movement, then disappear only when corrected.
   await page.locator('.clinical-confirmation input').focus()
+  await page.locator('#care-entry-error-medicationId').waitFor({ state: 'visible', timeout: 10000 })
   assert.equal(await page.locator('#care-entry-error-medicationId').isVisible(), true)
   await titleControl(page).fill('Synthetic prescription')
   await associated(titleControl(page), 'care-entry-error-title', false)

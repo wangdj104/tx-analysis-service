@@ -40,7 +40,7 @@ function positionGuide({ scrollTarget = false } = {}) {
       main.style.setProperty('padding-bottom', `${guideReservation.base + cardHeight + 24}px`);
     }
     const action = highlighted.querySelector?.('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)') || highlighted;
-    const rect = action.getBoundingClientRect();
+    let rect = action.getBoundingClientRect();
     const toolbarBottom = document.querySelector('.workspace-topbar')?.getBoundingClientRect().bottom || 0;
     const aboveToolbar = action.closest?.('.workspace-topbar, .workspace-sidebar');
     let safeTop = aboveToolbar ? 12 : Math.max(12, toolbarBottom + 12);
@@ -50,14 +50,16 @@ function positionGuide({ scrollTarget = false } = {}) {
       const safeBottom = mobileGuideAtTop.value ? viewport.height - 12 : viewport.height - cardHeight - 24;
       const desiredTop = Math.max(safeTop, Math.min(rect.top, safeBottom - rect.height));
       if (Math.abs(rect.top - desiredTop) > 1) window.scrollBy({ top: rect.top - desiredTop, behavior: 'instant' });
-    } else {
-      // Follow ordinary scrolling by moving the card, never the user's page.
-      const roomAbove = Math.max(0, rect.top - 24);
-      const roomBelow = Math.max(0, viewport.height - rect.bottom - 24);
-      const currentRoom = mobileGuideAtTop.value ? roomAbove : roomBelow;
-      if (currentRoom < cardHeight) mobileGuideAtTop.value = roomAbove >= cardHeight || (roomBelow < cardHeight && roomAbove >= roomBelow);
-      mobileCardMaxHeight.value = Math.min(cardHeight, mobileGuideAtTop.value ? roomAbove : roomBelow);
+      // Drawer/dialog cleanup may still lock scrolling. Read the actual result
+      // instead of trusting an attempted scroll or waiting for a scroll event.
+      rect = action.getBoundingClientRect();
     }
+    // Follow actual placement by moving the card, never retrying page scroll.
+    const roomAbove = Math.max(0, rect.top - 24);
+    const roomBelow = Math.max(0, viewport.height - rect.bottom - 24);
+    const currentRoom = mobileGuideAtTop.value ? roomAbove : roomBelow;
+    if (currentRoom < cardHeight) mobileGuideAtTop.value = roomAbove >= cardHeight || (roomBelow < cardHeight && roomAbove >= roomBelow);
+    mobileCardMaxHeight.value = Math.min(cardHeight, mobileGuideAtTop.value ? roomAbove : roomBelow);
   } else {
     mobileGuideAtTop.value = false;
     mobileCardMaxHeight.value = null;

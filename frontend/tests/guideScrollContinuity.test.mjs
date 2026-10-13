@@ -5,9 +5,9 @@ import * as Vue from 'vue'
 import { parse } from '@vue/compiler-sfc'
 
 const read = edition => readFileSync(new URL(`${edition === 'en' ? '../' : '../../cn/frontend/'}src/components/OnboardingGuide.vue`, import.meta.url), 'utf8')
-async function guide(t, edition, height = 900) {
+async function guide(t, edition, height = 900, { clampInitialScroll = false, initialTop = 507, naturalCardHeight = 364 } = {}) {
   const script = parse(read(edition)).descriptor.scriptSetup.content.replace(/^import.*$/gm, ''), listeners = new Map(), timers = new Map(), unmounts = [], calls = [], observers = []
-  const geometry = { top: 507, bottom: 551, height: 44, left: 14, width: 146 }, viewport = { innerWidth: 320, innerHeight: height }, style = new Map([['padding-bottom', '76px']])
+  const geometry = { top: initialTop, bottom: initialTop + 44, height: 44, left: 14, width: 146 }, viewport = { innerWidth: 320, innerHeight: height }, style = new Map([['padding-bottom', '76px']])
   let view, id = 0
   const listen = (type, callback, options) => { if (!listeners.has(type)) listeners.set(type, new Map()); listeners.get(type).set(callback, options) }
   const unlisten = (type, callback) => listeners.get(type)?.delete(callback)
@@ -20,13 +20,13 @@ async function guide(t, edition, height = 900) {
     querySelector: selector => selector === '#workspace-content' ? main : selector === '.workspace-topbar' ? { getBoundingClientRect: () => ({ bottom: 133 }) } : target,
     querySelectorAll: selector => /dialog/.test(selector) ? [] : [target] }
   const card = node({ contains: () => false, getBoundingClientRect() {
-    const height = Math.min(364, viewport.innerHeight / 2, view?.mobileCardMaxHeight?.value ?? Infinity), top = view?.mobileGuideAtTop.value ? 12 : viewport.innerHeight - height - 12
+    const height = Math.min(naturalCardHeight, viewport.innerHeight / 2, view?.mobileCardMaxHeight?.value ?? Infinity), top = view?.mobileGuideAtTop.value ? 12 : viewport.innerHeight - height - 12
     return { height, top, bottom: top + height }
-  }, querySelector: () => ({ scrollHeight: 364, clientHeight: card.getBoundingClientRect().height }) })
+  }, querySelector: () => ({ scrollHeight: naturalCardHeight, clientHeight: card.getBoundingClientRect().height }) })
   const bindings = { ...Vue, Guide: {}, Menu: {}, Search: {}, User: {}, FirstAidKit: {}, Odometer: {}, House: {}, Setting: {}, Switch: {},
     defineProps: () => ({ accountId: 'synthetic', roleCodes: ['nurse'] }), defineExpose() {}, useReducedMotion: () => Vue.ref(true),
     useRouter: () => ({ currentRoute: Vue.ref({ path: '/nurse-workspace' }), push: async () => {} }), document,
-    window: { ...viewport, addEventListener: listen, removeEventListener: unlisten, scrollBy(options) { calls.push(options); geometry.top -= options.top; geometry.bottom -= options.top } },
+    window: { ...viewport, addEventListener: listen, removeEventListener: unlisten, scrollBy(options) { calls.push(options); if (!clampInitialScroll) { geometry.top -= options.top; geometry.bottom -= options.top } } },
     getComputedStyle: () => ({ paddingBottom: '76px' }), localStorage: { getItem: key => key.includes('prompt') ? 'seen' : null, setItem() {} },
     setTimeout: callback => { const key = ++id; timers.set(key, callback); return key }, clearTimeout: key => timers.delete(key), onBeforeUnmount: callback => unmounts.push(callback),
     ResizeObserver: class { constructor(callback) { this.callback = callback; this.disconnected = false; observers.push(this) } observe() {} disconnect() { this.disconnected = true } } }
@@ -44,6 +44,17 @@ async function guide(t, edition, height = 900) {
     unmount: () => unmounts.forEach(callback => callback()) }
 }
 for (const edition of ['en', 'cn']) {
+  test(`${edition}: initial clamped scroll with no event still clears the actual CI Refresh bounds`, async t => {
+    // CI run38350944017 failed before scroll-back: requested initial scrolling
+    // left Refresh506.90625-550.90625 and the card523.875-888 unchanged.
+    // The body had a popup scroll lock; this adapter models the observed
+    // no-movement/no-event outcome, without claiming its exact browser cause.
+    const v = await guide(t, edition, 900, { clampInitialScroll: true, initialTop: 506.90625, naturalCardHeight: 364.125 })
+    assert.equal(v.calls.length, 1, 'a clamped initial attempt must not be retried as a scroll trap')
+    assert.equal(v.geometry.top, 506.90625); assert.equal(v.geometry.bottom, 550.90625)
+    assert.ok(v.clear(), 'initial positioning must adapt the card even when scrollBy produced no movement or event')
+    assert.equal(v.view.mobileGuideAtTop.value, true)
+  })
   test(`${edition}: scroll-back keeps Refresh clear without moving the user's page`, async t => {
     const v = await guide(t, edition), initialCalls = v.calls.length
     assert.equal(v.geometry.top, 468); assert.ok(v.clear())
