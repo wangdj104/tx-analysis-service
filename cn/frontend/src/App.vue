@@ -674,7 +674,7 @@ function switchPatient(id) {
       showClose: true
     };
     if (id) {
-      patientSwitchToast = ElMessage.success({ ...noticeOptions, message: `已切换到${patient?.patientName || patient?.name || '患者'} · 档案 #${id}。` });
+      patientSwitchToast = ElMessage.success({ ...noticeOptions, message: `已切换到${patient?.patientName || patient?.name || '患者'} · 编号 ${id}。` });
     } else {
       patientSwitchToast = ElMessage.info({ ...noticeOptions, message: '正在显示全部患者。' });
     }

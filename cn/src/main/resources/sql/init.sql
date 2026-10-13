@@ -1428,7 +1428,7 @@ INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`me
 (37,5,'审计日志','system-audit','/system/audit','Document','audit:view',1,4,1),
 (38,0,'临床工作台','clinical-workbench','/clinical-workbench','FirstAidKit','clinical-workbench:view',1,1,1),
 (39,0,'医生工作台','doctor-workspace','/doctor-workspace','FirstAidKit','doctor-workspace:view',1,1,1),
-(40,0,'照护旅程','care-journey','/care-journey','FirstAidKit','care:journey:view',1,2,1),
+(40,0,'照护历程','care-journey','/care-journey','FirstAidKit','care:journey:view',1,2,1),
 (41,5,'平台品牌','platform-branding','/system/branding','Brush','branding:manage',1,5,1),
 (42,0,'护理跟进队列','care-plan-nursing','/nurse-workspace','FirstAidKit','care-plan:nursing:view',1,2,1),
 (43,8,'管理护理分配','care-plan-nurse-assignments',NULL,'User','care-plan:nurse-assignment:manage',2,90,1)

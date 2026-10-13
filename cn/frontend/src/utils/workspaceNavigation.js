@@ -1,8 +1,9 @@
+import { localizeMenuName } from './serverText.js';
 import { canAccessWorkspace, resolveWorkspaceEntry } from './workspaceAccess.js';
 
 const MODULE_MENUS = {
   '/care-journey': {
-    path: '/care-journey', label: '健康照护全流程', icon: 'Connection',
+    path: '/care-journey', label: '照护历程', icon: 'Connection',
     children: [
       { path: '/care-journey?tab=measurements', label: '全部健康指标', icon: 'Odometer' },
       { path: '/care-journey?tab=appointments', label: '预约与复诊', icon: 'Calendar' },
@@ -84,7 +85,7 @@ export function normalizeWorkspaceMenus(items, { menuPaths = [], roleCodes = [] 
         continue;
       }
 
-      const node = { ...item, path, children: [] };
+      const node = { ...item, path, label: localizeMenuName({ menuCode: item.menuCode, menuPath: path, menuName: item.label }), children: [] };
       if (path) nodesByPath.set(path, node);
       node.children.push(...copyItems(item.children));
       result.push(node);

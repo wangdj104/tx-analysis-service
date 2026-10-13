@@ -671,7 +671,7 @@ function switchPatient(id) {
       showClose: true
     };
     if (id) {
-      patientSwitchToast = ElMessage.success({ ...noticeOptions, message: `Switched to ${patient?.patientName || patient?.name || 'patient'} · Record #${id}.` });
+      patientSwitchToast = ElMessage.success({ ...noticeOptions, message: `Switched to ${patient?.patientName || patient?.name || 'patient'} · ID ${id}.` });
     } else {
       patientSwitchToast = ElMessage.info({ ...noticeOptions, message: 'Showing all patients.' });
     }

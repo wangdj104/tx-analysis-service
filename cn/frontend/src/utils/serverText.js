@@ -142,7 +142,7 @@ const exact = {
   'Patient Center': '患者中心',
   'Patient Profiles': '患者档案',
   'Care Plan': '家庭照护',
-  'Care Journey': '健康照护全流程',
+  'Care Journey': '照护历程',
   'Dialysis Management': '透析管理',
   'Dialysis Records': '透析记录',
   'Trend Analysis': '趋势分析',
@@ -297,6 +297,8 @@ const builtInDescriptions = {
   specialty_dialysis: ['Patient-specific dialysis menu scope', '患者档案的透析专病菜单范围']
 }
 export function localizeMenuName(menu) {
+  const careJourney = menu.menuCode === 'care-journey' || String(menu.menuPath || '').split('?')[0] === '/care-journey'
+  if (careJourney && ['Care Journey', '照护旅程', '健康照护全流程', '照护历程'].includes(menu.menuName)) return '照护历程'
   return Object.hasOwn(builtInMenus, menu.menuCode) && menu.menuName === builtInMenus[menu.menuCode] ? localizeServerText(menu.menuName) : menu.menuName
 }
 export function localizeRoleName(role) {

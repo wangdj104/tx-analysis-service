@@ -30,14 +30,7 @@
           <p class="submission-patient">Recording for: {{ patientIdentity(uploadForm.patientId, uploadForm.patientName) }}</p>
           <el-form :disabled="uploadSaving" :model="uploadForm" label-width="100px" class="upload-form">
             <el-form-item label="Patient" required>
-              <el-select v-model="uploadForm.patientId" placeholder="Select a patient" filterable style="max-width: 320px">
-                <el-option
-                  v-for="patient in patientList"
-                  :key="patient.id"
-                  :label="patientLabel(patient)"
-                  :value="patient.id"
-                />
-              </el-select>
+              <PatientSelect v-model="uploadForm.patientId" placeholder="Select a patient" filterable style="max-width: 320px" :patients="patientList" />
             </el-form-item>
             <el-form-item label="Report type">
               <el-select v-model="uploadForm.recordType" placeholder="Select" style="max-width: 320px">
@@ -270,14 +263,7 @@
           <div class="toolbar">
             <el-form :inline="true" class="filter-form">
               <el-form-item label="Patient">
-                <el-select v-model="trendForm.patientId" placeholder="Select a patient" filterable clearable style="width: 220px">
-                  <el-option
-                    v-for="patient in patientList"
-                    :key="patient.id"
-                    :label="patientLabel(patient)"
-                    :value="patient.id"
-                  />
-                </el-select>
+                <PatientSelect v-model="trendForm.patientId" placeholder="Select a patient" filterable clearable style="width: 220px" :patients="patientList" />
               </el-form-item>
               <el-form-item label="Test item">
                 <el-select
@@ -338,14 +324,7 @@
         <div class="toolbar">
           <el-form :inline="true" :model="filterForm" class="filter-form">
             <el-form-item label="Patient">
-              <el-select v-model="filterForm.patientId" placeholder="All patients" filterable clearable style="width: 200px">
-                <el-option
-                  v-for="patient in patientList"
-                  :key="patient.id"
-                  :label="patientLabel(patient)"
-                  :value="patient.id"
-                />
-              </el-select>
+              <PatientSelect v-model="filterForm.patientId" placeholder="All patients" filterable clearable style="width: 200px" :patients="patientList" />
             </el-form-item>
             <el-form-item label="Record type">
               <el-select v-model="filterForm.recordType" placeholder="Select" clearable>
@@ -629,9 +608,7 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="Patient">
-              <el-select :disabled="editLocked" v-model="editForm.patientId" placeholder="Select a patient" filterable style="width: 100%">
-                <el-option v-for="patient in patientList" :key="patient.id" :label="patientLabel(patient)" :value="patient.id" />
-              </el-select>
+              <PatientSelect :disabled="editLocked" v-model="editForm.patientId" placeholder="Select a patient" filterable style="width: 100%" :patients="patientList" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -774,6 +751,8 @@
 </template>
 
 <script setup>
+import PatientSelect from '@/components/PatientSelect.vue';
+import { formatPatientIdentity } from '@/utils/patientPresentation';
 import { useFocusedCareSource } from '@/composables/useFocusedCareSource';
 import { localDateKey } from '@/utils/familyHealth';
 import { dedupeRecognizedItems } from '@/utils/medicalRecordItems';
@@ -920,10 +899,10 @@ const editItems = ref([]);
 const editAttachments = ref([]);
 
 const patientList = ref([]);
-function patientLabel(patient) { return `${patient.patientName || patient.name || 'Patient name unavailable'} · Record #${patient.id}`; }
+function patientLabel(patient) { return formatPatientIdentity(patient); }
 function patientIdentity(id, fallback = '') {
   const patient = patientList.value.find(p => String(p.id) === String(id));
-  return patient ? patientLabel(patient) : `${fallback || 'Patient name unavailable'} · Record #${id ?? '—'}`;
+  return patientLabel(patient || { id, patientName: fallback });
 }
 
 
