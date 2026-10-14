@@ -10,18 +10,21 @@
     <section v-if="focusedMode" class="focused-source" aria-label="Linked measurement">
       <h1>Linked measurement</h1><p v-if="sourceFocus.locator.value">Patient #{{ sourceFocus.locator.value.patientId }} · #{{ sourceFocus.locator.value.sourceId }}</p>
       <p v-if="sourceFocus.state.loading" role="status">Checking source access…</p><p v-if="sourceFocus.state.error" role="alert">This linked record is restricted, unavailable, or its context changed.</p><button type="button" :disabled="sourceFocus.state.loading" @click="sourceFocus.reload">Recheck source</button>
-      <el-table :data="sourceFocus.state.record ? [sourceFocus.state.record] : []" max-height="440"><el-table-column prop="measured_at" label="Time" width="165"/><el-table-column prop="metric_type" label="Metric" width="110"/><el-table-column label="Value"><template #default="{row}">{{row.value_primary}}{{row.value_secondary!=null?'/'+row.value_secondary:''}} {{row.unit}}</template></el-table-column><el-table-column prop="status" label="Status" width="100"><template #default="{row}"><el-tag :type="row.status==='NORMAL'?'success':'danger'">{{row.status}}</el-tag></template></el-table-column></el-table>
+      <el-table :data="sourceFocus.state.record ? [sourceFocus.state.record] : []" max-height="440"><el-table-column prop="measured_at" label="Time" width="165"/><el-table-column prop="metric_type" label="Metric" width="110"/><el-table-column label="Value"><template #default="{row}">{{row.value_primary}}{{row.value_secondary!=null?'/'+row.value_secondary:''}} {{row.unit}}</template></el-table-column><el-table-column v-if="measurementFlow.state.capabilityPhase==='disabled'" prop="status" label="Status" width="100"><template #default="{row}"><el-tag :type="row.status==='NORMAL'?'success':'danger'">{{row.status}}</el-tag></template></el-table-column></el-table>
       <article v-for="note in sourceFocus.state.record?.annotations || []" :key="note.id"><p>{{note.doctor_name}} · {{note.created_at}}</p><p>{{note.annotation}}</p></article>
     </section>
     <el-tabs v-if="!focusedMode" v-model="tab" class="journey-tabs" :before-leave="beforeTabLeave">
       <el-tab-pane label="Measurements" name="measurements">
+        <FollowUpList :patient-id="currentPatientId" />
+        <MeasurementWorkflowStatus :flow="measurementFlow" source-type="HEALTH_MEASUREMENT" @saved="loadMeasurements" />
         <section class="panel-grid two">
-          <el-card><template #header><b>Record a health measurement</b></template><el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top">
+          <el-card><template #header><b>Record a health measurement</b></template><el-form :disabled="busy || measurementLocked || (patientRequired && !currentPatientId)" label-position="top">
             <div class="form-grid"><el-form-item label="Metric"><el-select v-model="measurement.metricType"><el-option v-for="item in metricOptions" :key="item.value" v-bind="item" /></el-select></el-form-item><el-form-item label="Measured at"><el-date-picker v-model="measurement.measuredAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" /></el-form-item><el-form-item label="Primary value"><el-input-number v-model="measurement.valuePrimary" :precision="2" /></el-form-item><el-form-item v-if="measurement.metricType==='BP'" label="Diastolic"><el-input-number v-model="measurement.valueSecondary" /></el-form-item><el-form-item label="Unit"><el-input v-model="measurement.unit" /></el-form-item><el-form-item label="Notes"><el-input v-model="measurement.remark" /></el-form-item></div>
-            <el-button type="primary" :loading="busy" @click="recordMeasurement">Save and evaluate</el-button>
+            <el-form-item v-if="measurementFlow.state.capabilityPhase==='enabled'" :label="awText('offset')"><el-input v-model="measurementOffset" placeholder="+08:00" /><p>{{awText('offsetHelp')}}</p></el-form-item><el-button type="primary" :loading="busy" :disabled="measurementLocked || !['enabled','disabled'].includes(measurementFlow.state.capabilityPhase) || (measurementFlow.state.capabilityPhase==='enabled'&&!measurementFlow.state.capabilities?.canAdopt)" @click="recordMeasurement">Save and evaluate</el-button>
           </el-form></el-card>
-          <el-card><template #header><div class="card-head"><b>Trend records</b><el-button @click="loadMeasurements">Refresh</el-button></div></template><el-table :data="measurements" max-height="440"><el-table-column prop="measured_at" label="Time" width="165"/><el-table-column prop="metric_type" label="Metric" width="110"/><el-table-column label="Value"><template #default="{row}">{{row.value_primary}}{{row.value_secondary!=null?'/'+row.value_secondary:''}} {{row.unit}}</template></el-table-column><el-table-column prop="status" label="Status" width="100"><template #default="{row}"><el-tag :type="row.status==='NORMAL'?'success':'danger'">{{row.status}}</el-tag></template></el-table-column><el-table-column v-if="isDoctor" label="Clinical note" width="130"><template #default="{row}"><el-button link @click="annotate(row)">Annotate</el-button></template></el-table-column></el-table></el-card>
+          <el-card><template #header><div class="card-head"><b>Trend records</b><el-button @click="loadMeasurements">Refresh</el-button></div></template><el-table :data="measurements" max-height="440"><el-table-column prop="measured_at" label="Time" width="165"/><el-table-column prop="metric_type" label="Metric" width="110"/><el-table-column label="Value"><template #default="{row}">{{row.value_primary}}{{row.value_secondary!=null?'/'+row.value_secondary:''}} {{row.unit}}</template></el-table-column><el-table-column v-if="measurementFlow.state.capabilityPhase==='disabled'" prop="status" label="Status" width="100"><template #default="{row}"><el-tag :type="row.status==='NORMAL'?'success':'danger'">{{row.status}}</el-tag></template></el-table-column><el-table-column v-if="measurementFlow.state.capabilityPhase==='enabled'" :label="awText('source')" min-width="180"><template #default="{row}"><el-button link :disabled="measurementLocked" @click="inspectMeasurement(row)">{{awText('sourceOpen')}}</el-button></template></el-table-column><el-table-column v-if="isDoctor" label="Clinical note" width="130"><template #default="{row}"><el-button link @click="annotate(row)">Annotate</el-button></template></el-table-column></el-table></el-card>
         </section>
+      <SourceMeasurementPanel v-if="measurementFlow.state.source||measurementFlow.state.receipt||measurementFlow.state.sourceReadPhase!=='idle'" :flow="measurementFlow" @changed="loadMeasurements" />
       </el-tab-pane>
 
       <el-tab-pane label="Appointments & visits" name="appointments">
@@ -64,12 +67,12 @@
       <el-tab-pane label="Privacy & access" name="privacy">
         <el-card><template #header><b>Patient-controlled access</b></template>
           <el-form :disabled="busy || (patientRequired && !currentPatientId)" label-position="top" class="inline-form care-plan-grant-form">
-            <el-form-item label="Role"><el-select v-model="grant.granteeRole" @change="changeGrantRole"><el-option label="Doctor" value="DOCTOR"/><el-option v-if="carePlanGrantEnabled" label="Nurse" value="NURSE"/><el-option label="Family" value="FAMILY"/><el-option label="Guardian" value="GUARDIAN"/></el-select></el-form-item>
+            <el-form-item label="Role"><el-select v-model="grant.granteeRole" @change="changeGrantRole"><el-option label="Doctor" value="DOCTOR"/><el-option v-if="carePlanGrantEnabled||measurementGrantEnabled" label="Nurse" value="NURSE"/><el-option label="Family" value="FAMILY"/><el-option label="Guardian" value="GUARDIAN"/></el-select></el-form-item>
             <el-form-item v-if="grant.granteeRole==='DOCTOR'" label="Doctor" class="grant-choice"><el-select v-model="grant.granteeUserId" filterable clearable placeholder="Search platform doctors"><el-option v-for="doctor in clinicians" :key="doctor.id" :value="doctor.id" :label="doctor.real_name && doctor.real_name!==doctor.username ? `${doctor.real_name} (${doctor.username})` : doctor.username"/></el-select></el-form-item>
             <el-form-item v-else-if="grant.granteeRole==='NURSE'" label="Currently assigned nurse" class="grant-choice"><el-select v-model="grant.granteeUserId" clearable filterable><el-option v-for="nurse in nurseCandidates" :key="nurse.nurseUserId" :value="nurse.nurseUserId" :label="`${nurse.nurseName} (#${nurse.nurseUserId})`"/></el-select><p>Assignment and patient authorization are separate steps. Only active assignments for this patient are listed.</p></el-form-item><el-form-item v-else label="Recipient user ID"><el-input-number v-model="grant.granteeUserId"/></el-form-item>
             <el-form-item label="Level"><el-select v-model="grant.accessLevel"><el-option label="Read only" value="READ"/><el-option label="Can record" value="WRITE"/><el-option label="Can act for patient" value="PROXY"/></el-select></el-form-item>
             <el-form-item label="Visible modules" class="grant-choice"><el-select v-model="grantModules" multiple collapse-tags collapse-tags-tooltip clearable placeholder="Leave empty for all modules"><el-option v-for="module in availableGrantModules" :key="module.value" :label="module.label" :value="module.value"/></el-select></el-form-item>
-            <el-button type="primary" @click="createGrant">Authorize</el-button>
+            <el-form-item :label="awText('grantLocal')"><el-date-picker v-model="grant.expiresAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" /></el-form-item><el-button type="primary" @click="createGrant">Authorize</el-button>
           </el-form>
           <el-table :data="grants"><el-table-column prop="real_name" label="Person"/><el-table-column prop="grantee_role" label="Role"/><el-table-column prop="access_level" label="Level"/><el-table-column prop="visible_modules" label="Visible modules"/><el-table-column prop="status" label="Status"/><el-table-column label=""><template #default="{row}"><el-button link type="danger" @click="revoke(row)">Revoke</el-button></template></el-table-column></el-table>
         </el-card>
@@ -85,6 +88,14 @@
 </template>
 
 <script setup>
+import {useAlertWorkflowNavigation} from '@/composables/useAlertWorkflowNavigation'
+import FollowUpList from '@/components/alert-workflow/FollowUpList.vue'
+import SourceMeasurementPanel from '@/components/alert-workflow/SourceMeasurementPanel.vue'
+import MeasurementWorkflowStatus from '@/components/alert-workflow/MeasurementWorkflowStatus.vue'
+import {useAlertWorkflow} from '@/composables/useAlertWorkflow'
+import {measurementInstant,localOffset} from '@/utils/alertWorkflowForms'
+import {t as awText} from '@/utils/alertWorkflowCopy'
+import * as alertApi from '@/api/alertWorkflow'
 import { useFocusedCareSource } from '@/composables/useFocusedCareSource'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -99,6 +110,11 @@ import ConsultationWorkspace from '@/components/ConsultationWorkspace.vue'
 const route=useRoute(),router=useRouter(),{currentPatientId,currentPatientName}=useCurrentPatient()
 const sourceFocus=useFocusedCareSource(route,currentPatientId,(source,options)=>api.listMeasurements({patientId:source.patientId,measurementId:source.sourceId},options),'MEASUREMENT')
 const focusedMode=sourceFocus.attempted
+const measurementFlow=useAlertWorkflow(currentPatientId),measurementOffset=ref(localOffset())
+useAlertWorkflowNavigation(measurementFlow)
+const measurementLocked=computed(()=>['submitting','uncertain'].includes(measurementFlow.state.sourcePhase))
+watch(currentPatientId,()=>{measurementOffset.value=localOffset();measurementFlow.loadCapabilities()},{immediate:true})
+async function inspectMeasurement(row){if(measurementLocked.value)return;await measurementFlow.readSource('HEALTH_MEASUREMENT',row.id)}
 const roles=JSON.parse(localStorage.getItem('userRoleCodes')||'[]'),isDoctor=computed(()=>roles.includes('doctor')||roles.includes('admin'))
 const allowedTabs=['measurements','appointments','consultation','recovery','emergency','specialty','mental','privacy',...(isDoctor.value?['operations']:[])]
 // Only a committed route selects content; rejected navigation cannot disable an active draft.
@@ -114,15 +130,16 @@ const plan=reactive({planType:'INPATIENT',title:''}),planText=ref(''),rehab=reac
 const emergency=reactive({locationText:'',latitude:null,longitude:null})
 const growth=reactive({recordDate:today(),heightCm:null,weightKg:null,headCircumferenceCm:null,heightPercentile:null,weightPercentile:null}),vaccine=reactive({vaccineName:'',doseNo:'',plannedDate:today(),remindAt:''}),maternity=reactive({recordType:'PRENATAL',recordDate:today(),title:''}),maternityText=ref('')
 const mental=reactive({scaleCode:'PHQ9'}),mentalAnswers=ref(''),mentalVisible=ref(false),mentalSchedule=reactive({scaleCode:'PHQ9',intervalDays:14,nextDueAt:now()})
-const grant=reactive({granteeUserId:null,granteeRole:'DOCTOR',accessLevel:'READ'}),grantModules=ref([]),schedule=reactive({doctorUserId:null,workDate:today(),startTime:'09:00:00',endTime:'12:00:00',slotMinutes:30}),group=reactive({groupName:'',description:''})
-const carePlanGrantEnabled=ref(false),nurseCandidates=ref([])
+const grant=reactive({granteeUserId:null,granteeRole:'DOCTOR',accessLevel:'READ',expiresAt:''}),grantModules=ref([]),schedule=reactive({doctorUserId:null,workDate:today(),startTime:'09:00:00',endTime:'12:00:00',slotMinutes:30}),group=reactive({groupName:'',description:''})
+const carePlanGrantEnabled=ref(false),measurementGrantEnabled=ref(false),nurseCandidates=ref([])
 let nurseCandidateGeneration=0,nurseController=null,grantContextEpoch=0,carePlanGrantController=null
-const availableGrantModules=computed(()=>grant.granteeRole==='NURSE'?carePlanGrantEnabled.value?[{value:'CARE_PLAN',label:'Collaboration care plans'}]:[]:grantModuleOptions.filter(m=>m.value!=='CARE_PLAN'||carePlanGrantEnabled.value))
-function changeGrantRole(){grant.granteeUserId=null;if(grant.granteeRole==='NURSE')grantModules.value=['CARE_PLAN']}
-function clearNurseCandidates(){nurseCandidateGeneration++;nurseController?.abort();nurseController=null;nurseCandidates.value=[];carePlanGrantEnabled.value=false;if(grant.granteeRole==='NURSE')grant.granteeUserId=null}
-async function loadNurseCandidates(){clearNurseCandidates();const id=currentPatientId.value;if(!id)return;const generation=nurseCandidateGeneration,auth=captureAuthSession(),actor=localStorage.getItem('userId');nurseController=new AbortController();const options={expectedAuth:{...auth,actorId:actor},signal:nurseController.signal};const owns=()=>generation===nurseCandidateGeneration&&id===currentPatientId.value&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId');try{const capability=await getCarePlanCapabilities(options);if(!owns()||capability.data?.enabled!==true)return;carePlanGrantEnabled.value=true;const result=await listNurseAssignments(id,options);if(!owns())return;nurseCandidates.value=(result.data||[]).filter(n=>n.patientId===id&&n.status==='ACTIVE'&&(!n.expiresAt||Date.parse(n.expiresAt)>Date.now()))}catch{if(owns())nurseCandidates.value=[]}}
+const availableGrantModules=computed(()=>grant.granteeRole==='NURSE'?[...(carePlanGrantEnabled.value?[{value:'CARE_PLAN',label:'Collaboration care plans'}]:[]),...(measurementGrantEnabled.value?[{value:'MEASUREMENTS',label:awText('title')}]:[])]:grantModuleOptions.filter(m=>m.value!=='CARE_PLAN'||carePlanGrantEnabled.value))
+function changeGrantRole(){grant.granteeUserId=null;if(grant.granteeRole==='NURSE')grantModules.value=measurementGrantEnabled.value?['MEASUREMENTS']:['CARE_PLAN']}
+function clearNurseCandidates(){nurseCandidateGeneration++;nurseController?.abort();nurseController=null;nurseCandidates.value=[];carePlanGrantEnabled.value=false;measurementGrantEnabled.value=false;if(grant.granteeRole==='NURSE')grant.granteeUserId=null}
+async function loadNurseCandidates(){clearNurseCandidates();const id=currentPatientId.value;if(!id)return;const generation=nurseCandidateGeneration,auth=captureAuthSession(),actor=localStorage.getItem('userId');nurseController=new AbortController();const options={expectedAuth:{...auth,actorId:actor},signal:nurseController.signal};const owns=()=>generation===nurseCandidateGeneration&&id===currentPatientId.value&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId');const results=await Promise.allSettled([getCarePlanCapabilities(options),alertApi.capabilities(id,options)]);if(!owns())return;carePlanGrantEnabled.value=results[0].status==='fulfilled'&&results[0].value.data?.enabled===true;measurementGrantEnabled.value=results[1].status==='fulfilled'&&results[1].value.data?.canGrantMeasurementsToAssignedNurse===true;if(!carePlanGrantEnabled.value&&!measurementGrantEnabled.value)return;try{const result=await(measurementGrantEnabled.value?alertApi.nurseAssignments(id,options):listNurseAssignments(id,options));if(owns())nurseCandidates.value=(result.data||[]).filter(n=>n.patientId===id&&n.status==='ACTIVE'&&(!n.expiresAt||Date.parse(n.expiresAt)>Date.now()))}catch{if(owns())nurseCandidates.value=[]}}
+
 function invalidateCarePlanGrants(){grantContextEpoch++;carePlanGrantController?.abort();carePlanGrantController=null}
-function nurseAuthCleared(){invalidateCarePlanGrants();clearNurseCandidates()}
+function nurseAuthCleared(){invalidateCarePlanGrants();clearNurseCandidates();measurements.value=[];Object.assign(measurement,{metricType:'BP',valuePrimary:null,valueSecondary:null,unit:'mmHg',measuredAt:now(),remark:''});measurementOffset.value=''}
 function nurseStorageChanged(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))nurseAuthCleared()}
 const grantModuleOptions=[{value:'CARE_PLAN',label:'Collaboration care plans'},{value:'MEASUREMENTS',label:'Measurements'},{value:'APPOINTMENTS',label:'Appointments'},{value:'VISITS',label:'Visit summaries'},{value:'MEDICATION',label:'Medication'},{value:'CONSULTATION',label:'Consultations'},{value:'TREATMENT',label:'Treatment plans'},{value:'REHAB',label:'Recovery'},{value:'EMERGENCY',label:'Emergency'},{value:'SPECIALTY',label:'Child and maternity'},{value:'MENTAL',label:'Mental health'},{value:'MEDICAL',label:'Medical records'},{value:'DIALYSIS',label:'Dialysis'}]
 const metricOptions=[{label:'Blood pressure',value:'BP'},{label:'Blood glucose',value:'GLUCOSE'},{label:'Blood oxygen',value:'SPO2'},{label:'Weight',value:'WEIGHT'},{label:'Heart rate',value:'HEART_RATE'},{label:'Temperature',value:'TEMPERATURE'},{label:'Custom',value:'CUSTOM'}]
@@ -159,7 +176,10 @@ async function savePatientEditor(kind,readDraft,save,reset,refresh,message='Save
   }finally{if(editorOperation===operation){editorOperation=null;busy.value=false}}
 }
 async function loadMeasurements(){if(focusedMode.value){await sourceFocus.reload();return;}await loadPatientData('measurements',id=>api.listMeasurements({patientId:id}),response=>{measurements.value=response.data||[]})}
-async function recordMeasurement(){await safely(async()=>{validate(measurement.measuredAt && Number(measurement.valuePrimary)>0, 'Enter a measurement time and a positive value.');if(measurement.metricType==='BP')validate(Number(measurement.valueSecondary)>0,'Enter a positive diastolic value.');await api.saveMeasurement({...measurement,patientId:pid()});await loadMeasurements()})}
+async function recordMeasurement(){
+  if(busy.value||measurementLocked.value)return
+  try{validate(measurement.measuredAt&&Number(measurement.valuePrimary)>0,awText('inputInvalid'));if(measurement.metricType==='BP')validate(Number(measurement.valueSecondary)>0,awText('inputInvalid'));const enabled=measurementFlow.state.capabilityPhase==='enabled';const payload={...measurement,...(enabled?{occurredAt:measurementInstant(measurement.measuredAt,measurementOffset.value)}:{})};const result=await measurementFlow.saveSource('HEALTH_MEASUREMENT',payload);if(result.status==='succeeded'){ElMessage.success(awText('saved'));await loadMeasurements()}else if(result.status==='capability-required')ElMessage.warning(awText('capabilityUnknown'))}catch{ElMessage.error(awText('inputInvalid'))}
+}
 async function annotate(row){const {value}=await ElMessageBox.prompt('Add a clinician note to this exact trend point','Clinical annotation');await safely(async()=>{await api.annotateMeasurement(row.id,value);await loadMeasurements()})}
 async function loadAppointments(){await loadPatientData('appointments',id=>Promise.all([api.listAppointments(id),api.listVisits(id),api.listPrescriptions(id)]),responses=>{appointments.value=responses[0].data||[];visits.value=responses[1].data||[];prescriptions.value=responses[2].data||[]})}
 function changeAppointmentDoctor(){appointment.scheduleId=null;appointment.startAt='';appointment.endAt='';doctorSchedules.value=[];loadDoctorSchedules()}
@@ -250,13 +270,13 @@ async function createGrant(){
       await loadNurseCandidates()
       if(!owns()||grant.granteeRole!==body.granteeRole||grant.accessLevel!==body.accessLevel||JSON.stringify(grantModules.value)!==JSON.stringify(modules)||(grant.granteeUserId!=null&&grant.granteeUserId!==body.granteeUserId))return false
       grant.granteeUserId=body.granteeUserId
-      validate(carePlanGrantEnabled.value&&nurseCandidates.value.some(n=>n.nurseUserId===Number(body.granteeUserId)),'Select a currently assigned nurse for this patient.')
-      validate(modules.length===1&&modules[0]==='CARE_PLAN','Nursing authorization must explicitly select CARE_PLAN.')
+      validate((carePlanGrantEnabled.value||measurementGrantEnabled.value)&&nurseCandidates.value.some(n=>n.nurseUserId===Number(body.granteeUserId)),'Select a currently assigned nurse for this patient.')
+      validate(modules.length>0&&modules.every(module=>module==='CARE_PLAN'?carePlanGrantEnabled.value:module==='MEASUREMENTS'&&measurementGrantEnabled.value),'Select explicit currently available nursing modules.')
     }
     if(!owns())return false
     const data={...body,visibleModules:modules.join(','),patientId:patient}
     if(guarded){
-      validate(carePlanGrantEnabled.value,'Plan collaboration is unavailable in this session.')
+      validate((!modules.includes('CARE_PLAN')||carePlanGrantEnabled.value)&&(body.granteeRole!=='NURSE'||!modules.includes('MEASUREMENTS')||measurementGrantEnabled.value),'The selected collaboration modules are unavailable in this session.')
       carePlanGrantController?.abort();const controller=new AbortController();carePlanGrantController=controller
       await request({url:'/care-journey/access-grants',method:'post',data,expectedAuth:{...auth,actorId:actor},signal:controller.signal})
     }else await api.saveAccessGrant(data)

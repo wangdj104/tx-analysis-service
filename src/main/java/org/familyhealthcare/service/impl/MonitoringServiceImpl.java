@@ -62,6 +62,7 @@ public class MonitoringServiceImpl implements MonitoringService {
     @Autowired private HealthEventMapper eventMapper;
     @Autowired private org.familyhealthcare.service.DialysisScheduleService scheduleService;
     @Autowired private PatientHealthTargetMapper targetMapper;
+    @Autowired private org.familyhealthcare.service.alertworkflow.MeasurementAssessmentService measurementAssessment;
     @Autowired private org.familyhealthcare.service.MedicationReminderService reminderService;
     @Autowired private org.familyhealthcare.service.HealthTimelineService timelineService;
 
@@ -87,7 +88,7 @@ public class MonitoringServiceImpl implements MonitoringService {
                         .orderByAsc("record_time"));
 
         List<AlertRecord> activeAlerts = alertMapper.selectList(
-                new QueryWrapper<AlertRecord>()
+                new QueryWrapper<AlertRecord>().apply("(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')")
                         .eq("patient_id", patientId)
                         .and(q -> q.isNull("status").or().ne("status", "RESOLVED"))
                         .orderByDesc("triggered_at")
@@ -437,15 +438,7 @@ public class MonitoringServiceImpl implements MonitoringService {
     }
 
     private String bpSeverity(BpSelfMonitorRecord row, PatientHealthTarget target) {
-        if (row == null || row.getSystolicBp() == null) return "NO_DATA";
-        int s = row.getSystolicBp();
-        int d = row.getDiastolicBp() == null ? 0 : row.getDiastolicBp();
-        if (s >= 180 || (d > 0 && d >= 120) || s < 80 || (d > 0 && d < 50)) return "CRITICAL";
-        int sMin = target != null && target.getSystolicMin() != null ? target.getSystolicMin() : 90;
-        int sMax = target != null && target.getSystolicMax() != null ? target.getSystolicMax() : 140;
-        int dMin = target != null && target.getDiastolicMin() != null ? target.getDiastolicMin() : 60;
-        int dMax = target != null && target.getDiastolicMax() != null ? target.getDiastolicMax() : 90;
-        return s < sMin || s > sMax || (d > 0 && (d < dMin || d > dMax)) ? "WARNING" : "NORMAL";
+        return measurementAssessment.legacyBpSeverity(row,target);
     }
 
     private boolean isGlucoseAbnormal(BpSelfMonitorRecord row, PatientHealthTarget target) {
@@ -454,22 +447,7 @@ public class MonitoringServiceImpl implements MonitoringService {
     }
 
     private String glucoseSeverity(BpSelfMonitorRecord row, PatientHealthTarget target) {
-        if (row == null || row.getBloodGlucose() == null) return "NO_DATA";
-        BigDecimal value = row.getBloodGlucose();
-        // Thresholds are in mmol/L; do not alter the recorded value or its display unit.
-        String unit = row.getBgUnit() == null ? "" : row.getBgUnit().trim();
-        if ("mg/dL".equalsIgnoreCase(unit)) {
-            value = value.divide(new BigDecimal("18"), 8, RoundingMode.HALF_UP);
-        } else if (!unit.isEmpty() && !"mmol/L".equalsIgnoreCase(unit)) {
-            return "NO_DATA";
-        }
-        if (value.compareTo(new BigDecimal("3.0")) < 0 || value.compareTo(new BigDecimal("16.7")) > 0) return "CRITICAL";
-        boolean postMeal = row.getMeasurePeriod() != null && row.getMeasurePeriod().contains("After Meal");
-        BigDecimal min = target == null ? null : (postMeal ? target.getPostmealGlucoseMin() : target.getFastingGlucoseMin());
-        BigDecimal max = target == null ? null : (postMeal ? target.getPostmealGlucoseMax() : target.getFastingGlucoseMax());
-        if (min == null) min = new BigDecimal("3.9");
-        if (max == null) max = postMeal ? new BigDecimal("7.8") : new BigDecimal("6.1");
-        return value.compareTo(min) < 0 || value.compareTo(max) > 0 ? "WARNING" : "NORMAL";
+        return measurementAssessment.legacyGlucoseSeverity(row,target);
     }
 
     private String statusLabel(String status) {

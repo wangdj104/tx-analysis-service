@@ -60,6 +60,9 @@ public class CarePlanActionService {
         requireAuthority(operation,actor,patient);
         Map<String,Object>normalized=normalize(operation,body);
         validateReceiptAuthority(operation,actor,patient,normalized);
+        // The parent is already locked. A newly attached receipt must also serialize with a
+        // source correction that could not yet discover this plan. Never acquire another parent here.
+        if("SUBMIT_RECEIPT".equals(operation))lockReceiptSources(actor,patient,normalized);
         // 都按计划、行动、命令的顺序加锁，避免同时操作时互相卡住；重复提交也沿用这个顺序。
         List<Map<String,Object>>actions=jdbc.query("SELECT revision_id,patient_id,status,lock_version FROM care_plan_action WHERE id=? AND plan_id=? FOR UPDATE",
                 (rs,i)->map("revisionId",rs.getLong("revision_id"),"patientId",rs.getLong("patient_id"),"status",rs.getString("status"),"version",rs.getLong("lock_version")),actionId,planId);
@@ -118,6 +121,21 @@ public class CarePlanActionService {
             try{auth.requireClinical(actor,patient);}catch(CarePlanException denied){if(denied.getStatus()!=403)throw denied;auth.requireNursing(actor,patient);}
         }else auth.requireRecord(actor,patient);
     }
+    private void lockReceiptSources(long actor,long patient,Map<String,Object> body) {
+        SortedMap<String,Map<String,Object>> sources=new TreeMap<>();
+        for(Map<String,Object> ref:evidence(body)) {
+            String type=(String)ref.get("sourceType");long source=id(ref.get("sourceId"));
+            String order="MEASUREMENT".equals(type)?"HEALTH_MEASUREMENT":type;
+            sources.put(order+":"+String.format(Locale.ROOT,"%020d",source),ref);
+        }
+        for(Map<String,Object> ref:sources.values()) {
+            String table="MEASUREMENT".equals(ref.get("sourceType"))?"health_measurement":"medical_record";
+            if(jdbc.queryForList("SELECT id FROM "+table+" WHERE id=? AND patient_id=? FOR UPDATE",Long.class,ref.get("sourceId"),patient).isEmpty())throw CarePlanException.denied();
+        }
+        // READ_COMMITTED re-reads account, assignment, grant and source ownership after any wait.
+        validateReceiptAuthority("SUBMIT_RECEIPT",actor,patient,body);
+    }
+
     private void validateReceiptAuthority(String operation,long actor,long patient,Map<String,Object>body){
         if(!"SUBMIT_RECEIPT".equals(operation))return;
         if("SELF".equals(body.get("entryMode"))&&jdbc.queryForObject("SELECT COUNT(*) FROM patient WHERE id=? AND user_id=?",Integer.class,patient,actor)!=1)throw CarePlanException.denied();

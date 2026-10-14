@@ -48,7 +48,7 @@ public class ClinicalWorkbenchService {
     public Map<String, Object> attention(Long patientId) {
         scope.requirePatient(patientId);
         List<Map<String, Object>> items = new ArrayList<>();
-        List<AlertRecord> activeAlerts = alerts.selectList(new QueryWrapper<AlertRecord>()
+        List<AlertRecord> activeAlerts = alerts.selectList(new QueryWrapper<AlertRecord>().apply("(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')")
                 .eq("patient_id", patientId).and(q -> q.isNull("status").or().ne("status", "RESOLVED"))
                 .orderByDesc("triggered_at").last("limit 100"));
         for (AlertRecord alert : activeAlerts) {
@@ -257,7 +257,7 @@ public class ClinicalWorkbenchService {
         PatientHealthTarget target = targets.selectOne(new QueryWrapper<PatientHealthTarget>().eq("patient_id", patientId).last("limit 1"));
         DialysisRecord latest = dialysisRecords.selectOne(new QueryWrapper<DialysisRecord>().eq("patient_id", patientId).orderByDesc("record_date").last("limit 1"));
         List<Medication> active = medications.selectList(new QueryWrapper<Medication>().eq("patient_id", patientId).eq("is_active", 1).orderByAsc("drug_name"));
-        List<AlertRecord> unresolved = alerts.selectList(new QueryWrapper<AlertRecord>().eq("patient_id", patientId)
+        List<AlertRecord> unresolved = alerts.selectList(new QueryWrapper<AlertRecord>().apply("(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')").eq("patient_id", patientId)
                 .and(q -> q.isNull("status").or().ne("status", "RESOLVED")).orderByDesc("triggered_at").last("limit 10"));
         Map<String, Object> safePatient = new LinkedHashMap<>();
         safePatient.put("id", patient.getId()); safePatient.put("name", patient.getName()); safePatient.put("gender", patient.getGender());

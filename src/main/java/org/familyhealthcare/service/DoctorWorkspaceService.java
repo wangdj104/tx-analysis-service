@@ -41,7 +41,7 @@ public class DoctorWorkspaceService {
         requireDoctor();
         String scope = CurrentUserUtil.isAdmin() ? "" : " AND a.doctor_user_id=" + currentUserId();
         String sql = "SELECT p.id,p.name,p.gender,p.birth_date AS birthDate,p.phone,a.care_team_role AS careTeamRole," +
-                "(SELECT COUNT(*) FROM alert_record ar WHERE ar.patient_id=p.id AND ar.status IN ('PENDING','CONFIRMED') AND ar.alert_level='CRITICAL') AS criticalAlerts," +
+                "(SELECT COUNT(*) FROM alert_record ar WHERE (ar.alert_type IS NULL OR ar.alert_type<>'MEASUREMENT_FOLLOW_UP') AND ar.patient_id=p.id AND ar.status IN ('PENDING','CONFIRMED') AND ar.alert_level='CRITICAL') AS criticalAlerts," +
                 "(SELECT MAX(CONCAT(b.record_date,' ',COALESCE(b.record_time,''))) FROM bp_self_monitor_record b WHERE b.patient_id=p.id) AS lastVitalAt " +
                 "FROM patient p JOIN doctor_patient_assignment a ON a.patient_id=p.id AND a.status='ACTIVE' " +
                 "WHERE p.deleted=0 AND p.status=1" + scope + " ORDER BY criticalAlerts DESC,p.name";

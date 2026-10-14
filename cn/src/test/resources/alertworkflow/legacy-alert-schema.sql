@@ -1,0 +1,43 @@
+CREATE TABLE IF NOT EXISTS `alert_record` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `rule_id` BIGINT DEFAULT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `user_id` BIGINT NOT NULL,
+  `alert_type` VARCHAR(30) DEFAULT NULL,
+  `alert_level` VARCHAR(20) DEFAULT NULL,
+  `alert_title` VARCHAR(200) DEFAULT NULL,
+  `triggered_value` VARCHAR(100) DEFAULT NULL,
+  `triggered_at` DATETIME DEFAULT NULL,
+  `source_type` VARCHAR(30) DEFAULT NULL,
+  `source_id` BIGINT DEFAULT NULL,
+  `dedupe_key` VARCHAR(160) DEFAULT NULL,
+  `occurrence_count` INT NOT NULL DEFAULT 1,
+  `last_triggered_at` DATETIME DEFAULT NULL,
+  `status` VARCHAR(20) DEFAULT 'PENDING',
+  `acknowledged_by` BIGINT DEFAULT NULL,
+  `acknowledged_at` DATETIME DEFAULT NULL,
+  `resolved_by` BIGINT DEFAULT NULL,
+  `resolved_at` DATETIME DEFAULT NULL,
+  `handling_note` VARCHAR(500) DEFAULT NULL,
+  `remark` VARCHAR(256) DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY `idx_alert_user_patient` (`user_id`,`patient_id`),
+  KEY `idx_alert_patient_status_time` (`patient_id`,`status`,`triggered_at`),
+  KEY `idx_alert_triggered_at` (`triggered_at`),
+  KEY `idx_alert_dedupe` (`patient_id`,`dedupe_key`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='alertrecord';
+
+CREATE TABLE IF NOT EXISTS `alert_event` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `alert_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `actor_id` BIGINT DEFAULT NULL,
+  `actor_name` VARCHAR(100) DEFAULT NULL,
+  `from_status` VARCHAR(20) DEFAULT NULL,
+  `to_status` VARCHAR(20) NOT NULL,
+  `note` VARCHAR(500) DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_alert_event_alert` (`alert_id`,`created_at`),
+  KEY `idx_alert_event_patient` (`patient_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='alert status audit trail';

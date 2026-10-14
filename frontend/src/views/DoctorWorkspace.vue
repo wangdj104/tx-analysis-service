@@ -17,6 +17,7 @@
       <article><span>Active plans</span><strong>{{ summary.activePlans || 0 }}</strong><small>Clinician-authored care plans</small></article>
     </section>
 
+    <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" :disabled="collaborationEditing" @change="loadPatientContext" /><FollowUpList :patient-id="selectedPatientId" /></section>
     <el-tabs v-model="tab" class="doctor-tabs">
       <el-tab-pane label="Patient panel" name="patients">
         <section class="panel">
@@ -67,6 +68,7 @@
 </template>
 
 <script setup>
+import FollowUpList from '@/components/alert-workflow/FollowUpList.vue';
 import AiAnalysisReviewDialog from '@/components/care-plan/AiAnalysisReviewDialog.vue';
 import MedicalRecordReviewDialog from '@/components/MedicalRecordReviewDialog.vue';
 import { defineComponent, h, onMounted, onUnmounted, reactive, ref, resolveComponent, watch } from 'vue';

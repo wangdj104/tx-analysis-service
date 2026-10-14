@@ -21,7 +21,7 @@ function logRequestError(event, error) {
 // Report parsing can await Blob.text after axios has delivered the response. Recheck
 // the captured context before any message, redirect, or return at that boundary.
 function requireCurrentReport(config) {
-  if (config?.executionReport && (config.signal?.aborted || !isAuthSessionCurrent(config.expectedAuth) ||
+  if ((config?.executionReport || config?.alertWorkflow) && (config.signal?.aborted || !isAuthSessionCurrent(config.expectedAuth) ||
       config.expectedAuth?.actorId !== localStorage.getItem('userId'))) {
     throw new axios.CanceledError('REPORT_CONTEXT_CHANGED', config);
   }
@@ -93,7 +93,7 @@ request.interceptors.response.use(
         window.location.href = '/cn/login';
       }
 
-      return Promise.reject(Object.assign(new Error(localizeServerText(res.msg) || '请求失败'), { code: res.code, ...(response.config.executionReport ? { data: res.data } : {}) }));
+      return Promise.reject(Object.assign(new Error(localizeServerText(res.msg) || '请求失败'), { code: res.code, ...((response.config.executionReport || response.config.alertWorkflow) ? { data: res.data } : {}) }));
     }
 
     if (binary) throw new Error('导出未返回有效文件，请重试。');

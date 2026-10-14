@@ -29,6 +29,9 @@
           </div>
         </div>
 
+        <FollowUpList :patient-id="currentPatientId" />
+        <MeasurementWorkflowStatus :flow="measurementFlow" source-type="BP_SELF_MONITOR" @saved="measurementReplaySaved" />
+        <SourceMeasurementPanel v-if="measurementFlow.state.source||measurementFlow.state.receipt||measurementFlow.state.sourceReadPhase!=='idle'" ref="sourcePanel" :flow="measurementFlow" @changed="refreshRecords" />
         <p class="summary-context">最近读数来自该患者的全部记录，不受下方列表筛选影响。</p>
         <p v-if="summaryLoading || (loading && !summarySuccessAt)" role="status" class="read-state">正在读取最近读数…</p>
         <div v-if="summaryError" class="read-state" role="alert"><p>{{ summaryError }}</p><p v-if="summarySuccessAt">显示上次成功摘要，数据可能已过时。成功读取时间：{{ summarySuccessAt }}</p><el-button @click="refreshRecords" :loading="summaryLoading">重试最近读数</el-button></div>
@@ -38,7 +41,7 @@
               <el-icon><Plus /></el-icon>
               <h2 ref="editorHeading" tabindex="-1" class="editor-heading">{{ editingId ? editRecordLabel : '新增记录' }}</h2>
             </div>
-            <el-radio-group v-model="form.measureType" :disabled="saving || accessDenied" class="measure-switch">
+            <el-radio-group v-model="form.measureType" :disabled="saving || accessDenied || measurementLocked" class="measure-switch">
               <el-radio-button value="BP">血压</el-radio-button>
               <el-radio-button value="BG">血糖</el-radio-button>
               <el-radio-button value="BP_BG">血压和血糖</el-radio-button>
@@ -46,7 +49,7 @@
           </div>
 
           <p class="submission-patient">正在为 {{ currentPatientName || '当前患者' }} · 患者档案 #{{ currentPatientId || '—' }}</p>
-          <el-form :model="form" :disabled="saving || accessDenied" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
+          <el-form :model="form" :disabled="saving || accessDenied || measurementLocked" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
             <div class="form-grid form-grid--meta">
               <el-form-item label="记录日期" prop="recordDate">
                 <el-date-picker v-model="form.recordDate" value-format="YYYY-MM-DD" :clearable="false" />
@@ -104,12 +107,13 @@
               <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" placeholder="可记录测量场景、餐前餐后及身体感受等。" />
             </el-form-item>
 
+            <el-form-item v-if="measurementFlow.state.capabilityPhase==='enabled'" :label="awText('offset')"><el-input v-model="measurementOffset" placeholder="+08:00" /><p>{{awText('offsetHelp')}}</p></el-form-item>
             <div class="form-actions">
-              <el-button type="primary" @click="handleSave" :loading="saving" :disabled="accessDenied">
+              <el-button type="primary" @click="handleSave" :loading="saving" :disabled="accessDenied || measurementLocked || !['enabled','disabled'].includes(measurementFlow.state.capabilityPhase) || (measurementFlow.state.capabilityPhase==='enabled'&&!measurementFlow.state.capabilities?.canAdopt)">
                 <el-icon><Check /></el-icon>{{ editingId ? '更新记录' : '保存记录' }}
               </el-button>
-              <el-button v-if="editingId" @click="cancelEdit" :disabled="saving || accessDenied">取消编辑</el-button>
-              <el-button v-else @click="resetForm" :disabled="saving || accessDenied">重置</el-button>
+              <el-button v-if="editingId" @click="cancelEdit" :disabled="saving || accessDenied || measurementLocked">取消编辑</el-button>
+              <el-button v-else @click="resetForm" :disabled="saving || accessDenied || measurementLocked">重置</el-button>
             </div>
           </el-form>
         </div>
@@ -117,7 +121,7 @@
         <div v-if="loadError" class="read-state" role="alert"><p>{{ loadError }}</p><p v-if="lastSuccessAt" data-testid="bp-stale">显示上次成功列表，数据可能已过时。成功读取时间：{{ lastSuccessAt }}</p><el-button data-testid="retry-bp-records" @click="refreshRecords" :loading="loading">重试</el-button></div>
         <p v-if="loading" class="read-state" role="status">正在加载记录…</p>
         <template v-if="lastSuccessAt">
-        <VitalsTrendPanel :records="records" />
+        <p v-if="measurementFlow.state.capabilityPhase==='enabled'" class="aw aw-notice">{{awText('legacyTrend')}}</p><VitalsTrendPanel :records="records" />
         <details class="trend-data" data-testid="bp-trend-data">
           <summary>读取趋势数据</summary>
           <p>患者档案 #{{ currentPatientId }} · 与图表及当前列表相同的记录范围，保留原始数值与单位</p>
@@ -163,8 +167,8 @@
                 <summary>测量详情</summary><p v-if="row.measurePeriod">{{ row.measurePeriod }}</p><p v-if="row.remark">{{ row.remark }}</p>
               </details>
               <div class="record-card-actions">
-                <el-button link type="primary" :ref="node => setEditOpener(row.id, node, 'mobile')" @click="handleEdit(row, $event, 'mobile')" :disabled="saving || accessDenied">编辑</el-button>
-                <el-popconfirm title="确认删除这条记录？" @confirm="handleDelete(row)">
+                <el-button link type="primary" :ref="node => setEditOpener(row.id, node, 'mobile')" @click="handleEdit(row, $event, 'mobile')" :disabled="saving || accessDenied || measurementLocked">{{measurementFlow.state.capabilityPhase==='enabled'?awText('sourceOpen'):'编辑'}}</el-button>
+                <el-button v-if="measurementFlow.state.capabilityPhase==='enabled'&&measurementFlow.state.capabilities?.canAdopt" link type="danger" :disabled="measurementLocked" @click="inspectSource(row,'invalidate')">{{awText('invalidate')}}</el-button><el-popconfirm v-if="measurementFlow.state.capabilityPhase==='disabled'" title="确认删除这条记录？" @confirm="handleDelete(row)">
                   <template #reference><el-button link type="danger">删除</el-button></template>
                 </el-popconfirm>
               </div>
@@ -199,8 +203,8 @@
               <el-table-column label="操作" width="120" align="center" fixed="right">
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" :ref="node => setEditOpener(row.id, node)" @click="handleEdit(row, $event)" :disabled="saving || accessDenied">编辑</el-button>
-                    <el-popconfirm title="确认删除这条记录吗？" @confirm="handleDelete(row)">
+                    <el-button link type="primary" size="small" :ref="node => setEditOpener(row.id, node)" @click="handleEdit(row, $event)" :disabled="saving || accessDenied || measurementLocked">{{measurementFlow.state.capabilityPhase==='enabled'?awText('sourceOpen'):'编辑'}}</el-button>
+                    <el-button v-if="measurementFlow.state.capabilityPhase==='enabled'&&measurementFlow.state.capabilities?.canAdopt" link type="danger" :disabled="measurementLocked" @click="inspectSource(row,'invalidate')">{{awText('invalidate')}}</el-button><el-popconfirm v-if="measurementFlow.state.capabilityPhase==='disabled'" title="确认删除这条记录吗？" @confirm="handleDelete(row)">
                       <template #reference>
                         <el-button link type="danger" size="small">删除</el-button>
                       </template>
@@ -217,6 +221,14 @@
 </template>
 
 <script setup>
+import {useAlertWorkflowNavigation} from '@/composables/useAlertWorkflowNavigation'
+import {nextTick} from 'vue';
+import FollowUpList from '@/components/alert-workflow/FollowUpList.vue';
+import SourceMeasurementPanel from '@/components/alert-workflow/SourceMeasurementPanel.vue';
+import MeasurementWorkflowStatus from '@/components/alert-workflow/MeasurementWorkflowStatus.vue';
+import {useAlertWorkflow} from '@/composables/useAlertWorkflow';
+import {measurementInstant,localOffset,selfMonitorInput} from '@/utils/alertWorkflowForms';
+import {t as awText} from '@/utils/alertWorkflowCopy';
 import { localDateKey } from '@/utils/familyHealth';
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
@@ -226,6 +238,13 @@ import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import VitalsTrendPanel from '@/components/VitalsTrendPanel.vue';
 
 const { currentPatientId, currentPatientName } = useCurrentPatient();
+const measurementFlow=useAlertWorkflow(currentPatientId),measurementOffset=ref(localOffset()),sourcePanel=ref(null);
+useAlertWorkflowNavigation(measurementFlow)
+const measurementLocked=computed(()=>['submitting','uncertain'].includes(measurementFlow.state.sourcePhase));
+watch(currentPatientId,()=>{measurementOffset.value=localOffset();measurementFlow.loadCapabilities()},{immediate:true});
+async function measurementReplaySaved(){if(measurementFlow.state.sourceOperation==='save')resetForm();await refreshRecords()}
+async function inspectSource(row,operation){if(measurementLocked.value)return;const result=await measurementFlow.readSource('BP_SELF_MONITOR',row.id);if(result.status==='succeeded'){await nextTick();sourcePanel.value?.beginOperation(operation)}}
+
 const loading = ref(false);
 const saving = ref(false);
 const records = ref([]);
@@ -410,6 +429,7 @@ function measureTagType(type) {
 }
 
 function resetForm() {
+  if(measurementLocked.value)return;
   invalidateEditor();
   editingId.value = null;
   editRecordLabel.value = '';
@@ -510,7 +530,7 @@ async function refreshRecords() {
 }
 
 async function handleSave() {
-  if (saving.value || disposed || !ensureReaderSession() || accessDenied.value) return;
+  if (saving.value || measurementLocked.value || disposed || !ensureReaderSession() || accessDenied.value) return;
   if (!currentPatientId.value) { ElMessage.warning('请先选择患者。'); return; }
   if (!formRef.value) return;
   const context = captureContext();
@@ -522,7 +542,9 @@ async function handleSave() {
   try {
     try { await formRef.value.validate(); } catch { return; }
     if (!isCurrentSave()) return;
-    const res = isEdit ? await updateBpSelfMonitorRecord(data) : await saveBpSelfMonitorRecord(data);
+    let res;
+    if(isEdit){if(measurementFlow.state.capabilityPhase!=='disabled'){ElMessage.warning(awText('sourceOpen'));return}res=await updateBpSelfMonitorRecord(data)}
+    else {delete data.id;if(measurementFlow.state.capabilityPhase==='enabled'){Object.assign(data,selfMonitorInput(data));data.occurredAt=measurementInstant(`${data.recordDate}T${data.recordTime}`,measurementOffset.value)}const result=await measurementFlow.saveSource('BP_SELF_MONITOR',data);if(result.status!=='succeeded')return;res={code:200,data:result.data}}
     if (!isCurrentSave()) return;
     if (res.code === 200) {
       ElMessage.success(isEdit ? '更新成功' : '保存成功');
@@ -539,7 +561,9 @@ async function handleSave() {
   } finally { if (isCurrentSave()) saving.value = false; }
 }
 
-function handleEdit(row, event, surface = 'desktop') {
+async function handleEdit(row, event, surface = 'desktop') {
+  if(measurementFlow.state.capabilityPhase==='enabled'){await inspectSource(row,null);return}
+  if(measurementFlow.state.capabilityPhase!=='disabled'){ElMessage.warning(awText('capabilityUnknown'));return}
   if (saving.value || disposed || !ensureReaderSession() || accessDenied.value || !currentPatientId.value || row.patientId !== currentPatientId.value) return;
   invalidateEditor();
   editingId.value = row.id;
@@ -561,6 +585,8 @@ function handleEdit(row, event, surface = 'desktop') {
 }
 
 async function handleDelete(row) {
+  if(measurementFlow.state.capabilityPhase==='enabled'){await inspectSource(row,'invalidate');return}
+  if(measurementFlow.state.capabilityPhase!=='disabled'){ElMessage.warning(awText('capabilityUnknown'));return}
   if (disposed || !ensureReaderSession() || accessDenied.value || !currentPatientId.value || row.patientId !== currentPatientId.value || pendingDeletes.has(row.id)) return;
   const context = captureContext();
   const operation = {};

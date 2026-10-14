@@ -23,7 +23,11 @@ public final class SensitiveResponseFilter extends OncePerRequestFilter implemen
             throws ServletException,IOException {
         String path=UrlPathHelper.defaultInstance.getPathWithinApplication(request);
         if(path.endsWith("/"))path=path.substring(0,path.length()-1);
-        if(ROUTES.contains(path)) {
+        if(ROUTES.contains(path)||path.equals("/api/alert-workflows")||path.startsWith("/api/alert-workflows/")
+                ||path.equals("/alert-workflows")||path.startsWith("/alert-workflows/")
+                ||path.equals("/api/care-journey/measurements")||path.startsWith("/api/care-journey/measurements/")
+                ||path.equals("/care-journey/measurements")||path.startsWith("/care-journey/measurements/")
+                ||path.startsWith("/api/bp-self-monitor/")||path.startsWith("/bp-self-monitor/")) {
             response.setHeader("Cache-Control","no-store, private");
             response.setHeader("X-Content-Type-Options","nosniff");
         }

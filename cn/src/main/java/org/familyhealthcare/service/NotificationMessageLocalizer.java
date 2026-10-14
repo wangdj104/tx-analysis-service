@@ -6,6 +6,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class NotificationMessageLocalizer {
     public Message localize(String eventType, String title, String content, String language) {
+        if(eventType!=null&&eventType.startsWith("ALERT_WORKFLOW_")) {
+            boolean chinese=language!=null&&language.toLowerCase(java.util.Locale.ROOT).startsWith("zh");
+            String path=content!=null&&content.matches("/alert-workflows/[1-9][0-9]{0,18}(\\?patientId=[1-9][0-9]{0,18})?")?content:"/alert-workflows";
+            return new Message(chinese?"测量跟进更新":"Measurement follow-up update",(chinese?"请登录后查看测量跟进。 ":"Open your measurement follow-up after signing in. ")+path);
+        }
         if(eventType!=null&&eventType.startsWith("CARE_PLAN_")) {
             boolean chinese=language!=null&&language.toLowerCase(java.util.Locale.ROOT).startsWith("zh");
             String path=content!=null&&content.matches("/care-plans/[1-9][0-9]{0,18}")?content:"/care-plans";

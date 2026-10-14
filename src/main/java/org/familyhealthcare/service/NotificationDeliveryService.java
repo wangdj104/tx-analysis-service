@@ -136,10 +136,18 @@ public class NotificationDeliveryService {
 
     /** Only an explicit rate-limit rejection without unsupported server timing permits automatic retry. */
     public DeliveryAttempt deliverCarePlanAttempt(long channelId,String eventKey,String title,String relativePath) {
+        return deliverWorkflowAttempt(channelId,eventKey,title,relativePath,"CARE_PLAN_",null);
+    }
+
+    /** Same safe provider classification; alert workflow does not borrow care-plan enablement. */
+    public DeliveryAttempt deliverAlertWorkflowAttempt(long channelId,long recipientId,String eventKey,String title,String relativePath) {
+        return deliverWorkflowAttempt(channelId,eventKey,title,relativePath,"ALERT_WORKFLOW_",recipientId);
+    }
+    private DeliveryAttempt deliverWorkflowAttempt(long channelId,String eventKey,String title,String relativePath,String prefix,Long expectedOwner) {
         try {
             NotificationChannel channel=mapper.selectById(channelId);
-            if(channel==null||!Integer.valueOf(1).equals(channel.getEnabled()))return new DeliveryAttempt(DeliveryOutcome.NO_CHANNEL,false);
-            if(eventKey==null||!eventKey.startsWith("CARE_PLAN_"))return new DeliveryAttempt(DeliveryOutcome.FAILED,false);
+            if(channel==null||!Integer.valueOf(1).equals(channel.getEnabled())||(expectedOwner!=null&&!expectedOwner.equals(channel.getUserId())))return new DeliveryAttempt(DeliveryOutcome.NO_CHANNEL,false);
+            if(eventKey==null||!eventKey.startsWith(prefix))return new DeliveryAttempt(DeliveryOutcome.FAILED,false);
             String language=languagePreference==null?"en-US":languagePreference.get(channel.getUserId());
             NotificationMessageLocalizer.Message message=(localizer==null?new NotificationMessageLocalizer():localizer).localize(eventKey,title,relativePath,language);
             send(channel,message.getTitle(),message.getContent(),false);

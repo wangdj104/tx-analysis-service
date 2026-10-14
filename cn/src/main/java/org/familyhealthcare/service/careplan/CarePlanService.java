@@ -167,6 +167,8 @@ public class CarePlanService {
         try{return map("currentRevisionId",confirmation.get("currentRevisionId")==null?null:CarePlanContracts.requireId(confirmation.get("currentRevisionId"),"currentRevisionId"),"supersededActionDigest",confirmation.get("supersededActionDigest")==null?null:CarePlanContracts.requireText(confirmation.get("supersededActionDigest"),"supersededActionDigest",64));}
         catch(IllegalArgumentException ex){throw CarePlanException.invalid(ex.getMessage());}
     }
+    // This same parent lock is acquired before sources/alerts by measurement follow-up completion
+    // and correction. Keep publish/supersede/cancel under it; the existing event/outbox is the change notice.
     private Map<String,Object>lock(long actor,long plan){
         mutationTransaction(jdbc);List<Map<String,Object>>rows=jdbc.query("SELECT patient_id,lifecycle,current_revision_id,draft_revision_id,legacy_source_id,lock_version FROM doctor_care_plan WHERE id=? AND workflow_version=1 FOR UPDATE",(rs,i)->map("patientId",rs.getLong("patient_id"),"lifecycle",rs.getString("lifecycle"),"currentRevisionId",nullableId(rs,"current_revision_id"),"draftRevisionId",nullableId(rs,"draft_revision_id"),"legacySourceId",nullableId(rs,"legacy_source_id"),"version",rs.getLong("lock_version")),plan);
         if(rows.isEmpty())throw CarePlanException.denied();Map<String,Object>row=rows.get(0);auth.requireClinical(actor,id(row.get("patientId")));return row;

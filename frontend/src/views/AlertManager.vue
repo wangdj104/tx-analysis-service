@@ -12,6 +12,7 @@
             </div>
           </div>
         </div>
+        <FollowUpList :patient-id="currentPatientId" />
         <div class="content-panel">
           <el-tabs v-model="activeTab">
             <!-- alertrecord -->
@@ -138,6 +139,7 @@
 </template>
 
 <script setup>
+import FollowUpList from '@/components/alert-workflow/FollowUpList.vue';
 import { ref, reactive, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';

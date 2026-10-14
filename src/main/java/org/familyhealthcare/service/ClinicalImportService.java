@@ -24,6 +24,7 @@ public class ClinicalImportService {
 
     public Map<String, Object> preview(Long patientId, Map<String, Object> payload) {
         scope.requirePatient(patientId);
+        rejectWorkflowMetadata(payload);
         List<Map<String, Object>> parsed = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         Object bundleObject = payload.get("bundle");
@@ -34,6 +35,7 @@ public class ClinicalImportService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("items", parsed); out.put("warnings", warnings); out.put("itemCount", parsed.size());
         out.put("requiresConfirmation", true);
+        workflowCoverage(out);
         out.put("supported", Arrays.asList("FHIR Observation", text("blood pressure", "血压"), text("blood glucose", "血糖"), text("laboratory value", "化验结果"), text("device reading JSON", "设备读数 JSON")));
         return out;
     }
@@ -70,7 +72,23 @@ public class ClinicalImportService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("created", created); out.put("skipped", skipped); out.put("errors", errors); out.put("messages", messages);
         out.put("requiresConfirmation", false); out.put("verificationStatus", "REVIEW_REQUIRED");
+        workflowCoverage(out);
         return out;
+    }
+
+    private void workflowCoverage(Map<String,Object> out) {
+        out.put("workflowCoverage", "UNTRACKED_HISTORICAL_COPY");
+        out.put("workflowNotice", text("Imported readings are independent historical copies without measurement follow-up history. A permitted reading can be explicitly adopted for follow-up.", "导入测量为独立历史副本，不含测量随访历史；有权限的测量可明确纳入随访。"));
+    }
+    /** Import accepts raw observations, never a client-supplied workflow identity or history. */
+    private void rejectWorkflowMetadata(Object value) {
+        if(value instanceof Map)for(Map.Entry<?,?> entry:((Map<?,?>)value).entrySet()) {
+            String key=String.valueOf(entry.getKey()).replace("_", "").toLowerCase(Locale.ROOT);
+            if(key.startsWith("workflow") || Arrays.asList("sourceidentityid","sourcerevision","sourcestatus","correctionreason","followups","alertevent","alertevidence","alertcommand","measurementcommand","commandkey","expectedversion").contains(key)
+                    || ("alerttype".equals(key)&&"MEASUREMENT_FOLLOW_UP".equalsIgnoreCase(String.valueOf(entry.getValue()).trim())))
+                throw new IllegalArgumentException("Workflow metadata cannot be imported as a raw clinical observation.");
+            rejectWorkflowMetadata(entry.getValue());
+        } else if(value instanceof List)for(Object item:(List<?>)value)rejectWorkflowMetadata(item);
     }
 
     private void parseFhirBundle(Map<String, Object> bundle, List<Map<String, Object>> out, List<String> warnings) {

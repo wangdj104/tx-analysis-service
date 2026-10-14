@@ -2,9 +2,9 @@
 -- 本文件包含全部表、索引、外键及基础角色、菜单、字典和品牌配置；只需执行本文件。
 -- 不创建默认账号、患者、患者授权或演示业务数据。演示数据另见 demo/sql/demo-data.sql。
 -- 仅用于空库初始化；CREATE TABLE IF NOT EXISTS 不会升级已有表，禁止作为旧库升级脚本使用。
--- 重复执行保留业务数据并补回缺失种子；更新初始角色、菜单的名称与配置，额外绑定保留。
+-- 仅用于新库初始化；不会替换已有工作流触发器。部分失败须先人工检查，再决定如何重试。
 -- 建表期间临时关闭并恢复外键检查，以定义计划与版本的循环引用；种子写入时外键检查已恢复。
--- DATETIME(6) 协作字段由应用显式写入/读取 UTC；MySQL 8.0.16+ 强制 CHECK，5.7 由应用校验。
+-- DATETIME(6) 协作字段由应用显式写入/读取 UTC；MySQL 8.0.16+ 强制 CHECK，5.7 由应用校验；告警工作流另有数据库触发器。
 -- DDL 隐式提交；发生错误请停止并检查已创建结构，不要使用 mysql --force。
 
 SET NAMES utf8mb4;
@@ -12,7 +12,7 @@ SET NAMES utf8mb4;
 SET @init_foreign_key_checks = @@FOREIGN_KEY_CHECKS;
 SET FOREIGN_KEY_CHECKS = 0;
 
--- 一、系统结构（79 张表）
+-- 一、系统结构（86 条 CREATE TABLE 语句；不是实际数据库清点结果）
 
 CREATE TABLE IF NOT EXISTS `sys_user` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'userID',
@@ -531,10 +531,30 @@ CREATE TABLE IF NOT EXISTS `alert_record` (
   `remark` VARCHAR(256) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `workflow_version` INT NOT NULL DEFAULT 0,
+  `workflow_state` VARCHAR(30) DEFAULT NULL,
+  `workflow_mode` VARCHAR(20) DEFAULT NULL,
+  `cycle_no` INT NOT NULL DEFAULT 0,
+  `source_revision` BIGINT DEFAULT NULL,
+  `metric_key` VARCHAR(40) DEFAULT NULL,
+  `responsible_user_id` BIGINT DEFAULT NULL,
+  `due_at` DATETIME(6) DEFAULT NULL,
+  `accepted_by` BIGINT DEFAULT NULL,
+  `accepted_at` DATETIME(6) DEFAULT NULL,
+  `lock_version` BIGINT NOT NULL DEFAULT 0,
+  `current_handling_event_id` BIGINT DEFAULT NULL,
+  `current_feedback_event_id` BIGINT DEFAULT NULL,
+  `source_review_required` TINYINT NOT NULL DEFAULT 0,
+  `reassignment_required` TINYINT NOT NULL DEFAULT 0,
+  `classification_json` LONGTEXT DEFAULT NULL,
+  `closed_by` BIGINT DEFAULT NULL,
+  `closed_at` DATETIME(6) DEFAULT NULL,
+  `closure_reason` VARCHAR(1000) DEFAULT NULL,
   KEY `idx_alert_user_patient` (`user_id`,`patient_id`),
   KEY `idx_alert_patient_status_time` (`patient_id`,`status`,`triggered_at`),
   KEY `idx_alert_triggered_at` (`triggered_at`),
-  KEY `idx_alert_dedupe` (`patient_id`,`dedupe_key`,`status`)
+  KEY `idx_alert_dedupe` (`patient_id`,`dedupe_key`,`status`),
+  KEY `idx_aw_patient_queue` (`patient_id`,`workflow_version`,`workflow_state`,`due_at`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='alertrecord';
 
 CREATE TABLE IF NOT EXISTS `alert_event` (
@@ -545,10 +565,19 @@ CREATE TABLE IF NOT EXISTS `alert_event` (
   `actor_name` VARCHAR(100) DEFAULT NULL,
   `from_status` VARCHAR(20) DEFAULT NULL,
   `to_status` VARCHAR(20) NOT NULL,
-  `note` VARCHAR(500) DEFAULT NULL,
+  `note` VARCHAR(2000) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `event_type` VARCHAR(40) DEFAULT NULL,
+  `cycle_no` INT NOT NULL DEFAULT 0,
+  `actor_role` VARCHAR(50) DEFAULT NULL,
+  `actor_relation` VARCHAR(100) DEFAULT NULL,
+  `entry_mode` VARCHAR(20) DEFAULT NULL,
+  `occurred_at` DATETIME(6) DEFAULT NULL,
+  `recorded_at` DATETIME(6) DEFAULT NULL,
+  `payload_json` LONGTEXT DEFAULT NULL,
   KEY `idx_alert_event_alert` (`alert_id`,`created_at`),
-  KEY `idx_alert_event_patient` (`patient_id`,`created_at`)
+  KEY `idx_alert_event_patient` (`patient_id`,`created_at`),
+  KEY `idx_aw_event_cycle` (`alert_id`,`cycle_no`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='alert status audit trail';
 
 CREATE TABLE IF NOT EXISTS `medication_safety_rule` (
@@ -1374,7 +1403,248 @@ CREATE TABLE IF NOT EXISTS `care_plan_command` (
   /*!80016 , CONSTRAINT `ck_care_plan_command_version` CHECK (`expected_version` >= 0) */
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Command deduplication; current authorization must be checked before replay';
 
+-- Alert workflow storage is opt-in at the application boundary. No patient/account/grant seeds.
+CREATE TABLE IF NOT EXISTS `alert_source_identity` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `source_type` VARCHAR(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `source_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `current_revision` BIGINT NOT NULL DEFAULT 1,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  `lock_version` BIGINT NOT NULL DEFAULT 0,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_aw_source_identity` (`source_type`,`source_id`),
+  KEY `idx_aw_source_patient` (`patient_id`,`id`),
+  CONSTRAINT `fk_aw_source_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Identity retains distinct journey and self-monitor stores';
+
+CREATE TABLE IF NOT EXISTS `alert_source_revision` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `source_identity_id` BIGINT NOT NULL,
+  `revision_no` BIGINT NOT NULL,
+  `recorded_by` BIGINT NOT NULL,
+  `occurred_at` DATETIME(6) NOT NULL,
+  `recorded_at` DATETIME(6) NOT NULL,
+  `snapshot_json` LONGTEXT NOT NULL,
+  `action_versions_json` LONGTEXT DEFAULT NULL COMMENT 'Server-only action version watermarks; NULL means unknown, never empty',
+  `correction_reason` VARCHAR(1000) DEFAULT NULL,
+  `source_status` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_aw_source_revision` (`source_identity_id`,`revision_no`),
+  CONSTRAINT `fk_aw_revision_identity` FOREIGN KEY (`source_identity_id`) REFERENCES `alert_source_identity` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Immutable source value/unit/context snapshots, no broad patient prose';
+
+CREATE TABLE IF NOT EXISTS `alert_source_link` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `source_identity_id` BIGINT NOT NULL,
+  `source_type` VARCHAR(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `source_id` BIGINT NOT NULL,
+  `source_revision` BIGINT NOT NULL,
+  `metric_key` VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `alert_id` BIGINT NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_aw_source_metric` (`source_type`,`source_id`,`source_revision`,`metric_key`),
+  KEY `idx_aw_link_alert` (`alert_id`,`id`),
+  CONSTRAINT `fk_aw_link_revision` FOREIGN KEY (`source_identity_id`,`source_revision`) REFERENCES `alert_source_revision` (`source_identity_id`,`revision_no`),
+  CONSTRAINT `fk_aw_link_alert` FOREIGN KEY (`alert_id`) REFERENCES `alert_record` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='One follow-up per original identity, revision and metric';
+
+CREATE TABLE IF NOT EXISTS `alert_evidence` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `event_id` BIGINT NOT NULL,
+  `source_type` VARCHAR(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `source_id` BIGINT NOT NULL,
+  `source_revision` BIGINT DEFAULT NULL,
+  `dependency_version` BIGINT DEFAULT NULL,
+  `dependency_state` VARCHAR(30) NOT NULL DEFAULT 'VALID',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_aw_evidence_ref` (`event_id`,`source_type`,`source_id`),
+  CONSTRAINT `fk_aw_evidence_event` FOREIGN KEY (`event_id`) REFERENCES `alert_event` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='References and dependency versions only, independent source authority required';
+
+CREATE TABLE IF NOT EXISTS `alert_command` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `alert_id` BIGINT DEFAULT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `payload_hash` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` LONGTEXT DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_aw_command_actor_key` (`actor_id`,`command_key`),
+  CONSTRAINT `fk_aw_command_alert` FOREIGN KEY (`alert_id`) REFERENCES `alert_record` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Shared ALERT command contract, current authorization on every replay';
+
+CREATE TABLE IF NOT EXISTS `measurement_command` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `source_id` BIGINT DEFAULT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `payload_hash` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` LONGTEXT DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_aw_measurement_actor_key` (`actor_id`,`command_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Shared MEASUREMENT contract; sourceId is the native ID, source type is in canonical payload/result';
+
+CREATE TABLE IF NOT EXISTS `alert_notification` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `event_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `recipient_user_id` BIGINT NOT NULL,
+  `channel_id` BIGINT DEFAULT NULL,
+  `dispatch_key` VARCHAR(160) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'QUEUED',
+  `attempt_count` INT NOT NULL DEFAULT 0,
+  `next_attempt_at` DATETIME(6) DEFAULT NULL,
+  `claimed_at` DATETIME(6) DEFAULT NULL,
+  `claim_token` VARCHAR(64) DEFAULT NULL,
+  `request_id` VARCHAR(64) DEFAULT NULL,
+  `last_result` VARCHAR(1000) DEFAULT NULL,
+  `delivered_at` DATETIME(6) DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_aw_notification_dispatch` (`dispatch_key`),
+  KEY `idx_aw_notification_due` (`status`,`next_attempt_at`,`id`),
+  CONSTRAINT `fk_aw_notification_event` FOREIGN KEY (`event_id`) REFERENCES `alert_event` (`id`),
+  CONSTRAINT `fk_aw_notification_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Dedicated alert outbox, never a replacement for care-plan foreign keys';
+
 SET FOREIGN_KEY_CHECKS = @init_foreign_key_checks;
+
+-- MySQL 5.7 ignores CHECK: these owned guards run on 5.7 and 8.0.
+DELIMITER $$
+CREATE TRIGGER `aw57_alert_bi` BEFORE INSERT ON `alert_record` FOR EACH ROW
+BEGIN
+  IF NEW.workflow_version NOT IN (0,1) OR NEW.lock_version<0 OR NEW.cycle_no<0 OR NEW.source_review_required NOT IN (0,1) OR NEW.reassignment_required NOT IN (0,1) OR (NEW.workflow_version=1 AND (NEW.workflow_state IS NULL OR NEW.workflow_state NOT IN ('OPEN','ACCEPTED','IN_PROGRESS','WAITING_FEEDBACK','READY_FOR_REVIEW','CLOSED','CANCELLED') OR NEW.workflow_mode IS NULL OR NEW.workflow_mode NOT IN ('PERSONAL','CLINICAL') OR NEW.cycle_no<1 OR NEW.source_type IS NULL OR NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') OR NEW.source_id IS NULL OR NEW.source_id<1 OR NEW.source_revision IS NULL OR NEW.source_revision<1 OR NEW.metric_key IS NULL OR NEW.metric_key NOT IN ('BP','GLUCOSE','SPO2','WEIGHT','HEART_RATE','TEMPERATURE','CUSTOM') OR NEW.classification_json IS NULL OR JSON_VALID(NEW.classification_json)=0)) OR (NEW.current_handling_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.current_handling_event_id AND e.alert_id=NEW.id AND e.cycle_no=NEW.cycle_no)) OR (NEW.current_feedback_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.current_feedback_event_id AND e.alert_id=NEW.id AND e.cycle_no=NEW.cycle_no)) OR (NEW.workflow_version=1 AND (NEW.alert_type IS NULL OR NEW.alert_type<>'MEASUREMENT_FOLLOW_UP')) OR (NEW.workflow_version<>1 AND NEW.alert_type='MEASUREMENT_FOLLOW_UP') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert workflow metadata';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_alert_bu` BEFORE UPDATE ON `alert_record` FOR EACH ROW
+BEGIN
+  IF NEW.workflow_version NOT IN (0,1) OR NEW.lock_version<0 OR NEW.cycle_no<0 OR NEW.source_review_required NOT IN (0,1) OR NEW.reassignment_required NOT IN (0,1) OR (NEW.workflow_version=1 AND (NEW.workflow_state IS NULL OR NEW.workflow_state NOT IN ('OPEN','ACCEPTED','IN_PROGRESS','WAITING_FEEDBACK','READY_FOR_REVIEW','CLOSED','CANCELLED') OR NEW.workflow_mode IS NULL OR NEW.workflow_mode NOT IN ('PERSONAL','CLINICAL') OR NEW.cycle_no<1 OR NEW.source_type IS NULL OR NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') OR NEW.source_id IS NULL OR NEW.source_id<1 OR NEW.source_revision IS NULL OR NEW.source_revision<1 OR NEW.metric_key IS NULL OR NEW.metric_key NOT IN ('BP','GLUCOSE','SPO2','WEIGHT','HEART_RATE','TEMPERATURE','CUSTOM') OR NEW.classification_json IS NULL OR JSON_VALID(NEW.classification_json)=0)) OR (NEW.current_handling_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.current_handling_event_id AND e.alert_id=NEW.id AND e.cycle_no=NEW.cycle_no)) OR (NEW.current_feedback_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.current_feedback_event_id AND e.alert_id=NEW.id AND e.cycle_no=NEW.cycle_no)) OR (NEW.workflow_version=1 AND (NEW.alert_type IS NULL OR NEW.alert_type<>'MEASUREMENT_FOLLOW_UP')) OR (NEW.workflow_version<>1 AND NEW.alert_type='MEASUREMENT_FOLLOW_UP') OR ((OLD.workflow_version=1 OR OLD.alert_type='MEASUREMENT_FOLLOW_UP' OR EXISTS(SELECT 1 FROM alert_event e WHERE e.alert_id=OLD.id AND e.event_type IS NOT NULL)) AND (NEW.id IS NULL OR NEW.id<>OLD.id OR NEW.workflow_version<>1 OR NEW.alert_type IS NULL OR NEW.alert_type<>'MEASUREMENT_FOLLOW_UP' OR NEW.patient_id<>OLD.patient_id OR NEW.user_id<>OLD.user_id OR NEW.source_type<>OLD.source_type OR NEW.source_id<>OLD.source_id OR NEW.metric_key<>OLD.metric_key)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Workflow identity and marker are immutable';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_alert_bd` BEFORE DELETE ON `alert_record` FOR EACH ROW
+BEGIN
+  IF OLD.workflow_version=1 OR OLD.alert_type='MEASUREMENT_FOLLOW_UP' OR EXISTS(SELECT 1 FROM alert_event e WHERE e.alert_id=OLD.id AND e.event_type IS NOT NULL) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Workflow alerts retain their history';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_event_bi` BEFORE INSERT ON `alert_event` FOR EACH ROW
+BEGIN
+  IF (NEW.event_type IS NULL AND EXISTS(SELECT 1 FROM alert_record a WHERE a.id=NEW.alert_id AND (a.workflow_version=1 OR a.alert_type='MEASUREMENT_FOLLOW_UP'))) OR NEW.cycle_no<0 OR (NEW.event_type IS NOT NULL AND (NOT EXISTS(SELECT 1 FROM alert_record a WHERE a.id=NEW.alert_id AND a.patient_id=NEW.patient_id AND a.workflow_version=1 AND a.alert_type='MEASUREMENT_FOLLOW_UP') OR NEW.cycle_no<1 OR (NEW.event_type<>'DUE' AND (NEW.actor_id IS NULL OR NEW.actor_id<1 OR NEW.actor_role IS NULL OR NEW.actor_role='SYSTEM' OR NEW.actor_relation IS NULL)) OR (NEW.event_type='DUE' AND (NEW.actor_id IS NOT NULL OR NEW.actor_name IS NOT NULL OR COALESCE(NEW.actor_role,'')<>'SYSTEM' OR COALESCE(NEW.actor_relation,'')<>'SCHEDULER' OR NEW.entry_mode IS NOT NULL OR NEW.note IS NOT NULL OR NEW.occurred_at IS NULL OR NEW.recorded_at IS NULL OR NEW.occurred_at<>NEW.recorded_at OR NEW.from_status IS NULL OR NEW.from_status<>NEW.to_status OR NOT EXISTS(SELECT 1 FROM alert_record d WHERE d.id=NEW.alert_id AND d.patient_id=NEW.patient_id AND d.cycle_no=NEW.cycle_no AND d.workflow_state=NEW.to_status AND d.workflow_state NOT IN ('CLOSED','CANCELLED') AND d.due_at IS NOT NULL AND d.due_at<=NEW.recorded_at AND JSON_TYPE(NEW.payload_json)='OBJECT' AND JSON_LENGTH(NEW.payload_json)=2 AND CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(NEW.payload_json,'$.dueKey')),'') AS BINARY)=CONCAT('due:',d.id,':',d.cycle_no,':',CAST((TIMESTAMPDIFF(MICROSECOND,'1970-01-01 00:00:00',d.due_at)-MICROSECOND(d.due_at))/1000000 AS SIGNED),'.',LPAD(MICROSECOND(d.due_at),6,'0')) AND CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(NEW.payload_json,'$.dueAt')),'') AS BINARY)=CASE WHEN MICROSECOND(d.due_at)=0 THEN DATE_FORMAT(d.due_at,'%Y-%m-%dT%H:%i:%sZ') WHEN MOD(MICROSECOND(d.due_at),1000)=0 THEN CONCAT(DATE_FORMAT(d.due_at,'%Y-%m-%dT%H:%i:%s.'),LEFT(LPAD(MICROSECOND(d.due_at),6,'0'),3),'Z') ELSE DATE_FORMAT(d.due_at,'%Y-%m-%dT%H:%i:%s.%fZ') END))) OR NEW.recorded_at IS NULL OR NEW.payload_json IS NULL OR JSON_VALID(NEW.payload_json)=0 OR (NEW.entry_mode IS NOT NULL AND NEW.entry_mode NOT IN ('SELF','ASSISTED')) OR (NEW.occurred_at IS NOT NULL AND NEW.occurred_at>NEW.recorded_at))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert workflow event';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_event_bu` BEFORE UPDATE ON `alert_event` FOR EACH ROW
+BEGIN
+  IF OLD.event_type IS NOT NULL OR NEW.event_type IS NOT NULL OR EXISTS(SELECT 1 FROM alert_record a WHERE a.id=OLD.alert_id AND (a.workflow_version=1 OR a.alert_type='MEASUREMENT_FOLLOW_UP')) OR EXISTS(SELECT 1 FROM alert_record a WHERE a.id=NEW.alert_id AND (a.workflow_version=1 OR a.alert_type='MEASUREMENT_FOLLOW_UP')) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Workflow events are append-only';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_event_bd` BEFORE DELETE ON `alert_event` FOR EACH ROW
+BEGIN
+  IF OLD.event_type IS NOT NULL OR EXISTS(SELECT 1 FROM alert_record a WHERE a.id=OLD.alert_id AND (a.workflow_version=1 OR a.alert_type='MEASUREMENT_FOLLOW_UP')) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Workflow events are append-only';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_source_bi` BEFORE INSERT ON `alert_source_identity` FOR EACH ROW
+BEGIN
+  IF NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') OR NEW.source_id<1 OR NEW.current_revision<1 OR NEW.lock_version<0 OR NEW.status NOT IN ('ACTIVE','INVALIDATED') OR (NEW.source_type='HEALTH_MEASUREMENT' AND NOT EXISTS(SELECT 1 FROM health_measurement m WHERE m.id=NEW.source_id AND m.patient_id=NEW.patient_id)) OR (NEW.source_type='BP_SELF_MONITOR' AND NOT EXISTS(SELECT 1 FROM bp_self_monitor_record m WHERE m.id=NEW.source_id AND m.patient_id=NEW.patient_id)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid source identity or patient ownership';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_source_bu` BEFORE UPDATE ON `alert_source_identity` FOR EACH ROW
+BEGIN
+  IF NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') OR NEW.source_id<1 OR NEW.current_revision<1 OR NEW.lock_version<0 OR NEW.status NOT IN ('ACTIVE','INVALIDATED') OR (NEW.source_type='HEALTH_MEASUREMENT' AND NOT EXISTS(SELECT 1 FROM health_measurement m WHERE m.id=NEW.source_id AND m.patient_id=NEW.patient_id)) OR (NEW.source_type='BP_SELF_MONITOR' AND NOT EXISTS(SELECT 1 FROM bp_self_monitor_record m WHERE m.id=NEW.source_id AND m.patient_id=NEW.patient_id)) OR NEW.source_type<>OLD.source_type OR NEW.source_id<>OLD.source_id OR NEW.patient_id<>OLD.patient_id OR NEW.current_revision<OLD.current_revision OR NOT EXISTS(SELECT 1 FROM alert_source_revision r WHERE r.source_identity_id=NEW.id AND r.revision_no=NEW.current_revision AND r.source_status=NEW.status) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid source revision or immutable identity';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_revision_bi` BEFORE INSERT ON `alert_source_revision` FOR EACH ROW
+BEGIN
+  IF NEW.action_versions_json IS NULL OR JSON_VALID(NEW.action_versions_json)=0 OR JSON_TYPE(CASE WHEN JSON_VALID(NEW.action_versions_json)=1 THEN NEW.action_versions_json ELSE 'null' END)<>'OBJECT' OR (NEW.revision_no=1 AND NEW.action_versions_json<>'{}') OR NEW.revision_no<1 OR NEW.recorded_by<1 OR JSON_VALID(NEW.snapshot_json)=0 OR NEW.occurred_at>NEW.recorded_at OR NEW.source_status NOT IN ('ACTIVE','INVALIDATED') OR (NEW.revision_no=1 AND NEW.source_status<>'ACTIVE') OR (NEW.revision_no>1 AND (NEW.correction_reason IS NULL OR CHAR_LENGTH(TRIM(NEW.correction_reason))=0)) OR CHAR_LENGTH(NEW.correction_reason)>1000 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid source snapshot';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_revision_bu` BEFORE UPDATE ON `alert_source_revision` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source snapshots are immutable';
+END$$
+CREATE TRIGGER `aw57_revision_bd` BEFORE DELETE ON `alert_source_revision` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source snapshots are immutable';
+END$$
+CREATE TRIGGER `aw57_link_bi` BEFORE INSERT ON `alert_source_link` FOR EACH ROW
+BEGIN
+  IF NEW.source_revision<1 OR NEW.metric_key NOT IN ('BP','GLUCOSE','SPO2','WEIGHT','HEART_RATE','TEMPERATURE','CUSTOM') OR NOT EXISTS(SELECT 1 FROM alert_source_identity s JOIN alert_record a ON a.patient_id=s.patient_id WHERE s.id=NEW.source_identity_id AND s.source_type=NEW.source_type AND s.source_id=NEW.source_id AND a.id=NEW.alert_id AND a.workflow_version=1 AND a.alert_type='MEASUREMENT_FOLLOW_UP' AND a.source_type=NEW.source_type AND a.source_id=NEW.source_id AND a.metric_key=NEW.metric_key) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid source metric link';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_link_bu` BEFORE UPDATE ON `alert_source_link` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source links are append-only';
+END$$
+CREATE TRIGGER `aw57_link_bd` BEFORE DELETE ON `alert_source_link` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source links are append-only';
+END$$
+CREATE TRIGGER `aw57_evidence_bi` BEFORE INSERT ON `alert_evidence` FOR EACH ROW
+BEGIN
+  IF NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR','MEDICAL_RECORD','CARE_PLAN_ACTION') OR NEW.source_id<1 OR NEW.dependency_state NOT IN ('VALID','REFERENCE_CHANGED','WITHDRAWN') OR (NEW.source_revision IS NOT NULL AND NEW.source_revision<1) OR (NEW.dependency_version IS NOT NULL AND NEW.dependency_version<0) OR (NEW.source_type IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') AND NEW.source_revision IS NULL) OR (NEW.source_type='CARE_PLAN_ACTION' AND NEW.dependency_version IS NULL) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert evidence reference';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_evidence_bu` BEFORE UPDATE ON `alert_evidence` FOR EACH ROW
+BEGIN
+  IF NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR','MEDICAL_RECORD','CARE_PLAN_ACTION') OR NEW.source_id<1 OR NEW.dependency_state NOT IN ('VALID','REFERENCE_CHANGED','WITHDRAWN') OR (NEW.source_revision IS NOT NULL AND NEW.source_revision<1) OR (NEW.dependency_version IS NOT NULL AND NEW.dependency_version<0) OR (NEW.source_type IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') AND NEW.source_revision IS NULL) OR (NEW.source_type='CARE_PLAN_ACTION' AND NEW.dependency_version IS NULL) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert evidence reference';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_command_bi` BEFORE INSERT ON `alert_command` FOR EACH ROW
+BEGIN
+  IF NEW.actor_id<1 OR NEW.expected_version<0 OR NEW.command_key NOT REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' OR NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR (NEW.alert_id IS NOT NULL AND NEW.alert_id<1) OR (NEW.result_json IS NOT NULL AND (JSON_VALID(NEW.result_json)=0 OR NEW.alert_id IS NULL)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid durable workflow command';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_command_bu` BEFORE UPDATE ON `alert_command` FOR EACH ROW
+BEGIN
+  IF NEW.actor_id<1 OR NEW.expected_version<0 OR NEW.command_key NOT REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' OR NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR (NEW.alert_id IS NOT NULL AND NEW.alert_id<1) OR (NEW.result_json IS NOT NULL AND (JSON_VALID(NEW.result_json)=0 OR NEW.alert_id IS NULL)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid durable workflow command';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_measurement_bi` BEFORE INSERT ON `measurement_command` FOR EACH ROW
+BEGIN
+  IF NEW.actor_id<1 OR NEW.expected_version<0 OR NEW.command_key NOT REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' OR NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR (NEW.source_id IS NOT NULL AND NEW.source_id<1) OR (NEW.result_json IS NOT NULL AND (JSON_VALID(NEW.result_json)=0 OR NEW.source_id IS NULL)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid durable workflow command';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_measurement_bu` BEFORE UPDATE ON `measurement_command` FOR EACH ROW
+BEGIN
+  IF NEW.actor_id<1 OR NEW.expected_version<0 OR NEW.command_key NOT REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' OR NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR (NEW.source_id IS NOT NULL AND NEW.source_id<1) OR (NEW.result_json IS NOT NULL AND (JSON_VALID(NEW.result_json)=0 OR NEW.source_id IS NULL)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid durable workflow command';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_notification_bi` BEFORE INSERT ON `alert_notification` FOR EACH ROW
+BEGIN
+  IF NEW.attempt_count NOT BETWEEN 0 AND 3 OR CHAR_LENGTH(NEW.dispatch_key)=0 OR NEW.status NOT IN ('QUEUED','DELIVERED','NO_CHANNEL','FAILED','UNKNOWN','SUPPRESSED') OR NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.event_id AND e.patient_id=NEW.patient_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert delivery job';
+  END IF;
+END$$
+CREATE TRIGGER `aw57_notification_bu` BEFORE UPDATE ON `alert_notification` FOR EACH ROW
+BEGIN
+  IF NEW.attempt_count NOT BETWEEN 0 AND 3 OR CHAR_LENGTH(NEW.dispatch_key)=0 OR NEW.status NOT IN ('QUEUED','CLAIMED','DELIVERED','NO_CHANNEL','FAILED','UNKNOWN','SUPPRESSED') OR NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.event_id AND e.patient_id=NEW.patient_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert delivery job';
+  END IF;
+END$$
+DELIMITER ;
+
 
 -- 二、初始角色（菜单权限不代表患者数据授权，不分配任何账号）
 

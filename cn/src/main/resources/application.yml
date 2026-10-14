@@ -24,3 +24,6 @@ springfox:
 
 care-plan:
   enabled: ${CARE_PLAN_ENABLED:false}
+
+alert-workflow:
+  enabled: ${ALERT_WORKFLOW_ENABLED:false}

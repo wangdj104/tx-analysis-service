@@ -1,5 +1,8 @@
 package org.familyhealthcare.service.careplan;
 
+import org.familyhealthcare.service.workflow.NotificationClaim;
+import org.familyhealthcare.service.workflow.NotificationClaim.SessionRestoreException;
+import org.familyhealthcare.service.workflow.NotificationAttemptPolicy;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DuplicateKeyException;
@@ -127,8 +130,8 @@ public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
 
     private Job claim(Instant now) {
         try {return inTransaction(()->{
-            ClaimLock lock=claimLock();
-            try {List<Job> rows=query("SELECT * FROM care_plan_notification WHERE status IN ('QUEUED','FAILED') AND (status='QUEUED' OR last_result='FAILED_RETRYABLE') AND attempt_count<3 AND next_attempt_at IS NOT NULL AND next_attempt_at<=? ORDER BY next_attempt_at,id LIMIT 1 "+lock.clause,this::job,now);
+            NotificationClaim lock=NotificationClaim.acquire(jdbc);
+            try {List<Job> rows=query("SELECT * FROM care_plan_notification WHERE status IN ('QUEUED','FAILED') AND (status='QUEUED' OR last_result='FAILED_RETRYABLE') AND attempt_count<3 AND next_attempt_at IS NOT NULL AND next_attempt_at<=? ORDER BY next_attempt_at,id LIMIT 1 "+lock.getClause(),this::job,now);
             if(rows.isEmpty())return null;Job row=rows.get(0);String blocked=blocked(row,context(row.eventId));
             if(blocked!=null){update("UPDATE care_plan_notification SET status=?,next_attempt_at=NULL,last_result=?,updated_at=? WHERE id=?",blocked,blocked,now,row.id);return row;}
             String token=UUID.randomUUID().toString();update("UPDATE care_plan_notification SET status='CLAIMED',claimed_at=?,claim_token=?,last_result='CLAIMED_UNATTEMPTED',updated_at=? WHERE id=?",now,token,now,row.id);row.token=token;row.status="CLAIMED";return row;
@@ -136,8 +139,8 @@ public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
         });}catch(CannotAcquireLockException busy){return null;}
         catch(TransactionSystemException cleanupFailure) {
             // Aborting a dirty session can make Spring's subsequent rollback fail; retain the actual cause.
-            if(cleanupFailure.getApplicationException() instanceof ClaimSessionRestoreException) {
-                ClaimSessionRestoreException original=(ClaimSessionRestoreException)cleanupFailure.getApplicationException();
+            if(cleanupFailure.getApplicationException() instanceof SessionRestoreException) {
+                SessionRestoreException original=(SessionRestoreException)cleanupFailure.getApplicationException();
                 if(cleanupFailure.getCause()!=null)original.addSuppressed(cleanupFailure.getCause());
                 throw original;
             }
@@ -151,14 +154,14 @@ public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
         Instant now=properties.now(); // Capture this job's attempt start after its current-context checks.
         if(blocked!=null){update("UPDATE care_plan_notification SET status=?,next_attempt_at=NULL,claim_token=NULL,last_result=?,updated_at=? WHERE id=?",blocked,blocked,now,current.id);return null;}
         String request=current.requestId==null?UUID.randomUUID()+":"+now.toEpochMilli():current.requestId;
-        firstAttempt(request); // Corrupt cycle metadata fails closed before any network call.
+        NotificationAttemptPolicy.firstAttempt(request); // Corrupt cycle metadata fails closed before any network call.
         // 发送前先记下尝试，恢复时才能区分尚未发送和结果未知；结果未知不自动重试，避免重复通知。
         update("UPDATE care_plan_notification SET attempt_count=attempt_count+1,request_id=?,last_result='ATTEMPT_STARTED',updated_at=? WHERE id=?",request,now,current.id);
         current.attempts++;current.requestId=request;return current;
     }
     private void complete(Job row,String result,Instant now,boolean retryable) {
         inTransaction(()->{
-            Instant next="FAILED".equals(result)&&retryable&&row.attempts<3?firstAttempt(row.requestId).plusSeconds(row.attempts==1?60:300):null;
+            Instant next=NotificationAttemptPolicy.nextAttempt(row.requestId,result,retryable,row.attempts);
             String code="FAILED".equals(result)?retryable?"FAILED_RETRYABLE":"FAILED_MANUAL_RETRY_REQUIRED":result;
             update("UPDATE care_plan_notification SET status=?,next_attempt_at=?,claim_token=NULL,last_result=?,delivered_at=?,updated_at=? WHERE id=? AND status='CLAIMED' AND claim_token=?",result,next,code,"DELIVERED".equals(result)?now:null,now,row.id,row.token);return null;
         });
@@ -226,7 +229,6 @@ public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
     private String duePrefix(String key){String[] parts=key.split(":");return parts.length==5?parts[0]+":"+parts[1]+":"+parts[2]:"";}
     private String dueKey(Action action){return "due:"+action.id+":"+action.due.getEpochSecond()+"."+String.format(Locale.ROOT,"%06d",action.due.getNano()/1000);}
     private String eventKey(Job job,Context context){return job.dispatchKey.startsWith("due:")?"CARE_PLAN_ACTION_DUE":"CARE_PLAN_"+context.type;}
-    private Instant firstAttempt(String request){try{String[] parts=request.split(":");if(parts.length!=2||!UUID.fromString(parts[0]).toString().equals(parts[0])||!Long.toString(Long.parseLong(parts[1])).equals(parts[1]))throw new IllegalArgumentException();return Instant.ofEpochMilli(Long.parseLong(parts[1]));}catch(RuntimeException invalid){throw new IllegalStateException("Invalid notification cycle identity.");}}
     private Job job(ResultSet rs,int i)throws SQLException {
         Job j=new Job();j.id=rs.getLong("id");j.eventId=rs.getLong("event_id");j.patientId=rs.getLong("patient_id");j.recipient=rs.getLong("recipient_user_id");j.channelId=nullableId(rs,"channel_id");j.dispatchKey=rs.getString("dispatch_key");j.status=rs.getString("status");j.attempts=rs.getInt("attempt_count");j.token=rs.getString("claim_token");j.requestId=rs.getString("request_id");return j;
     }
@@ -234,44 +236,6 @@ public class CarePlanNotificationWorker implements CarePlanNotificationQueue {
         String result=rs.getString("last_result");return map("id",rs.getLong("id"),"status",rs.getString("status"),"attemptCount",rs.getInt("attempt_count"),"nextAttemptAt",time(rs,"next_attempt_at"),"lastResult",RESULTS.contains(result)?result:null,"deliveredAt",time(rs,"delivered_at"),"createdAt",time(rs,"created_at"),"updatedAt",time(rs,"updated_at"));
     }
     private <T>T inTransaction(Supplier<T> work){TransactionTemplate transaction=new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);return transaction.execute(s->{mutationTransaction(jdbc);return work.get();});}
-    /** MySQL 5.7 lacks SKIP LOCKED: bound the claim's row-lock wait and restore pooled session state. */
-    private ClaimLock claimLock(){return jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<ClaimLock>)connection->{
-        DatabaseMetaData metadata=connection.getMetaData();
-        String database=metadata.getDatabaseProductName();
-        if("MySQL".equals(database)) {
-            int major=metadata.getDatabaseMajorVersion(),minor=metadata.getDatabaseMinorVersion();
-            if(major>=8&&minor>=0)return new ClaimLock("FOR UPDATE SKIP LOCKED",null);
-            if(major==5&&minor==7) {
-                int previous;try(Statement statement=connection.createStatement();ResultSet value=statement.executeQuery("SELECT @@SESSION.innodb_lock_wait_timeout")){value.next();previous=value.getInt(1);}
-                try(Statement statement=connection.createStatement()){statement.execute("SET SESSION innodb_lock_wait_timeout = 1");}
-                return new ClaimLock("FOR UPDATE","SET SESSION innodb_lock_wait_timeout = "+previous);
-            }
-            throw new IllegalStateException("Unsupported care-plan notification MySQL version.");
-        }
-        // H2 is test-only. Its NOWAIT syntax alone still waits, so also bound that session.
-        if("H2".equals(database)) {
-            int previous;try(Statement statement=connection.createStatement();ResultSet value=statement.executeQuery("CALL LOCK_TIMEOUT()")){value.next();previous=value.getInt(1);}
-            try(Statement statement=connection.createStatement()){statement.execute("SET LOCK_TIMEOUT 1");}
-            return new ClaimLock("FOR UPDATE NOWAIT","SET LOCK_TIMEOUT "+previous);
-        }
-        throw new IllegalStateException("Unsupported care-plan notification database.");
-    });}
-    private final class ClaimLock {
-        final String clause,restoreSql;
-        ClaimLock(String clause,String restoreSql){this.clause=clause;this.restoreSql=restoreSql;}
-        void restore(){if(restoreSql!=null)jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
-            try(Statement statement=connection.createStatement()){statement.execute(restoreSql);}
-            catch(SQLException restoreFailure) {
-                // A pool does not reset arbitrary session variables. Abort the physical connection, not its handle.
-                try{connection.abort(Runnable::run);}catch(SQLException|RuntimeException abortFailure){restoreFailure.addSuppressed(abortFailure);}
-                throw new ClaimSessionRestoreException(restoreFailure);
-            }
-            return null;
-        });}
-    }
-    private static final class ClaimSessionRestoreException extends IllegalStateException {
-        ClaimSessionRestoreException(SQLException cause){super("Cannot restore notification claim session timeout.",cause);}
-    }
     private <T>List<T>query(String sql,RowMapper<T> mapper,Object... args){return jdbc.query(sql,ps->bind(ps,args),mapper);}
     private int update(String sql,Object... args){return jdbc.update(sql,ps->bind(ps,args));}
     private void bind(PreparedStatement ps,Object[] args)throws SQLException{for(int i=0;i<args.length;i++)if(args[i] instanceof Instant)time(ps,i+1,(Instant)args[i]);else ps.setObject(i+1,args[i]);}

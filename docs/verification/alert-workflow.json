@@ -1,0 +1,698 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-10-14",
+  "status": "SOURCE_CHECKPOINT_REVIEWED_READY",
+  "statusMeaning": "The independent scoped source review is complete: SPEC PASS, QUALITY PASS with one nonblocking documentation finding, and bounded source-publication readiness READY. D1 receipt links are corrected in this docs-only disposition. External acceptance remains incomplete; this does not claim push, deployment, activation, whole-platform completion or clinical effectiveness.",
+  "sourceIdentity": {
+    "approvedBaselineCommit": "6eb57cbf4f815370d16b6278b9500018324b12f8",
+    "designApprovedAt": "2026-10-13T16:17:51Z",
+    "fixBaseCommit": "98beec4a7516a156cb6a0725b1a76871bd6f522e",
+    "runtimeCandidateCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+    "runtimeCandidateTree": "0db246a6480c8cff1429fdbb7883d6018a6a40eb",
+    "backendExecutionCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+    "frontendExecutionCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+    "backendReceiptCompletedAt": "2026-10-14T01:07:18Z",
+    "frontendReceiptSealAt": "2026-10-14T01:07:44Z",
+    "documentationCommit": null,
+    "documentationIdentity": "Locate the later docs-only receipt commit using Git history for this file. All six fresh outputs identify the preceding sealed source/test commit; no circular self-SHA is asserted.",
+    "runtimeGitObjects": {
+      "src": "146dce6bd5f484fa610c18a9a0bca0ac08650d48",
+      "cn/src": "c68de69d952f67d7096c3d2066d0d2841e6937f0",
+      "pom.xml": "66a3d7e3f58ba652432d5c8fba622a9beebcbc3e",
+      "cn/pom.xml": "29af738e2cfdb40301377f3f4d7d07c07bb259d1",
+      "frontend": "0b4776d83040dfde9db9217e7e27078dcb238d03",
+      "cn/frontend": "fce25a77cfba9d0438d1904ee8b44432411d6036"
+    },
+    "previousBackendExecutionCommit": "dde70db1455134e4d026fc014ddaa68ecbd5b0ab",
+    "previousFrontendExecutionCommit": "ed956db69d511a32ce66fe67bc08c7368bcd5593",
+    "sourceVerification": {
+      "backendFilesRechecked": 646,
+      "backendFilesAllMatchNewExecution": true,
+      "frontendFilesRechecked": 365,
+      "frontendFilesAllMatchNewExecution": true,
+      "allRuntimeFilesRechecked": 1011,
+      "runtimeTreesMatchExecution": true,
+      "productionJavaPomAndExecutableSqlUnchangedFromPreviousBackend": false,
+      "note": "Production Java, SQL and frontend source changed. All 1,011 current tracked runtime/test/pom files match sealed source before/after execution. Old 365/99/91 and 364 receipts remain historical with original identities and digests; none is relabeled. The historical production-only comparison is retained under historicalSourceIdentity."
+    }
+  },
+  "scope": {
+    "editions": [
+      "en",
+      "cn"
+    ],
+    "phase": "A",
+    "laterPhasesComplete": false,
+    "syntheticDataOnly": true,
+    "featureDefaults": {
+      "ALERT_WORKFLOW_ENABLED": false,
+      "CARE_PLAN_ENABLED": false
+    },
+    "deployed": false,
+    "enabled": false,
+    "liveNotifications": false,
+    "publishedByThisCheckpoint": false,
+    "newApplicationTestCasesPerEditionInFix": 24,
+    "productionCodeChangedByFix": true,
+    "newFrontendTestCasesPerEditionInFix": 7
+  },
+  "executionReceipts": [
+    {
+      "id": "backend-en",
+      "status": "PASS",
+      "sourceCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "mvn -o -s <existing-settings> -B -Dmaven.repo.local=<existing-dependency-cache> test",
+      "environment": "JDK 17.0.20.1, Maven 3.9.9; existing settings/cache and trusted CA; Java 8-compatible source/target, not an actual Java 8 runtime.",
+      "exitCode": 0,
+      "outputSha256": "2725dfb086ecf5e0daafe797f23ec70e09c81cdfdcdaf23842db2088104cb8c4",
+      "outputBytes": 66397036,
+      "counts": {
+        "total": 389,
+        "passed": 389,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-14T01:06:30Z",
+      "completedAt": "2026-10-14T01:06:51Z"
+    },
+    {
+      "id": "backend-cn",
+      "status": "PASS",
+      "sourceCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "mvn -o -f cn/pom.xml -s <existing-settings> -B -Dmaven.repo.local=<existing-dependency-cache> test",
+      "environment": "JDK 17.0.20.1, Maven 3.9.9; existing settings/cache and trusted CA; Java 8-compatible source/target, not an actual Java 8 runtime.",
+      "exitCode": 0,
+      "outputSha256": "980ace595a698b9a64c29d9246aede39d30f6b9f3029492c4ca8e87ae826b91f",
+      "outputBytes": 66398254,
+      "counts": {
+        "total": 389,
+        "passed": 389,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-14T01:06:51Z",
+      "completedAt": "2026-10-14T01:07:18Z"
+    },
+    {
+      "id": "frontend-en",
+      "status": "PASS",
+      "sourceCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+      "commandKind": "EXACT_EXPANDED",
+      "command": "node --test frontend/tests/alertWorkflowFinalBoundaries.test.mjs frontend/tests/alertWorkflowIntegration.test.mjs frontend/tests/alertWorkflowPresentation.test.mjs frontend/tests/alertWorkflowReviewRegression.test.mjs frontend/tests/alertWorkflowState.test.mjs frontend/tests/careErrorReadiness.test.mjs frontend/tests/guideScrollContinuity.test.mjs frontend/tests/mobileControlOcclusion.test.mjs frontend/tests/patientMenuPresentation.test.mjs",
+      "environment": "Node24.19.0 built-in test runner; real Vue reactivity/compiler/SSR with fictional API/router/dialog fixtures. Not live browser/HTTP acceptance.",
+      "exitCode": 0,
+      "outputSha256": "de88bfb1622415e3ee80f37de3be6cc45fd1aad4b49bc5864863e42efd799ac5",
+      "outputBytes": 13813,
+      "counts": {
+        "total": 106,
+        "passed": 106,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-14T01:07:18Z",
+      "completedAt": "2026-10-14T01:07:20Z"
+    },
+    {
+      "id": "frontend-cn",
+      "status": "PASS",
+      "sourceCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+      "commandKind": "EXACT_EXPANDED",
+      "command": "node --test cn/frontend/tests/alertWorkflowFinalBoundaries.test.mjs cn/frontend/tests/alertWorkflowIntegration.test.mjs cn/frontend/tests/alertWorkflowPresentation.test.mjs cn/frontend/tests/alertWorkflowReviewRegression.test.mjs cn/frontend/tests/alertWorkflowState.test.mjs cn/frontend/tests/careErrorReadiness.test.mjs cn/frontend/tests/guideScrollContinuity.test.mjs cn/frontend/tests/mobileControlOcclusion.test.mjs",
+      "environment": "Node24.19.0 built-in test runner; real Vue reactivity/compiler/SSR with fictional API/router/dialog fixtures. Not live browser/HTTP acceptance.",
+      "exitCode": 0,
+      "outputSha256": "526ea72b23e3ce04aeabc4887c82d13cb73f5d3015cdc42d11218dd904f74055",
+      "outputBytes": 12985,
+      "counts": {
+        "total": 98,
+        "passed": 98,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-14T01:07:20Z",
+      "completedAt": "2026-10-14T01:07:22Z"
+    },
+    {
+      "id": "build-en",
+      "status": "PASS",
+      "sourceCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "cd frontend && npm run build",
+      "environment": "Node24.19.0, npm11.9.0, Vite6.4.3; existing dependencies and task-owned empty npm user configuration; no dependency installation.",
+      "exitCode": 0,
+      "outputSha256": "afc1776da7e4804d4de3b1b47d31fd9d045493602d6632339d8c675c7e9e3abe",
+      "outputBytes": 9084,
+      "startedAt": "2026-10-14T01:07:22Z",
+      "completedAt": "2026-10-14T01:07:33Z"
+    },
+    {
+      "id": "build-cn",
+      "status": "PASS",
+      "sourceCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "cd cn/frontend && npm run build",
+      "environment": "Node24.19.0, npm11.9.0, Vite6.4.3; existing dependencies and task-owned empty npm user configuration; no dependency installation.",
+      "exitCode": 0,
+      "outputSha256": "499d65d4fcb17eb069f8d5b7c188d5028d7ef2dc28b238ddcad9f8ac3330a90a",
+      "outputBytes": 8880,
+      "startedAt": "2026-10-14T01:07:33Z",
+      "completedAt": "2026-10-14T01:07:44Z"
+    }
+  ],
+  "acceptanceMatrix": [
+    {
+      "specItem": 1,
+      "status": "PASS",
+      "verifiedScope": "Four real Java-service/H2 native-save walkthroughs: both source types × PERSONAL/CLINICAL; classifier policy, target, unit/context and deduplication tests.",
+      "testFiles": [
+        "src/test/java/org/familyhealthcare/service/alertworkflow/MeasurementWorkflowBridgeTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/MeasurementAssessmentServiceTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowFinalBoundaryTest.java"
+      ],
+      "executionReceiptIds": [
+        "backend-en",
+        "backend-cn"
+      ],
+      "limitation": "These are synthetic service tests, not connected browser-to-HTTP journeys or clinical validation."
+    },
+    {
+      "specItem": 2,
+      "status": "PASS",
+      "verifiedScope": "Current actor, assisted feedback, named acceptance, absent qualifications and clinical closure restrictions; compiled Vue detail/action regressions.",
+      "testFiles": [
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowLifecycleTest.java",
+        "frontend/tests/alertWorkflowReviewRegression.test.mjs",
+        "cn/frontend/tests/alertWorkflowReviewRegression.test.mjs"
+      ],
+      "executionReceiptIds": [
+        "backend-en",
+        "backend-cn",
+        "frontend-en",
+        "frontend-cn"
+      ],
+      "limitation": "Actual browser role rendering, user sessions and live HTTP remain NOT_RUN."
+    },
+    {
+      "specItem": 3,
+      "status": "PASS",
+      "verifiedScope": "Current patient/module, READ/WRITE/PROXY, expiry/revocation, doctor/nurse assignment, active-account and admin-only denials; measurement-only nurse governance with CARE_PLAN off.",
+      "testFiles": [
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowAuthorizationTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowNurseGovernanceTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/MeasurementTrackingGuardTest.java"
+      ],
+      "executionReceiptIds": [
+        "backend-en",
+        "backend-cn"
+      ],
+      "limitation": "Applies to the new workflow/adapter boundary. Comprehensive legacy raw-data permission acceptance is NOT_RUN."
+    },
+    {
+      "specItem": 4,
+      "status": "PASS",
+      "verifiedScope": "Real-service/H2 replay/conflict, ACCEPT/ACCEPT, CLOSE/CLOSE, source-correction/CLOSE and deterministic ASSIGN/stale-CLOSE competition; version winner, current assignee, reset acceptance/retained history and atomic command/event/outbox effects. Real Vue fake-API fixtures cover double-click, timeout and late responses. Also actual no-prior-alert first-receipt/correction competition and discovered-parent/doctor-confirmation ordering, with rollback and post-wait relationship-set checks.",
+      "testFiles": [
+        "src/test/java/org/familyhealthcare/service/workflow/WorkflowCommandExecutorTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowConcurrencyTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/MeasurementWorkflowBridgeTest.java",
+        "frontend/tests/alertWorkflowState.test.mjs",
+        "frontend/tests/alertWorkflowIntegration.test.mjs",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowFinalBoundaryTest.java"
+      ],
+      "executionReceiptIds": [
+        "backend-en",
+        "backend-cn",
+        "frontend-en",
+        "frontend-cn"
+      ],
+      "limitation": "H2 and synthetic API timing do not prove native MySQL locking or live HTTP behavior.",
+      "caseAnchor": "AlertWorkflowConcurrencyTest.reassignmentHoldingSourceLockWinsAgainstAlreadyAuthorizedStaleClosure",
+      "newMeasuredEvidence": "CLOSE passes initial authorization and is observed unable to return through the held source-lock boundary; actual ASSIGN commits first, stale CLOSE conflicts409, version advances once, new nurse assignee is current, acceptance clears, handling/feedback history remains, only the winning command/event/two recipient jobs commit, and retained history cannot close the item."
+    },
+    {
+      "specItem": 5,
+      "status": "PASS",
+      "verifiedScope": "Source correction including terminal cycles, fresh qualifications, retained history, dependency invalidation/replacement, current access, continuing difficulty, cancellation/reopening and escalation. Includes durable correction qualification before first attachment and across different alerts, unknown-metadata denial after a genuine later confirmation positive control, and current-authority revocation.",
+      "testFiles": [
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowSourceCorrectionTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowPlanDependencyTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowLifecycleTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowFinalBoundaryTest.java"
+      ],
+      "executionReceiptIds": [
+        "backend-en",
+        "backend-cn"
+      ],
+      "limitation": "Native MySQL dependency races and real browser history/focus acceptance remain NOT_RUN."
+    },
+    {
+      "specItem": 6,
+      "status": "PASS",
+      "verifiedScope": "NO_CHANNEL/FAILED/UNKNOWN, conservative recovery, current recipient/channel authority, token-bound retry, bounded due events and concurrent claims using H2 and fake JDBC/provider. Actual worker/localizer output is asserted against the same fixture consumed by compiled EN/CN routes and real composables; patient-mismatch, revoked target, late responses, route-local/global selection and retest guard are covered.",
+      "testFiles": [
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowNotificationWorkerTest.java",
+        "src/test/java/org/familyhealthcare/service/AlertWorkflowNotificationLockTest.java",
+        "src/test/java/org/familyhealthcare/service/AlertWorkflowNotificationTransportTest.java",
+        "src/test/java/org/familyhealthcare/service/workflow/NotificationSafetyPrimitivesTest.java",
+        "frontend/tests/alertWorkflowFinalBoundaries.test.mjs",
+        "cn/frontend/tests/alertWorkflowFinalBoundaries.test.mjs"
+      ],
+      "executionReceiptIds": [
+        "backend-en",
+        "backend-cn",
+        "frontend-en",
+        "frontend-cn"
+      ],
+      "limitation": "No real provider/channel delivery, enabled scheduler or native pooled-driver restoration was executed."
+    },
+    {
+      "specItem": 7,
+      "status": "NOT_RUN",
+      "verifiedScope": "Root/CN Node suites, compiled SFC/SSR, reactive state and static theme/mobile/focus contracts passed; both Vite production builds passed. Explicit browser-local offset formatting is covered by deterministic non-UTC helper/component tests; this remains synthetic rendering.",
+      "testFiles": [
+        "frontend/tests/alertWorkflowPresentation.test.mjs",
+        "frontend/tests/alertWorkflowReviewRegression.test.mjs",
+        "cn/frontend/tests/alertWorkflowPresentation.test.mjs",
+        "cn/frontend/tests/alertWorkflowReviewRegression.test.mjs",
+        "frontend/tests/alertWorkflowFinalBoundaries.test.mjs",
+        "cn/frontend/tests/alertWorkflowFinalBoundaries.test.mjs"
+      ],
+      "executionReceiptIds": [
+        "frontend-en",
+        "frontend-cn",
+        "build-en",
+        "build-cn"
+      ],
+      "limitation": "Six-theme visuals/contrast, 390px/200%, measured 44px targets, keyboard/focus, navigation/unload behavior and full browser/live-HTTP journeys need a supported authorized browser."
+    },
+    {
+      "specItem": 8,
+      "status": "NOT_RUN",
+      "verifiedScope": "Modified care-plan technical seams retain bounded command/notification tests and real-service receipt/review/cancellation dependency regressions.",
+      "testFiles": [
+        "src/test/java/org/familyhealthcare/service/workflow/WorkflowCommandExecutorTest.java",
+        "src/test/java/org/familyhealthcare/service/CarePlanNotificationLockTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowPlanDependencyTest.java"
+      ],
+      "executionReceiptIds": [
+        "backend-en",
+        "backend-cn"
+      ],
+      "limitation": "This is not a new full publication/version/report/browser reacceptance. Historical care-plan/report release evidence remains separate; comprehensive legacy acceptance is NOT_RUN."
+    },
+    {
+      "specItem": 9,
+      "status": "NOT_RUN",
+      "verifiedScope": "Separate empty-init and existing preflight/upgrade/postcheck source paths, edition parity, extracted SQL predicates/guards and synthetic additive-schema checks passed. Includes private immutable action-version metadata, null/invalid qualification diagnostics, and unchanged fail-closed prior/partial-install preflight.",
+      "testFiles": [
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowSchemaTest.java",
+        "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowGuardRegressionTest.java",
+        "src/test/java/org/familyhealthcare/service/Mysql57UpgradeScriptTest.java"
+      ],
+      "executionReceiptIds": [
+        "backend-en",
+        "backend-cn"
+      ],
+      "limitation": "Native MySQL 5.7.18 parser/DDL/guards/locking/query plans, real inventory/privileges and full database+attachment restore are NOT_RUN. Source counts do not measure a deployed database."
+    }
+  ],
+  "externalGates": [
+    {
+      "id": "native-mysql-5.7.18",
+      "status": "NOT_RUN",
+      "owner": "Authorized database operator",
+      "requiredEvidence": "Fresh and existing-install parser/DDL/trigger/preflight/postcheck, SQL modes, indexes, locking and query-plan validation on actual5.7.18."
+    },
+    {
+      "id": "actual-java-8",
+      "status": "NOT_RUN",
+      "owner": "Release operator",
+      "requiredEvidence": "Run supported packaged application/tests on actual Java 8, distinct from JDK 17 target8 compilation."
+    },
+    {
+      "id": "pooled-driver-restoration",
+      "status": "NOT_RUN",
+      "owner": "Database/runtime operator",
+      "requiredEvidence": "Verify actual Connector/J pooled-session timeout restoration/abort behavior."
+    },
+    {
+      "id": "live-http-roles",
+      "status": "NOT_RUN",
+      "owner": "QA with authorized synthetic accounts",
+      "requiredEvidence": "Connected frontend/API authentication, authorization, expiry/revocation and source/evidence reads."
+    },
+    {
+      "id": "browser-role-journeys",
+      "status": "NOT_RUN",
+      "owner": "QA in supported authorized browser",
+      "requiredEvidence": "Complete real-browser acceptance of both entry paths and personal/clinical/family/nurse/doctor journeys."
+    },
+    {
+      "id": "six-themes",
+      "status": "NOT_RUN",
+      "owner": "Browser QA",
+      "requiredEvidence": "All six actual themes, contrast and long EN/CN content."
+    },
+    {
+      "id": "390px-200percent",
+      "status": "NOT_RUN",
+      "owner": "Browser QA",
+      "requiredEvidence": "390px layout and 200% text scaling without whole-page overflow."
+    },
+    {
+      "id": "keyboard-focus-touch",
+      "status": "NOT_RUN",
+      "owner": "Browser QA",
+      "requiredEvidence": "Measured44px primary controls, focus trap/return, keyboard traversal, sticky actions, navigation/unload warning and screenshots."
+    },
+    {
+      "id": "full-backup-restore",
+      "status": "NOT_RUN",
+      "owner": "Authorized database operator",
+      "requiredEvidence": "Verified full database+attachments/config backup and isolated restore with row/history/integrity comparison."
+    },
+    {
+      "id": "provider-delivery",
+      "status": "NOT_RUN",
+      "owner": "Authorized channel operator",
+      "requiredEvidence": "Real provider outcomes without treating accepted delivery as patient acceptance or clinical completion."
+    },
+    {
+      "id": "production-migration-deployment",
+      "status": "NOT_RUN",
+      "owner": "Authorized deployment owner",
+      "requiredEvidence": "Production database changes and deployment require separate approval and completed acceptance."
+    },
+    {
+      "id": "feature-enablement",
+      "status": "NOT_RUN",
+      "owner": "Authorized deployment owner",
+      "requiredEvidence": "Both features remain independently false; no activation occurred."
+    },
+    {
+      "id": "push-remote-ci",
+      "status": "NOT_RUN",
+      "owner": "Publication owner",
+      "requiredEvidence": "No push or new remote CI was performed for this checkpoint."
+    },
+    {
+      "id": "full-legacy-role-acceptance",
+      "status": "NOT_RUN",
+      "owner": "Later-phase QA",
+      "requiredEvidence": "Legacy raw-data projections and complete care-plan publication/report reacceptance beyond modified seams."
+    },
+    {
+      "id": "whole-branch-review",
+      "status": "FAIL",
+      "owner": "Independent release reviewer",
+      "requiredEvidence": "The prior whole-branch FAIL is retained as history. Its finite findings were addressed and passed the independent scoped re-review of candidate 55620399282eea69d259ab04ee097c126c2a27bb; no repeated whole-branch audit is claimed.",
+      "historical": true
+    },
+    {
+      "id": "scoped-fix-review",
+      "status": "PASS",
+      "owner": "Independent release reviewer",
+      "requiredEvidence": "Completed independent review of candidate 55620399282eea69d259ab04ee097c126c2a27bb against tested source 922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1: SPEC PASS, QUALITY PASS with nonblocking D1, bounded source-publication readiness READY. See sourceReview for scope and documentation disposition."
+    }
+  ],
+  "databaseSourceDeclarations": {
+    "initCreateTableStatementsPerEdition": 86,
+    "alertOwnedGuardsPerEdition": 22,
+    "actualDatabaseInventory": "NOT_RUN",
+    "countMeaning": "Static CREATE TABLE/aw57 CREATE TRIGGER statements in reviewed source, not an observed database inventory. No migration was executed.",
+    "emptyInit": "src/main/resources/sql/init.sql",
+    "existingPreflight": "src/main/resources/sql/alert_workflow_preflight_20261013.sql",
+    "existingUpgrade": "src/main/resources/sql/alert_workflow_upgrade_20261013.sql",
+    "existingPostcheck": "src/main/resources/sql/alert_workflow_postcheck_20261013.sql",
+    "chinesePaths": "Use the corresponding cn/src/main/resources/sql files, one edition per database.",
+    "operatorRunbook": "docs/OFFLINE_DEPLOYMENT.md",
+    "sourceQualificationMetadata": "One server-only action_versions_json LONGTEXT column on immutable source revisions; server-created {} means known-empty, NULL/missing/malformed means unknown and blocks qualification. Existing prior/partial installs remain preflight-blocked; no automatic empty backfill."
+  },
+  "displayLimitation": "The assessment API has no authoritative comparison-unit field. UI withholds normalized comparison and threshold numbers; original readings/units, classification, policy, context and distinct threshold names remain. Existing clinical classification rules are unchanged.",
+  "archiveBoundary": "Family archive format1 excludes new workflow state/history, feedback, evidence/snapshots, source tracking metadata, commands, outbox, assignments and grants. It cannot restore collaboration history. Complete database+attachment restore is a separate operator gate.",
+  "evidenceReading": "PASS applies only to the stated measured layer. NOT_RUN is not PASS, FAIL or BLOCKED. Digests identify original retained diagnostic outputs; raw logs are intentionally not distributed in this public documentation. Command equivalents normalize environment-specific executable/settings/cache locations and are not claims that a different literal command ran.",
+  "warnings": [
+    "Existing Vite large-chunk advisory and npm http-proxy environment warning remain; npm printed an update notice, but no update/install was performed. Both builds exited0.",
+    "389 backend tests per edition and Node106/98 are separate suite executions, not unique clinical scenarios. Twenty-four backend and seven frontend new cases per edition address the finite review findings.",
+    "Legacy raw-measurement aggregate/AI/timeline/export permissions were preserved, not comprehensively hardened or newly accepted."
+  ],
+  "historicalBackendReceipts": [
+    {
+      "id": "backend-en",
+      "status": "PASS",
+      "sourceCommit": "c787924254006794681306cc22d40de39fc51c10",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "mvn -s <existing-settings> -B -Dmaven.repo.local=<existing-dependency-cache> test",
+      "environment": "JDK 17.0.20.1, Maven 3.9.9; existing settings/cache and trusted CA; Java 8-compatible source/target, not an actual Java 8 runtime.",
+      "exitCode": 0,
+      "outputSha256": "0b176737e6474804103e4f7c687408b4448b4657d6550638b275953f4edac54a",
+      "outputBytes": 54510787,
+      "counts": {
+        "total": 364,
+        "passed": 364,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "supersededBy": "Fresh 365-test execution at dde70db1455134e4d026fc014ddaa68ecbd5b0ab"
+    },
+    {
+      "id": "backend-cn",
+      "status": "PASS",
+      "sourceCommit": "c787924254006794681306cc22d40de39fc51c10",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "mvn -f cn/pom.xml -s <existing-settings> -B -Dmaven.repo.local=<existing-dependency-cache> test",
+      "environment": "JDK 17.0.20.1, Maven 3.9.9; existing settings/cache and trusted CA; Java 8-compatible source/target, not an actual Java 8 runtime.",
+      "exitCode": 0,
+      "outputSha256": "44754dddbd8af08fd8471a0c2d0e1020362b3634ab3e7dfeab2ff0df0235bc19",
+      "outputBytes": 54510955,
+      "counts": {
+        "total": 364,
+        "passed": 364,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "supersededBy": "Fresh 365-test execution at dde70db1455134e4d026fc014ddaa68ecbd5b0ab"
+    }
+  ],
+  "historicalSourceIdentity": {
+    "checkpointCommit": "98beec4a7516a156cb6a0725b1a76871bd6f522e",
+    "meaning": "Prior checkpoint only. Its unchanged-source comparisons were true for that source and do not describe the current production fix.",
+    "identity": {
+      "approvedBaselineCommit": "6eb57cbf4f815370d16b6278b9500018324b12f8",
+      "designApprovedAt": "2026-10-13T16:17:51Z",
+      "runtimeCandidateCommit": "dde70db1455134e4d026fc014ddaa68ecbd5b0ab",
+      "runtimeCandidateTree": "8962fcea6ee54547794e41c874dc0a5b9f8e2a8d",
+      "backendExecutionCommit": "dde70db1455134e4d026fc014ddaa68ecbd5b0ab",
+      "backendReceiptCompletedAt": "2026-10-14T00:20:11Z",
+      "frontendReceiptSealAt": "2026-10-13T23:47:00Z",
+      "documentationCommit": null,
+      "documentationIdentity": "Locate the later documentation-only commit using Git history for this file. Backend tests were executed at the separate preceding test-source commit; unchanged frontend tests/builds retain their original execution commit. No self-referential SHA is asserted.",
+      "runtimeGitObjects": {
+        "src": "b30e433f179242271c1834c53cf18bb7e3b65086",
+        "cn/src": "f9b7aad327133cab383653b47aebc4a36a41fd74",
+        "pom.xml": "66a3d7e3f58ba652432d5c8fba622a9beebcbc3e",
+        "cn/pom.xml": "29af738e2cfdb40301377f3f4d7d07c07bb259d1",
+        "frontend": "a2ffb8fddfe948871639805f827a6d438f125915",
+        "cn/frontend": "504fde182b7cfacfc7c4ac6f753e9debea721e82"
+      },
+      "commentOnlyExceptions": [
+        {
+          "path": "src/main/resources/sql/init.sql",
+          "beforeSha256": "c9e3a8c1d3b81813a9e76edbb8d285fae338834455e98cf2576acccbd5774b56",
+          "afterSha256": "148f5af3a1980a225316c80640cdfc7291b29639f2c50103482173702f6f3d75",
+          "change": "Correct stale 87-table section comment to 86 source CREATE TABLE statements; executable SQL unchanged."
+        },
+        {
+          "path": "cn/src/main/resources/sql/init.sql",
+          "beforeSha256": "b7c3999ae8bb0e25b8523158de1a52b86a4f27b2eab30d0667491199f472040f",
+          "afterSha256": "9bd62b8de5d2ec75a2f9a469febb677ff4f39bf1241b0166e8adbebaecfc7e0d",
+          "change": "Correct stale 87-table section comment to 86 source CREATE TABLE statements; executable SQL unchanged."
+        }
+      ],
+      "frontendExecutionCommit": "ed956db69d511a32ce66fe67bc08c7368bcd5593",
+      "previousBackendExecutionCommit": "c787924254006794681306cc22d40de39fc51c10",
+      "commentOnlyExceptionsMeaning": "Retained historical comparison from the previous backend receipt at c787924 to the current source, not exceptions to the new exact-commit backend run. The two init comments were corrected before the current test-source commit; all 642 current backend files match the new 365-test execution source.",
+      "testOnlyChanges": [
+        {
+          "path": "src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowConcurrencyTest.java",
+          "beforeCommit": "c72b33ebce0e81ae79d7e931e2bee19d94c353ec",
+          "testedCommit": "dde70db1455134e4d026fc014ddaa68ecbd5b0ab",
+          "change": "Add the same genuine competing reassignment/stale-closure test; production code unchanged."
+        },
+        {
+          "path": "cn/src/test/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowConcurrencyTest.java",
+          "beforeCommit": "c72b33ebce0e81ae79d7e931e2bee19d94c353ec",
+          "testedCommit": "dde70db1455134e4d026fc014ddaa68ecbd5b0ab",
+          "change": "Add the same genuine competing reassignment/stale-closure test; production code unchanged."
+        }
+      ],
+      "sourceVerification": {
+        "backendFilesRechecked": 642,
+        "backendFilesAllMatchNewExecution": true,
+        "frontendCheckpointFilesRechecked": 59,
+        "frontendCheckpointFilesAllMatch": true,
+        "frontendTreesMatchOriginalExecution": true,
+        "historicalComparisonToPreviousBackend": {
+          "byteIdenticalFiles": 638,
+          "sqlCommentOnlyFiles": 2,
+          "testOnlyFiles": 2
+        },
+        "note": "The new mirrored concurrency case required fresh full backend execution: 365 tests per edition at the sealed test-source commit. Every current backend file matches that execution source. Frontend 99/91 and both builds are reused only after exact unchanged-source checks. The original 364-test backend receipts remain historical and are superseded, not relabeled.",
+        "productionJavaPomAndExecutableSqlUnchangedFromPreviousBackend": true
+      }
+    }
+  },
+  "historicalExecutionReceipts": [
+    {
+      "id": "backend-en",
+      "status": "PASS",
+      "sourceCommit": "dde70db1455134e4d026fc014ddaa68ecbd5b0ab",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "mvn -s <existing-settings> -B -Dmaven.repo.local=<existing-dependency-cache> test",
+      "environment": "JDK 17.0.20.1, Maven 3.9.9; existing settings/cache and trusted CA; Java 8-compatible source/target, not an actual Java 8 runtime.",
+      "exitCode": 0,
+      "outputSha256": "27c3e8c93a7001a2b2f6c2cea5f590e633a5e0f6ec9eb012ca1e006cbe4bb126",
+      "outputBytes": 54973736,
+      "counts": {
+        "total": 365,
+        "passed": 365,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "supersededBy": "Fresh exact-source execution at 922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1"
+    },
+    {
+      "id": "backend-cn",
+      "status": "PASS",
+      "sourceCommit": "dde70db1455134e4d026fc014ddaa68ecbd5b0ab",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "mvn -f cn/pom.xml -s <existing-settings> -B -Dmaven.repo.local=<existing-dependency-cache> test",
+      "environment": "JDK 17.0.20.1, Maven 3.9.9; existing settings/cache and trusted CA; Java 8-compatible source/target, not an actual Java 8 runtime.",
+      "exitCode": 0,
+      "outputSha256": "55306da04c5f196e029c7aa093c5f83cde788254bf5df52c8055ff565e0809b3",
+      "outputBytes": 54974462,
+      "counts": {
+        "total": 365,
+        "passed": 365,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "supersededBy": "Fresh exact-source execution at 922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1"
+    },
+    {
+      "id": "frontend-en",
+      "status": "PASS",
+      "sourceCommit": "ed956db69d511a32ce66fe67bc08c7368bcd5593",
+      "commandKind": "EXACT_EXPANDED",
+      "command": "node --test frontend/tests/alertWorkflowIntegration.test.mjs frontend/tests/alertWorkflowPresentation.test.mjs frontend/tests/alertWorkflowReviewRegression.test.mjs frontend/tests/alertWorkflowState.test.mjs frontend/tests/careErrorReadiness.test.mjs frontend/tests/guideScrollContinuity.test.mjs frontend/tests/mobileControlOcclusion.test.mjs frontend/tests/patientMenuPresentation.test.mjs",
+      "environment": "Node built-in test runner, actual Vue reactivity/compiler/SSR with synthetic API/router/dialog fixtures. Runtime version is not separately sealed in this receipt.",
+      "exitCode": 0,
+      "outputSha256": "e76d8fe4ebdafdf8668870939a76ef6a08c2f0aef8cd1d92766f1ce348ccecc0",
+      "outputBytes": 12754,
+      "counts": {
+        "total": 99,
+        "passed": 99,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "supersededBy": "Fresh exact-source execution at 922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1"
+    },
+    {
+      "id": "frontend-cn",
+      "status": "PASS",
+      "sourceCommit": "ed956db69d511a32ce66fe67bc08c7368bcd5593",
+      "commandKind": "EXACT_EXPANDED",
+      "command": "node --test cn/frontend/tests/alertWorkflowIntegration.test.mjs cn/frontend/tests/alertWorkflowPresentation.test.mjs cn/frontend/tests/alertWorkflowReviewRegression.test.mjs cn/frontend/tests/alertWorkflowState.test.mjs cn/frontend/tests/careErrorReadiness.test.mjs cn/frontend/tests/guideScrollContinuity.test.mjs cn/frontend/tests/mobileControlOcclusion.test.mjs",
+      "environment": "Node built-in test runner, actual Vue reactivity/compiler/SSR with synthetic API/router/dialog fixtures. Runtime version is not separately sealed in this receipt.",
+      "exitCode": 0,
+      "outputSha256": "5d26ce112ca9d53b5466dccd5b75fe204d850a8cbeec9b83a49c73f08ffd5067",
+      "outputBytes": 11938,
+      "counts": {
+        "total": 91,
+        "passed": 91,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "supersededBy": "Fresh exact-source execution at 922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1"
+    },
+    {
+      "id": "build-en",
+      "status": "PASS",
+      "sourceCommit": "ed956db69d511a32ce66fe67bc08c7368bcd5593",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "cd frontend && npm run build",
+      "environment": "Vite6.4.3; existing task-owned empty npm user configuration/cache; no dependency install in the sealed run.",
+      "exitCode": 0,
+      "outputSha256": "2c9096cd4f9359831d059ba4c35d9c40a182c63e0350170c4a6ca080dd2ec9dc",
+      "outputBytes": 8642,
+      "supersededBy": "Fresh exact-source execution at 922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1"
+    },
+    {
+      "id": "build-cn",
+      "status": "PASS",
+      "sourceCommit": "ed956db69d511a32ce66fe67bc08c7368bcd5593",
+      "commandKind": "PORTABLE_EQUIVALENT",
+      "command": "cd cn/frontend && npm run build",
+      "environment": "Vite6.4.3; existing task-owned empty npm user configuration/cache; no dependency install in the sealed run.",
+      "exitCode": 0,
+      "outputSha256": "f1c0f3c2d5a59b39272f348ac7739249ea6131d895aa2c2ff7fef07ed0a69bb3",
+      "outputBytes": 8645,
+      "supersededBy": "Fresh exact-source execution at 922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1"
+    }
+  ],
+  "currentFixContracts": {
+    "nativeMetadataRestriction": "Journey metricName/remark and self-monitor sourceType/sourceExternalId/remark are read-only in versioned corrections. Omission or identical values are accepted; changes and clearing a nonnull value are rejected. Original native context stays in its existing authorized view, not copied into broad evidence snapshots.",
+    "clinicalFreshness": "Source-revision action-version watermarks apply across first/later/replacement/new-cycle/new-alert attachments. Current doctor confirmation must be later in monotone action version. Invalidated/unknown source qualification remains blocked. Old plan authority and state transitions are unchanged.",
+    "notificationContext": "Exact patient-qualified internal destination; current authorization and patient-mismatch checks retained. Route-local patient does not mutate global selection; retest is unavailable until global and authorized detail patients match.",
+    "pagination": "At most 100 source-authorized candidate projections per list request, with fair scanned-boundary continuation including empty pages.",
+    "time": "One normalized offset parse per native create/correct; explicit browser-local workflow timestamp display; naive original measurement times and UTC storage unchanged."
+  },
+  "historicalReviewCheckpoint": {
+    "documentationCommit": "55620399282eea69d259ab04ee097c126c2a27bb",
+    "meaning": "Accurate pending-at-receipt-seal history, retained without changing any execution identity. The completed scoped review is recorded separately in sourceReview.",
+    "status": "LOCAL_FIX_CHECKPOINT_SCOPED_REVIEW_PENDING",
+    "statusMeaning": "The finite whole-branch findings have a local implementation fix and fresh exact-source synthetic checks. Independent scoped re-review is pending; external acceptance is incomplete. This is not publication, deployment or clinical-effectiveness approval.",
+    "reviewGates": [
+      {
+        "id": "whole-branch-review",
+        "status": "FAIL",
+        "owner": "Independent release reviewer",
+        "requiredEvidence": "The prior whole-branch review found finite correction/context/integration defects. Their consolidated source fix is sealed and fully tested; independent scoped re-review of the fix has not run at this documentation checkpoint."
+      },
+      {
+        "id": "scoped-fix-review",
+        "status": "NOT_RUN",
+        "owner": "Independent release reviewer",
+        "requiredEvidence": "Review the single consolidated fix and fix-induced regressions before source-publication readiness is declared."
+      }
+    ]
+  },
+  "sourceReview": {
+    "reviewedAtDate": "2026-10-14",
+    "reviewedCandidateCommit": "55620399282eea69d259ab04ee097c126c2a27bb",
+    "testedSourceCommit": "922eaacc4d04b0dcc275e423cf9cfc1bee0e7cc1",
+    "fixBaseCommit": "98beec4a7516a156cb6a0725b1a76871bd6f522e",
+    "scope": "Single consolidated R1-R3 and Q1-Q4 fix and fix-induced regressions; not a repeated original-base audit or a whole-platform acceptance.",
+    "specVerdict": "PASS",
+    "qualityVerdict": "PASS_WITH_ONE_MINOR",
+    "boundedSourcePublicationReadiness": "READY",
+    "minorFinding": {
+      "id": "D1",
+      "severity": "Minor / P3",
+      "description": "Acceptance item 6 omitted the existing frontend execution receipt links.",
+      "disposition": "Added frontend-en and frontend-cn to item 6 in this docs-only closing disposition; no product changes or test/build reruns. The original review verdict remains recorded as issued."
+    },
+    "closingDocumentationIdentity": "Locate this later docs-only closing disposition in Git history; no circular self-SHA is asserted. The original reviewer checks only the documentation change."
+  }
+}

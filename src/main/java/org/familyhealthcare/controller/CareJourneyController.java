@@ -31,6 +31,7 @@ public class CareJourneyController {
         try{return Long.parseLong(values[0]);}catch(NumberFormatException invalid){throw new IllegalArgumentException("Invalid source selector.");}
     }
     @PostMapping("/measurements") public Result<Map<String,Object>> saveMeasurement(@RequestBody Map<String,Object> body){return Result.ok(service.saveMeasurement(body));}
+    @PutMapping("/measurements/{id}") public Result<Map<String,Object>> correctMeasurement(@PathVariable Long id,@RequestBody Map<String,Object> body){return Result.ok(service.updateMeasurement(id,body));}
     @PostMapping("/measurements/{id}/annotations") public Result<Map<String,Object>> annotate(@PathVariable Long id,@RequestBody Map<String,String>body){return Result.ok(service.annotateMeasurement(id,body.get("annotation")));}
 
     @GetMapping("/access-grants") public Result<List<Map<String,Object>>> grants(@RequestParam Long patientId){return Result.ok(service.grants(patientId));}

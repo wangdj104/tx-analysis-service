@@ -66,6 +66,12 @@
 
 `CARE_PLAN_ENABLED` 仍默认 `false`，后端尚未生产部署或启用。已审阅候选 CI 及原生 MySQL／浏览器门槛通过，仅测试稳定对话框捕获修正已审阅／发布，同源软件／导出及有限视觉／媒体验收经一次披露的 CN任务重跑通过，仅证据文档发布另行核对。详见[报告指南](docs/USER_GUIDE.md#45-照护执行与就诊准备)、[报告发布证据](docs/CARE_EXECUTION_REPORT_RELEASE.md)与[机器可读证据](../docs/verification/care-execution-report.json)中的验证层次和限制。现有公开静态演示仍为前期虚构场景展示，本期没有新增执行报告模拟器。
 
+## 测量异常随访（阶段 A）
+
+已实现“测量 → 明确负责人接手 → 处理凭据 → 本人／协助反馈 → 有原因关闭”，独立 `ALERT_WORKFLOW_ENABLED=false` 默认关闭。两条原有测量入口与现有角色页面接入，保留更正、撤销授权、超时等历史路径。护士仍需有效指派及明确 `MEASUREMENTS` 授权，不附带 `CARE_PLAN` 或临床关闭权；临床关闭仅由当前指派医生完成。
+
+[发布检查点](docs/ALERT_WORKFLOW_RELEASE.md)与[机器核验记录](../docs/verification/alert-workflow.json)分别记录真实服务＋H2、真实 Vue＋模拟 API 的证据：封存源922eaac的新后端两版各389、前端106／98及两版构建通过。集中修复的独立定向复核待完成，真实MySQL5.7.18、实际Java8、浏览器／真实HTTP、恢复及供应商验收仍为 **NOT_RUN**；没有部署或宣称全部路线完成。原始数值／单位可见，缺少权威比较单位时暂不显示归一化比较值／阈值数值。当前生产Compose需用户自行应用环境覆盖，仅写 `.env.production` 无效；详见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。
+
 ## 产品设计原则
 
 1. **一份连续健康档案：**指标、治疗事件、问诊和文档都关联到同一患者时间轴。
@@ -129,21 +135,21 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 
 ## 技术栈
 
-- 后端：Java 8、Spring Boot 2.5、MyBatis-Plus、MySQL 8、JWT。
+- 后端：Java 8 兼容源码／字节码（JDK 17 构建）、Spring Boot 2.5、MyBatis-Plus、MySQL 5.7.18／8.0、JWT。
 - 前端：Vue 3、Vite、Vue Router、Element Plus、ECharts。
 - 测试：JUnit 5、Mockito、H2 MySQL 模式、Node.js 测试运行器。
 - 部署：Docker Compose、Nginx、GitHub Actions、GitHub Pages。
 
 ## 本地开发
 
-环境要求：推荐 JDK 17（源码和字节码目标兼容 Java 8，CI/Docker 使用 17）、Maven 3.8+、Node.js 20+、MySQL 8.0+。
+环境要求：推荐 JDK 17（源码和字节码目标兼容 Java 8，CI/Docker 使用 17）、Maven 3.8+、Node.js 20+、MySQL 5.7.18 或 8.0；新随访的真实 5.7.18 验收仍为 NOT_RUN。
 
 <a id="database-initialization"></a>
 
 ### 1. 创建数据库
 
 ```sql
-CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 ```bash
@@ -154,7 +160,7 @@ mysql -u root -p family_health < src/main/resources/sql/init.sql
 
 完整初始化已包含照护计划协作结构，协作时间采用 UTC `DATETIME(6)` 并由应用显式转换。内部 `workflow_version=0` 计划仍须明确复制、发布，不自动建立行动项或通知。安装表结构不会分配护理账号、授予患者权限或启用协作功能。发布前应在隔离数据库核对实际流程并演练完整备份恢复。停用时保留已发布历史。
 
-中英文初始化结构相同、显示文字分别本地化，一个数据库只选择一版。推荐 MySQL 8.0；CHECK 约束在 8.0.16+ 生效。脚本不创建管理员账号，重复执行可能补回已删除的角色菜单或字典；MySQL DDL 会隐式提交，出错后应检查已完成步骤。
+中英文初始化结构相同、显示文字分别本地化，一个数据库只选择一版。示例排序规则兼容MySQL5.7；CHECK仅在8.0.16+执行，新随访使用服务校验及5.7兼容守卫，不依赖CHECK。每版源码有86条CREATE TABLE及22个随访守卫，并非实际数据库清点；真实5.7.18验收待完成。已有库使用[运维交接](docs/OFFLINE_DEPLOYMENT.md)中的独立预检／增量／后检，不能用init.sql升级。脚本不创建管理员账号，重复执行可能补回已删除的角色菜单或字典；MySQL DDL 会隐式提交，出错后应检查已完成步骤。
 
 ### 2. 配置环境变量
 
@@ -203,6 +209,7 @@ Vite 通常监听 `http://localhost:5174`，将 `/api` 代理到 `http://localho
 | `OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` | 可选 OCR 服务 | API 密钥仅保存在服务端 |
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_API_URL` / `DEEPSEEK_API_MODEL` | 可选 AI 分析 | 先审查隐私和数据保留策略 |
 | `CARE_PLAN_ENABLED` | 协作照护计划开关，默认 `false` | 迁移与验收完成后，由获授权的部署决策启用 |
+| `ALERT_WORKFLOW_ENABLED` | 独立测量随访，默认 `false` | 当前生产Compose需文档中的用户自行应用覆盖；迁移不会启用 |
 | `REPORT_PDF_FONT_PATH` | 可选容器／本机 PDF 字体路径；留空使用已安装字体 | 宿主机自定义字体需只读挂载，并验收实际导出 |
 | `DEV_PROXY_TARGET` | Vite 开发代理目标 | 生产不使用此值，由 Nginx 转发 `/api` |
 

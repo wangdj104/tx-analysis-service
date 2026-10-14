@@ -41,7 +41,7 @@ public class ClinicalImportRowWriter {
             row.setBloodGlucose(decimal(item.get("glucose"))); row.setBgUnit(string(item.get("unit")));
             row.setSourceType(source); row.setSourceExternalId(externalId);
             row.setVerificationStatus("REVIEW_REQUIRED"); row.setRemark(text("Imported data; verify against the source device or report.", "导入数据，请与原始设备或报告核对。"));
-            saved = vitalService.saveOwned(row);
+            saved = vitalService.saveImportedOwned(row);
         } else if ("LAB".equals(kind)) {
             MedicalRecord record = new MedicalRecord();
             record.setPatientId(patientId); record.setPatientName(patientName);

@@ -30,31 +30,25 @@ public class BpSelfMonitorRecordController {
             return Result.ok(bpSelfMonitorRecordService.listByPatient(patientId));
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
+        } catch (org.familyhealthcare.service.alertworkflow.AlertWorkflowException e) {
+            throw e;
         } catch (Exception e) {
             return Result.error("Vital-sign records could not be loaded. Verify that the database is initialized.");
         }
     }
 
     @PostMapping("/save")
-    @ApiOperation("AddBlood GlucoseBlood Pressurerecord")
-    public Result<BpSelfMonitorRecord> save(@RequestBody BpSelfMonitorRecord record) {
-        try {
-            boolean success = bpSelfMonitorRecordService.saveOwned(record);
-            return success ? Result.ok(record) : Result.error("Failed to save");
-        } catch (IllegalStateException e) {
-            return Result.error(403, e.getMessage());
-        }
+    public Result<?> save(@RequestBody java.util.Map<String,Object> body) {
+        try{return Result.ok(bpSelfMonitorRecordService.saveRequest(body));}catch(IllegalStateException denied){return Result.error(403,denied.getMessage());}
     }
 
     @PutMapping("/update")
-    @ApiOperation("updateBlood GlucoseBlood Pressurerecord")
-    public Result<String> update(@RequestBody BpSelfMonitorRecord record) {
+    public Result<?> update(@RequestBody java.util.Map<String,Object> body) {
         try {
-            boolean success = bpSelfMonitorRecordService.updateOwned(record);
-            return success ? Result.okMessage("Updated successfully") : Result.error("Update failed");
-        } catch (IllegalStateException e) {
-            return Result.error(403, e.getMessage());
-        }
+            java.util.Map<String,Object> result=bpSelfMonitorRecordService.updateRequest(body);
+            if(result.containsKey("updated"))return Boolean.TRUE.equals(result.get("updated"))?Result.okMessage("Updated successfully"):Result.error("Update failed");
+            return Result.ok(result);
+        }catch(IllegalStateException denied){return Result.error(403,denied.getMessage());}
     }
 
     @DeleteMapping("/delete/{id}")

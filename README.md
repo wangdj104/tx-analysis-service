@@ -66,6 +66,12 @@ The read-only report separates a fresh current-action snapshot from activity rec
 
 `CARE_PLAN_ENABLED` remains default `false`; this backend has not been deployed or activated in production. The reviewed candidate passed CI/native/browser gates. The test-only settled-dialog capture correction is reviewed and published. Final same-source software/export and bounded visual/media acceptance passed after one disclosed CN job rerun; the evidence-only documentation publication is separate. See the [report guide](docs/USER_GUIDE.md#45-care-execution-and-visit-preparation), [report release evidence](docs/CARE_EXECUTION_REPORT_RELEASE.md) and [machine-readable evidence](docs/verification/care-execution-report.json) for verified layers and limits. The existing public static demo remains the earlier fictional showcase; no execution-report simulator was added.
 
+## Measurement abnormality follow-up (Phase A)
+
+Implemented behind independent `ALERT_WORKFLOW_ENABLED=false`: measurement → named acceptance → handling evidence → self/assisted feedback → reasoned personal or doctor-only clinical closure. Both native measurement paths and existing role pages are connected; correction/revocation/uncertain-result paths retain traceable history. Nurse assignment still requires explicit `MEASUREMENTS` access and grants no `CARE_PLAN` or clinical closure authority.
+
+The [release checkpoint](docs/ALERT_WORKFLOW_RELEASE.md) and [verification record](docs/verification/alert-workflow.json) separate real-service/H2 and real-Vue/fake-API checks from **NOT_RUN** native MySQL 5.7.18, actual Java 8, browser/live HTTP, restore and provider gates. Fresh root/CN backend389 each, Node106/98 and both builds passed at sealed source922eaac. The consolidated whole-branch fixes await independent scoped re-review; no rollout or whole-roadmap completion is claimed. The UI preserves original readings/units but withholds normalized numeric comparison/thresholds pending an authoritative comparison-unit contract. Production Compose currently requires a user-applied environment override; adding the flag to `.env.production` alone is ineffective. See the [operator handoff](docs/OFFLINE_DEPLOYMENT.md).
+
 ## Product principles
 
 1. **One longitudinal record:** measurements, treatment events, consultations and documents remain connected to the patient timeline.
@@ -131,7 +137,7 @@ Chinese PDF downloads require a CJK font with TrueType (`glyf`) outlines. The ba
 
 ## Technology stack
 
-- Backend: Java 8, Spring Boot 2.5, MyBatis-Plus, MySQL 8, JWT.
+- Backend: Java 8-compatible source/bytecode (JDK 17 build), Spring Boot 2.5, MyBatis-Plus, MySQL 5.7.18 / 8.0, JWT.
 - Frontend: Vue 3, Vite, Vue Router, Element Plus, ECharts.
 - Testing: JUnit 5, Mockito, H2 MySQL mode, Node test runner.
 - Deployment: Docker Compose, Nginx, GitHub Actions, GitHub Pages for the static demo.
@@ -143,14 +149,14 @@ Chinese PDF downloads require a CJK font with TrueType (`glyf`) outlines. The ba
 - JDK 17 recommended (source/bytecode target remains Java 8; CI and Docker use 17)
 - Maven 3.8+
 - Node.js 20+
-- MySQL 8.0+
+- MySQL 5.7.18 or 8.0; native 5.7.18 acceptance for the new follow-up remains NOT_RUN
 
 <a id="database-initialization"></a>
 
 ### 1. Create the database
 
 ```sql
-CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 ```bash
@@ -163,7 +169,7 @@ Patient specialty definitions and role/menu seeds are included in `init.sql`. Ap
 
 The complete initialization includes collaborative care plans with UTC `DATETIME(6)` timestamps. Internal `workflow_version=0` plans remain internal until explicitly copied and published. Installing schema does not assign nurses, grant patient access or enable the collaboration feature. Before release, verify the deployed workflow and a complete backup/restore drill on an isolated database. Retain published history when disabling this subsystem.
 
-Both editions share the same schema with localized seed labels; choose one edition per database. MySQL 8.0 is recommended; CHECK constraints are enforced on 8.0.16+. The script creates no administrator account, and reruns may restore deleted seed permissions or dictionaries. MySQL DDL commits implicitly; inspect completed steps after an error.
+Both editions share the same schema with localized seed labels; choose one edition per database. The database example uses a MySQL 5.7-compatible collation. CHECK constraints are enforced on 8.0.16+; the new workflow uses service validation and 5.7-compatible guards rather than relying on CHECK. Each init source declares 86 CREATE TABLE statements and 22 alert-owned guards; these are not a measured database inventory. Native 5.7.18 acceptance is pending. Existing installations must use the separate reviewed preflight/upgrade/postcheck in the [operator handoff](docs/OFFLINE_DEPLOYMENT.md), never init.sql. The script creates no administrator account, and reruns may restore deleted seed permissions or dictionaries. MySQL DDL commits implicitly; inspect completed steps after an error.
 
 ### 2. Configure environment variables
 
@@ -212,6 +218,7 @@ Vite normally serves `http://localhost:5174` and proxies `/api` to `http://local
 | `OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` | Optional OCR provider | Keep API keys server-side |
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_API_URL` / `DEEPSEEK_API_MODEL` | Optional AI analysis | Review privacy and retention policies first |
 | `CARE_PLAN_ENABLED` | Opt-in collaborative care plans; defaults to `false` | Activate only after migration, acceptance and an authorized deployment decision |
+| `ALERT_WORKFLOW_ENABLED` | Independent measurement follow-up; defaults to `false` | Current production Compose needs the documented user-applied override; migration never activates it |
 | `REPORT_PDF_FONT_PATH` | Optional container/local PDF font path; empty uses installed fonts | Custom host fonts require a read-only container mount and export verification |
 | `DEV_PROXY_TARGET` | Vite development API upstream | Not used by production; production proxies `/api` |
 
@@ -231,7 +238,7 @@ Webhook URLs and bot secrets are sensitive. They are masked in API responses and
 - [demo/sql/demo-data.sql](demo/sql/demo-data.sql) is optional local demo data and must never be used in production.
 - Application startup does not run schema migrations. Apply reviewed database changes separately; see the [operator handoff](docs/OFFLINE_DEPLOYMENT.md).
 - `init.sql` is not an upgrade or reset tool for a populated database. Back up data before any manual database operation.
-- After the first public release, use versioned Flyway or Liquibase migrations for schema upgrades.
+- The current alert workflow supplies a separate dated preflight/upgrade/postcheck. Review and execute it only through the operator handoff; do not use fresh init as an upgrade or assume DDL is atomic.
 
 ## Build
 
@@ -262,6 +269,7 @@ make build
 ## Documentation
 
 - [Platform User Guide](docs/USER_GUIDE.md)
+- [Measurement Follow-up Release Checkpoint](docs/ALERT_WORKFLOW_RELEASE.md)
 - [Family Care Guide](docs/family-care-guide.md)
 - [Everyday Health Workflows](docs/family-health-workflows.md)
 - [Open-source Release Checklist](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md)

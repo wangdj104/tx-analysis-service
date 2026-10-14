@@ -45,6 +45,7 @@ const router = createRouter({
     { path: '/', redirect: '/care' },
     { path: '/care-plans/reports', component: () => import('./views/CareExecutionReportView.vue') },
     { path: '/care', component: () => import('./views/CareCenter.vue') },
+    { path: '/alert-workflows/:id(\\d+)', component: () => import('./views/AlertWorkflowDetailRoute.vue') },
     { path: '/clinical-workbench', component: () => import('./views/ClinicalWorkbench.vue') },
     { path: '/nurse-workspace', component: () => import('./views/NurseWorkspace.vue') },
     { path: '/care-plans/:id(\\d+)', component: () => import('./views/CarePlanDetailRoute.vue') },
@@ -115,7 +116,7 @@ router.beforeEach(async (to, from, next) => {
   if (to.path === '/nurse-workspace' && !roleCodes.includes('nurse')) { next('/monitoring'); return; }
   if (to.path === '/care-journey' && to.query.tab === 'operations' && !roleCodes.includes('doctor') && !isAdmin) { next('/monitoring'); return; }
   if (isLocatorAttempt(to.fullPath) && !canAccessWorkspace(to.fullPath, menuPaths, roleCodes)) { next('/monitoring'); return; }
-  const collaborationPath = isNarrowCareRoute(to.fullPath) || /^\/care-plans\/[1-9]\d*$/.test(to.path) || to.path === '/nurse-workspace';
+  const collaborationPath = /^\/alert-workflows\/[1-9]\d*$/.test(to.path) || isNarrowCareRoute(to.fullPath) || /^\/care-plans\/[1-9]\d*$/.test(to.path) || to.path === '/nurse-workspace';
   const basicCarePath = ['/care','/family-health','/medication','/bp-self-monitor','/medical-record','/settings/notifications','/care-journey','/monitoring'].includes(to.path);
   const allowed = collaborationPath || basicCarePath || isAdmin || medicationLegacyTabAllowed || menuPaths.includes(exactTarget) ||
     (!hasQuery && (menuPaths.includes(to.path) || menuPaths.some(path => path.startsWith(`${to.path}?`))));

@@ -23,6 +23,9 @@ public class FamilyBackupService {
     // 这里只归档列出的家庭记录，账号、授权和协作历史不在其中，不能当作整库备份。
     static final List<String> TABLES=Arrays.asList("patient","patient_clinical","patient_health_target","medication","dialysis_record","medical_record","medical_record_item","medical_record_attachment","dry_weight_monthly","bp_self_monitor_record","bp_pattern_analysis","nutrition_diary","nutrition_assessment","complication_record","ai_analysis_record","health_analysis_automation","alert_rule","alert_record","medication_reminder","medication_log","medication_intake","dialysis_schedule","health_event","care_item","medication_stock","medication_stock_movement","care_intake_action");
 
+    private static final Set<String> WORKFLOW_ALERT_COLUMNS=new HashSet<>(Arrays.asList("workflow_version","workflow_state","workflow_mode","cycle_no","source_revision","metric_key","responsible_user_id","due_at","accepted_by","accepted_at","lock_version","current_handling_event_id","current_feedback_event_id","source_review_required","reassignment_required","classification_json","closed_by","closed_at","closure_reason"));
+    private static final Set<String> WORKFLOW_TABLES=new HashSet<>(Arrays.asList("alert_event","alert_source_identity","alert_source_revision","alert_source_link","alert_evidence","alert_command","measurement_command","alert_notification"));
+
     @Transactional(readOnly=true) public byte[] exportArchive() throws IOException {
         List<Long> pids=new ArrayList<>();
         for(Long patientId:scope.accessiblePatientIds(scope.requireUserId())) {
@@ -32,14 +35,15 @@ public class FamilyBackupService {
         JSONObject root=new JSONObject();root.put("format","family-health-backup");root.put("version",1);root.put("createdAt",LocalDateTime.now().toString());
         JSONObject tables=new JSONObject();root.put("tables",tables);List<String>warnings=new ArrayList<>();root.put("warnings",warnings);
         root.put("includedTables",TABLES);
-        warnings.add(text("This is a limited version-1 family-record archive, not a full platform backup. Consultations, care-journey records, doctor workspaces, collaborative care plans, revisions, actions, receipts, events, evidence, nurse assignments, notification outbox, commands, access grants and system accounts are not included. Only database-stored attachment content is included. Back up the complete database and attachment storage separately to preserve and restore collaboration history.",
-                "此文件为版本1限定家庭记录归档，并非全平台备份。不包含远程问诊、照护全流程、医生工作台、协作计划、版本、行动项、回执、事件、证据、护理分配、通知发件箱、命令、授权和系统账号；附件仅包含已存入数据库的内容。保留及恢复协作历史需另行备份完整数据库和附件存储。"));
+        warnings.add(text("This is a limited version-1 family-record archive, not a full platform backup. Consultations, care-journey records, doctor workspaces, collaborative care plans, measurement follow-up history, source snapshots, revisions, actions, receipts, events, evidence, nurse assignments, notification outbox, commands, access grants and system accounts are not included. Only database-stored attachment content is included. Back up the complete database and attachment storage separately to preserve and restore collaboration history.",
+                "此文件为版本1限定家庭记录归档，并非全平台备份。不包含远程问诊、照护全流程、医生工作台、协作计划、测量随访历史、来源快照、版本、行动项、回执、事件、证据、护理分配、通知发件箱、命令、授权和系统账号；附件仅包含已存入数据库的内容。保留及恢复协作历史需另行备份完整数据库和附件存储。"));
         Set<String>present=presentTables();List<Object> recordIds=new ArrayList<>();
         for(String table:TABLES){if(!present.contains(table))continue;List<Map<String,Object>>rows;
             if(table.equals("medical_record_item")||table.equals("medical_record_attachment"))rows=selectIn(table,"record_id",recordIds);
             else rows=selectIn(table,table.equals("patient")?"id":"patient_id",new ArrayList<Object>(pids));
             if(table.equals("medical_record"))for(Map<String,Object>r:rows)recordIds.add(r.get("id"));
             for(Map<String,Object>r:rows){
+                if(table.equals("alert_record"))r.keySet().removeIf(key->WORKFLOW_ALERT_COLUMNS.contains(key.toLowerCase(Locale.ROOT)));
                 for(Map.Entry<String,Object>cell:r.entrySet()){Object v=cell.getValue();if(v instanceof Timestamp)cell.setValue(((Timestamp)v).toLocalDateTime().toString().replace('T',' '));else if(v instanceof java.sql.Date)cell.setValue(v.toString());else if(v instanceof java.sql.Clob){try{java.sql.Clob text=(java.sql.Clob)v;cell.setValue(text.getSubString(1,(int)text.length()));}catch(java.sql.SQLException e){throw new IOException("NonemethodreadAttachmentcontent",e);}}}
                 if(table.equals("medical_record_attachment")){
                     boolean embedded=r.get("file_content")!=null&&!r.get("file_content").toString().trim().isEmpty();
@@ -53,16 +57,33 @@ public class FamilyBackupService {
         ByteArrayOutputStream out=new ByteArrayOutputStream();try(ZipOutputStream zip=new ZipOutputStream(out)){zip.putNextEntry(new ZipEntry("family-health.json"));zip.write(root.toJSONString().getBytes(StandardCharsets.UTF_8));zip.closeEntry();}return out.toByteArray();
     }
     private Set<String> presentTables(){return jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Set<String>>)connection->{Set<String>names=new HashSet<>();try(java.sql.ResultSet rows=connection.getMetaData().getTables(connection.getCatalog(),null,"%",new String[]{"TABLE"})){while(rows.next()){String name=rows.getString("TABLE_NAME").toLowerCase(java.util.Locale.ROOT);if(TABLES.contains(name))names.add(name);}}return names;});}
-    private List<Map<String,Object>>selectIn(String table,String column,List<Object>ids){if(ids.isEmpty())return new ArrayList<>();return jdbc.queryForList("SELECT * FROM `"+table+"` WHERE `"+column+"` IN ("+String.join(",",Collections.nCopies(ids.size(),"?"))+") ORDER BY id",ids.toArray());}
+    private List<Map<String,Object>>selectIn(String table,String column,List<Object>ids){if(ids.isEmpty())return new ArrayList<>();return jdbc.queryForList("SELECT * FROM `"+table+"` WHERE `"+column+"` IN ("+String.join(",",Collections.nCopies(ids.size(),"?"))+")"+("alert_record".equals(table)?" AND (alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')":"")+" ORDER BY id",ids.toArray());}
 
     public JSONObject readArchive(byte[] bytes) throws IOException {
         try(ZipInputStream zip=new ZipInputStream(new ByteArrayInputStream(bytes))){ZipEntry entry;while((entry=zip.getNextEntry())!=null){if(!"family-health.json".equals(entry.getName()))continue;
             ByteArrayOutputStream out=new ByteArrayOutputStream();byte[]buffer=new byte[8192];int n;while((n=zip.read(buffer))!=-1){if(out.size()+n>200*1024*1024)throw new IllegalArgumentException("decompressafter  backupcopyexceed200MB, Please by Family Membersplitbackupcopy");out.write(buffer,0,n);}
             JSONObject root=JSON.parseObject(new String(out.toByteArray(),StandardCharsets.UTF_8));
             if(!"family-health-backup".equals(root.getString("format"))||root.getIntValue("version")!=1||root.getJSONObject("tables")==null)throw new IllegalArgumentException("backupcopyformat or versionthis not receivesupport");
-            if(root.getJSONObject("tables").getJSONArray("patient")==null)throw new IllegalArgumentException("backupcopymissingFamily Memberrecord");return root;
+            if(root.getJSONObject("tables").getJSONArray("patient")==null)throw new IllegalArgumentException("backupcopymissingFamily Memberrecord");validateWorkflowOmissions(root.getJSONObject("tables"));return root;
         }}throw new IllegalArgumentException("not Yeshas valid familyhealthbackupcopyfile");
     }
+    /** A version-1 archive cannot reconstruct workflow aggregates, history or command identities. */
+    private void validateWorkflowOmissions(JSONObject tables) {
+        for(String table:tables.keySet())if(WORKFLOW_TABLES.contains(table.toLowerCase(Locale.ROOT)))throw new IllegalArgumentException("This archive contains unsupported partial measurement follow-up history.");
+        for(String table:Arrays.asList("alert_record","bp_self_monitor_record")) {
+            JSONArray rows=tables.getJSONArray(table);if(rows==null)continue;
+            for(Object item:rows) {
+                if(!(item instanceof JSONObject))throw new IllegalArgumentException("Invalid clinical archive row.");
+                JSONObject row=(JSONObject)item;
+                for(String key:row.keySet()) {
+                    String column=key.toLowerCase(Locale.ROOT);
+                    if(WORKFLOW_ALERT_COLUMNS.contains(column)||Arrays.asList("source_identity_id","source_status","correction_reason","snapshot_json").contains(column)||("alert_type".equals(column)&&"MEASUREMENT_FOLLOW_UP".equalsIgnoreCase(String.valueOf(row.get(key)).trim())))
+                        throw new IllegalArgumentException("Measurement follow-up rows and metadata cannot be restored from a legacy archive.");
+                }
+            }
+        }
+    }
+
     public Map<String,Object> preview(byte[]bytes)throws IOException {JSONObject root=readArchive(bytes);Map<String,Object>out=new LinkedHashMap<>();Map<String,Integer>counts=new LinkedHashMap<>();for(String table:TABLES){JSONArray rows=root.getJSONObject("tables").getJSONArray(table);if(rows!=null)counts.put(table,rows.size());}out.put("createdAt",root.get("createdAt"));out.put("counts",counts);out.put("warnings",root.get("warnings"));out.put("patients",root.getJSONObject("tables").getJSONArray("patient"));return out;}
 
     @Transactional public Map<String,Object> restore(byte[]bytes)throws IOException {
@@ -107,7 +128,7 @@ public class FamilyBackupService {
             if(d.containsKey("escalationUserId"))d.put("escalationUserId",null);
             jdbc.update("UPDATE care_item SET data_json=? WHERE id=?",d.toJSONString(),ids.get("care_item").get(raw.get("id").toString()));
         }
-        Map<String,Object>out=new LinkedHashMap<>();out.put("counts",counts);out.put("patientIds",ids.getOrDefault("patient",Collections.emptyMap()).values());out.put("message",text("Restored as independent copies. Medication reminders and automated analysis are disabled; verify care plans, configure notification channels and invite caregivers again before enabling them.", "已恢复为独立副本。用药提醒与自动分析均已关闭；请核对照护计划、重新配置通知渠道并邀请照护成员后再启用。"));return out;
+        Map<String,Object>out=new LinkedHashMap<>();out.put("counts",counts);out.put("patientIds",ids.getOrDefault("patient",Collections.emptyMap()).values());out.put("message",text("Restored as independent copies; measurement follow-up history was omitted. Raw readings require explicit adoption for a follow-up. Medication reminders and automated analysis are disabled; verify care plans, configure notification channels and invite caregivers again before enabling them.", "已恢复为独立副本，不包含测量随访历史；原始测量需明确纳入随访。用药提醒与自动分析均已关闭；请核对照护计划、重新配置通知渠道并邀请照护成员后再启用。"));return out;
     }
     private void remap(Map<String,Object>row,String column,String table,Map<String,Map<String,Long>>ids,boolean required){if(!row.containsKey(column)||row.get(column)==null){if(required)throw new IllegalArgumentException("backupcopymissingFamily Memberrelated");return;}Long mapped=ids.getOrDefault(table,Collections.emptyMap()).get(row.get(column).toString());if(mapped==null&&required)throw new IllegalArgumentException("backupcopyin Family Memberrelateddoes not exist");row.put(column,mapped);}
     private void remapJson(JSONObject d,String key,String table,Map<String,Map<String,Long>>ids){if(d.get(key)!=null)d.put(key,ids.getOrDefault(table,Collections.emptyMap()).get(d.get(key).toString()));}

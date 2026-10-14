@@ -29,7 +29,11 @@ import java.util.*;
 @Service
 public class CareJourneyService {
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private org.familyhealthcare.service.alertworkflow.MeasurementAssessmentService measurementAssessment;
     @Autowired private DataScopeHelper scope;
+    @Autowired private org.familyhealthcare.service.alertworkflow.AlertWorkflowProperties alertWorkflowProperties;
+    @Autowired(required=false) private org.familyhealthcare.service.alertworkflow.MeasurementWorkflowBridge measurementWorkflow;
+    @Autowired private org.familyhealthcare.service.alertworkflow.AlertWorkflowAuthorizationService workflowAuthorization;
     @Autowired private NotificationAudienceService audience;
     @Autowired(required=false) private org.familyhealthcare.service.careplan.CarePlanAuthorizationService carePlanAuthorization;
 
@@ -43,11 +47,12 @@ public class CareJourneyService {
 
     /** Exact report-source mode avoids a complete Patient or capped history read. */
     public List<Map<String,Object>> measurements(Long patientId, String metricType, LocalDateTime from, LocalDateTime to, Long measurementId) {
+        if(alertWorkflowProperties.isEnabled())workflowAuthorization.requireRead(userId(),patientId);
         if (measurementId != null) {
             if (patientId == null || patientId <= 0 || measurementId <= 0 || metricType != null || from != null || to != null)
                 throw new IllegalArgumentException("Invalid source selector.");
-            requireMeasurementEvidence(patientId, measurementId);
-        } else requireRead(patientId, "MEASUREMENTS");
+            if(!alertWorkflowProperties.isEnabled())requireMeasurementEvidence(patientId, measurementId);
+        } else if(!alertWorkflowProperties.isEnabled())requireRead(patientId, "MEASUREMENTS");
         StringBuilder sql = new StringBuilder("SELECT m.*,u.real_name AS recorder_name FROM health_measurement m LEFT JOIN sys_user u ON u.id=m.recorded_by WHERE m.patient_id=?");
         List<Object> args = new ArrayList<>(); args.add(patientId);
         if (measurementId != null) { sql.append(" AND m.id=?"); args.add(measurementId); }
@@ -62,7 +67,8 @@ public class CareJourneyService {
                     ? jdbc.queryForList(annotationSql+" ORDER BY a.created_at",row.get("id"))
                     : jdbc.queryForList(annotationSql+" AND a.patient_id=? ORDER BY a.created_at",row.get("id"),patientId));
         }
-        if (measurementId != null) { requireMeasurementEvidence(patientId, measurementId); if (rows.size() != 1) throw new IllegalStateException("Access denied to source record."); }
+        if(alertWorkflowProperties.isEnabled())workflowAuthorization.requireRead(userId(),patientId);
+        if (measurementId != null) { if(!alertWorkflowProperties.isEnabled())requireMeasurementEvidence(patientId, measurementId); if (rows.size() != 1) throw new IllegalStateException("Access denied to source record."); }
         return rows;
     }
     private void requireMeasurementEvidence(long patientId, long id) {
@@ -70,9 +76,15 @@ public class CareJourneyService {
             throw new IllegalStateException("Access denied to source record.");
     }
 
-    @Transactional
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Map<String,Object> saveMeasurement(Map<String,Object> body) {
-        Long patientId = requiredLong(body,"patientId"); requireWrite(patientId,"MEASUREMENTS");
+        Long patientId = requiredLong(body,"patientId");
+        boolean workflowEnabled=alertWorkflowProperties.isEnabled();
+        if(workflowEnabled){org.familyhealthcare.service.alertworkflow.AlertWorkflowContracts.requireId(body.get("patientId"),"patientId");workflowAuthorization.requireRecord(userId(),patientId);}
+        if(!workflowEnabled && (body.containsKey("commandKey")||body.containsKey("expectedVersion")||body.containsKey("occurredAt")))
+            throw new org.familyhealthcare.service.alertworkflow.AlertWorkflowException(503,"FEATURE_DISABLED","Follow-up is disabled. Refresh and reconcile the original save before retrying.");
+        if(workflowEnabled)org.familyhealthcare.service.alertworkflow.AlertWorkflowContracts.fields(body,new HashSet<>(Arrays.asList("patientId","metricType","metricName","valuePrimary","valueSecondary","unit","measuredAt","sourceType","remark","commandKey","expectedVersion","occurredAt")));
+        else requireWrite(patientId,"MEASUREMENTS");
         String type = required(body,"metricType").toUpperCase();
         if (!METRICS.contains(type)) throw new IllegalArgumentException("Unsupported metric type.");
         BigDecimal primary = decimal(body,"valuePrimary",true), secondary = decimal(body,"valueSecondary",false);
@@ -84,10 +96,30 @@ public class CareJourneyService {
         BigDecimal assessedPrimary = "GLUCOSE".equals(type) && "mg/dL".equals(unit)
                 ? primary.divide(new BigDecimal("18"),8,java.math.RoundingMode.HALF_UP) : primary;
         String status = measurementStatus(patientId,type,assessedPrimary,secondary);
-        long id = insert("INSERT INTO health_measurement(patient_id,recorded_by,metric_type,metric_name,value_primary,value_secondary,unit,measured_at,source_type,status,remark) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        java.util.function.Supplier<Long> write=()->insert("INSERT INTO health_measurement(patient_id,recorded_by,metric_type,metric_name,value_primary,value_secondary,unit,measured_at,source_type,status,remark) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 patientId,userId(),type,text(body,"metricName",null),primary,secondary,unit,at,text(body,"sourceType","MANUAL"),status,text(body,"remark",null));
+        if(workflowEnabled)return measurementWorkflow.save(userId(),"HEALTH_MEASUREMENT",patientId,body,write);
+        long id=write.get();
         if (!"NORMAL".equals(status)) audience.notifyCareTeam(patientId,"MEASUREMENT_ALERT","Abnormal health measurement",type+" recorded at "+at+" crossed the configured safety range. Please review and confirm the next action.");
         return one("SELECT * FROM health_measurement WHERE id=?",id);
+    }
+
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public Map<String,Object> updateMeasurement(Long id,Map<String,Object> body) {
+        alertWorkflowProperties.requireEnabled();
+        org.familyhealthcare.service.alertworkflow.AlertWorkflowContracts.fields(body,new HashSet<>(Arrays.asList("patientId","metricType","metricName","valuePrimary","valueSecondary","unit","measuredAt","sourceType","remark","commandKey","expectedVersion","occurredAt","reason")));
+        return measurementWorkflow.correct(userId(),"HEALTH_MEASUREMENT",id,body,false,source->{
+            Map<String,Object> metadata=jdbc.queryForMap("SELECT metric_name,remark FROM health_measurement WHERE id=? AND patient_id=?",id,source.get("patientId"));
+            org.familyhealthcare.service.alertworkflow.AlertWorkflowContracts.requireUnchangedMetadata(body,"metricName",metadata.get("metric_name"));
+            org.familyhealthcare.service.alertworkflow.AlertWorkflowContracts.requireUnchangedMetadata(body,"remark",metadata.get("remark"));
+            String type=required(body,"metricType").toUpperCase();if(!METRICS.contains(type))throw new IllegalArgumentException("Unsupported metric type.");
+            BigDecimal primary=decimal(body,"valuePrimary",true),secondary=decimal(body,"valueSecondary",false);validateMeasurement(type,primary,secondary);
+            String unit=measurementUnit(type,required(body,"unit"));LocalDateTime at=dateTime(body.get("measuredAt"),null);
+            if(at==null)throw new IllegalArgumentException("Measurement time is required.");
+            BigDecimal comparison="GLUCOSE".equals(type)&&"mg/dL".equals(unit)?primary.divide(new BigDecimal("18"),8,java.math.RoundingMode.HALF_UP):primary;
+            String status=measurementStatus(number(source.get("patientId")),type,comparison,secondary);
+            jdbc.update("UPDATE health_measurement SET metric_type=?,value_primary=?,value_secondary=?,unit=?,measured_at=?,source_type=?,status=? WHERE id=? AND patient_id=?",type,primary,secondary,unit,at,text(body,"sourceType",(String)source.get("sourceKind")),status,id,source.get("patientId"));
+        });
     }
 
     public Map<String,Object> annotateMeasurement(Long id, String annotation) {
@@ -105,7 +137,7 @@ public class CareJourneyService {
         return jdbc.queryForList("SELECT g.*,u.username,u.real_name FROM care_access_grant g JOIN sys_user u ON u.id=g.grantee_user_id WHERE g.patient_id=? ORDER BY g.created_at DESC",patientId);
     }
 
-    @Transactional
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Map<String,Object> saveGrant(Map<String,Object> body) {
         Long patientId=requiredLong(body,"patientId"), grantee=requiredLong(body,"granteeUserId"); requireOwner(patientId);
         String role=required(body,"granteeRole").toUpperCase(), level=required(body,"accessLevel").toUpperCase();
@@ -124,16 +156,17 @@ public class CareJourneyService {
                 throw new IllegalArgumentException("NURSE".equals(role)?"Invalid nurse grant fields.":"Invalid access grant.");
         }
         if(carePlanGrant) {
-            try { carePlanAuthorization.requireCarePlanGrant(userId(),patientId); }
+            try { if(carePlanAuthorization==null)throw org.familyhealthcare.service.careplan.CarePlanException.denied();carePlanAuthorization.requireCarePlanGrant(userId(),patientId); }
             catch(org.familyhealthcare.service.careplan.CarePlanException denied) {
                 if(denied.getStatus()==403)throw new IllegalStateException("Access denied to this care-plan grant.");
                 throw new IllegalArgumentException(denied.getMessage());
             }
         }
         if("NURSE".equals(role)) {
-            if(!carePlanGrant)
-                throw new IllegalArgumentException("A nurse grant must explicitly include CARE_PLAN.");
-            try { carePlanAuthorization.requireNurseGrant(userId(),patientId,grantee); }
+            boolean measurements=carePlanModules!=null&&Arrays.stream(carePlanModules.split(",")).anyMatch(m->"MEASUREMENTS".equalsIgnoreCase(m.trim()));
+            if(!carePlanGrant&&!measurements)throw new IllegalArgumentException("A nurse grant must explicitly include MEASUREMENTS or CARE_PLAN.");
+            if(measurements&&!carePlanGrant)workflowAuthorization.requireNurseGrant(userId(),patientId,grantee);
+            try { if(carePlanGrant)carePlanAuthorization.requireNurseGrant(userId(),patientId,grantee); }
             catch(org.familyhealthcare.service.careplan.CarePlanException denied) {
                 if(denied.getStatus()==403)throw new IllegalStateException("Access denied to this care-plan grant.");
                 throw new IllegalArgumentException(denied.getMessage());
@@ -143,6 +176,7 @@ public class CareJourneyService {
         LocalDateTime expires=dateTime(body.get("expiresAt"),null);
         if(expires!=null&&!expires.isAfter(LocalDateTime.now()))throw new IllegalArgumentException("Access expiry must be in the future.");
         jdbc.update("INSERT INTO care_access_grant(patient_id,grantee_user_id,grantee_role,access_level,visible_modules,status,granted_by,expires_at) VALUES(?,?,?,?,?,'ACTIVE',?,?) ON DUPLICATE KEY UPDATE access_level=VALUES(access_level),visible_modules=VALUES(visible_modules),status='ACTIVE',granted_by=VALUES(granted_by),expires_at=VALUES(expires_at)",patientId,grantee,role,level,text(body,"visibleModules",null),userId(),expires);
+        if("NURSE".equals(role)&&!carePlanGrant)workflowAuthorization.requireNurseGrant(userId(),patientId,grantee);
         return one("SELECT * FROM care_access_grant WHERE patient_id=? AND grantee_user_id=? AND grantee_role=?",patientId,grantee,role);
     }
 
@@ -428,7 +462,7 @@ public class CareJourneyService {
         out.put("medication", one("SELECT COUNT(*) total,SUM(CASE WHEN status='TAKEN' THEN 1 ELSE 0 END) taken,ROUND(100.0*SUM(CASE WHEN status='TAKEN' THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0),1) adherence_rate FROM medication_intake WHERE CAST(scheduled_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
         out.put("measurements", one("SELECT COUNT(*) total,SUM(CASE WHEN status='NORMAL' THEN 1 ELSE 0 END) on_target,ROUND(100.0*SUM(CASE WHEN status='NORMAL' THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0),1) target_rate FROM health_measurement WHERE CAST(measured_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
         out.put("appointments", one("SELECT COUNT(*) total,SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END) completed,SUM(CASE WHEN status='CANCELLED' THEN 1 ELSE 0 END) cancelled FROM care_appointment WHERE CAST(start_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
-        out.put("alerts", one("SELECT COUNT(*) total,SUM(CASE WHEN status='RESOLVED' THEN 1 ELSE 0 END) resolved FROM alert_record WHERE CAST(triggered_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
+        out.put("alerts", one("SELECT COUNT(*) total,SUM(CASE WHEN status='RESOLVED' THEN 1 ELSE 0 END) resolved FROM alert_record WHERE (alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP') AND CAST(triggered_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
         return out;
     }
 
@@ -467,7 +501,7 @@ public class CareJourneyService {
     }
     private Long userId(){Long id=CurrentUserUtil.getCurrentUserId();if(id==null)throw new IllegalStateException("Authentication is required.");return id;}
 
-    private String measurementStatus(Long patientId,String type,BigDecimal a,BigDecimal b){Map<String,Object>target=one("SELECT * FROM patient_health_target WHERE patient_id=?",patientId);if("BP".equals(type)){BigDecimal min=decimal(target,"systolic_min",new BigDecimal("90")),max=decimal(target,"systolic_max",new BigDecimal("140")),dmin=decimal(target,"diastolic_min",new BigDecimal("60")),dmax=decimal(target,"diastolic_max",new BigDecimal("90"));return a.compareTo(min)<0||a.compareTo(max)>0||b==null||b.compareTo(dmin)<0||b.compareTo(dmax)>0?"ABNORMAL":"NORMAL";}if("GLUCOSE".equals(type))return a.compareTo(new BigDecimal("3.9"))<0||a.compareTo(new BigDecimal("11.1"))>0?"ABNORMAL":"NORMAL";if("SPO2".equals(type))return a.compareTo(new BigDecimal("92"))<0?"ABNORMAL":"NORMAL";if("HEART_RATE".equals(type))return a.compareTo(new BigDecimal("50"))<0||a.compareTo(new BigDecimal("120"))>0?"ABNORMAL":"NORMAL";if("TEMPERATURE".equals(type))return a.compareTo(new BigDecimal("35"))<0||a.compareTo(new BigDecimal("38"))>0?"ABNORMAL":"NORMAL";if("WEIGHT".equals(type)&&target!=null&&target.get("target_weight")!=null){BigDecimal t=new BigDecimal(target.get("target_weight").toString()),lim=decimal(target,"weight_gain_limit",new BigDecimal("3"));return a.subtract(t).abs().compareTo(lim)>0?"ABNORMAL":"NORMAL";}return "NORMAL";}
+    private String measurementStatus(Long patientId,String type,BigDecimal a,BigDecimal b){return measurementAssessment.legacyJourneyStatus(patientId,type,a,b);}
     private String measurementUnit(String type,String unit) {
         if("CUSTOM".equals(type))return limit(unit,30);
         if("GLUCOSE".equals(type)) {

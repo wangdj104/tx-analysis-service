@@ -115,6 +115,16 @@ Use **Care Plan** for today's tasks, dialysis schedules, personal blood-pressure
 
 无权、FEATURE_DISABLED、REPORT_ACCESS_CHANGED（重新生成）、数据不一致、带明确类别／数值的超限、渲染不可用及超时／网络失败分别处理，普通失败不能当作零结果成功。失败生成不应出现部分成功文件。报告仅是有限复核辅助，不是处方、医学证明、可恢复档案或已验证临床结果；家庭备份格式及既有排除项不变。
 
+### 4.6 测量异常随访
+
+功能独立默认关闭，需由获授权运维先完成验收再启用。可从照护旅程、血压／血糖自测、照护中心、预警、医生或护士工作台进入。先确认当前患者、实际发生时间及明确UTC偏移。保存身份回执与读取当前判定是两步；没有随访链接不等于正常，未知单位或背景明确显示无法判定。
+
+打开事项，选择符合条件的负责人；接手时确认准确账号及截止时间。处理须有可核查凭据，或明确标为自述的联系关系／结果；随后以本人或协助身份反馈，保留实际录入者。个人模式由所有者有原因关闭。临床升级开启新一轮，默认无已选负责人／截止时间，临床截止与关闭决定仅限当前指派医生。缺医生、接手、反馈或有效凭据时保持未完成。护士必须同时有有效指派和明确MEASUREMENTS授权，不因此获得照护计划访问或临床关闭权。
+
+更正／作废需原因并保留历史，关闭后更正也会开启新周期；旧处理／反馈不能自动满足新周期。正常复测不会自动关闭。超时保留原请求重试，判定读取失败可单独重试读取，不必再新增测量。请求及草稿仅在内存，重启后先核对已保存记录。
+
+原始读数／单位、判定、策略、背景及阈值名称可见；API缺少权威比较单位时不展示归一化比较值／阈值数值。渠道接收不等于患者阅读或接手。详见[双语操作说明](../../docs/alert-workflow-ui.md)与[发布限制](ALERT_WORKFLOW_RELEASE.md)；浏览器／移动／焦点及真实HTTP验收仍为NOT_RUN。
+
 ## 5. Medications, prescriptions, reminders, and stock
 
 ### 5.1 Create the medication catalog
@@ -239,7 +249,7 @@ Open **Data Export**, select one patient and a date range, then choose the data 
 
 Open **Family Care → Backup & restore**, preview the export, review missing-attachment warnings, and download the archive. Store it in an encrypted location with appropriate access and retention.
 
-家庭归档格式 1 仅包含预览列出的记录类型，表清单保持不变；不包含问诊／聊天、照护全流程、医生工作台、协作计划、版本、行动项、回执、事件／证据、护理分配、通知发件箱、命令、授权或系统账号。附件仅包含数据库内嵌内容。恢复协作历史需要另行备份完整数据库及附件存储。
+家庭归档格式 1 不包含新测量随访的状态、历史、反馈、凭据快照、来源追踪元数据、命令或发件箱，不能恢复协作历史。它仅包含预览列出的记录类型，表清单保持不变；不包含问诊／聊天、照护全流程、医生工作台、协作计划、版本、行动项、回执、事件／证据、护理分配、通知发件箱、命令、授权或系统账号。附件仅包含数据库内嵌内容。恢复协作历史需要另行备份完整数据库及附件存储。
 
 ### 10.4 Restore as an independent copy
 
@@ -296,3 +306,12 @@ Send a channel test, verify outbound HTTPS access, webhook security settings, ch
 10. Review the audit log and sign out.
 
 Use fictional data for demonstrations. Do not use the public static demo or screenshots for real health information.
+
+### 测量更正及通知情境限制
+
+版本化更正保留省略的原始名称、备注及来源信息；旅程名称／备注、自测来源／外部编号／备注
+目前只读，更换或清空会拒绝，仅原值已为空时可提交 null。读数、支持的测量情境及时间仍可
+说明原因后更正。临床回执来源更正后，即使换一条随访引用，也必须满足当前资格；不会擅自
+重置原计划状态。通知以独立患者情境打开，不更改全局选择；前往复测前需在全局选择器选中
+本页患者。随访时间显示浏览器本地时间及明确偏移，原始无偏移测量时间不变。
+详见[双语更正范围](../../docs/alert-workflow-ui.md)。

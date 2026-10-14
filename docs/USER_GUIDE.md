@@ -115,6 +115,16 @@ Current-actions CSV has one row per current action; period-events CSV has one ro
 
 Treat unauthorized access, FEATURE_DISABLED, REPORT_ACCESS_CHANGED (regenerate with fresh access), inconsistent data, exact limit category/limit, unavailable rendering and timeout/network failure as distinct outcomes. A generic failure is not a successful zero-row report. No partial successful file should appear on a failed generation. These exports are limited review aids, not prescriptions, medical proof, a restorable archive or verified clinical outcomes. Existing family-backup exclusions and format stay unchanged.
 
+### 4.6 Measurement abnormality follow-up
+
+This optional workflow is independently default-off. After an authorized operator completes acceptance and enables it, use the follow-up entries in Care Journey, BP/Glucose Self-monitoring, Care Center, Alerts, Doctor Workspace or Nurse Workspace. Confirm the selected patient, measurement occurrence time and explicit UTC offset. A save receipt and the subsequent assessment read are separate; no follow-up link never means Normal. Unknown units/context remain visibly unclassifiable.
+
+Open the follow-up, select an eligible responsible person, and confirm the exact assignee/deadline when accepting. Record handling plus checkable evidence or an explicitly self-reported contact/outcome; then record SELF or ASSISTED feedback with the actual recorder. The owner can close eligible personal handling. Clinical escalation starts a new cycle, defaults to no selected clinician/deadline, and permits only a current assigned doctor to make the clinical closure/deadline decision. Missing doctor, acceptance, feedback or valid evidence remains visible unfinished work. Nursing requires both current assignment and explicit MEASUREMENTS access; it gives no care-plan access or clinical closure authority.
+
+Reasoned source correction/invalidation preserves history and opens a fresh review cycle, even after closure; prior handling/feedback cannot silently complete it. Normal retests do not auto-close. A timeout locks the original request for exact retry; a failed assessment read can be retried without saving another measurement. Reconcile saved records after restarting because protected drafts/requests are memory-only.
+
+Original values/units, status, policy, context and threshold names are visible. Normalized comparison/threshold numbers are withheld because the API lacks an authoritative comparison-unit field. Delivery status concerns channel acceptance only. See the [detailed bilingual guide](alert-workflow-ui.md) and [release limits](ALERT_WORKFLOW_RELEASE.md). Browser/mobile/focus and live-HTTP acceptance are still NOT_RUN at this checkpoint.
+
 ## 5. Medications, prescriptions, reminders, and stock
 
 ### 5.1 Create the medication catalog
@@ -239,7 +249,7 @@ Care current-actions and period-events CSV use the separate row models, stable c
 
 Open **Family Care → Backup & restore**, preview the export, review missing-attachment warnings, and download the archive. Store it in an encrypted location with appropriate access and retention.
 
-The family archive keeps format version 1 and its existing declared table list. It covers only record types listed in the preview and excludes consultations/chat, care-journey and doctor-workspace records, collaborative care plans, revisions, actions, receipts, events/evidence, nurse assignments, notification outbox, commands, access grants and system accounts. Only database-embedded attachment content is included. Preserve collaboration history with a separate complete database and attachment-storage backup.
+The family archive excludes the new measurement follow-up state/history, feedback, evidence snapshots, source-tracking metadata, commands and outbox; it cannot restore collaboration history. It keeps format version 1 and its existing declared table list. It covers only record types listed in the preview and excludes consultations/chat, care-journey and doctor-workspace records, collaborative care plans, revisions, actions, receipts, events/evidence, nurse assignments, notification outbox, commands, access grants and system accounts. Only database-embedded attachment content is included. Preserve collaboration history with a separate complete database and attachment-storage backup.
 
 ### 10.4 Restore as an independent copy
 
@@ -296,3 +306,19 @@ On a new empty MySQL database, run the complete `init.sql` as described in the [
 10. Review the audit log and sign out.
 
 Use fictional data for demonstrations. Do not use the public static demo or screenshots for real health information.
+
+### Measurement correction limits / 测量更正限制
+
+Versioned correction keeps omitted native labels/notes/provenance unchanged. Journey
+metric name and note, and self-monitor origin/external ID/note, are read-only; a real
+change or explicit clearing is rejected. Existing values, supported measurement context
+and time remain reasonedly correctable. Corrected clinical receipt sources require current
+qualification even when attached to a different follow-up. A new notification opens its
+own patient context without changing your global selection. Workflow timestamps show
+your browser-local time with an explicit offset; naive original measurement times stay
+unchanged. See [the detailed correction contract](alert-workflow-ui.md).
+
+版本化更正保留省略的原始名称、备注及来源信息；旅程名称／备注、自测来源／外部编号／备注
+目前只读，更换或清空会拒绝。读数、支持的测量情境及时间仍可说明原因后更正。临床回执来源
+更正后，即使换一条随访引用，也必须满足当前资格。通知以独立患者情境打开，不更改全局选择；
+随访时间显示浏览器本地时间及明确偏移，原始无偏移测量时间不变。

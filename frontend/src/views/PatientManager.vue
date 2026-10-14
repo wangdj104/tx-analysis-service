@@ -58,7 +58,7 @@
       </div>
     </el-main>
 
-    <el-dialog :model-value="!!nurseAssignmentPatient" @update:model-value="value=>{if(!value)nurseAssignmentPatient=null}" title="Nursing team assignments" width="min(640px,94vw)" destroy-on-close><NurseAssignments v-if="nurseAssignmentPatient" :patient-id="nurseAssignmentPatient.id" /></el-dialog>
+    <el-dialog :model-value="!!nurseAssignmentPatient" @update:model-value="value=>{if(!value)nurseAssignmentPatient=null}" title="Nursing team assignments" width="min(640px,94vw)" destroy-on-close><MeasurementNurseAssignments v-if="nurseAssignmentPatient" :patient-id="nurseAssignmentPatient.id" /><NurseAssignments v-if="nurseAssignmentPatient" :patient-id="nurseAssignmentPatient.id" /></el-dialog>
     <!-- clinicalinformationdialog -->
     <el-dialog v-model="clinicalDialogVisible" title="Patient clinical information" width="min(640px, 94vw)" destroy-on-close>
       <p class="clinical-patient-context">Patient: {{ clinicalPatientName || clinicalPatientId }}</p>
@@ -202,6 +202,8 @@ import { getClinicalByPatient, saveClinical } from '@/api/patientClinical.js';
 import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
 import NurseAssignments from '@/components/care-plan/NurseAssignments.vue';
+import MeasurementNurseAssignments from '@/components/alert-workflow/NurseAssignments.vue';
+import { capabilities as getAlertWorkflowCapabilities } from '@/api/alertWorkflow';
 import { getCarePlanCapabilities } from '@/api/carePlan';
 import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession';
 import { localizeSpecialtyRole } from '@/utils/specialtyRoleLabels';
@@ -219,7 +221,7 @@ const { visibleKeys: patientVisibleCols, isVisible: patientColVisible, resetColu
   useTableColumns('patient-list', PATIENT_COLUMN_DEFS);
 
 const nurseAssignmentPatient=ref(null),nurseAssignmentEnabled=ref(false);
-onMounted(async()=>{const auth=captureAuthSession(),actor=localStorage.getItem('userId');try{const roles=JSON.parse(localStorage.getItem('userRoleCodes')||'[]');if(!roles.includes('admin'))return;const result=await getCarePlanCapabilities({expectedAuth:{...auth,actorId:actor}});if(isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId'))nurseAssignmentEnabled.value=result.data?.enabled===true}catch{nurseAssignmentEnabled.value=false}});
+onMounted(async()=>{const auth=captureAuthSession(),actor=localStorage.getItem('userId');try{const roles=JSON.parse(localStorage.getItem('userRoleCodes')||'[]');if(!roles.includes('admin'))return;const results=await Promise.allSettled([getCarePlanCapabilities({expectedAuth:{...auth,actorId:actor}}),getAlertWorkflowCapabilities(null,{expectedAuth:{...auth,actorId:actor}})]);if(isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId'))nurseAssignmentEnabled.value=results.some(result=>result.status==='fulfilled'&&result.value.data?.enabled===true)}catch{nurseAssignmentEnabled.value=false}});
 const patients = ref([]);
 const showSensitive = ref(false);
 const displayPatients = computed(() => showSensitive.value ? patients.value : patients.value.map(item => ({

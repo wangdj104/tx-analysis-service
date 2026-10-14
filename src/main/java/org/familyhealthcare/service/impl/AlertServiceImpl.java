@@ -49,6 +49,19 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
     @Autowired
     private NotificationAudienceService notificationAudienceService;
 
+    /** This existing-column discriminator also works before the workflow schema upgrade and after disable. */
+    private static final String LEGACY_ONLY="(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')";
+    @Override public AlertRecord getById(java.io.Serializable id) {return baseMapper.selectOne(new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY).eq("id",id));}
+    @Override public boolean save(AlertRecord row) {
+        if("MEASUREMENT_FOLLOW_UP".equalsIgnoreCase(String.valueOf(row.getAlertType()).trim()))throw new IllegalArgumentException("The follow-up marker is server-owned.");
+        return super.save(row);
+    }
+    @Override public boolean updateById(AlertRecord row) {
+        if("MEASUREMENT_FOLLOW_UP".equalsIgnoreCase(String.valueOf(row.getAlertType()).trim()))throw new IllegalArgumentException("Use the follow-up command API.");
+        return baseMapper.update(row,new UpdateWrapper<AlertRecord>().eq("id",row.getId()).apply(LEGACY_ONLY))>0;
+    }
+    @Override public boolean removeById(java.io.Serializable id) {return baseMapper.delete(new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY).eq("id",id))>0;}
+
     // ---- rulemanagement ----
 
     @Override
@@ -113,7 +126,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
     @Override
     public List<AlertRecord> listRecords(Long patientId, String status) {
         Long userId = dataScopeHelper.requireUserId();
-        QueryWrapper<AlertRecord> qw = new QueryWrapper<>();
+        QueryWrapper<AlertRecord> qw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
         if (!CurrentUserUtil.isAdmin()) dataScopeHelper.applyUserScope(qw);
         qw.eq("patient_id", patientId);
         if (status != null && !status.isEmpty()) qw.eq("status", status);
@@ -250,7 +263,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
             if (!breached) continue;
 
             String dedupeKey = "RULE:" + rule.getId() + ":ITEM:" + latestItem.getId();
-            QueryWrapper<AlertRecord> activeQw = new QueryWrapper<>();
+            QueryWrapper<AlertRecord> activeQw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
             activeQw.eq("patient_id", patientId).eq("dedupe_key", dedupeKey)
                     .in("status", "PENDING", "CONFIRMED", "OBSERVING", "CONSULTED", "RECHECKED")
                     .orderByDesc("id").last("limit 1");
@@ -345,26 +358,26 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
         dataScopeHelper.requirePatient(patientId);
 
         AlertStatsVO stats = new AlertStatsVO();
-        QueryWrapper<AlertRecord> totalQw = new QueryWrapper<>();
+        QueryWrapper<AlertRecord> totalQw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
         totalQw.eq("patient_id", patientId);
         stats.setTotalCount(baseMapper.selectCount(totalQw));
 
-        QueryWrapper<AlertRecord> pendingQw = new QueryWrapper<>();
+        QueryWrapper<AlertRecord> pendingQw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
         pendingQw.eq("patient_id", patientId).eq("status", "PENDING");
         stats.setPendingCount(baseMapper.selectCount(pendingQw));
 
-        QueryWrapper<AlertRecord> confirmedQw = new QueryWrapper<>();
+        QueryWrapper<AlertRecord> confirmedQw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
         confirmedQw.eq("patient_id", patientId).eq("status", "CONFIRMED");
         stats.setConfirmedCount(baseMapper.selectCount(confirmedQw));
 
-        QueryWrapper<AlertRecord> resolvedQw = new QueryWrapper<>();
+        QueryWrapper<AlertRecord> resolvedQw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
         resolvedQw.eq("patient_id", patientId).eq("status", "RESOLVED");
         stats.setResolvedCount(baseMapper.selectCount(resolvedQw));
 
         stats.setLevelCounts(baseMapper.countByLevel(patientId));
         stats.setTypeCounts(baseMapper.countByType(patientId));
 
-        QueryWrapper<AlertRecord> recentQw = new QueryWrapper<>();
+        QueryWrapper<AlertRecord> recentQw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
         recentQw.eq("patient_id", patientId).orderByDesc("triggered_at").last("limit 5");
         stats.setRecentAlerts(baseMapper.selectList(recentQw));
 

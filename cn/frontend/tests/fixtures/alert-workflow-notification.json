@@ -1,0 +1,5 @@
+{
+  "alertId": 1,
+  "patientId": 10,
+  "location": "/alert-workflows/1?patientId=10"
+}

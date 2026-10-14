@@ -104,6 +104,7 @@ import { logout, getUserInfo } from '@/api/auth';
 import { normalizeWorkspaceMenus, getFallbackWorkspaceMenus } from '@/utils/workspaceNavigation';
 import { getAuthSessionKey, saveAuthSession, captureAuthSession, isAuthSessionCurrent, clearPermissionCache, savePermissionCache, readPermissionCache } from '@/utils/authSession';
 import { DEFAULT_WORKSPACE_TABS, canAccessWorkspace, resolveWorkspaceEntry, isNarrowCareRoute, parseReportRoute } from '@/utils/workspaceAccess';
+import { capabilities as getAlertWorkflowCapabilities } from '@/api/alertWorkflow';
 import { getCarePlanCapabilities } from '@/api/carePlan';
 import { getPatientNames } from '@/api/patient';
 import { filterSpecialtyMenus, knownSpecialtyPath, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
@@ -119,14 +120,16 @@ const router = useRouter();
 const languageHref = computed(() => route.fullPath || '/');
 const { isMobile } = useMobile();
 
+const alertWorkflowNavigationEnabled=ref(false);
 const carePlanNavigationEnabled=ref(false);let carePlanNavController=null;
-async function refreshCarePlanNavigation(session,actor){carePlanNavController?.abort();const controller=new AbortController();carePlanNavController=controller;carePlanNavigationEnabled.value=false;try{const response=await getCarePlanCapabilities({expectedAuth:{...session,actorId:actor},signal:controller.signal});if(carePlanNavController===controller&&isAuthSessionCurrent(session)&&actor===localStorage.getItem('userId'))carePlanNavigationEnabled.value=response.data?.enabled===true}catch{}}
+async function refreshCarePlanNavigation(session,actor){carePlanNavController?.abort();const controller=new AbortController();carePlanNavController=controller;carePlanNavigationEnabled.value=false;alertWorkflowNavigationEnabled.value=false;const options={expectedAuth:{...session,actorId:actor},signal:controller.signal};const owns=()=>carePlanNavController===controller&&isAuthSessionCurrent(session)&&actor===localStorage.getItem('userId');await Promise.allSettled([getCarePlanCapabilities(options).then(response=>{if(owns())carePlanNavigationEnabled.value=response.data?.enabled===true}),getAlertWorkflowCapabilities(null,options).then(response=>{if(owns())alertWorkflowNavigationEnabled.value=response.data?.enabled===true})])}
+
 const rawNavItems = ref([]);
 const specialtyScope = ref(null);
 const navItems = computed(() => {
-  const filterCollaboration=items=>(items||[]).filter(item=>item.path!=='/nurse-workspace'||carePlanNavigationEnabled.value).map(item=>({...item,children:filterCollaboration(item.children)}));
+  const filterCollaboration=items=>(items||[]).filter(item=>item.path!=='/nurse-workspace'||carePlanNavigationEnabled.value||alertWorkflowNavigationEnabled.value).map(item=>({...item,children:filterCollaboration(item.children)}));
   const filtered = filterCollaboration(filterSpecialtyMenus(rawNavItems.value, specialtyScope.value));
-  if(carePlanNavigationEnabled.value&&userInfo.value.roles?.some(role=>role.roleCode==='nurse')&&!filtered.some(item=>item.path==='/nurse-workspace'))filtered.push({path:'/nurse-workspace',entryPath:'/nurse-workspace',label:'护理跟进',icon:'FirstAidKit',children:[]});
+  if((carePlanNavigationEnabled.value||alertWorkflowNavigationEnabled.value)&&userInfo.value.roles?.some(role=>role.roleCode==='nurse')&&!filtered.some(item=>item.path==='/nurse-workspace'))filtered.push({path:'/nurse-workspace',entryPath:'/nurse-workspace',label:'护理跟进',icon:'FirstAidKit',children:[]});
   return [{ path: '/care', entryPath: '/care', label: '家庭照护', icon: 'House', children: [] }, ...filtered.filter(item => item.path !== '/care')];
 });
 let specialtyEpoch = 0;
@@ -174,7 +177,7 @@ function specialtyChanged() {
 
 function resetNavState() {
   closePatientSwitchToast();
-  carePlanNavController?.abort();carePlanNavigationEnabled.value=false;
+  carePlanNavController?.abort();carePlanNavigationEnabled.value=false;alertWorkflowNavigationEnabled.value=false;
   menuRequestEpoch++;
   patientRequestEpoch++;
   specialtyEpoch++;

@@ -31,8 +31,8 @@
     <el-alert v-if="!patientId" title="Select a family member, or join shared care with an invitation code." :closable="false" type="info"/>
     <el-tabs v-model="tab" class="care-tabs">
       <el-tab-pane label="Today" name="today" :disabled="!patientId">
-        <section v-if="legacyAvailable" class="quick-actions" aria-label="Record health"><el-button class="quick-actions__primary" type="primary" @click="quickVisible=true"><span>Record health<small>Blood pressure or glucose</small></span></el-button><el-button @click="open('SYMPTOM')">Record a symptom</el-button><el-button @click="open('QUESTION')">Add a visit question</el-button><el-button v-if="mode==='FAMILY'" @click="open('HANDOVER')">Leave a family handover</el-button></section>
-        <PlanTaskList :patient-id="patientId" :mode="mode" />
+        <section v-if="legacyAvailable||measurementFlow.state.capabilities?.canAdopt" class="quick-actions" aria-label="Record health"><el-button class="quick-actions__primary" type="primary" @click="openQuick"><span>Record health<small>Blood pressure or glucose</small></span></el-button><el-button v-if="legacyAvailable" @click="open('SYMPTOM')">Record a symptom</el-button><el-button v-if="legacyAvailable" @click="open('QUESTION')">Add a visit question</el-button><el-button v-if="legacyAvailable&&mode==='FAMILY'" @click="open('HANDOVER')">Leave a family handover</el-button></section>
+        <MeasurementWorkflowStatus v-if="!quickVisible" :flow="measurementFlow" source-type="BP_SELF_MONITOR" @saved="quickReplaySaved" /><FollowUpList :patient-id="patientId" /><SourceMeasurementPanel v-if="measurementFlow.state.source||measurementFlow.state.receipt||measurementFlow.state.sourceReadPhase!=='idle'" :flow="measurementFlow" @changed="reload" /><PlanTaskList :patient-id="patientId" :mode="mode" />
         <p v-if="legacyError" data-testid="legacy-care-restricted" role="status">{{legacyError}}</p>
         <template v-if="legacyAvailable">
 
@@ -80,7 +80,7 @@
       <el-tab-pane label="Backup & restore" name="backup"><FamilyBackupPanel @restored="reload"/></el-tab-pane>
     </el-tabs>
     <CareEntryDialog v-if="legacyAvailable" v-model="entryVisible" :kind="entryKind" :row="entryRow" :patient-id="patientId" :patient-name="selectedPatientName" :members="context.members" :medications="context.medications" :reports="context.reports" :appointments="appointments" @saved="reload"/>
-    <el-dialog v-model="quickVisible" title="Record blood pressure / glucose" width="min(460px,94vw)"><p class="care-context">Current patient: <strong>{{ selectedPatientName || '—' }}</strong> · Record ID: {{ patientId }}</p><el-form label-position="top"><el-form-item label="Systolic / diastolic (mmHg)"><el-input-number v-model="quick.systolicBp" :min="1"/> / <el-input-number v-model="quick.diastolicBp" :min="1"/></el-form-item><el-form-item label="Blood glucose (mmol/L, optional)"><el-input-number v-model="quick.bloodGlucose" :min="0.1" :precision="1"/></el-form-item><el-form-item label="Measurement period"><el-select v-model="quick.measurePeriod"><el-option label="Fasting" value="Fasting"/><el-option label="After meal" value="After Meal"/><el-option label="Random" value="Random"/></el-select></el-form-item><el-form-item label="Notes"><el-input v-model="quick.remark"/></el-form-item></el-form><template #footer><el-button :loading="busy" type="primary" @click="submitQuick">Save reading</el-button></template></el-dialog>
+    <el-dialog v-model="quickVisible" :close-on-click-modal="!measurementLocked" :close-on-press-escape="!measurementLocked" :show-close="!measurementLocked" title="Record blood pressure / glucose" width="min(460px,94vw)"><p class="care-context">Current patient: <strong>{{ selectedPatientName || '—' }}</strong> · Record ID: {{ patientId }}</p><MeasurementWorkflowStatus :flow="measurementFlow" source-type="BP_SELF_MONITOR" @saved="quickReplaySaved" /><el-form label-position="top" :disabled="measurementLocked"><el-form-item label="Systolic / diastolic (mmHg)"><el-input-number v-model="quick.systolicBp" :min="1"/> / <el-input-number v-model="quick.diastolicBp" :min="1"/></el-form-item><el-form-item label="Blood glucose (mmol/L, optional)"><el-input-number v-model="quick.bloodGlucose" :min="0.1" :precision="1"/></el-form-item><el-form-item label="Measurement period"><el-select v-model="quick.measurePeriod"><el-option label="Fasting" value="Fasting"/><el-option label="After meal" value="After Meal"/><el-option label="Random" value="Random"/></el-select></el-form-item><el-form-item label="Notes"><el-input v-model="quick.remark"/></el-form-item><template v-if="measurementFlow.state.capabilityPhase==='enabled'"><el-form-item :label="awText('wallTime')"><el-input v-model="quickWall" type="datetime-local" /></el-form-item><el-form-item :label="awText('offset')"><el-input v-model="quickOffset" placeholder="+08:00" /><p>{{awText('offsetHelp')}}</p></el-form-item></template></el-form><template #footer><el-button :loading="busy" :disabled="measurementLocked || !['enabled','disabled'].includes(measurementFlow.state.capabilityPhase) || (measurementFlow.state.capabilityPhase==='enabled'&&!measurementFlow.state.capabilities?.canAdopt)" type="primary" @click="submitQuick">Save reading</el-button></template></el-dialog>
     <el-dialog v-model="intakeVisible" :title="mode==='FAMILY'?'Record a dose for a family member':'Confirm this dose'" width="min(460px,94vw)"><p class="care-context">Current patient: <strong>{{ selectedPatientName || '—' }}</strong> · Record ID: {{ patientId }}</p><p>{{selectedIntake?.drugName}} · {{selectedIntake?.dosage}}</p><el-form label-position="top"><el-form-item label="Actual quantity (optional, in the inventory unit)"><el-input-number v-model="intakeQuantity" :min="0.001" :precision="3"/></el-form-item><p>If left blank, stock is deducted only when the prescribed dose and inventory use the same unit.</p></el-form><template #footer><el-button :loading="busy" type="success" @click="confirmIntake">Confirm taken</el-button></template></el-dialog>
     <el-dialog v-model="stockVisible" title="Set or correct inventory" width="min(480px,94vw)"><p class="care-context">Current patient: <strong>{{ selectedPatientName || '—' }}</strong> · Record ID: {{ patientId }}</p><el-form label-position="top"><el-form-item label="Medication"><el-select v-model="stockForm.medicationId" :disabled="!!stockForm.id"><el-option v-for="m in context.medications||[]" :key="m.id" :value="m.id" :label="m.drugName"/></el-select></el-form-item><el-form-item label="Actual quantity remaining"><el-input-number v-model="stockForm.quantity" :min="0" :precision="3"/></el-form-item><el-form-item label="Unit (must match the prescription)"><el-input v-model="stockForm.unit"/></el-form-item><el-form-item label="Warn when this many days remain"><el-input-number v-model="stockForm.warningDays" :min="0"/></el-form-item><el-form-item label="Or warn below this quantity"><el-input-number v-model="stockForm.warningQuantity" :min="0"/></el-form-item></el-form><template #footer><el-button :loading="busy" type="primary" @click="submitStock">Save</el-button></template></el-dialog>
     <el-dialog v-model="historyVisible" title="Inventory history" width="min(800px,94vw)"><el-table :data="stockHistory"><el-table-column prop="created_at" label="Time"/><el-table-column prop="quantity" label="Quantity change"/><el-table-column prop="reason" label="Reason"/><el-table-column prop="actor_name" label="Recorded by"/></el-table></el-dialog>
@@ -88,17 +88,29 @@
   </section>
 </template>
 <script setup>
+import {AUTH_STORAGE_KEYS} from '@/utils/authSession'
+import {useAlertWorkflowNavigation} from '@/composables/useAlertWorkflowNavigation'
 import {ref,reactive,computed,watch,onMounted,onUnmounted} from 'vue'
 import {ElMessage,ElMessageBox} from 'element-plus'
 import {useCurrentPatient} from '@/composables/useCurrentPatient'
 import * as api from '@/api/care'
 import CareEntryDialog from '@/components/CareEntryDialog.vue'
 import FamilyBackupPanel from '@/components/FamilyBackupPanel.vue'
+import FollowUpList from '@/components/alert-workflow/FollowUpList.vue'
+import SourceMeasurementPanel from '@/components/alert-workflow/SourceMeasurementPanel.vue'
+import MeasurementWorkflowStatus from '@/components/alert-workflow/MeasurementWorkflowStatus.vue'
+import {useAlertWorkflow} from '@/composables/useAlertWorkflow'
+import {measurementInstant,localOffset,currentWall} from '@/utils/alertWorkflowForms'
+import {t as awText} from '@/utils/alertWorkflowCopy'
 import PlanTaskList from '@/components/care-plan/PlanTaskList.vue'
 import {localDateKey} from '@/utils/familyHealth'
 import careMoments from '@/assets/illustrations/care-moments.webp'
 import careMomentsSmall from '@/assets/illustrations/care-moments-small.webp'
-const {currentPatientId:patientId,setPatientList}=useCurrentPatient()
+const {currentPatientId:patientId,setPatientList,patientList}=useCurrentPatient()
+const measurementFlow=useAlertWorkflow(patientId),quickWall=ref(currentWall()),quickOffset=ref(localOffset())
+useAlertWorkflowNavigation(measurementFlow)
+const measurementLocked=computed(()=>['submitting','uncertain'].includes(measurementFlow.state.sourcePhase))
+watch(patientId,()=>{quickWall.value=currentWall();quickOffset.value=localOffset();measurementFlow.loadCapabilities()},{immediate:true})
 function readCarePreference(key, fallback = '') {
   try { return localStorage.getItem(key) || fallback } catch { return fallback }
 }
@@ -146,11 +158,13 @@ function invalidateEditor(kind) {
 watch(quickVisible,()=>invalidateEditor('quick'),{flush:'sync'})
 watch(stockVisible,()=>invalidateEditor('stock'),{flush:'sync'})
 async function reload(){const v=++generation;loading.value=true;legacyError.value='';try{
-  try{const r=await api.getCareHome();if(v!==generation)return;home.value=r.data||[];if(home.value.length)setPatientList(home.value.map(x=>({id:x.patient.id,patientName:x.patient.name})));if(!patientId.value&&home.value.length){patientId.value=home.value[0].patient.id;return}}catch(error){if(v!==generation)return;home.value=[]}
-  if(patientId.value){const id=patientId.value;try{const c=await api.getCareContext(id);if(v!==generation||id!==patientId.value)return;context.value=c.data||{};legacyAvailable.value=true;const p=items.value.find(x=>x.kind==='PROFILE');Object.assign(profile,{escalationUserId:null,escalationMinutes:60},p?.details||{})}catch(error){if(v!==generation||id!==patientId.value)return;context.value={};legacyAvailable.value=false;entryVisible.value=false;entryRow.value=null;quickVisible.value=false;resetQuick();legacyError.value=Number(error?.response?.status||error?.code)===403?'Other care modules are restricted. Doctor plan tasks remain available independently.':'Other care modules could not be loaded. Doctor plan tasks load independently.'}}
+  try{const r=await api.getCareHome();if(v!==generation)return;home.value=r.data||[];if(home.value.length&&!patientList.value.length)setPatientList(home.value.map(x=>({id:x.patient.id,patientName:x.patient.name})));if(!patientId.value&&home.value.length){patientId.value=home.value[0].patient.id;return}}catch(error){if(v!==generation)return;home.value=[]}
+  if(patientId.value){const id=patientId.value;try{const c=await api.getCareContext(id);if(v!==generation||id!==patientId.value)return;context.value=c.data||{};legacyAvailable.value=true;const p=items.value.find(x=>x.kind==='PROFILE');Object.assign(profile,{escalationUserId:null,escalationMinutes:60},p?.details||{})}catch(error){if(v!==generation||id!==patientId.value)return;context.value={};legacyAvailable.value=false;entryVisible.value=false;entryRow.value=null;if(measurementFlow.state.capabilityPhase!=='enabled'){quickVisible.value=false;resetQuick()}legacyError.value=Number(error?.response?.status||error?.code)===403?'Other care modules are restricted. Doctor plan tasks remain available independently.':'Other care modules could not be loaded. Doctor plan tasks load independently.'}}
 }finally{if(v===generation)loading.value=false}}
 
 function selectCarePatient(id){const event=new Event('care-plan-before-context-change',{cancelable:true});window.dispatchEvent(event);if(!event.defaultPrevented)patientId.value=id}
+function openQuick(){if(!measurementLocked.value){quickWall.value=currentWall();quickOffset.value=localOffset()}quickVisible.value=true}
+async function quickReplaySaved(){resetQuick();quickVisible.value=false;await reload()}
 function resetQuick() {
   Object.assign(quick, { systolicBp: undefined, diastolicBp: undefined, bloodGlucose: undefined, remark: '' })
 }
@@ -165,8 +179,9 @@ watch(patientId, () => {
   reload()
 }, { flush: 'sync' })
 function clearLegacy(){generation++;patientEpoch++;historyRequest++;inviteRequest++;invalidateEditor('quick');invalidateEditor('stock');home.value=[];context.value={};legacyAvailable.value=false;legacyError.value='';loading.value=false;entryVisible.value=false;entryRow.value=null;quickVisible.value=false;intakeVisible.value=false;selectedIntake.value=null;stockVisible.value=false;historyVisible.value=false;stockHistory.value=[];inviteCode.value='';resetQuick();Object.keys(stockForm).forEach(key=>delete stockForm[key])}
-onMounted(()=>{window.addEventListener('auth-session-cleared',clearLegacy);reload();timer=setInterval(()=>{if(!busy.value&&!entryVisible.value&&!stockVisible.value&&!quickVisible.value&&!intakeVisible.value&&tab.value==='today')reload()},60000)})
-onUnmounted(()=>{window.removeEventListener('auth-session-cleared',clearLegacy);disposed=true;generation++;patientEpoch++;historyRequest++;inviteRequest++;invalidateEditor('quick');invalidateEditor('stock');clearInterval(timer)})
+function measurementAuthStorage(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))clearLegacy()}
+onMounted(()=>{window.addEventListener('storage',measurementAuthStorage);window.addEventListener('auth-session-cleared',clearLegacy);reload();timer=setInterval(()=>{if(!busy.value&&!entryVisible.value&&!stockVisible.value&&!quickVisible.value&&!intakeVisible.value&&tab.value==='today')reload()},60000)})
+onUnmounted(()=>{window.removeEventListener('storage',measurementAuthStorage);window.removeEventListener('auth-session-cleared',clearLegacy);disposed=true;generation++;patientEpoch++;historyRequest++;inviteRequest++;invalidateEditor('quick');invalidateEditor('stock');clearInterval(timer)})
 async function perform(operation){if(busy.value)return;busy.value=true;try{await operation();ElMessage.success('Saved successfully.');await reload()}finally{busy.value=false}}
 function open(kind,row){if(!patientId.value)return;entryKind.value=kind;entryRow.value=row||null;entryVisible.value=true}
 function changeOrder(row,action){const data=JSON.parse(JSON.stringify(row));delete data.id;data.details.action=action;data.details.startDate=localDateKey();data.details.endDate=null;data.title=`${drugName(data.details.medicationId)}${action==='STOP'?'stop medication':'medication adjustment'}`;open('ORDER',data)}
@@ -189,11 +204,10 @@ async function saveEditor(kind, form, save, finish) {
   finally{if(editorOperation===operation){editorOperation=null;busy.value=false}}
 }
 async function submitQuick() {
-  await saveEditor('quick',quick,data=>api.quickVitals(data),data=>{
-    try{localStorage.setItem('care-measure-period',data.measurePeriod)}catch{/* The reading is saved even when this preference cannot be remembered. */}
-    resetQuick()
-    quickVisible.value=false
-  })
+  if(busy.value||measurementLocked.value)return
+  if(measurementFlow.state.capabilityPhase==='disabled'){await saveEditor('quick',quick,data=>api.quickVitals(data),()=>{resetQuick();quickVisible.value=false});return}
+  if(measurementFlow.state.capabilityPhase!=='enabled'){ElMessage.warning(awText('capabilityUnknown'));return}
+  try{const data={...quick,measureType:quick.bloodGlucose?'BP_BG':'BP',bgUnit:'mmol/L',recordDate:quickWall.value.slice(0,10),recordTime:quickWall.value.slice(11),occurredAt:measurementInstant(quickWall.value,quickOffset.value)};const result=await measurementFlow.saveSource('BP_SELF_MONITOR',data);if(result.status==='succeeded'){ElMessage.success(awText('saved'));resetQuick();quickVisible.value=false;await reload()}}catch{ElMessage.error(awText('inputInvalid'))}
 }
 function openIntake(i){selectedIntake.value=i;intakeQuantity.value=undefined;intakeVisible.value=true}
 async function confirmIntake(){await intakeAction(selectedIntake.value,'TAKEN','',intakeQuantity.value);intakeVisible.value=false}
