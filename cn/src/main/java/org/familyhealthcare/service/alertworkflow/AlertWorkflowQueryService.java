@@ -17,10 +17,10 @@ public class AlertWorkflowQueryService {
     public AlertWorkflowQueryService(JdbcTemplate jdbc,AlertWorkflowRepository repo,AlertWorkflowAuthorizationService auth,AlertWorkflowProperties properties,AlertWorkflowEvidenceService evidence){this.jdbc=jdbc;this.repo=repo;this.auth=auth;this.properties=properties;this.evidence=evidence;}
     public Map<String,Object> detail(long actor,long alertId) {
         Map<String,Object> row=repo.readAlert(actor,alertId);long patient=id(row.get("patientId"));Map<String,Object> source=repo.readSource(actor,patient,(String)row.get("sourceType"),id(row.get("sourceId")));
-        Map<String,Object> result=project(actor,row);result.put("source",source);if(restrictedHistory(actor,patient,alertId)){result.put("closureReason",null);result.put("restricted",true);}
-        List<Map<String,Object>> refs=new ArrayList<>();for(Map<String,Object> ref:evidence.dependencies(alertId)) {
+        AlertWorkflowEvidenceService.Checks checks=evidence.checks(actor,patient,evidence.dependencies(alertId));Map<String,Object> result=project(actor,row,checks);result.put("source",source);if(restrictedHistory(actor,patient,alertId)){result.put("closureReason",null);result.put("restricted",true);}
+        List<Map<String,Object>> refs=new ArrayList<>();for(Map<String,Object> ref:checks.references) {
             if(!evidence.readable(actor,patient,ref,false))refs.add(map("id",ref.get("id"),"restricted",true,"dependencyState","REFERENCE_CHANGED","canResolve",evidence.canResolve(actor,patient,(String)row.get("workflowMode"),ref)));
-            else {Map<String,Object> clean=new LinkedHashMap<>(ref);clean.put("restricted",false);clean.put("canResolve",evidence.canResolve(actor,patient,(String)row.get("workflowMode"),ref));if(!evidence.valid(actor,patient,ref))clean.put("dependencyState","REFERENCE_CHANGED");refs.add(clean);}
+            else {Map<String,Object> clean=new LinkedHashMap<>(ref);clean.put("restricted",false);clean.put("canResolve",evidence.canResolve(actor,patient,(String)row.get("workflowMode"),ref));if("MEDICAL_RECORD".equals(ref.get("sourceType")))clean.put("sourceStatus",checks.medical.get(id(ref.get("id"))));if(!evidence.valid(actor,patient,ref,checks))clean.put("dependencyState","REFERENCE_CHANGED");refs.add(clean);}
         }
         result.put("evidence",refs);result.put("deliveries",jdbc.query("SELECT n.id,n.status,n.attempt_count,n.last_result,n.delivered_at FROM alert_notification n JOIN alert_event e ON e.id=n.event_id WHERE e.alert_id=? AND n.recipient_user_id=? ORDER BY n.id",(rs,i)->map("id",rs.getLong(1),"status",rs.getString(2),"attemptCount",rs.getInt(3),"lastResult",AlertWorkflowNotificationWorker.safeResult(rs.getString(4)),"deliveredAt",time(rs,"delivered_at")),alertId,actor));
         auth.requireRead(actor,patient);repo.readSource(actor,patient,(String)row.get("sourceType"),id(row.get("sourceId")));return result;
@@ -37,21 +37,28 @@ public class AlertWorkflowQueryService {
         else if(Arrays.asList("TODAY","ASSIGNED_TO_ME","BLOCKED").contains(queue))predicate=" AND workflow_state NOT IN ('CLOSED','CANCELLED')";
         if("ASSIGNED_TO_ME".equals(queue)){predicate+=" AND responsible_user_id=?";args.add(actor);}
         List<Long> ids=jdbc.queryForList("SELECT id FROM alert_record WHERE patient_id=? AND workflow_version=1 AND id>?"+predicate+" ORDER BY id LIMIT 101",Long.class,args.toArray());
-        int consumed=0;
+        int consumed=0;List<Map<String,Object>> candidates=new ArrayList<>();List<Integer> positions=new ArrayList<>();List<List<Map<String,Object>>> groups=new ArrayList<>();
+        AlertWorkflowEvidenceService.ReadBudget budget=new AlertWorkflowEvidenceService.ReadBudget();
+        // 保留100候选公平窗口；只在完整依赖图边界停页，未消费的候选留给游标。
         for(long alert:ids) {
-            if(consumed==100||items.size()==limit)break;
-            consumed++;scanned=alert;
-            try {Map<String,Object> row=repo.readAlert(actor,alert);repo.readSource(actor,patient,(String)row.get("sourceType"),id(row.get("sourceId")));Map<String,Object> clean=project(actor,row);if(matches(actor,queue,clean))items.add(clean);}
-            catch(AlertWorkflowException denied){if(denied.getStatus()!=403)throw denied;}
+            if(consumed==100||!"BLOCKED".equals(queue)&&candidates.size()==limit)break;
+            try {Map<String,Object> row=repo.readAlert(actor,alert);repo.readSource(actor,patient,(String)row.get("sourceType"),id(row.get("sourceId")));List<Map<String,Object>> refs=evidence.nextReferences(alert,budget);if(refs==null)break;consumed++;scanned=alert;candidates.add(row);positions.add(consumed);groups.add(refs);}
+            catch(AlertWorkflowException denied){if(denied.getStatus()!=403)throw denied;consumed++;scanned=alert;}
         }
+        List<AlertWorkflowEvidenceService.Checks> checks=evidence.checksForGroups(actor,patient,groups);
+        for(int i=0;i<candidates.size();i++){Map<String,Object> clean=project(actor,candidates.get(i),checks.get(i));if(matches(actor,queue,clean))items.add(clean);if(items.size()==limit){consumed=positions.get(i);scanned=id(candidates.get(i).get("id"));break;}}
         String next=consumed<ids.size()?encode(scope,scanned):null;auth.requireRead(actor,patient);return map("items",items,"nextCursor",next,"patient",map("id",patient));
     }
     public Map<String,Object> events(long actor,long alertId,String cursor,int limit) {
         limit(limit);Map<String,Object> alert=repo.readAlert(actor,alertId);long patient=id(alert.get("patientId"));repo.readSource(actor,patient,(String)alert.get("sourceType"),id(alert.get("sourceId")));
         String scope="events:"+actor+":"+patient+":"+alertId;long after=cursor(cursor,scope);List<Map<String,Object>> items=repo.events(alertId,after,limit);
         boolean restrictedHistory=restrictedHistory(actor,patient,alertId);
+        Map<Long,List<Map<String,Object>>> eventRefs=new LinkedHashMap<>();List<Long> eventIds=new ArrayList<>();
+        for(Map<String,Object> event:items){long eventId=id(event.get("id"));eventIds.add(eventId);eventRefs.put(eventId,new ArrayList<>());}
+        List<Map<String,Object>> allRefs=evidence.eventReferences(eventIds);for(Map<String,Object> ref:allRefs)eventRefs.get(id(ref.get("eventId"))).add(ref);
+        AlertWorkflowEvidenceService.Checks checks=evidence.checks(actor,patient,allRefs);
         for(Map<String,Object> event:items) {
-            List<Map<String,Object>> refs=evidence.sanitized(actor,patient,id(event.get("id")));boolean restricted=restrictedHistory;for(Map<String,Object> ref:refs)if(Boolean.TRUE.equals(ref.get("restricted")))restricted=true;
+            List<Map<String,Object>> refs=evidence.sanitized(actor,patient,eventRefs.get(id(event.get("id"))),checks);boolean restricted=restrictedHistory;for(Map<String,Object> ref:refs)if(Boolean.TRUE.equals(ref.get("restricted")))restricted=true;
             Map<String,Object> payload=event.get("payload") instanceof Map?cast(event.get("payload")):Collections.emptyMap();
             if(payload.get("previousReference") instanceof Map&&!evidence.readable(actor,patient,cast(payload.get("previousReference")),false))restricted=true;
             Map<String,Object> safe=new LinkedHashMap<>(payload);safe.remove("evidence");safe.remove("replacement");safe.remove("previousReference");
@@ -62,7 +69,7 @@ public class AlertWorkflowQueryService {
     }
     public List<Map<String,Object>> assignees(long actor,long patient,String mode){return auth.eligibleAssignees(actor,patient,mode);}
     public Map<String,Object> capabilities(long actor,long patient){auth.requireRead(actor,patient);boolean owner=can(()->auth.requireOwner(actor,patient)),doctor=can(()->auth.requireClinical(actor,patient));return map("enabled",true,"patientId",patient,"canAdopt",can(()->auth.requireRecord(actor,patient)),"canAssignPersonal",owner,"canRequestClinical",owner||doctor,"canSetClinicalDeadline",doctor,"canGrantMeasurementsToAssignedNurse",owner,"queues",new TreeSet<>(QUEUES));}
-    private Map<String,Object> project(long actor,Map<String,Object> row) {
+    private Map<String,Object> project(long actor,Map<String,Object> row,AlertWorkflowEvidenceService.Checks checks) {
         long patient=id(row.get("patientId"));boolean owner=can(()->auth.requireOwner(actor,patient)),doctor=can(()->auth.requireClinical(actor,patient)),record=can(()->auth.requireRecord(actor,patient));
         boolean clinical="CLINICAL".equals(row.get("workflowMode")),terminal=Arrays.asList("CLOSED","CANCELLED").contains(row.get("workflowState"));
         boolean responsible=Objects.equals(row.get("responsibleUserId"),actor)&&record&&(!clinical||doctor||can(()->auth.requireNursing(actor,patient)));
@@ -71,14 +78,14 @@ public class AlertWorkflowQueryService {
         else {long assignee=id(row.get("responsibleUserId"));if(Boolean.TRUE.equals(row.get("reassignmentRequired"))||!can(()->auth.requireRecord(assignee,patient))||clinical&&!(can(()->auth.requireClinical(assignee,patient))||can(()->auth.requireNursing(assignee,patient))))blockers.add("REASSIGNMENT_REQUIRED");}
         if(Boolean.TRUE.equals(row.get("sourceReviewRequired")))blockers.add("SOURCE_CHANGED");
         if(row.get("dueAt")!=null&&!terminal&&Instant.parse((String)row.get("dueAt")).isBefore(properties.now()))blockers.add("OVERDUE");
-        for(Map<String,Object> ref:evidence.dependencies(id(row.get("id"))))if(!evidence.valid(actor,patient,ref)){blockers.add("REFERENCE_CHANGED");break;}
+        for(Map<String,Object> ref:checks.references)if(!evidence.valid(actor,patient,ref,checks)){blockers.add("REFERENCE_CHANGED");break;}
         if(!terminal) {
             if(owner||clinical&&doctor)actions.add("ASSIGN");if(owner||doctor)actions.add("ESCALATE");
             if("OPEN".equals(state)&&responsible){actions.add("REJECT_ASSIGNMENT");if(!blockers.contains("SOURCE_CHANGED")&&!blockers.contains("REASSIGNMENT_REQUIRED"))actions.add("ACCEPT");}
             if(Arrays.asList("ACCEPTED","IN_PROGRESS").contains(state)&&responsible&&!blockers.contains("SOURCE_CHANGED")&&!blockers.contains("REASSIGNMENT_REQUIRED")){actions.add("FOLLOW_UP");actions.add("SUBMIT");}
             if("WAITING_FEEDBACK".equals(state)&&record&&!blockers.contains("SOURCE_CHANGED")&&!blockers.contains("REASSIGNMENT_REQUIRED"))actions.add("FEEDBACK");
-            if(reviewer){actions.add("CANCEL");if("READY_FOR_REVIEW".equals(state)){actions.add("RETURN");if(!blockers.contains("SOURCE_CHANGED")&&!blockers.contains("REFERENCE_CHANGED")&&!blockers.contains("REASSIGNMENT_REQUIRED")&&row.get("acceptedBy")!=null&&row.get("currentFeedbackEventId")!=null&&can(()->evidence.requireComplete(actor,row)))actions.add("CLOSE");}if(Boolean.TRUE.equals(row.get("sourceReviewRequired")))actions.add("REVIEW_SOURCE_CHANGE");}
-            for(Map<String,Object> ref:evidence.dependencies(id(row.get("id"))))if(evidence.canResolve(actor,patient,(String)row.get("workflowMode"),ref)){actions.add("RESOLVE_REFERENCE_CHANGE");break;}
+            if(reviewer){actions.add("CANCEL");if("READY_FOR_REVIEW".equals(state)){actions.add("RETURN");if(!blockers.contains("SOURCE_CHANGED")&&!blockers.contains("REFERENCE_CHANGED")&&!blockers.contains("REASSIGNMENT_REQUIRED")&&row.get("acceptedBy")!=null&&row.get("currentFeedbackEventId")!=null&&can(()->evidence.requireComplete(actor,row,checks)))actions.add("CLOSE");}if(Boolean.TRUE.equals(row.get("sourceReviewRequired")))actions.add("REVIEW_SOURCE_CHANGE");}
+            for(Map<String,Object> ref:checks.references)if(evidence.canResolve(actor,patient,(String)row.get("workflowMode"),ref)){actions.add("RESOLVE_REFERENCE_CHANGE");break;}
         }else if(reviewer)actions.add("REOPEN");
         Map<String,Object> clean=new LinkedHashMap<>(row);clean.remove("legacyStatus");clean.put("alertId",row.get("id"));clean.put("version",row.get("lockVersion"));clean.put("state",state);clean.put("mode",row.get("workflowMode"));clean.put("patient",map("id",patient));clean.put("blockers",blockers);clean.put("allowedActions",actions);
         clean.put("permissions",map("canRecord",record,"canClosePersonal",owner,"canCloseClinical",doctor,"canSetDeadline",reviewer,"canDeclareSelf",owner));boolean restricted=restrictedHistory(actor,patient,id(row.get("id")));clean.put("restricted",restricted);if(restricted)clean.put("closureReason",null);clean.put("closureKind",clinical?"CLINICAL_REVIEW":"PERSONAL_HANDLING_RECORDED");return clean;

@@ -64,6 +64,12 @@ export function useCurrentPatient() {
     if (!selectedExists) currentPatientId.value = patientList.value[0].id;
   }
 
+  // 跨标签会话变更只清本页内存，不能删掉另一标签刚选好的患者。
+  function resetLocalPatientContext() {
+    patientId.value = null;
+    patientList.value = [];
+  }
+
   function clearCurrentPatient() {
     currentPatientId.value = null;
   }
@@ -74,7 +80,8 @@ export function useCurrentPatient() {
     currentPatientName,
     patientList,
     setPatientList,
-    clearCurrentPatient
+    clearCurrentPatient,
+    resetLocalPatientContext
   };
 }
 

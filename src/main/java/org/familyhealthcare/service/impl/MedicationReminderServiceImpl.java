@@ -27,6 +27,9 @@ import java.util.List;
 @Service
 public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminderMapper, MedicationReminder> implements MedicationReminderService {
 
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard tracking;
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackedReminderAdapter tracked;
+
     private static final Logger log = LoggerFactory.getLogger(MedicationReminderServiceImpl.class);
 
     @Autowired
@@ -54,7 +57,9 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
         qw.eq("patient_id", patientId).orderByAsc("remind_time");
         List<MedicationReminder> list = baseMapper.selectList(qw);
         // populateMedicationinformation
+        boolean modern=tracking.storageAvailable();
         for (MedicationReminder reminder : list) {
+            if(modern)tracking.decorateReminder(reminder);
             if (reminder.getMedicationId() != null) {
                 Medication med = medicationMapper.selectById(reminder.getMedicationId());
                 reminder.setMedication(med);
@@ -64,12 +69,14 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public boolean saveOrUpdateReminder(MedicationReminder record) {
         Long userId = dataScopeHelper.requireUserId();
         if (record.getPatientId() == null) {
             throw new IllegalStateException("Select a patient");
         }
         dataScopeHelper.requirePatient(record.getPatientId());
+        tracking.requireLegacyReminderWriteAllowed(userId,record.getPatientId(),record.getMedicationId(),record.getId());
         Medication medication = medicationMapper.selectById(record.getMedicationId());
         if (medication == null || !record.getPatientId().equals(medication.getPatientId()))
             throw new IllegalArgumentException("SelectcurrentFamily Member Medication");
@@ -89,31 +96,35 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
             if (!record.getPatientId().equals(existing.getPatientId())) throw new IllegalArgumentException("cannotwill Remindermoveto OtherFamily Member");
             record.setUserId(existing.getUserId());
             record.setLastTriggerAt(existing.getLastTriggerAt());
-            return updateById(record);
+            boolean changed=updateById(record);if(changed)tracking.reminderInputsChanged(userId,record.getPatientId(),record.getMedicationId());return changed;
         } else {
-            return save(record);
+            boolean changed=save(record);if(changed)tracking.reminderInputsChanged(userId,record.getPatientId(),record.getMedicationId());return changed;
         }
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public boolean toggleEnabled(Long id) {
         MedicationReminder existing = getById(id);
         if (existing == null) {
             return false;
         }
-        dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
+        tracking.requireLegacyReminderWriteAllowed(dataScopeHelper.requireUserId(),existing.getPatientId(),existing.getMedicationId(),id);
+        existing=getById(id);dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
         existing.setEnabled(existing.getEnabled() != null && existing.getEnabled() == 1 ? 0 : 1);
-        return updateById(existing);
+        boolean changed=updateById(existing);if(changed)tracking.reminderInputsChanged(dataScopeHelper.requireUserId(),existing.getPatientId(),existing.getMedicationId());return changed;
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public boolean deleteOwned(Long id) {
         MedicationReminder existing = getById(id);
         if (existing == null) {
             return false;
         }
         dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
-        return removeById(id);
+        tracking.requireLegacyReminderWriteAllowed(dataScopeHelper.requireUserId(),existing.getPatientId(),existing.getMedicationId(),id);
+        boolean changed=removeById(id);if(changed)tracking.reminderInputsChanged(dataScopeHelper.requireUserId(),existing.getPatientId(),existing.getMedicationId());return changed;
     }
 
     @Autowired private org.familyhealthcare.service.NotificationDeliveryService delivery;
@@ -130,7 +141,10 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
 
     @Override
     public synchronized void ensureDailyTasks(Long patientId, java.time.LocalDate date) {
+        if(patientId!=null)tracked.ensureDailyTasks(patientId,date);
+        boolean modern=tracking.storageAvailable();
         QueryWrapper<MedicationReminder> query = new QueryWrapper<>();
+        if(modern)query.eq("workflow_version",0).isNull("execution_id");
         if (patientId != null) query.eq("patient_id", patientId);
         List<MedicationReminder> reminders = baseMapper.selectList(query);
         java.util.Map<Long, MedicationReminder> valid = new java.util.HashMap<>();
@@ -154,8 +168,7 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
                 String previousStatus = existing.getStatus();
                 existing.setMedicationId(reminder.getMedicationId()); existing.setDosage(reminder.getDosage());
                 if ("CANCELLED".equals(existing.getStatus())) { existing.setStatus("PENDING"); existing.setReason(""); }
-                medicationIntakeMapper.update(null, new UpdateWrapper<MedicationIntake>()
-                        .eq("id", existing.getId()).eq("status", previousStatus)
+                updateLegacyIntake(existing, previousStatus, new UpdateWrapper<MedicationIntake>()
                         .set("medication_id", existing.getMedicationId()).set("dosage", existing.getDosage())
                         .set("status", existing.getStatus()).set("reason", existing.getReason()));
             }
@@ -163,6 +176,7 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
         QueryWrapper<MedicationIntake> q = new QueryWrapper<MedicationIntake>()
                 .ge("scheduled_at", date.atStartOfDay()).lt("scheduled_at", date.plusDays(1).atStartOfDay())
                 .in("status", "PENDING", "SNOOZED", "MISSED");
+        if(modern)q.eq("workflow_version",0).isNull("execution_id");
         if (patientId != null) q.eq("patient_id", patientId);
         for (MedicationIntake intake : medicationIntakeMapper.selectList(q)) {
             String previousStatus = intake.getStatus();
@@ -172,18 +186,19 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
                     && intake.getScheduledAt().toLocalTime().equals(LocalTime.parse(reminder.getRemindTime()));
             if (!unchanged) { intake.setStatus("CANCELLED"); intake.setReason("The reminder or medication was disabled, deleted, or changed"); }
             else intake.setDosage(reminder.getDosage());
-            medicationIntakeMapper.update(null, new UpdateWrapper<MedicationIntake>()
-                    .eq("id", intake.getId()).eq("status", previousStatus)
+            updateLegacyIntake(intake, previousStatus, new UpdateWrapper<MedicationIntake>()
                     .set("status", intake.getStatus()).set("reason", intake.getReason()).set("dosage", intake.getDosage()));
         }
     }
 
     @Override
     public synchronized void checkAndTriggerReminders() {
+        java.time.Instant utcNow=java.time.Instant.now();tracked.materializeDue(utcNow);tracked.processDueIntakes(utcNow);
         LocalDateTime now = LocalDateTime.now();
         ensureDailyTasks(null, now.toLocalDate());
-        List<MedicationIntake> tasks = medicationIntakeMapper.selectList(new QueryWrapper<MedicationIntake>()
-                .in("status", "PENDING", "SNOOZED", "MISSED").le("scheduled_at", now));
+        QueryWrapper<MedicationIntake> dueQuery=new QueryWrapper<MedicationIntake>().in("status", "PENDING", "SNOOZED", "MISSED").le("scheduled_at", now);
+        if(tracking.storageAvailable())dueQuery.eq("workflow_version",0).isNull("execution_id");
+        List<MedicationIntake> tasks = medicationIntakeMapper.selectList(dueQuery);
         for (MedicationIntake intake : tasks) {
             try {
                 String previousStatus = intake.getStatus();
@@ -197,6 +212,7 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
                 boolean notify = snoozed || reminder.getLastTriggerAt() == null || reminder.getLastTriggerAt().isBefore(intake.getScheduledAt());
                 if (notify) {
                     Medication med = medicationMapper.selectById(intake.getMedicationId());
+                    if (!tracking.admitLegacyIntakeNotification(intake,previousStatus)) continue;
                     if (!delivery.notifyUser(intake.getUserId(), "MEDICATION_REMINDER", "Medication Reminders", med.getDrugName() + " · "
                             + intake.getScheduledAt() + " · " + reminderDose(intake))) {
                         if (!snoozed && due.isBefore(now.minusMinutes(60))) {
@@ -204,7 +220,7 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
                         }
                         continue;
                     }
-                    reminder.setLastTriggerAt(now); baseMapper.updateById(reminder);
+                    tracking.mutateLegacyIntake(intake,previousStatus,()->{UpdateWrapper<MedicationReminder> marker=new UpdateWrapper<MedicationReminder>().eq("id",reminder.getId()).eq("patient_id",intake.getPatientId()).eq("medication_id",intake.getMedicationId()).set("last_trigger_at",now);if(tracking.storageAvailable())marker.eq("workflow_version",0).isNull("execution_id");baseMapper.update(null,marker);});
                 }
                 intake.setStatus(due.isBefore(now.minusMinutes(60)) ? "MISSED" : "PENDING");
                 updateTaskStatus(intake, previousStatus);
@@ -213,8 +229,12 @@ public class MedicationReminderServiceImpl extends ServiceImpl<MedicationReminde
     }
 
     private void updateTaskStatus(MedicationIntake intake, String previousStatus) {
-        medicationIntakeMapper.update(null, new UpdateWrapper<MedicationIntake>()
-                .eq("id", intake.getId()).eq("status", previousStatus).set("status", intake.getStatus()));
+        updateLegacyIntake(intake,previousStatus,new UpdateWrapper<MedicationIntake>().set("status",intake.getStatus()));
+    }
+    private void updateLegacyIntake(MedicationIntake intake,String previousStatus,UpdateWrapper<MedicationIntake> update) {
+        update.eq("id",intake.getId()).eq("patient_id",intake.getPatientId()).eq("medication_id",intake.getMedicationId()).eq("user_id",intake.getUserId()).eq("status",previousStatus);
+        if(tracking.storageAvailable())update.eq("workflow_version",0).isNull("execution_id").isNull("reconciliation_id");
+        tracking.mutateLegacyIntake(intake,previousStatus,()->medicationIntakeMapper.update(null,update));
     }
     /** A stored dosage is clinical source text, even when it matches the old fallback exactly. */
     private String reminderDose(MedicationIntake intake) {

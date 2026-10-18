@@ -18,6 +18,7 @@ import java.util.List;
  */
 @Service
 public class DataExportServiceImpl implements DataExportService {
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard medicationTracking;
 
     @Autowired
     private DataScopeHelper dataScopeHelper;
@@ -133,19 +134,22 @@ public class DataExportServiceImpl implements DataExportService {
     }
 
     private String exportMedicationData(Long patientId, org.familyhealthcare.util.HealthDateRange range) {
+        org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy=medicationTracking.legacyRead(patientId);
+        long actor=dataScopeHelper.requireUserId();
         StringBuilder sb = new StringBuilder(text("Source,Medication,Scheduled time,Actual intake time,Dose,Status,Notes\n", "来源,药品,计划时间,实际服药时间,剂量,状态,备注\n"));
-        for (MedicationLog r : medicationService.listLogs(patientId, null)) {
+        for (MedicationLog r : legacy.logs(actor,medicationService.listLogs(patientId, null))) {
             if (r.getAdministrationTime() == null || !range.contains(r.getAdministrationTime().toLocalDate())) continue;
             sb.append(csvRow(text("Manual record", "手工记录"), r.getMedication() == null ? text("Deleted medication", "已删除药品") : r.getMedication().getDrugName(),
                     "", r.getAdministrationTime(), r.getDosage(), text("Taken", "已服药"), r.getRemark()));
         }
-        for (MedicationIntake r : intakeMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<MedicationIntake>().eq("patient_id", patientId).orderByAsc("scheduled_at"))) {
+        for (MedicationIntake r : legacy.intakes(actor,intakeMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<MedicationIntake>().eq("patient_id", patientId).orderByAsc("scheduled_at")))) {
             if (r.getScheduledAt() == null || !range.contains(r.getScheduledAt().toLocalDate())) continue;
             Medication medication = medicationService.getById(r.getMedicationId());
             sb.append(csvRow(text("Reminder check-in", "提醒打卡"), medication == null ? text("Deleted medication", "已删除药品") : medication.getDrugName(), r.getScheduledAt(),
-                    "TAKEN".equals(r.getStatus()) ? r.getActionAt() : "", r.getDosage(), label(r.getStatus()), r.getReason()));
+                    r.getNextAction()!=null?r.getActualAtUtc():"TAKEN".equals(r.getStatus()) ? r.getActionAt() : "", r.getNextAction()!=null?null:r.getDosage(),
+                    r.getNextAction()!=null?String.valueOf(r.getFollowUpState())+" / "+String.valueOf(r.getFollowUpKind()):label(r.getStatus()),r.getNextAction()!=null?text("Review actual facts in the medication workflow; unknown time or amount remains unknown.","请在用药闭环核对实际事实；未知时间或数量保持未知。"):r.getReason()));
         }
-        return sb.toString();
+        legacy.finish(actor);return sb.toString();
     }
 
     @Autowired private org.familyhealthcare.mapper.MedicationIntakeMapper intakeMapper;

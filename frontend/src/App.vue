@@ -60,7 +60,7 @@
       <nav v-if="!route.meta.hideNav && contextTabs.length > 1" class="workspace-tabs" aria-label="Module features">
         <router-link v-for="item in contextTabs" :key="item.path" :to="item.entryPath || item.path" :class="{ 'is-active': isTabActive(item) }" :aria-current="isTabActive(item) ? 'page' : undefined"><el-icon :size="16"><component :is="item.icon" /></el-icon>{{ item.label }}</router-link>
       </nav>
-      <router-view v-slot="{ Component }"><component :is="Component" :key="routerViewKey" /></router-view>
+      <router-view v-slot="{ Component }"><component :is="Component" :key="route.path === '/login' ? route.fullPath : routerViewKey" /></router-view>
       <footer v-if="!route.meta.hideNav" class="platform-ownership">{{ platformBranding.ownershipText }}</footer>
     </main>
 
@@ -152,6 +152,34 @@ let menuRequestEpoch = 0;
 let patientRequestEpoch = 0;
 const mobileNavVisible = ref(false);
 const userInfo = ref({});
+let profileContinuation = null;
+let sessionReloadTimer = null;
+let navFreshRequired = false;
+let appDisposed = false;
+
+function cancelSessionReload() {
+  if (sessionReloadTimer !== null) clearTimeout(sessionReloadTimer);
+  sessionReloadTimer = null;
+}
+
+function authSessionChanged() {
+  const own = profileContinuation;
+  // 只消费本次同步资料保存产生的一个修订；同账号/同token的外部变化也必须退休旧视图。
+  profileContinuation = null;
+  const session = captureAuthSession();
+  const actor = localStorage.getItem('userId');
+  if (own && own.token === session.token && own.actor === actor &&
+      own.revision === session.revision && own.epoch === menuRequestEpoch) return;
+  navFreshRequired = true;
+  resetNavState({ localOnly: true });
+  if (appDisposed || !session.token || !actor || route.path === '/login') return;
+  // storage会连发多个事件；合并到下一轮，并只读取届时仍有效的完整身份，不自动重试失败。
+  sessionReloadTimer = setTimeout(() => {
+    sessionReloadTimer = null;
+    if (!appDisposed && route.path !== '/login' && localStorage.getItem('token') && localStorage.getItem('userId')) void loadUserMenus();
+  }, 0);
+}
+
 const systemMenu = ref(null);
 const routerViewKey = ref(getAuthSessionKey());
 const userMenus = ref([]);
@@ -160,7 +188,7 @@ const passwordChanging = ref(false);
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
 
 // alllayoutcurrentPatientStatus
-const { currentPatientId, patientList, setPatientList } = useCurrentPatient();
+const { currentPatientId, patientList, setPatientList, resetLocalPatientContext } = useCurrentPatient();
 const appPatientList = ref([]);
 let savedSeniorMode = false;
 try { savedSeniorMode = localStorage.getItem('care-senior') === 'true'; } catch { /* Use standard text when preference storage is unavailable. */ }
@@ -175,7 +203,8 @@ function specialtyChanged() {
   refreshSpecialtyScope();
 }
 
-function resetNavState() {
+function resetNavState(options = {}) {
+  cancelSessionReload();
   closePatientSwitchToast();
   carePlanNavController?.abort();carePlanNavigationEnabled.value=false;alertWorkflowNavigationEnabled.value=false;
   menuRequestEpoch++;
@@ -188,11 +217,12 @@ function resetNavState() {
   rawNavItems.value = [];
   userInfo.value = {};
   systemMenu.value = null;
-  routerViewKey.value = getAuthSessionKey();
-  clearPermissionCache();
+  routerViewKey.value = `${getAuthSessionKey()}-${captureAuthSession().revision}`;
+  if (!options.localOnly) clearPermissionCache();
   appPatientList.value = [];
   userMenus.value = [];
-  setPatientList([]);
+  if (options.localOnly) resetLocalPatientContext();
+  else setPatientList([]);
 }
 
 const userRoles = computed(() => {
@@ -291,6 +321,7 @@ function onSearchShortcut(event) {
 onMounted(() => {
   window.addEventListener('keydown', onSearchShortcut);
   window.addEventListener('auth-session-cleared', resetNavState);
+  window.addEventListener('auth-session-changed', authSessionChanged);
   window.addEventListener('patient-specialty-changed', specialtyChanged);
   window.addEventListener('care-patients-changed', loadPatientList);
 });
@@ -299,23 +330,29 @@ onUnmounted(() => {
   carePlanNavController?.abort();
   window.removeEventListener('keydown', onSearchShortcut);
   window.removeEventListener('auth-session-cleared', resetNavState);
+  window.removeEventListener('auth-session-changed', authSessionChanged);
+  appDisposed = true;
+  menuRequestEpoch++;
+  patientRequestEpoch++;
+  specialtyEpoch++;
+  profileContinuation = null;
+  cancelSessionReload();
   window.removeEventListener('patient-specialty-changed', specialtyChanged);
   window.removeEventListener('care-patients-changed', loadPatientList);
 });
 
 // loaduserMenu
 const loadUserMenus = async () => {
-  const session = captureAuthSession();
+  let session = captureAuthSession();
   if (!session.token) return;
-  const identity = localStorage.getItem('userId');
+  let identity = localStorage.getItem('userId');
   const epoch = ++menuRequestEpoch;
-  const isCurrent = () => epoch === menuRequestEpoch && isAuthSessionCurrent(session);
+  const isCurrent = () => !appDisposed && epoch === menuRequestEpoch && isAuthSessionCurrent(session) && identity === localStorage.getItem('userId');
   menusLoading.value = true;
 
   try {
     const res = await getUserInfo();
     if (!isCurrent() || identity !== localStorage.getItem('userId')) return;
-    refreshCarePlanNavigation(session,identity);
     if (res.code === 200 && Array.isArray(res.data?.menus)) {
       menuLoadError.value = '';
       systemMenu.value = null;
@@ -329,18 +366,34 @@ const loadUserMenus = async () => {
           || (path.startsWith('/system/') && path !== '/system/patient');
       };
       const allMenus = roleCodes.includes('admin') ? res.data.menus : res.data.menus.filter(menu => !adminOnlyMenu(menu));
+      const profileIdentity = res.data.user?.id == null ? identity : String(res.data.user.id);
+      if (identity !== null && profileIdentity !== identity) return;
       userInfo.value = res.data.user || {};
       if (res.data.roles) {
         userInfo.value.roles = res.data.roles;
       }
       if (res.data.user) {
-        saveAuthSession({
-          userId: res.data.user.id,
-          username: res.data.user.username,
-          realName: res.data.user.realName
-        });
+        const own = { token: session.token, actor: profileIdentity, revision: session.revision + 1, epoch };
+        profileContinuation = own;
+        try {
+          saveAuthSession({
+            userId: res.data.user.id,
+            username: res.data.user.username,
+            realName: res.data.user.realName
+          });
+        } finally {
+          if (profileContinuation === own) profileContinuation = null;
+        }
+        const nextSession = captureAuthSession();
+        // 只接续本次同步资料保存产生的一次修订；换账号、退出或同 token ABA 仍使旧启动失效。
+        if (epoch !== menuRequestEpoch || nextSession.token !== session.token || nextSession.revision !== session.revision + 1 || localStorage.getItem('userId') !== profileIdentity) return;
+        session = nextSession;
+        identity = profileIdentity;
       }
-      routerViewKey.value = getAuthSessionKey();
+      if (!isCurrent()) return;
+      refreshCarePlanNavigation(session,identity);
+      // 资料保存已安全清空旧闭环会话；按当前修订重建路由子页，只重新读取，不恢复旧草稿或写入。
+      routerViewKey.value = `${getAuthSessionKey()}-${session.revision}`;
 
 
       const menuPaths = allMenus.filter(menu => menu.menuPath).map(menu => menu.menuPath);
@@ -437,6 +490,7 @@ const loadUserMenus = async () => {
         menuPaths: userMenus.value,
         roleCodes
       });
+      navFreshRequired = false;
       // firsttimeslazyloadnavigationcompletebefore , route stillcan canYestemporarytime  /, cannotdatathisheavysettoward.
       const loadedIdentity = localStorage.getItem('userId');
       await router.isReady();
@@ -445,6 +499,7 @@ const loadUserMenus = async () => {
       const authorizedEntry = resolveWorkspaceEntry(currentPath, menuPaths, roleCodes);
       if (!route.meta.hideNav && authorizedEntry !== currentPath) router.replace(authorizedEntry || '/monitoring');
       await loadPatientList();
+      if (!isCurrent()) return;
       await refreshSpecialtyScope();
     } else if (res.code === 401) {
       resetNavState();
@@ -460,8 +515,8 @@ const loadUserMenus = async () => {
       return;
     }
     systemMenu.value = null;
-    rawNavItems.value = getDefaultMenus();
-    menuLoadError.value = readPermissionCache()
+    rawNavItems.value = navFreshRequired ? [] : getDefaultMenus();
+    menuLoadError.value = !navFreshRequired && readPermissionCache()
       ? 'The feature menu could not be refreshed. Showing the permissions verified for this session.'
       : 'The feature menu could not be loaded. Please try again.';
   } finally {

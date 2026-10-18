@@ -120,6 +120,67 @@ public class NotificationDeliveryService {
         return outcomes;
     }
 
+    public enum GateDecision { ALLOW, SKIP, STOP }
+    public interface BeforeAttemptGate {
+        GateDecision beforeRecipient(Long userId);
+        GateDecision beforeChannel(Long userId,Long channelId);
+    }
+    /** Skips never masquerade as provider outcomes or as an absence of configured channels. */
+    public static final class GuardedBatchResult {
+        private final Map<Long,DeliveryOutcome> attemptedOutcomes=new LinkedHashMap<>();
+        private final Map<Long,String> skippedChannels=new LinkedHashMap<>();
+        private boolean recipientSkipped,noEnabledChannels,stopRemaining;
+        public Map<Long,DeliveryOutcome> getAttemptedOutcomes(){return Collections.unmodifiableMap(attemptedOutcomes);}
+        public Map<Long,String> getSkippedChannels(){return Collections.unmodifiableMap(skippedChannels);}
+        public boolean isRecipientSkipped(){return recipientSkipped;}
+        public boolean isNoEnabledChannels(){return noEnabledChannels;}
+        public boolean isStopRemaining(){return stopRemaining;}
+    }
+    /** Tracked appointment callers consume their durable attempt before entering here.
+     * Gates and observers are deliberately outside provider-error classification. */
+    public GuardedBatchResult notifyUserOutcomesGuarded(Long userId,Collection<Long> channelIds,String eventType,String title,String content,
+            BeforeAttemptGate gate,java.util.function.BiConsumer<Long,DeliveryOutcome> observer) {
+        Objects.requireNonNull(gate,"A current source gate is required");
+        Objects.requireNonNull(observer,"A durable outcome observer is required");
+        GuardedBatchResult result=new GuardedBatchResult();
+        GateDecision recipient;
+        try { recipient=gate.beforeRecipient(userId); }
+        catch(RuntimeException unverifiable){recipient=GateDecision.STOP;}
+        if(recipient!=GateDecision.ALLOW){result.recipientSkipped=true;result.stopRemaining=recipient!=GateDecision.SKIP;return result;}
+        final List<NotificationChannel> channels;
+        final NotificationMessageLocalizer.Message message;
+        try {
+            QueryWrapper<NotificationChannel> query=new QueryWrapper<NotificationChannel>().eq("user_id",userId).eq("enabled",1);
+            if(channelIds!=null&&!channelIds.isEmpty())query.in("id",channelIds);
+            channels=mapper.selectList(query);
+            if(channels.isEmpty()){result.noEnabledChannels=true;return result;}
+            message=localized(userId,eventType,title,content);
+        }catch(RuntimeException unverifiable){result.stopRemaining=true;return result;}
+        for(NotificationChannel candidate:channels) {
+            Long channelId=candidate.getId();
+            final NotificationChannel current;
+            try {
+                NotificationChannel before=mapper.selectById(channelId);
+                if(!eligible(before,userId)){result.skippedChannels.put(channelId,"CHANNEL_UNAVAILABLE");continue;}
+                GateDecision decision=gate.beforeChannel(userId,channelId);
+                if(decision!=GateDecision.ALLOW){result.skippedChannels.put(channelId,"CURRENT_GATE_DENIED");if(decision!=GateDecision.SKIP){result.stopRemaining=true;break;}continue;}
+                // The gate may have waited. Re-read ownership/configuration for this exact send.
+                current=mapper.selectById(channelId);
+                if(!eligible(current,userId)){result.skippedChannels.put(channelId,"CHANNEL_UNAVAILABLE");continue;}
+            }catch(RuntimeException unverifiable){result.skippedChannels.put(channelId,"CURRENT_GATE_UNAVAILABLE");result.stopRemaining=true;break;}
+            DeliveryOutcome outcome;
+            try {send(current,message.getTitle(),message.getContent());outcome=DeliveryOutcome.DELIVERED;}
+            catch(RuntimeException provider){outcome=classify(provider);}
+            result.attemptedOutcomes.put(channelId,outcome);
+            try {observer.accept(channelId,outcome);}
+            catch(RuntimeException persistenceFailure){result.stopRemaining=true;break;}
+        }
+        return result;
+    }
+    private static boolean eligible(NotificationChannel channel,Long userId) {
+        return channel!=null&&Objects.equals(channel.getUserId(),userId)&&Integer.valueOf(1).equals(channel.getEnabled());
+    }
+
     private DeliveryOutcome classify(RuntimeException error) {
         if (error instanceof InvalidNotificationConfiguration || error instanceof KnownProviderRejection) return DeliveryOutcome.FAILED;
         if (error instanceof org.springframework.web.client.RestClientResponseException) {
@@ -143,6 +204,14 @@ public class NotificationDeliveryService {
     public DeliveryAttempt deliverAlertWorkflowAttempt(long channelId,long recipientId,String eventKey,String title,String relativePath) {
         return deliverWorkflowAttempt(channelId,eventKey,title,relativePath,"ALERT_WORKFLOW_",recipientId);
     }
+    public DeliveryAttempt deliverMedicationExecutionAttempt(long channelId,long recipientId,String eventKey,String title,String relativePath) {
+        return deliverWorkflowAttempt(channelId,eventKey,title,relativePath,"MEDICATION_EXECUTION_",recipientId);
+    }
+    public DeliveryAttempt deliverStockWorkflowAttempt(long channelId,long recipientId,String eventKey,String title,String relativePath) {
+        return deliverWorkflowAttempt(channelId,eventKey,title,relativePath,"STOCK_WORKFLOW_",recipientId);
+    }
+    public DeliveryAttempt deliverFamilyAssistanceAttempt(long channelId,long recipientId,String eventKey,String title,String relativePath) {return deliverWorkflowAttempt(channelId,eventKey,title,relativePath,"FAMILY_ASSISTANCE_",recipientId);}
+    public DeliveryAttempt deliverEmergencyAssistanceAttempt(long channelId,long recipientId,String eventKey,String title,String relativePath) {return deliverWorkflowAttempt(channelId,eventKey,title,relativePath,"EMERGENCY_ASSISTANCE_",recipientId);}
     private DeliveryAttempt deliverWorkflowAttempt(long channelId,String eventKey,String title,String relativePath,String prefix,Long expectedOwner) {
         try {
             NotificationChannel channel=mapper.selectById(channelId);

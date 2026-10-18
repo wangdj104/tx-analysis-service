@@ -15,7 +15,7 @@ public interface BpSelfMonitorRecordService extends IService<BpSelfMonitorRecord
 
     java.util.Map<String,Object> updateRequest(java.util.Map<String,Object> body);
 
-    boolean saveImportedOwned(BpSelfMonitorRecord record);
+    boolean saveImportedOwned(BpSelfMonitorRecord record, ClinicalImportFacts facts);
 
     boolean saveOwned(BpSelfMonitorRecord record);
 

@@ -209,3 +209,36 @@ function onDateUpdate(val) {
   }
 }
 </style>
+
+<style scoped>
+body.care-senior .time-scope-filter {
+  --time-scope-control-size: 48px;
+}
+body.care-senior .time-scope-filter__dims {
+  flex-wrap: wrap;
+}
+body.care-senior .time-scope-filter__tab {
+  min-height: var(--time-scope-control-size);
+  font-size: 18px;
+  line-height: 1.4;
+  white-space: normal;
+}
+body.care-senior .time-scope-filter__picker-label {
+  font-size: 18px;
+  white-space: normal;
+}
+body.care-senior .time-scope-filter__picker :deep(.time-scope-filter__date-input) {
+  --el-component-size: var(--time-scope-control-size);
+  height: var(--time-scope-control-size);
+  min-width: 0;
+}
+body.care-senior .time-scope-filter__picker :deep(.time-scope-filter__date-input .el-input__wrapper) {
+  box-sizing: border-box;
+  min-height: var(--time-scope-control-size);
+}
+@media (max-width: 768px) {
+  body.care-senior .time-scope-filter__picker :deep(.time-scope-filter__date-input .el-input__inner) {
+    font-size: 19px !important;
+  }
+}
+</style>

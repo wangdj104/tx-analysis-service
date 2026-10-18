@@ -1,9 +1,12 @@
 package org.familyhealthcare.service.careplan;
 
+import org.familyhealthcare.service.workflow.HouseholdAuthorityLocks;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.sql.*;
 import java.time.Clock;
@@ -16,33 +19,47 @@ import java.util.*;
 public class CareNurseAssignmentService {
     private final JdbcTemplate jdbc;
     private final CarePlanAuthorizationService auth;
+    private final HouseholdAuthorityLocks authorityLocks;
     private Clock clock = Clock.systemUTC();
 
-    public CareNurseAssignmentService(JdbcTemplate jdbc, CarePlanAuthorizationService auth) {
-        this.jdbc = jdbc; this.auth = auth;
+    public CareNurseAssignmentService(JdbcTemplate jdbc, CarePlanAuthorizationService auth, HouseholdAuthorityLocks authorityLocks) {
+        this.jdbc = jdbc; this.auth = auth; this.authorityLocks=Objects.requireNonNull(authorityLocks);
     }
 
-    @Transactional
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Map<String,Object> assign(long adminId, Map<String,Object> body) {
-        auth.requireAssignmentAdmin(adminId);
         if (body == null || !new HashSet<>(Arrays.asList("patientId", "nurseUserId", "expiresAt")).containsAll(body.keySet()))
             throw CarePlanException.invalid("Invalid nurse assignment fields.");
         long patientId = CarePlanContracts.requireId(body.get("patientId"), "patientId");
         long nurseId = CarePlanContracts.requireId(body.get("nurseUserId"), "nurseUserId");
-        auth.requireActivePatient(patientId); auth.requireActiveNurse(nurseId);
-        Instant now = clock.instant(), expiry = null;
+        Instant expiry = null;
         if (body.get("expiresAt") != null) {
             if (!(body.get("expiresAt") instanceof String)) throw CarePlanException.invalid("Expiry must include an ISO-8601 offset.");
             expiry = CarePlanContracts.parseOffsetInstant((String)body.get("expiresAt"));
-            if (!expiry.isAfter(now)) throw CarePlanException.invalid("Assignment expiry must be in the future.");
         }
         final Instant expires = expiry;
+        authorityLocks.lockNurseAssignmentSubjects(patientId,adminId,nurseId);
+        Instant now=requireAssignmentAuthority(adminId,patientId,nurseId,expires);
         jdbc.update(connection -> {
             PreparedStatement ps = connection.prepareStatement("INSERT INTO care_nurse_assignment(patient_id,nurse_user_id,assigned_by,assigned_at,expires_at,status) VALUES(?,?,?,?,?,'ACTIVE') ON DUPLICATE KEY UPDATE assigned_by=VALUES(assigned_by),assigned_at=VALUES(assigned_at),expires_at=VALUES(expires_at),revoked_at=NULL,status='ACTIVE'");
             ps.setLong(1, patientId); ps.setLong(2, nurseId); ps.setLong(3, adminId);
             setInstant(ps, 4, now); setInstant(ps, 5, expires); return ps;
         });
-        return rows("a.patient_id=? AND a.nurse_user_id=?", patientId, nurseId).get(0);
+        Map<String,Object> result=rows("a.patient_id=? AND a.nurse_user_id=?", patientId, nurseId).get(0);
+        requireAssignmentAuthority(adminId,patientId,nurseId,expires);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void beforeCommit(boolean readOnly) {
+                requireAssignmentAuthority(adminId,patientId,nurseId,expires);
+            }
+        });
+        return result;
+    }
+
+    private Instant requireAssignmentAuthority(long adminId,long patientId,long nurseId,Instant expiry) {
+        auth.requireAssignmentAdmin(adminId);auth.requireActivePatient(patientId);auth.requireActiveNurse(nurseId);
+        Instant now=clock.instant();
+        if (expiry!=null && !expiry.isAfter(now)) throw CarePlanException.invalid("Assignment expiry must be in the future.");
+        return now;
     }
 
     @Transactional

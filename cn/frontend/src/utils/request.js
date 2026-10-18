@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
 import { captureAuthSession, isAuthSessionCurrent, clearAuthSession } from '@/utils/authSession';
+import { captureAssistanceLoginRedirect, ownsAssistanceLoginRedirect } from '@/utils/assistanceLogin';
 import { localizePayload, localizeServerText } from '@/utils/serverText';
 
 // Createaxiosinstance
@@ -21,10 +22,36 @@ function logRequestError(event, error) {
 // Report parsing can await Blob.text after axios has delivered the response. Recheck
 // the captured context before any message, redirect, or return at that boundary.
 function requireCurrentReport(config) {
-  if ((config?.executionReport || config?.alertWorkflow) && (config.signal?.aborted || !isAuthSessionCurrent(config.expectedAuth) ||
+  if ((config?.executionReport || config?.alertWorkflow || config?.householdWorkflow || config?.visitQuestion) && (config.signal?.aborted || !isAuthSessionCurrent(config.expectedAuth) ||
       config.expectedAuth?.actorId !== localStorage.getItem('userId'))) {
     throw new axios.CanceledError('REPORT_CONTEXT_CHANGED', config);
   }
+}
+
+// 仅该概览 GET 的暂时失败交给原页面内联提示；失权、其他请求及错误拒绝保持原样。
+function monitoringErrorIsInline(config, status) {
+  return config?.monitoringInlineErrors === true && config.url === '/monitoring/snapshot-bounded' && config.method === 'get' &&
+    (status === null || (Number.isInteger(status) && status >= 500 && status <= 599));
+}
+
+function browserFullPath() { return window.location.pathname + window.location.search + window.location.hash; }
+
+// 旧页面或旧账号的401不能清掉新交接入口；普通页面沿用原失效处理。
+function requireCurrentAssistanceLogin(config) {
+  const current = captureAssistanceLoginRedirect(browserFullPath(), '/cn/');
+  if (!config?.assistanceLogin?.protected && !current.protected) return;
+  const auth = captureAuthSession();
+  if (!ownsAssistanceLoginRedirect(config?.assistanceLogin, browserFullPath()) ||
+      config?.authSession?.token !== auth.token || config?.authSession?.revision !== auth.revision) {
+    throw new axios.CanceledError('ASSISTANCE_LOGIN_CONTEXT_CHANGED', config);
+  }
+}
+
+function redirectExpiredSession(config) {
+  const current = captureAssistanceLoginRedirect(browserFullPath(), '/cn/');
+  if (!isAuthSessionCurrent(config?.authSession) || current.dedicatedLogin || window.location.pathname.endsWith('/login')) return;
+  clearAuthSession();
+  window.location.href = current.loginHref || '/cn/login';
 }
 
 // requestinterceptor
@@ -32,6 +59,7 @@ request.interceptors.request.use(
   (config) => {
     const expected = config.expectedAuth;
     config.authSession = expected || captureAuthSession();
+    config.assistanceLogin = captureAssistanceLoginRedirect(browserFullPath(), '/cn/');
     if (expected) {
       // Keep the captured account in a closure. Recheck after all interceptors/transforms,
       // immediately before the actual adapter can transmit headers or clinical data.
@@ -62,6 +90,14 @@ request.interceptors.request.use(
   }
 );
 
+// 共同目标在面板内展示错误，旧请求的消息与登录失效流程保持不变。
+function showRequestError(config, message) {
+  const goalInline = config?.commonGoalInlineErrors === true && /^\/common-care-goals(?:\/|$)/.test(config.url || '');
+  // 登录错误只由仍属于当前页面和账号的 Login 展示，旧请求不能先弹共享提示。
+  const loginInline = config?.method === 'post' && config.url === '/auth/login';
+  if (!goalInline && !loginInline) ElMessage.error(message);
+}
+
 // responseshouldinterceptor
 request.interceptors.response.use(
   async (response) => {
@@ -85,15 +121,13 @@ request.interceptors.response.use(
 
     // ifBack Statuscodenot Yes200, instructionsAPIhas question
     if (res.code && res.code !== 200) {
-      ElMessage.error(localizeServerText(res.msg) || '请求失败');
+      if (res.code === 401) requireCurrentAssistanceLogin(response.config);
+      if (!monitoringErrorIsInline(response.config, Number(res.code))) showRequestError(response.config, localizeServerText(res.msg) || '请求失败');
 
       // 401: not authorize, skipconvertto Sign Inpage
-      if (res.code === 401 && isAuthSessionCurrent(response.config.authSession) && !window.location.pathname.endsWith('/login')) {
-        clearAuthSession();
-        window.location.href = '/cn/login';
-      }
+      if (res.code === 401) redirectExpiredSession(response.config);
 
-      return Promise.reject(Object.assign(new Error(localizeServerText(res.msg) || '请求失败'), { code: res.code, ...((response.config.executionReport || response.config.alertWorkflow) ? { data: res.data } : {}) }));
+      return Promise.reject(Object.assign(new Error(localizeServerText(res.msg) || '请求失败'), { code: res.code, ...((response.config.executionReport || response.config.alertWorkflow || response.config.householdWorkflow || response.config.visitQuestion) ? { data: res.data } : {}) }));
     }
 
     if (binary) throw new Error('导出未返回有效文件，请重试。');
@@ -109,34 +143,34 @@ request.interceptors.response.use(
     }
 
     requireCurrentReport(error.config);
+    if (error.response?.status === 401) requireCurrentAssistanceLogin(error.config);
     logRequestError('response_failed', error);
 
     if (error.response) {
       switch (error.response.status) {
         case 401:
-          if (isAuthSessionCurrent(error.config?.authSession) && !window.location.pathname.endsWith('/login')) {
-          ElMessage.error('登录状态已过期，请重新登录。');
-            clearAuthSession();
-            window.location.href = '/cn/login';
+          if (isAuthSessionCurrent(error.config?.authSession) && !captureAssistanceLoginRedirect(browserFullPath(), '/cn/').dedicatedLogin && !window.location.pathname.endsWith('/login')) {
+          showRequestError(error.config, '登录状态已过期，请重新登录。');
+            redirectExpiredSession(error.config);
           }
           break;
         case 403:
-          ElMessage.error('你没有执行此操作的权限。');
+          showRequestError(error.config, '你没有执行此操作的权限。');
           break;
         case 404:
-          ElMessage.error('请求的资源不存在。');
+          showRequestError(error.config, '请求的资源不存在。');
           break;
         case 413:
-          ElMessage.error('上传文件过大，请选择较小的文件或联系管理员。');
+          showRequestError(error.config, '上传文件过大，请选择较小的文件或联系管理员。');
           break;
         case 500:
-          ElMessage.error('服务发生错误，请稍后重试。');
+          if (!monitoringErrorIsInline(error.config, Number(error.response.status))) showRequestError(error.config, '服务发生错误，请稍后重试。');
           break;
         default:
-          ElMessage.error(localizeServerText(error.response.data?.msg) || '请求失败');
+          if (!monitoringErrorIsInline(error.config, Number(error.response.status))) showRequestError(error.config, localizeServerText(error.response.data?.msg) || '请求失败');
       }
     } else {
-      ElMessage.error('网络连接不可用。');
+      if (!monitoringErrorIsInline(error.config, null)) showRequestError(error.config, '网络连接不可用。');
     }
 
     const statusMessages = {

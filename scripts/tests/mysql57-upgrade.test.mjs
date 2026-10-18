@@ -25,9 +25,10 @@ for (const edition of ['.', 'cn']) {
       assert.doesNotMatch(sql, /^\s*(?:CREATE|ALTER|DROP|DELETE|INSERT|UPDATE|TRUNCATE|REPLACE|CALL)\b/im)
       assert.match(sql, /SELECT DATABASE\(\)/)
     }
-    const catalog = readFileSync(path.join(root, edition, 'src/main/resources/sql/README.md'), 'utf8')
-    assert.match(catalog, /1\. `mysql57_preflight_20261012\.sql`/)
-    assert.match(catalog, /2\. `mysql57_schema_upgrade_20261012\.sql`/)
-    assert.match(catalog, /3\. `mysql57_postcheck_20261012\.sql`/)
+    const catalog = readFileSync(path.join(root, edition, 'src/main/resources/sql/health_upgrade_01_precheck_20261015.sql'), 'utf8')
+    for (const [stage,file] of [['01','mysql57_preflight_20261012.sql'],['02','mysql57_schema_upgrade_20261012.sql'],['03','mysql57_postcheck_20261012.sql']]) assert.ok(catalog.includes(stage+' '+file),stage)
+    assert.match(catalog,/A_ABSENT/);assert.match(catalog,/A_PRESENT/);assert.match(catalog,/部分.*停止|停止.*部分/)
+    assert.doesNotMatch(catalog.replace(/^--.*$/gm,''),/^\s*(?:CREATE|ALTER|DROP|DELETE|INSERT|UPDATE|TRUNCATE|REPLACE|CALL)\b/im)
+
   })
 }

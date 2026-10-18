@@ -11,6 +11,8 @@ import java.util.*;
 
 @Service
 public class CareMembershipService {
+    @Autowired private org.familyhealthcare.service.workflow.HouseholdAuthorityLocks householdAuthorityLocks;
+
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PatientMapper patients;
 
@@ -33,16 +35,36 @@ public class CareMembershipService {
         jdbc.update("INSERT INTO care_invitation(patient_id,user_id,invite_code,expires_at) VALUES(?,?,?,?)",patientId,CurrentUserUtil.getCurrentUserId(),code,java.time.LocalDateTime.now().plusDays(7));
         return code;
     }
-    @Transactional public Long join(String code,String relation) {
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public Long join(String code,String relation) {
         Long uid=CurrentUserUtil.getCurrentUserId();if(uid==null)throw new IllegalStateException("Please first Sign In");
+        // 仅发现父身份，不先锁邀请；不存在的成员行由 patient/user 父锁串行化。
+        List<Map<String,Object>> discovered=jdbc.queryForList("SELECT patient_id,user_id FROM care_invitation WHERE invite_code=?",code);
+        if(discovered.isEmpty())throw new IllegalArgumentException("The invitation code is invalid, expired, or already used.");
+        Long pid=((Number)discovered.get(0).get("patient_id")).longValue();
+        Long inviter=((Number)discovered.get(0).get("user_id")).longValue();
+        if (householdAuthorityLocks != null) {
+            householdAuthorityLocks.lockPatientAndSubjects(pid, Arrays.asList(uid, inviter));
+            org.familyhealthcare.service.workflow.HouseholdGovernance.requireCurrentAccount(jdbc, uid);
+            // 邀请只证明历史意愿；原邀请人失去当前管理资格时，不能继续消费邀请。
+            org.familyhealthcare.service.workflow.HouseholdGovernance.requireCurrentOwnerOrAdmin(jdbc, pid, inviter);
+            if (!Integer.valueOf(1).equals(jdbc.queryForObject("SELECT COUNT(*) FROM patient WHERE id=? AND status=1 AND COALESCE(deleted,0)=0", Integer.class, pid)))
+                throw new IllegalArgumentException("The family member record does not exist.");
+        }
         List<Map<String,Object>> rows=jdbc.queryForList("SELECT * FROM care_invitation WHERE invite_code=? AND expires_at>NOW() AND accepted_by IS NULL FOR UPDATE",code);
-        if(rows.isEmpty())throw new IllegalArgumentException("The invitation code is invalid, expired, or already used.");
-        Long pid=((Number)rows.get(0).get("patient_id")).longValue();
+        if(rows.isEmpty()||!Objects.equals(pid,((Number)rows.get(0).get("patient_id")).longValue())||!Objects.equals(inviter,((Number)rows.get(0).get("user_id")).longValue()))throw new IllegalArgumentException("The invitation code is invalid, expired, or already used.");
         if(patients.selectById(pid)==null)throw new IllegalArgumentException("The family member record does not exist.");
         jdbc.update("INSERT INTO care_member(patient_id,user_id,relation_name) VALUES(?,?,?) ON DUPLICATE KEY UPDATE relation_name=VALUES(relation_name)",pid,uid,relation==null?"family caregiver":relation);
         jdbc.update("UPDATE care_invitation SET accepted_by=? WHERE invite_code=?",uid,code);return pid;
     }
-    public void remove(Long pid,Long uid) {requireOwner(pid);jdbc.update("DELETE FROM care_member WHERE patient_id=? AND user_id=?",pid,uid);}
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public void remove(Long pid,Long uid) {
+        if (householdAuthorityLocks != null) {
+            householdAuthorityLocks.lockPatientAndSubjects(pid, Arrays.asList(CurrentUserUtil.getCurrentUserId(), uid));
+            org.familyhealthcare.service.workflow.HouseholdGovernance.requireCurrentOwnerOrAdmin(jdbc, pid, CurrentUserUtil.getCurrentUserId());
+        }
+        requireOwner(pid);jdbc.update("DELETE FROM care_member WHERE patient_id=? AND user_id=?",pid,uid);
+    }
     public boolean canAssign(Long pid,Long uid) {
         if(uid==null)return true;Patient p=patients.selectById(pid);return p!=null&&(Objects.equals(p.getUserId(),uid)||isMember(pid,uid));
     }

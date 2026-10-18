@@ -69,4 +69,8 @@ public class Medication {
     @ApiModelProperty("Updated At")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updatedAt;
+
+    // Read-only server projection, populated only when the additive schema is ready.
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false) @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY) private Integer workflowVersion;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false) @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY) private Long executionId;
 }

@@ -323,7 +323,12 @@ public final class CareExecutionReport {
         private final Long sourceId;
         private final String title;
         private final String detailPath;
+        private final String sourceStatus;
         public Evidence(boolean restricted, String sourceType, Long sourceId, String title, String detailPath) {
+            this(restricted,sourceType,sourceId,title,detailPath,null);
+        }
+        public Evidence(boolean restricted,String sourceType,Long sourceId,String title,String detailPath,String sourceStatus) {
+            this.sourceStatus=restricted?"SOURCE_UNAVAILABLE":sourceStatus;
             this.restricted = restricted;
             this.sourceType = restricted ? null : sourceType;
             this.sourceId = restricted ? null : sourceId;
@@ -335,6 +340,7 @@ public final class CareExecutionReport {
         public Long getSourceId() { return sourceId; }
         public String getTitle() { return title; }
         public String getDetailPath() { return detailPath; }
+        public String getSourceStatus() { return sourceStatus; }
     }
 
     public static final class Question {
@@ -349,7 +355,12 @@ public final class CareExecutionReport {
         private final String createdAtLocal;
         private final String updatedAtLocal;
         private final String eventAtLocal;
+        private final String answerOrigin, projectionBasis, detailLink, answerRecordedAt;
         public Question(long id, String title, String status, String description, String answer, String followUp, String actorName, Long actorId, String createdAtLocal, String updatedAtLocal, String eventAtLocal) {
+            this(id,title,status,description,answer,followUp,actorName,actorId,createdAtLocal,updatedAtLocal,eventAtLocal,"LEGACY_UNVERIFIED","LEGACY_UNVERIFIED",null,null);
+        }
+        public Question(long id,String title,String status,String description,String answer,String followUp,String actorName,Long actorId,String createdAtLocal,String updatedAtLocal,String eventAtLocal,String answerOrigin,String projectionBasis,String detailLink,String answerRecordedAt) {
+            this.answerOrigin=answerOrigin;this.projectionBasis=projectionBasis;this.detailLink=detailLink;this.answerRecordedAt=answerRecordedAt;
             this.id = id;
             this.title = title;
             this.status = status;
@@ -373,6 +384,10 @@ public final class CareExecutionReport {
         public String getCreatedAtLocal() { return createdAtLocal; }
         public String getUpdatedAtLocal() { return updatedAtLocal; }
         public String getEventAtLocal() { return eventAtLocal; }
+        public String getAnswerOrigin(){return answerOrigin;}
+        public String getProjectionBasis(){return projectionBasis;}
+        public String getDetailLink(){return detailLink;}
+        public String getAnswerRecordedAt(){return answerRecordedAt;}
         public String getTimeBasis() { return "LEGACY_UNZONED"; }
     }
 }

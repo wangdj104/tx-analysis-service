@@ -25,6 +25,9 @@ public class AlertRecord {
     @ApiModelProperty("relatedruleID")
     private Long ruleId;
 
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String sourceStatus;
+
     @ApiModelProperty("PatientID")
     private Long patientId;
 

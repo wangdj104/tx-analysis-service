@@ -121,3 +121,30 @@ defineExpose({ refresh: generate, state, context, generation, clear })
 <style scoped>
 .execution-report{min-width:0;color:var(--ink-800);line-height:1.6}.report-controls{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}.report-controls label{display:flex;flex:1 1 180px;flex-direction:column;min-width:0}.report-jump,.report-controls input,.report-controls select,.report-controls button,.execution-report a{min-height:44px;box-sizing:border-box;font:inherit;padding:10px;max-width:100%}.report-jump,.report-controls button{cursor:pointer;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800)}.execution-report a{display:inline-flex;align-items:center;color:var(--care-800)}button:disabled{opacity:.55;cursor:default}input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.report-body,.report-notice{border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0}.report-record{border-top:1px solid var(--line);padding:14px 0}.report-event{border-left:3px solid var(--care-600);padding-left:12px}.original{white-space:pre-wrap}.execution-report p,.execution-report h2,.execution-report h3,.execution-report h4,.execution-report h5,.execution-report li{overflow-wrap:anywhere}.report-counts{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.report-counts dd{margin:0}.execution-report ul{padding-left:22px}@media(max-width:600px){.report-controls label,.report-controls button{flex-basis:100%;width:100%}.report-body{padding:12px}}@media print{.report-controls{display:none}.report-body{border:0;padding:0}.report-record{break-inside:auto}h2,h3,h4,h5{break-after:avoid}a{color:inherit;text-decoration:none}p{orphans:3;widows:3}}
 </style>
+
+<style scoped>
+.execution-report form.report-controls {
+  --report-control-size: max(48px, calc(1.6em + 24px));
+  align-items: flex-end;
+}
+form.report-controls :is(input, select, button) {
+  box-sizing: border-box;
+  font: inherit;
+  line-height: 1.6;
+}
+form.report-controls :is(input, select) {
+  block-size: var(--report-control-size);
+}
+form.report-controls > button {
+  min-block-size: var(--report-control-size);
+  flex: 0 1 auto;
+}
+@media (max-width: 768px) {
+  form.report-controls {
+    font-size: max(1em, 16px);
+  }
+  body.care-senior form.report-controls :is(input, select) {
+    font-size: inherit !important;
+  }
+}
+</style>

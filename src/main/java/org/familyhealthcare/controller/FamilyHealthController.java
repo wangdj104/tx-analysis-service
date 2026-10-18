@@ -12,6 +12,9 @@ import java.time.*; import java.util.*;
 /** familyhealthassistant: Personal Goals, today Daytask, Timeline and Dialysis Schedule.  */
 @RestController @RequestMapping("/family-health")
 public class FamilyHealthController {
+ @Autowired private org.familyhealthcare.service.visitquestion.VisitQuestionProjection questionProjection;
+ @Autowired private org.familyhealthcare.service.familyassistance.FamilyAssistanceQueryService familyQueries;
+ @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard tracking;
  @Autowired private DataScopeHelper scope; @Autowired private PatientHealthTargetMapper targetMapper;
  @Autowired private MedicationIntakeMapper intakeMapper; @Autowired private HealthEventMapper eventMapper;
  @Autowired private DialysisScheduleMapper scheduleMapper;
@@ -45,17 +48,17 @@ public class FamilyHealthController {
   List<MedicationIntake> rows=intakeMapper.selectList(new QueryWrapper<MedicationIntake>().eq("patient_id",patientId)
       .and(q -> q.ge("scheduled_at",d.atStartOfDay()).lt("scheduled_at",d.plusDays(1).atStartOfDay())
           .or().ge("snooze_until",d.atStartOfDay()).lt("snooze_until",d.plusDays(1).atStartOfDay())).orderByAsc("scheduled_at"));
-  for(MedicationIntake row:rows){Medication med=medicationMapper.selectById(row.getMedicationId());row.setDrugName(med==null?"DeletedMedication":med.getDrugName());}
-  return Result.ok(rows);
+  org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy=tracking.legacyRead(patientId);rows=legacy.intakes(scope.requireUserId(),rows);Map<Long,String> names=new HashMap<>();List<Long> ids=new ArrayList<>();for(MedicationIntake row:rows)ids.add(row.getMedicationId());if(!ids.isEmpty())for(Medication med:medicationMapper.selectBatchIds(ids))names.put(med.getId(),med.getDrugName());for(MedicationIntake row:rows)row.setDrugName(names.getOrDefault(row.getMedicationId(),org.familyhealthcare.util.ExportLocalization.text("Deleted medication","已删除药品")));
+  legacy.finish(scope.requireUserId());return Result.ok(rows);
  }
 
  @PutMapping("/intakes/{id}/action")
- @org.springframework.transaction.annotation.Transactional
+ @org.springframework.transaction.annotation.Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
  public Result<String> intakeAction(@PathVariable Long id,@RequestParam String status,@RequestParam(required=false) String reason,
      @RequestParam(required=false) java.math.BigDecimal quantity,@RequestParam(required=false) String recordedFor) {
   MedicationIntake v=intakeMapper.selectById(id); if(v==null)return Result.error("The record does not exist.");
   scope.requirePatient(v.getPatientId());
-  reminders.ensureDailyTasks(v.getPatientId(), v.getScheduledAt().toLocalDate());
+  tracking.requireLegacyIntakeWriteAllowed(scope.requireUserId(),id);
   v=intakeMapper.selectById(id);
   if("CANCELLED".equals(v.getStatus()))return Result.error("This task has been cancelled.");
   if(!Arrays.asList("TAKEN","SNOOZED","SKIPPED").contains(status))return Result.error("Invalid status.");
@@ -127,5 +130,7 @@ public class FamilyHealthController {
  @GetMapping("/alerts") public Result<List<AlertRecord>> alerts(@RequestParam Long patientId){scope.requirePatient(patientId);return Result.ok(alertMapper.selectList(new QueryWrapper<AlertRecord>().apply("(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')").eq("patient_id",patientId).orderByDesc("triggered_at").last("limit 100")));}
  @PutMapping("/alerts/{id}/status") public Result<String> alertStatus(@PathVariable Long id,@RequestBody Map<String,String> body){return alertService.updateStatus(id,body.get("status"),body.get("handlingNote"))?Result.okMessage("Updated successfully"):Result.error("The alert does not exist.");}
 
- @GetMapping("/visit-summary") public Result<Map<String,Object>> visitSummary(@RequestParam Long patientId){Patient p=scope.requirePatient(patientId);Map<String,Object> out=new LinkedHashMap<>();out.put("generatedAt",LocalDateTime.now());out.put("patient",p);out.put("target",targetMapper.selectOne(new QueryWrapper<PatientHealthTarget>().eq("patient_id",patientId)));out.put("medications",medicationMapper.selectList(new QueryWrapper<Medication>().eq("patient_id",patientId).eq("is_active",1)));out.put("recentMeasurements",monitorMapper.selectList(new QueryWrapper<BpSelfMonitorRecord>().eq("patient_id",patientId).orderByDesc("record_date").last("limit 30")));out.put("unresolvedAlerts",alertMapper.selectList(new QueryWrapper<AlertRecord>().apply("(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')").eq("patient_id",patientId).and(q->q.isNull("status").or().ne("status","RESOLVED")).orderByDesc("triggered_at").last("limit 30")));out.put("recentEvents",timelineService.list(patientId,null,null,30));out.put("questions",careItems.selectList(new QueryWrapper<CareItem>().eq("patient_id",patientId).eq("kind","QUESTION").orderByDesc("id")));out.put("careSymptoms",careItems.selectList(new QueryWrapper<CareItem>().eq("patient_id",patientId).eq("kind","SYMPTOM").orderByDesc("event_at").last("limit 30")));out.put("disclaimer",org.familyhealthcare.util.ExportLocalization.text("This summary is based on family-entered records and is intended only to support clinical conversations. It does not replace professional diagnosis or treatment.", "本摘要基于家庭录入的记录，仅用于辅助医患沟通，不能替代专业诊断或治疗。"));return Result.ok(out);}
+ @ModelAttribute public void questionSummaryPrivacy(javax.servlet.http.HttpServletRequest request,javax.servlet.http.HttpServletResponse response){if(request.getRequestURI().endsWith("/visit-summary")){response.setHeader("Cache-Control","no-store, private");response.setHeader("Pragma","no-cache");}}
+ public Result<Map<String,Object>> visitSummary(Long patientId){return visitSummaryPage(patientId,null,25);}
+ @GetMapping("/visit-summary") public Result<Map<String,Object>> visitSummaryPage(@RequestParam Long patientId,@RequestParam(required=false) String questionCursor,@RequestParam(defaultValue="25") Integer questionLimit){Patient p=scope.requirePatient(patientId);org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy=tracking.legacyRead(patientId);Map<String,Object> out=new LinkedHashMap<>();out.put("generatedAt",LocalDateTime.now());out.put("patient",p);out.put("target",targetMapper.selectOne(new QueryWrapper<PatientHealthTarget>().eq("patient_id",patientId)));out.put("medications",legacy.medications(scope.requireUserId(),medicationMapper.selectList(new QueryWrapper<Medication>().eq("patient_id",patientId).eq("is_active",1))));out.put("recentMeasurements",monitorMapper.selectList(new QueryWrapper<BpSelfMonitorRecord>().eq("patient_id",patientId).orderByDesc("record_date").last("limit 30")));out.put("unresolvedAlerts",alertMapper.selectList(new QueryWrapper<AlertRecord>().apply("(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')").eq("patient_id",patientId).and(q->q.isNull("status").or().ne("status","RESOLVED")).orderByDesc("triggered_at").last("limit 30")));out.put("recentEvents",timelineService.list(patientId,null,null,30));Map<String,Object> questionPage=questionProjection.page(scope.requireUserId(),patientId,questionCursor,questionLimit);out.put("questions",questionPage.get("items"));out.put("questionContinuation",questionPage.get("nextCursor"));out.put("questionPreviews",true);out.put("careSymptoms",familyQueries.legacyItems(scope.requireUserId(),patientId,careItems.selectList(new QueryWrapper<CareItem>().eq("patient_id",patientId).eq("kind","SYMPTOM").orderByDesc("event_at").last("limit 30"))));out.put("disclaimer",org.familyhealthcare.util.ExportLocalization.text("This summary is based on family-entered records and is intended only to support clinical conversations. It does not replace professional diagnosis or treatment.", "本摘要基于家庭录入的记录，仅用于辅助医患沟通，不能替代专业诊断或治疗。"));legacy.finish(scope.requireUserId());questionProjection.finish(scope.requireUserId(),patientId);return Result.ok(out);}
 }

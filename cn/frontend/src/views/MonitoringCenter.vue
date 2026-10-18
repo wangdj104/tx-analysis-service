@@ -31,7 +31,11 @@
 
     <el-alert v-if="!patientId" title="请先在顶部选择一名患者，再查看监测数据。" type="warning" :closable="false" show-icon />
 
-    <template v-else>
+    <!-- 更正入口不依赖概览读取成功，患者权限由原记录及更正接口分别核验。 -->
+    <MeasurementCorrectionEntry :patient-id="patientId" :patient-name="currentPatientName" @changed="loadSnapshot()" />
+
+    <template v-if="patientId">
+      <TrustedMeasurementTrend :patient-id="patientId" :patient-name="currentPatientName" @changed="loadSnapshot()" />
       <div v-if="loadError" role="alert" class="read-state read-state--error">
         <p>{{ loadError }}</p>
         <p v-if="hasSnapshot" data-testid="monitoring-stale">显示上次成功结果，数据可能已过时。成功读取时间：{{ formatDateTime(lastSuccessAt) }}</p>
@@ -42,15 +46,15 @@
       <section class="status-hero" :class="`status-hero--${statusTone}`" v-loading="loading && !snapshot.generatedAt">
         <div class="status-orb"><el-icon :size="34"><component :is="statusIcon" /></el-icon></div>
         <div class="status-copy">
-          <span class="status-label">当前数据状态</span>
-          <h2>{{ snapshot.statusLabel || '正在汇总健康记录' }}</h2>
+          <span class="status-label">{{ot('legacyOverview')}}</span>
+          <h2>{{snapshot.overallStatus==='STABLE'?ot('legacyStable'):snapshot.statusLabel}}</h2>
           <p>{{ primarySuggestion }}</p>
         </div>
         <div class="status-side">
           <div class="status-meta">
             <span><i></i>{{ loadError ? '上次成功结果' : (autoRefresh ? '正在监测新记录' : '手动检查') }}</span>
-            <small>状态更新于 {{ formatDateTime(snapshot.generatedAt) }}</small>
-            <small>最近记录 {{ formatRelative(snapshot.lastDataAt) }}</small>
+            <small>{{ot('generated')}} {{ formatDateTime(snapshot.generatedAt) }}</small>
+
           </div>
           <div class="status-actions">
             <el-button type="primary" @click="$router.push('/bp-self-monitor')">录入健康数据</el-button>
@@ -66,6 +70,7 @@
         </router-link>
       </nav>
 
+      <p v-if="todayTasks.some(task => task.nextAction)" role="status" class="workflow-metric-limit">协作用药随访不计入旧完成率；记录事实、结束随访与临床安全是不同的结果。</p>
       <section class="monitor-metrics">
         <article class="monitor-metric">
           <span class="monitor-metric__icon monitor-metric__icon--alert"><el-icon><Bell /></el-icon></span>
@@ -77,11 +82,11 @@
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><DataLine /></el-icon></span>
-          <div><strong>{{ metrics.dataCompleteness ?? 0 }}%</strong><span>数据覆盖率</span><small>按监测来源统计</small></div>
+          <div><strong>{{ metrics.dataCompleteness ?? 0 }}%</strong><span>{{ot('categories')}}</span><small>{{ot('legacyRule')}}</small></div>
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><Clock /></el-icon></span>
-          <div><strong class="monitor-metric__time">{{ latestUpdateText }}</strong><span>最近更新</span><small>{{ formatDateTime(snapshot.lastDataAt) }}</small></div>
+          <div><strong class="monitor-metric__time">{{formatDateTime(snapshot.generatedAt)}}</strong><span>{{ot('generated')}}</span></div>
         </article>
       </section>
 
@@ -92,48 +97,32 @@
       </nav>
 
       <section class="signal-grid">
-        <article v-for="signal in snapshot.signals || []" :key="signal.key" class="signal-card" :class="`signal-card--${signalTone(signal.status)}`">
+        <article v-for="signal in displaySignals" :key="signal.key" class="signal-card" :class="`signal-card--${signalTone(signal.original && signal.status==='NORMAL'?'UNASSESSED':signal.status)}`">
           <header><span>{{ signal.label }}</span><em><i></i>{{ signal.statusLabel }}</em></header>
-          <div class="signal-value">{{ signal.value }} <small>{{ signal.unit }}</small></div>
-          <footer><span>{{ signal.freshnessText }}</span><span>{{ shortDateTime(signal.updatedAt) }}</span></footer>
+          <p v-if="signal.original">{{ot('windowLatest')}} {{measurementContext.from}} – {{measurementContext.to}}</p><div class="signal-value">{{ signal.value }} <small>{{ signal.unit }}</small></div>
+          <p v-if="signal.original && signal.key==='glucose'">{{signal.period || ot('periodUnknown')}}</p><p v-if="signal.original" class="mr-quality" data-testid="measurement-quality">{{signal.issues.join(' · ')}} {{ot('unassessed')}}</p><footer><span>{{signal.freshnessText}}</span><span>{{signal.original?signal.rawTime:shortDateTime(signal.updatedAt)}}</span></footer>
         </article>
       </section>
 
       <section class="monitoring-main-grid">
         <div class="monitoring-primary-column">
-          <article class="monitor-panel trend-panel">
-            <header class="panel-head">
-              <div><span class="panel-kicker">趋势监测</span><h2 id="monitoring-trends" tabindex="-1" class="monitor-section-heading">生命体征变化</h2><p>异常数据点会使用菱形标记。</p></div>
-              <div class="chart-legend"><span><i class="legend-systolic"></i>收缩压</span><span><i class="legend-diastolic"></i>舒张压</span><span><i class="legend-glucose"></i>血糖</span></div>
-            </header>
-            <div class="trend-view-controls" role="group" aria-label="趋势显示方式">
-              <button type="button" :aria-pressed="trendView === 'chart'" @click="trendView = 'chart'">图表</button>
-              <button type="button" :aria-pressed="trendView === 'data'" @click="trendView = 'data'">数据</button>
-            </div>
-            <p class="trend-context">患者档案 #{{ patientId }} · 近 {{ loadedDays }} 天</p>
-            <div v-if="trendView === 'chart' && hasTrendData" class="monitoring-reference-legend"><span data-reference-value="140"><i></i>血压参考值：140 mmHg</span></div>
-            <div v-if="trendView === 'data' && hasTrendData" class="trend-data-wrap" tabindex="0" role="region" aria-label="趋势原始数据">
-              <table data-testid="monitoring-trend-data">
-                <caption>与图表相同范围的原始读数；血糖保留原始单位</caption>
-                <thead><tr><th scope="col">日期与时间</th><th scope="col">收缩压（mmHg）</th><th scope="col">舒张压（mmHg）</th><th scope="col">血糖（原始单位）</th><th scope="col">已有标记</th></tr></thead>
-                <tbody><tr v-for="(row, index) in trendRows" :key="index"><th scope="row">{{ row.date }} {{ row.time || '—' }}</th><td>{{ row.systolic ?? '—' }}</td><td>{{ row.diastolic ?? '—' }}</td><td>{{ row.glucose ?? '—' }} {{ row.glucose != null ? (row.glucoseUnit || 'mmol/L') : '' }}</td><td>{{ row.abnormal ? '异常' : '—' }}</td></tr></tbody>
-              </table>
-            </div>
-            <v-chart v-else-if="hasTrendData" class="monitor-chart" :option="chartOption" autoresize />
-            <el-empty v-else description="当前时间范围内暂无生命体征记录">
-              <el-button type="primary" @click="$router.push('/bp-self-monitor')">前往记录血压与血糖</el-button>
-            </el-empty>
+          <article class="monitor-panel trend-panel measurement-read-model">
+            <h2 id="monitoring-trends" tabindex="-1" class="monitor-section-heading">{{ot('originalTitle')}}</h2><p>{{ot('rawChartHelp')}}</p>
+            <button type="button" data-action="toggle-monitoring-original" :aria-expanded="rawOpen" @click="rawOpen=!rawOpen">{{ot(rawOpen?'close':'open')}}</button>
+            <template v-if="rawOpen"><OriginalMeasurementPageStatus :state="raw.state" @refresh="raw.refresh()" @retry="raw.refresh({keepPosition:true})" @next="raw.next()" @previous="raw.previous()" />
+            <div v-if="raw.state.phase==='ready' && raw.state.items.length" class="mr-table-wrap" tabindex="0" role="region" :aria-label="ot('originalTitle')"><table data-testid="monitoring-trend-data"><caption>{{ot('pageScope')}}</caption><thead><tr><th>{{ot('originalTime')}}</th><th>{{ot('BP')}}</th><th>{{ot('GLUCOSE')}}</th><th>{{ot('source')}}</th></tr></thead><tbody><tr v-for="row in raw.state.items" :key="row.id"><th>{{selfTime(row)}}</th><td>{{selfBp(row)}}</td><td>{{selfGlucose(row)}}</td><td>#{{row.id}} · {{row.measurePeriod || ot('periodUnknown')}}<p>{{originalIssues(row).join(' · ')}}</p></td></tr></tbody></table></div></template>
           </article>
 
           <article class="monitor-panel task-panel">
             <header class="panel-head panel-head--compact"><div><span class="panel-kicker">照护计划</span><h2 id="monitoring-tasks" tabindex="-1" class="monitor-section-heading">今日任务</h2></div><span class="panel-count">{{ todayTasks.length }} 项</span></header>
             <div v-if="todayTasks.length" class="task-list">
-              <article v-for="task in todayTasks" :key="`${task.taskType}-${task.id}`" class="task-item" :class="{ 'task-item--done': isTaskDone(task) }">
+              <article v-for="task in todayTasks" :key="`${task.taskType}-${task.id}`" class="task-item" :class="{ 'task-item--done': isTaskDone(task), 'task-item--workflow': !!task.nextAction }">
                 <span class="task-time">{{ timeOnly(task.scheduledAt) }}</span>
                 <span class="task-icon"><el-icon><component :is="task.taskType === 'MEDICATION' ? 'FirstAidKit' : 'Calendar'" /></el-icon></span>
-                <div><strong>{{ task.title }}</strong><p>{{ task.dosage || task.description || taskTypeText(task.taskType) }}</p></div>
-                <el-tag :type="taskTagType(task.status)" effect="light">{{ taskStatusText(task.status) }}</el-tag>
-                <el-button v-if="task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">标记已服</el-button>
+                <div :class="{ 'workflow-task-copy': !!task.nextAction }"><strong>{{ task.title }}</strong><p v-if="!task.nextAction">{{ task.dosage || task.description || taskTypeText(task.taskType) }}</p><span v-if="task.nextAction" role="status" class="workflow-task-truth">{{ medicationText(task.followUpState) }} · {{ medicationText(task.followUpKind) }} · {{ medicationText(task.status) }}</span></div>
+                <el-tag v-if="!task.nextAction" :type="taskTagType(task.status)" effect="light">{{ taskStatusText(task.status) }}</el-tag>
+                <router-link v-if="task.nextAction" class="workflow-task-link" :to="{ path: '/medication', query: { patientId, ...(task.executionId ? { executionId: task.executionId } : {}) } }">{{ medicationText('intakeTitle') }}</router-link>
+                <el-button v-if="!task.nextAction && task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">标记已服</el-button>
                 <el-button v-if="task.taskType === 'DIALYSIS'" size="small" @click="$router.push('/family-health')">管理排班</el-button>
               </article>
             </div>
@@ -173,7 +162,7 @@
       </section>
 
       <section class="care-guidance">
-        <header><el-icon><Opportunity /></el-icon><div><strong>当前照护建议</strong><span>根据监测数据自动汇总，仅供健康管理参考。</span></div></header>
+        <header><el-icon><Opportunity /></el-icon><div><strong>{{ot('legacySuggestions')}}</strong><span>根据监测数据自动汇总，仅供健康管理参考。</span></div></header>
         <ol><li v-for="item in snapshot.careSuggestions || []" :key="item">{{ item }}</li></ol>
       </section>
       </template>
@@ -183,23 +172,25 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import TrustedMeasurementTrend from '@/components/measurement-read-model/TrustedMeasurementTrend.vue'
+import MeasurementCorrectionEntry from '@/components/measurement-read-model/MeasurementCorrectionEntry.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Bell, Calendar, CircleCheck, CircleCheckFilled, Clock, DataLine,
-  FirstAidKit, Opportunity, Refresh, SuccessFilled, WarningFilled
+  FirstAidKit, Opportunity, Refresh, WarningFilled
 } from '@element-plus/icons-vue'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
-import VChart from '@/components/HealthChart.vue'
-import { getMonitoringSnapshot } from '@/api/monitoring'
+import {monitoringSnapshotBounded} from '@/api/originalMeasurements'
+import {useOriginalMeasurementPage} from '@/composables/useOriginalMeasurementPage'
+import OriginalMeasurementPageStatus from '@/components/measurement-read-model/OriginalMeasurementPageStatus.vue'
+import {originalText as ot} from '@/utils/originalMeasurementCopy'
+import {selfTime,selfBp,selfGlucose,originalIssues,boundedMeasurementContext} from '@/utils/originalMeasurementPresentation'
 import { localizeHealthTimelineEntry } from '@/utils/timelineText'
 import { localizeServerText } from '@/utils/serverText'
 import { acknowledge, checkThresholds, resolve } from '@/api/alert'
 import { actionIntake } from '@/api/familyHealth'
+import { medicationText } from '@/utils/medicationExecutionCopy'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
-import { readPermissionCache } from '@/utils/authSession'
+import {readPermissionCache,captureAuthSession,isAuthSessionCurrent} from '@/utils/authSession'
 import { canAccessWorkspace, resolveWorkspaceEntry } from '@/utils/workspaceAccess'
 import careMoments from '@/assets/illustrations/care-moments.webp'
 import careMomentsSmall from '@/assets/illustrations/care-moments-small.webp'
@@ -208,21 +199,35 @@ import medicationCareSmall from '@/assets/illustrations/medication-care-small.we
 import dialysisCareSmall from '@/assets/illustrations/dialysis-care-small.webp'
 import recordsCareSmall from '@/assets/illustrations/records-care-small.webp'
 
-use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent])
 
-const { currentPatientId } = useCurrentPatient()
+const { currentPatientId, currentPatientName } = useCurrentPatient()
 const patientId = computed(() => currentPatientId.value)
-const snapshot = ref({ signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {}, vitalTrend: [] })
+const snapshot = ref({ signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {} })
 const loading = ref(false)
 const checking = ref(false)
 const days = ref(7)
-const loadedDays = ref(7)
 const loadError = ref('')
 const accessDenied = ref(false)
 const lastSuccessAt = ref('')
 const hasSnapshot = computed(() => !!lastSuccessAt.value)
-const trendView = ref('chart')
-const trendRows = computed(() => snapshot.value.vitalTrend || [])
+const rawOpen=ref(false);
+const measurementContext=computed(()=>snapshot.value.measurementContext||null);
+const raw=useOriginalMeasurementPage(patientId,computed(()=>({sourceType:'BP_SELF_MONITOR',from:measurementContext.value?.from,to:measurementContext.value?.to})),computed(()=>rawOpen.value&&!!measurementContext.value));
+// 最新卡只取服务器窗口内各指标原记录，旧信号仅保留为带来源的历史规则提示。
+const displaySignals=computed(()=>{
+  if(!measurementContext.value)return [];
+  const signals=snapshot.value.signals||[];
+  const originals=['bloodPressure','glucose'].map(key=>{
+    const legacy=signals.find(signal=>signal.key===key),metric=key==='bloodPressure'?'BP':'GLUCOSE';
+    const row=measurementContext.value[metric==='BP'?'latestBloodPressure':'latestGlucose'];
+    return {...legacy,key,label:legacy?.label||ot(metric),status:legacy?.status||'UNASSESSED',original:true,
+      value:row?(metric==='BP'?selfBp(row):selfGlucose(row)):ot('noReading'),unit:'',updatedAt:null,
+      rawTime:row?selfTime(row):ot('noTime'),period:row?.measurePeriod,freshnessText:ot('localTime'),issues:originalIssues(row,metric),
+      statusLabel:legacy?ot('legacyRule')+' · '+(legacy.status==='NORMAL'?ot('legacyNormal'):legacy.statusLabel):ot('unassessed')};
+  });
+  return [...originals,...signals.filter(signal=>!['bloodPressure','glucose'].includes(signal.key))];
+});
+const measurementNeedsReview=computed(()=>displaySignals.value.some(signal=>signal.original&&signal.issues.length));
 
 function focusSection(id) {
   const target = document.getElementById(id)
@@ -254,11 +259,12 @@ let timer = null
 let snapshotRequestEpoch = 0
 let snapshotAccessEpoch = 0
 let snapshotPending = null
+let snapshotController=null
 let snapshotDisposed = false
 
 function captureReaderSession() {
   if (typeof localStorage === 'undefined') return null;
-  return JSON.stringify(['token', 'userId', 'username'].map(key => localStorage.getItem(key)));
+  return JSON.stringify({...captureAuthSession(),actor:localStorage.getItem('userId'),permissions:readPermissionCache()});
 }
 let readerSession = captureReaderSession();
 let readerSessionEpoch = 0;
@@ -269,7 +275,8 @@ function clearProtectedSnapshot(message) {
   snapshotAccessEpoch++
   snapshotRequestEpoch++
   snapshotPending = null
-  snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {}, vitalTrend: [] }
+  snapshotController?.abort();snapshotController=null;raw.clear()
+  snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {} }
   lastSuccessAt.value = ''
   loading.value = false
   checking.value = false
@@ -277,8 +284,9 @@ function clearProtectedSnapshot(message) {
   loadError.value = message
 }
 function readerSessionChanged(event) {
-  if (snapshotDisposed || (event?.key != null && !['token', 'userId', 'username', 'realName'].includes(event.key))) return
+  if (snapshotDisposed || (event?.key != null && !['token','userId','username','realName','permissionSession','userMenus','userRoleCodes'].includes(event.key))) return
   readerSessionEpoch++
+  rawOpen.value=false;raw.clear()
   clearProtectedSnapshot('登录会话已改变，请重新登录并选择患者。')
 }
 function ensureReaderSession() {
@@ -295,11 +303,9 @@ const recentEvents = computed(() => (snapshot.value.recentEvents || []).map(even
   const localized = localizeHealthTimelineEntry({...event, sourceType})
   return {...event, title: localized.title, summary: localized.summary}
 }))
-const primarySuggestion = computed(() => snapshot.value.careSuggestions?.[0] || '持续记录后，系统将提供更可靠的趋势判断。')
-const statusTone = computed(() => ({ CRITICAL: 'critical', WARNING: 'warning', STABLE: 'stable', NO_DATA: 'empty' }[snapshot.value.overallStatus] || 'empty'))
-const statusIcon = computed(() => snapshot.value.overallStatus === 'STABLE' ? SuccessFilled : WarningFilled)
-const hasTrendData = computed(() => (snapshot.value.vitalTrend || []).some(p => p.systolic != null || p.diastolic != null || p.glucose != null))
-const latestUpdateText = computed(() => formatRelative(snapshot.value.lastDataAt))
+const primarySuggestion = computed(() => measurementNeedsReview.value ? ot('missingContext') : ot('unassessed'))
+const statusTone = computed(() => ({ CRITICAL: 'critical', WARNING: 'warning', STABLE: 'empty', NO_DATA: 'empty' }[snapshot.value.overallStatus] || 'empty'))
+const statusIcon = computed(() => ['CRITICAL','WARNING'].includes(snapshot.value.overallStatus)?WarningFilled:Clock)
 const illustratedShortcuts = computed(() => {
   const { menuPaths = [], roleCodes = [] } = readPermissionCache() || {}
   return [
@@ -311,60 +317,23 @@ const illustratedShortcuts = computed(() => {
     .map(item => ({ ...item, path: resolveWorkspaceEntry(item.path, menuPaths, roleCodes) }))
 })
 
-// Existing chart reference lines are in mmol/L. Keep source values and units unchanged.
-function glucoseInMmol(value, unit) {
-  if (!['number', 'string'].includes(typeof value) || String(value).trim() === '' || !Number.isFinite(Number(value))) return null;
-  const normalizedUnit = String(unit ?? '').trim().toLowerCase() || 'mmol/l';
-  if (normalizedUnit === 'mg/dl') return Number((Number(value) / 18).toFixed(8));
-  return normalizedUnit === 'mmol/l' ? Number(value) : null;
-}
-
-const chartOption = computed(() => {
-  const rows = snapshot.value.vitalTrend || []
-  const labels = rows.map(p => `${String(p.date || '').slice(5)} ${p.time || ''}`.trim())
-  const symbol = p => p.abnormal ? 'diamond' : 'circle'
-  return {
-    animationDuration: 350,
-    tooltip: {
-      trigger: 'axis', renderMode: 'richText', backgroundColor: 'rgba(12,47,45,.94)', borderWidth: 0,
-      textStyle: { color: '#fff' },
-      formatter(params = []) {
-        const items = Array.isArray(params) ? params : [params]
-        const row = rows[items[0]?.dataIndex]
-        const lines = [items[0]?.axisValueLabel || '测量记录', ...items.map(item => `${item.seriesName}: ${item.value ?? '—'}`)]
-        if (row?.abnormal) lines.push('该时间点存在异常标记，可能来自其他指标，请结合原记录查看。')
-        return lines.join('\n')
-      }
-    },
-    grid: { left: 48, right: 50, top: 28, bottom: 52 },
-    xAxis: { type: 'category', data: labels, boundaryGap: false, axisLine: { lineStyle: { color: '#dbe7e4' } }, axisTick: { show: false }, axisLabel: { color: '#708783', hideOverlap: true } },
-    yAxis: [
-      { type: 'value', name: 'mmHg', min: 40, axisLabel: { color: '#708783' }, splitLine: { lineStyle: { color: '#edf3f1' } } },
-      { type: 'value', name: 'mmol/L', min: 0, axisLabel: { color: '#708783' }, splitLine: { show: false } }
-    ],
-    series: [
-      { name: '收缩压', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.systolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.5, color: '#236b63' }, itemStyle: { color: '#236b63' }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d6a642', type: 'dashed' }, label: { show: false, color: '#8a6110', formatter: '参考值 140' }, data: [{ yAxis: 140 }] } },
-      { name: '舒张压', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.diastolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#589b91' }, itemStyle: { color: '#589b91' } },
-      { name: '血糖', type: 'line', yAxisIndex: 1, smooth: .25, connectNulls: true, data: rows.map(p => ({ value: glucoseInMmol(p.glucose, p.glucoseUnit), symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#d59c2f' }, itemStyle: { color: '#d59c2f' } }
-    ]
-  }
-})
-
 async function loadSnapshot(silent = false) {
   const requestedPatientId = patientId.value
   const requestedDays = days.value
   if (snapshotDisposed || !requestedPatientId || !ensureReaderSession()) return
-  const session = readerSession, sessionEpoch = readerSessionEpoch
+  const session = readerSession, sessionEpoch = readerSessionEpoch,auth={...captureAuthSession(),actorId:localStorage.getItem('userId')},permissions=JSON.stringify(readPermissionCache())
   const requestEpoch = ++snapshotRequestEpoch
   const pending = { patientId: requestedPatientId, days: requestedDays }
   snapshotPending = pending
+  snapshotController?.abort();const controller=new AbortController();snapshotController=controller;
+  snapshot.value={signals:[],activeAlerts:[],todayTasks:[],recentEvents:[],careSuggestions:[],metrics:{}};lastSuccessAt.value='';
   loading.value = true
   try {
-    const res = await getMonitoringSnapshot(requestedPatientId, requestedDays)
-    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch)) return
+    const res = await monitoringSnapshotBounded({patientId:requestedPatientId,days:requestedDays},{expectedAuth:auth,signal:controller.signal})
+    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch) || requestedDays!==days.value || !isAuthSessionCurrent(auth) || permissions!==JSON.stringify(readPermissionCache())) return
     if (res.code === 200) {
-      snapshot.value = localizeSnapshot(res.data || {})
-      loadedDays.value = requestedDays
+      if(!boundedMeasurementContext(res.data,requestedPatientId,requestedDays))throw new Error(ot('unavailable'));
+      snapshot.value = localizeSnapshot(res.data)
       loadError.value = ''
       lastSuccessAt.value = new Date().toISOString()
       accessDenied.value = false
@@ -372,16 +341,15 @@ async function loadSnapshot(silent = false) {
       throw Object.assign(new Error(res.msg || '无法加载监测数据。'), { code: res.code })
     }
   } catch (error) {
-    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch)) return
+    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch) || requestedDays!==days.value || !isAuthSessionCurrent(auth) || permissions!==JSON.stringify(readPermissionCache())) return
     if ([401, 403].includes(Number(error.response?.status || error.status || error.code))) {
       clearProtectedSnapshot('监测访问不可用或已被撤销，请重新检查权限。')
       return
     }
-    days.value = loadedDays.value
     loadError.value = error.message || '无法加载监测数据。'
   } finally {
     if (snapshotPending === pending) snapshotPending = null
-    if (!snapshotDisposed && requestEpoch === snapshotRequestEpoch) loading.value = false
+    if (!snapshotDisposed && requestEpoch === snapshotRequestEpoch) { loading.value = false;if(!ownsReaderSession(session,sessionEpoch)||!isAuthSessionCurrent(auth)||permissions!==JSON.stringify(readPermissionCache()))clearProtectedSnapshot(ot('denied')) }
   }
 }
 
@@ -451,10 +419,10 @@ async function completeMedication(task) {
 
 function signalTone(status) { return ({ CRITICAL: 'critical', WARNING: 'warning', DELAYED: 'delayed', NORMAL: 'normal', PENDING: 'pending' }[status] || 'empty') }
 function alertLevel(level) { return ({ CRITICAL: '紧急', WARNING: '警告', INFO: '提示' }[level] || '提示') }
-function isTaskDone(task) { return task.status === 'TAKEN' || task.status === 'COMPLETED' }
+function isTaskDone(task) { return !task.nextAction && (task.status === 'TAKEN' || task.status === 'COMPLETED') }
 function taskStatusText(status) { return ({ PENDING: '待处理', TAKEN: '已服用', SNOOZED: '已延后', SKIPPED: '已跳过', MISSED: '已漏服', PLANNED: '已计划', COMPLETED: '已完成', CANCELLED: '已取消' }[status] || status || '待处理') }
 function taskTagType(status) { return ({ TAKEN: 'success', COMPLETED: 'success', MISSED: 'danger', SKIPPED: 'info', SNOOZED: 'warning', CANCELLED: 'info' }[status] || 'warning') }
-function taskTypeText(type) { return type === 'DIALYSIS' ? '透析排班' : '用药计划' }
+function taskTypeText(type) { if (type === 'MEDICATION_WORKFLOW') return medicationText('intakeTitle'); return type === 'DIALYSIS' ? '透析排班' : '用药计划' }
 function eventTypeText(type) { return ({ SYMPTOM: '症状记录', VISIT: '就诊记录', NOTE: '健康备注', MEDICATION: '用药', DIALYSIS: '透析', MEASUREMENT: '测量', INTAKE: '服药打卡', MEDICATION_LOG: '用药记录' }[type] || '健康事件') }
 function timeOnly(value) { return value ? String(value).slice(11, 16) : '—' }
 function shortDateTime(value) { return value ? String(value).slice(5, 16).replace('T', ' ') : '—' }
@@ -471,6 +439,7 @@ function formatRelative(value) {
 }
 
 function localizeSnapshot(data) {
+  const hasWorkflowTasks = (data.todayTasks || []).some(item => item.nextAction)
   const statusLabels = { CRITICAL: '需要立即关注', WARNING: '存在待处理事项', NO_DATA: '等待健康数据', STABLE: '当前状态稳定' }
   const signalLabels = { bloodPressure: '血压监测', glucose: '血糖监测', dialysis: '透析监测', medication: '今日用药' }
   const signalStatus = { CRITICAL: '严重异常', WARNING: '需要关注', DELAYED: '数据延迟', PENDING: '进行中', NO_DATA: '暂无数据', NORMAL: '正常' }
@@ -478,14 +447,15 @@ function localizeSnapshot(data) {
     ...signal,
     label: signalLabels[signal.key] || signal.label,
     statusLabel: signalStatus[signal.status] || signal.statusLabel,
-    freshnessText: signal.updatedAt ? formatRelative(signal.updatedAt) : (signal.key === 'medication' ? '今日暂无用药任务' : '等待首次记录'),
+    freshnessText: hasWorkflowTasks && signal.key === 'medication' ? '旧汇总仅统计独立旧任务；协作事实和随访请分别核对。' : signal.updatedAt ? formatRelative(signal.updatedAt) : (signal.key === 'medication' ? '今日暂无用药任务' : '等待首次记录'),
     unit: signal.key === 'dialysis' && signal.unit === 'kg weight gain' ? 'kg 增重' : localizeServerText(signal.unit)
   }))
   const suggestions = []
+  if ((data.todayTasks || []).some(item => item.nextAction)) suggestions.push('协作用药随访不计入旧完成率；记录事实、结束随访与临床安全是不同的结果。')
   if (data.overallStatus === 'CRITICAL') suggestions.push('检测到严重异常，请立即复测；如伴随明显不适，请按医嘱联系医生或及时就医。')
   if (!signals.some(item => item.key === 'bloodPressure' && item.status !== 'NO_DATA')) suggestions.push('近期没有血压记录，建议在静息状态下完成一次测量。')
   if (!signals.some(item => item.key === 'glucose' && item.status !== 'NO_DATA')) suggestions.push('近期没有血糖记录；如照护计划有要求，请及时补充。')
-  const pending = (data.todayTasks || []).filter(item => ['PENDING', 'MISSED', 'SNOOZED'].includes(item.status)).length
+  const pending = (data.todayTasks || []).filter(item => !item.nextAction && ['PENDING', 'MISSED', 'SNOOZED'].includes(item.status)).length
   if (pending) suggestions.push(`今日仍有 ${pending} 项用药任务待处理，请核对实际服药情况。`)
   if ((data.metrics?.dataCompleteness ?? 0) < 50) suggestions.push('当前监测数据覆盖不足，持续记录后趋势判断会更可靠。')
   if (!suggestions.length) suggestions.push('当前没有紧急事项，请继续按计划记录、用药和复诊。')
@@ -493,23 +463,23 @@ function localizeSnapshot(data) {
 }
 
 
+watch(days,()=>{clearProtectedSnapshot('');accessDenied.value=false},{flush:'sync'})
 watch(patientId, () => {
+  rawOpen.value=false;raw.clear();snapshotController?.abort();
   snapshotAccessEpoch++
   readerSession = captureReaderSession()
   readerSessionEpoch++
   snapshotRequestEpoch++
   snapshotPending = null
   loading.value = false
-  snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {}, vitalTrend: [] }
-  loadedDays.value = days.value
+  snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {} }
   loadError.value = ''
   lastSuccessAt.value = ''
   accessDenied.value = false
-  trendView.value = 'chart'
   loadSnapshot()
   resetTimer()
 }, { immediate: true, flush: 'sync' })
-onMounted(() => { resetTimer(); document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('storage', readerSessionChanged); window.addEventListener('auth-session-cleared', readerSessionChanged) })
+onMounted(() => { resetTimer(); document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('storage', readerSessionChanged); window.addEventListener('auth-session-cleared', readerSessionChanged);window.addEventListener('auth-session-changed',readerSessionChanged) })
 onUnmounted(() => {
   snapshotDisposed = true
   snapshotRequestEpoch++
@@ -517,12 +487,14 @@ onUnmounted(() => {
   if (timer) window.clearInterval(timer)
   document.removeEventListener('visibilitychange', handleVisibility)
   window.removeEventListener('storage', readerSessionChanged)
-  window.removeEventListener('auth-session-cleared', readerSessionChanged)
+  window.removeEventListener('auth-session-cleared', readerSessionChanged);window.removeEventListener('auth-session-changed',readerSessionChanged);snapshotController?.abort()
 })
 function handleVisibility() { return refreshSnapshotInBackground() }
 </script>
 
 <style scoped>
+.workflow-task-link{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:.5rem;overflow-wrap:anywhere}.workflow-task-link:focus-visible{outline:2px solid var(--el-color-primary);outline-offset:2px}.workflow-task-truth,.workflow-metric-limit{overflow-wrap:anywhere}
+
 .read-state { padding: 14px 18px; margin-bottom: 16px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-subtle); color: var(--ink-800); overflow-wrap: anywhere; }
 .read-state--error { border-color: var(--danger); }
 .alert-list-summary, .trend-view-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
@@ -1218,6 +1190,13 @@ function handleVisibility() { return refreshSnapshotInBackground() }
   border-bottom: 1px solid var(--line-soft, #edf2f1);
 }
 
+/* 跟踪任务的名称与真实随访状态共用纵向文本流，链接另起一行，不能挤窄名称或覆盖状态。 */
+.task-item.task-item--workflow { grid-template-columns: 46px 36px minmax(0, 1fr); align-items: start; }
+.workflow-task-copy { min-width: 0; overflow-wrap: anywhere; }
+.workflow-task-copy strong { display: block; }
+.workflow-task-truth { display: block; margin-top: 6px; line-height: 1.5; }
+.task-item--workflow .workflow-task-link { grid-column: 3 / -1; justify-self: start; max-width: 100%; white-space: normal; }
+
 .task-item:last-child {
   border-bottom: 0;
 }
@@ -1592,4 +1571,24 @@ function handleVisibility() { return refreshSnapshotInBackground() }
   .monitoring-section-nav a { flex: 1; padding-inline: 8px; }
 }
 
+</style>
+
+<style scoped>
+.monitoring-controls {
+  --control-row-size: 44px;
+}
+body.care-senior .monitoring-controls {
+  --control-row-size: 48px;
+}
+.monitoring-controls .range-select {
+  --el-component-size: var(--control-row-size);
+}
+.monitoring-controls .range-select :deep(.el-select__wrapper),
+.monitoring-controls .refresh-button {
+  box-sizing: border-box;
+  min-height: var(--control-row-size);
+}
+.monitoring-controls .refresh-button {
+  height: auto;
+}
 </style>

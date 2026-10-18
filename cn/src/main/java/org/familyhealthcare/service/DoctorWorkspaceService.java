@@ -16,6 +16,9 @@ import java.util.Map;
 
 @Service
 public class DoctorWorkspaceService {
+    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
+    @Autowired private org.familyhealthcare.service.workflow.HouseholdAuthorityLocks householdAuthorityLocks;
+
     @Autowired private JdbcTemplate jdbc;
     @Autowired private MedicalRecordService medicalRecordService;
     @Autowired(required=false) private CarePlanProperties carePlanProperties;
@@ -54,9 +57,10 @@ public class DoctorWorkspaceService {
         String scope = CurrentUserUtil.isAdmin() ? "" : " AND a.doctor_user_id=" + currentUserId();
         List<Map<String, Object>> rows = new ArrayList<>();
         rows.addAll(jdbc.queryForList("SELECT 'MEDICAL_RECORD' AS sourceType,m.id AS sourceId,m.patient_id AS patientId,p.name AS patientName," +
-                "m.verification_status AS status,m.record_type AS title,m.record_date AS occurredAt,m.confidence_score AS confidence " +
+                "m.verification_status AS status,m.verification_status AS verificationStatus,m.content_version AS contentVersion,m.record_type AS title,m.record_date AS occurredAt,m.confidence_score AS confidence " +
                 "FROM medical_record m JOIN patient p ON p.id=m.patient_id JOIN doctor_patient_assignment a ON a.patient_id=m.patient_id AND a.status='ACTIVE' " +
-                "WHERE m.verification_status=?" + scope + " ORDER BY m.updated_at DESC", wanted));
+                "WHERE m.verification_status=? AND "+medicalValidity.open().activeSql("m.") + scope + " ORDER BY m.updated_at DESC", wanted));
+        medicalValidity.open().projectRows(rows,"sourceId");
         rows.addAll(jdbc.queryForList("SELECT 'AI_ANALYSIS' AS sourceType,r.id AS sourceId,r.patient_id AS patientId,p.name AS patientName," +
                 "r.review_status AS status,COALESCE(r.period_label,'AI 分析') AS title,r.created_at AS occurredAt,NULL AS confidence " +
                 "FROM ai_analysis_record r JOIN patient p ON p.id=r.patient_id JOIN doctor_patient_assignment a ON a.patient_id=r.patient_id AND a.status='ACTIVE' " +
@@ -103,7 +107,7 @@ public class DoctorWorkspaceService {
                 requiredText(body, "instructions", 4000), date(body.get("targetDate")), status);
     }
 
-    @Transactional
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED,rollbackFor=Exception.class)
     public void review(Map<String, Object> body) {
         String sourceType = requiredText(body, "sourceType", 30).toUpperCase();
         Long sourceId = requiredLong(body, "sourceId");
@@ -124,11 +128,15 @@ public class DoctorWorkspaceService {
                 currentUserId(), patientId, sourceType, sourceId, decision, text(body, "reviewNote", null));
     }
 
-    @Transactional
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void assign(Map<String, Object> body) {
         if (!CurrentUserUtil.isAdmin()) throw new IllegalStateException("Only administrators can assign doctors.");
         Long doctorId = requiredLong(body, "doctorUserId");
         Long patientId = requiredLong(body, "patientId");
+        if (householdAuthorityLocks != null) {
+            householdAuthorityLocks.lockPatientAndSubjects(patientId, java.util.Arrays.asList(currentUserId(), doctorId));
+            org.familyhealthcare.service.workflow.HouseholdGovernance.requireCurrentAdmin(jdbc, currentUserId());
+        }
         requireAssigned(patientId);
         Integer doctors = jdbc.queryForObject("SELECT COUNT(*) FROM sys_user u JOIN sys_user_role ur ON ur.user_id=u.id JOIN sys_role r ON r.id=ur.role_id WHERE u.id=? AND u.status=1 AND COALESCE(u.deleted,0)=0 AND r.role_code='doctor' AND r.status=1 AND COALESCE(r.deleted,0)=0", Integer.class, doctorId);
         if(doctors==null||doctors==0)throw new IllegalArgumentException("Select an active doctor for the consultation.");

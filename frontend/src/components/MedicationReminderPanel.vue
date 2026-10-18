@@ -10,8 +10,8 @@
       <el-table-column prop="remindTime" label="Time" width="100" />
       <el-table-column label="Repeat days" min-width="190"><template #default="{ row }">{{ daysText(row.repeatDays) }}</template></el-table-column>
       <el-table-column prop="remark" label="Notes" min-width="160" show-overflow-tooltip />
-      <el-table-column label="Enabled" width="90" align="center"><template #default="{ row }"><el-switch :model-value="row.enabled === 1" :disabled="pendingRows.has(row.id)" @change="toggle(row)" /></template></el-table-column>
-      <el-table-column label="Actions" min-width="140" fixed="right"><template #default="{ row }"><div class="table-actions"><el-button link type="primary" :disabled="pendingRows.has(row.id)" @click="openEdit(row)">Edit</el-button><el-popconfirm title="Delete this medication reminder?" @confirm="remove(row)"><template #reference><el-button link type="danger" :disabled="pendingRows.has(row.id)">Delete</el-button></template></el-popconfirm></div></template></el-table-column>
+      <el-table-column label="Enabled" width="90" align="center"><template #default="{ row }"><el-switch :model-value="row.enabled === 1" :disabled="pendingRows.has(row.id) || !!row.executionId" @change="toggle(row)" /></template></el-table-column>
+      <el-table-column label="Actions" min-width="140" fixed="right"><template #default="{ row }"><div class="table-actions"><router-link class="medication-typed-link" v-if="row.executionId" :to="`/medication?patientId=${row.patientId}&executionId=${row.executionId}`">{{medicationText('open')}}</router-link><el-button link type="primary" :disabled="pendingRows.has(row.id) || !!row.executionId" @click="openEdit(row)">Edit</el-button><el-popconfirm title="Delete this medication reminder?" @confirm="remove(row)"><template #reference><el-button link type="danger" :disabled="pendingRows.has(row.id) || !!row.executionId">Delete</el-button></template></el-popconfirm></div></template></el-table-column>
     </el-table>
 
     <el-dialog v-model="visible" :title="form.id ? 'Edit medication reminder' : 'Add medication reminder'" width="min(560px, 94vw)" destroy-on-close>
@@ -32,6 +32,7 @@
 import { onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import {medicationText} from '@/utils/medicationExecutionCopy'
 import { deleteReminder, listReminders, saveReminder, toggleEnabled } from '@/api/medicationReminder'
 
 const props = defineProps({ patientId: { type: [Number, String], default: null }, medications: { type: Array, default: () => [] } })
@@ -118,4 +119,5 @@ onUnmounted(() => {
 
 <style scoped>
 .reminder-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}.reminder-head h2{margin:0 0 6px}.reminder-head p,.muted{margin:0;color:var(--ink-500);font-size:13px}.head-actions,.table-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.table-actions :deep(.el-button + .el-button){margin-left:0}@media(max-width:768px){.reminder-head{flex-direction:column}.head-actions{width:100%}.head-actions .el-button{flex:1;margin-left:0}}
+.medication-typed-link{display:inline-flex;align-items:center;min-height:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere;padding:4px 8px;box-sizing:border-box}
 </style>

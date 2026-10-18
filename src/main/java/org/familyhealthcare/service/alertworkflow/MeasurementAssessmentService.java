@@ -16,7 +16,13 @@ public class MeasurementAssessmentService {
     public Map<String,Object> assessJourney(long patientId,String metric,BigDecimal primary,BigDecimal secondary,String unit){
         String policy="JOURNEY_"+metric;
         if(primary==null||!knownUnit(metric,unit))return unknown(metric,policy,null,unit,null);
-        Map<String,Object> target=target(patientId),thresholds=journeyThresholds(metric,target);
+        return assessJourney(metric,primary,secondary,unit,target(patientId));
+    }
+    /** 同一趋势页共享一次目标快照，保留原来源的比较政策。 */
+    public Map<String,Object> assessJourney(String metric,BigDecimal primary,BigDecimal secondary,String unit,Map<String,Object> target){
+        String policy="JOURNEY_"+metric;
+        if(primary==null||!knownUnit(metric,unit))return unknown(metric,policy,null,unit,null);
+        Map<String,Object> thresholds=journeyThresholds(metric,target);
         if(thresholds.isEmpty()||("BP".equals(metric)&&secondary==null))return unknown(metric,policy,primary,unit,null);
         BigDecimal comparison="GLUCOSE".equals(metric)?glucoseValue(primary,unit):primary;
         String status=journeyStatus(metric,comparison,secondary,target);

@@ -30,11 +30,11 @@ public final class AlertWorkflowTestDatabase {
         jdbc.execute("CREATE TABLE doctor_patient_assignment(doctor_user_id BIGINT,patient_id BIGINT,status VARCHAR(20))");
         jdbc.execute("CREATE TABLE care_nurse_assignment(id BIGINT PRIMARY KEY,patient_id BIGINT,nurse_user_id BIGINT,status VARCHAR(20),expires_at TIMESTAMP(6),revoked_at TIMESTAMP(6))");
         jdbc.execute("CREATE TABLE care_access_grant(id BIGINT AUTO_INCREMENT PRIMARY KEY,patient_id BIGINT,grantee_user_id BIGINT,grantee_role VARCHAR(30),access_level VARCHAR(20),visible_modules VARCHAR(1000),status VARCHAR(20),expires_at TIMESTAMP(6))");
-        jdbc.execute("CREATE TABLE medical_record(id BIGINT PRIMARY KEY,patient_id BIGINT)");
+        jdbc.execute("CREATE TABLE medical_record(id BIGINT PRIMARY KEY,patient_id BIGINT,user_id BIGINT,content_version BIGINT DEFAULT 1,verification_status VARCHAR(30) DEFAULT 'REVIEW_REQUIRED')");
         jdbc.execute("CREATE TABLE doctor_care_plan(id BIGINT PRIMARY KEY,patient_id BIGINT,current_revision_id BIGINT,status VARCHAR(20),workflow_version INT,lifecycle VARCHAR(20))");
         jdbc.execute("CREATE TABLE care_plan_action(id BIGINT PRIMARY KEY,plan_id BIGINT,patient_id BIGINT,revision_id BIGINT,status VARCHAR(20),lock_version BIGINT)");
-        jdbc.execute("CREATE TABLE care_plan_event(id BIGINT PRIMARY KEY,plan_id BIGINT,action_id BIGINT,event_type VARCHAR(40))");
-        jdbc.execute("CREATE TABLE care_plan_evidence(event_id BIGINT,source_type VARCHAR(30),source_id BIGINT)");
+        jdbc.execute("CREATE TABLE care_plan_event(id BIGINT PRIMARY KEY,plan_id BIGINT,action_id BIGINT,event_type VARCHAR(40),patient_id BIGINT)");
+        jdbc.execute("CREATE TABLE care_plan_evidence(id BIGINT AUTO_INCREMENT PRIMARY KEY,event_id BIGINT,source_type VARCHAR(30),source_id BIGINT)");
         jdbc.execute("CREATE TABLE patient_health_target(id BIGINT PRIMARY KEY,patient_id BIGINT,systolic_min INT,systolic_max INT,diastolic_min INT,diastolic_max INT,target_weight DECIMAL(12,3),weight_gain_limit DECIMAL(12,3))");
     }
     public void fixtures() {

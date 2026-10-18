@@ -18,6 +18,8 @@ import static org.familyhealthcare.service.careplan.CarePlanData.*;
 @Service
 @ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CarePlanActionService {
+    @org.springframework.beans.factory.annotation.Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
+    @org.springframework.beans.factory.annotation.Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions medicalReferences;
     private final JdbcTemplate jdbc;
     private final CarePlanAuthorizationService auth;
     private final CarePlanProperties properties;
@@ -63,6 +65,14 @@ public class CarePlanActionService {
         // The parent is already locked. A newly attached receipt must also serialize with a
         // source correction that could not yet discover this plan. Never acquire another parent here.
         if("SUBMIT_RECEIPT".equals(operation))lockReceiptSources(actor,patient,normalized);
+        List<Map<String,Object>> confirmation=Collections.emptyList();
+        if("REVIEW_RECEIPT".equals(operation)&&"CONFIRM".equals(normalized.get("decision"))) {
+            confirmation=receiptAnchors(actionId,planId,patient);
+            lockReceiptSources(actor,patient,map("evidence",confirmation));
+            if(!json(confirmation).equals(json(receiptAnchors(actionId,planId,patient))))throw conflict();
+            requireCurrentReceipts(actor,patient,confirmation);
+        }
+        final List<Map<String,Object>> checkedConfirmation=confirmation;
         // 都按计划、行动、命令的顺序加锁，避免同时操作时互相卡住；重复提交也沿用这个顺序。
         List<Map<String,Object>>actions=jdbc.query("SELECT revision_id,patient_id,status,lock_version FROM care_plan_action WHERE id=? AND plan_id=? FOR UPDATE",
                 (rs,i)->map("revisionId",rs.getLong("revision_id"),"patientId",rs.getLong("patient_id"),"status",rs.getString("status"),"version",rs.getLong("lock_version")),actionId,planId);
@@ -70,6 +80,10 @@ public class CarePlanActionService {
         String payload=json(map("operation",operation,"planId",planId,"actionId",actionId,"expectedVersion",expectedVersion,"body",normalized));
         Map<String,Object>result=commands.execute(actor,commandKey,payload,planId,expectedVersion,()->{
             requireAuthority(operation,actor,patient);validateReceiptAuthority(operation,actor,patient,normalized);
+            if("REVIEW_RECEIPT".equals(operation)&&"CONFIRM".equals(normalized.get("decision"))) {
+                if(!json(checkedConfirmation).equals(json(receiptAnchors(actionId,planId,patient))))throw conflict();
+                requireCurrentReceipts(actor,patient,checkedConfirmation);
+            }
             // 页面带来的旧版本不能覆盖别人刚更新的行动，版本不同就先刷新。
             if(id(plan.get("version"))!=expectedVersion)throw conflict();
             long revision=id(action.get("revisionId"));String before=(String)action.get("status");
@@ -134,6 +148,18 @@ public class CarePlanActionService {
         }
         // READ_COMMITTED re-reads account, assignment, grant and source ownership after any wait.
         validateReceiptAuthority("SUBMIT_RECEIPT",actor,patient,body);
+        List<Long> medical=new ArrayList<>();for(Map<String,Object> ref:sources.values())if("MEDICAL_RECORD".equals(ref.get("sourceType")))medical.add(id(ref.get("sourceId")));
+        if(!medical.isEmpty())for(org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state:medicalValidity.open().batch(medical).values())if(!state.eligible())throw org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.changed();
+    }
+
+    private List<Map<String,Object>> receiptAnchors(long action,long plan,long patient) {
+        List<Map<String,Object>> rows=jdbc.query("SELECT v.id,v.source_type,v.source_id,e.plan_id,e.patient_id FROM care_plan_evidence v JOIN care_plan_event e ON e.id=v.event_id WHERE e.action_id=? AND e.event_type='RECEIPT_SUBMITTED' ORDER BY v.id LIMIT 51",(r,n)->map("anchorId",r.getLong("id"),"sourceType",r.getString("source_type"),"sourceId",r.getLong("source_id"),"planId",r.getLong("plan_id"),"patientId",r.getLong("patient_id")),action);
+        if(rows.size()>50)throw org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.limit();for(Map<String,Object> row:rows)if(id(row.get("planId"))!=plan||id(row.get("patientId"))!=patient)throw conflict();return rows;
+    }
+    private void requireCurrentReceipts(long actor,long patient,List<Map<String,Object>> rows) {
+        List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> anchors=new ArrayList<>();
+        for(Map<String,Object> row:rows){if(!auth.canReadEvidence(actor,patient,(String)row.get("sourceType"),id(row.get("sourceId"))))throw CarePlanException.denied();if("MEDICAL_RECORD".equals(row.get("sourceType")))anchors.add(new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor(id(row.get("anchorId")),patient,id(row.get("sourceId")),null));}
+        if(!anchors.isEmpty())medicalReferences.requireCurrent(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind.CARE_PLAN_EVIDENCE,anchors,medicalValidity.open());
     }
 
     private void validateReceiptAuthority(String operation,long actor,long patient,Map<String,Object>body){

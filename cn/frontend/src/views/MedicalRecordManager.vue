@@ -1,6 +1,12 @@
 <template>
   <el-container class="module-page medical-record-manager">
-    <section v-if="focusedMode" class="focused-source"><h1>关联病历记录</h1><p v-if="sourceFocus.locator.value">患者 #{{sourceFocus.locator.value.patientId}} · #{{sourceFocus.locator.value.sourceId}}</p><p v-if="sourceFocus.state.loading" role="status">正在检查来源权限…</p><p v-if="sourceFocus.state.error" role="alert">关联记录受限、不可用或上下文已变化。</p><button type="button" :disabled="sourceFocus.state.loading" @click="sourceFocus.reload">重新检查来源</button><button v-if="sourceFocus.state.record" type="button" @click="detailDialogVisible=true">打开记录详情</button></section>
+    <section v-if="focusedMode" class="focused-source">
+      <h1>{{ correctionCopy.linkedTitle }}</h1>
+      <h2>{{ knownPatientName(currentPatientId) || correctionCopy.patientProfile }}</h2>
+      <p v-if="currentPatientId != null">{{ correctionCopy.patientId }} {{ currentPatientId }}</p>
+      <template v-if="focusedPatientConflict"><p role="alert">{{ correctionCopy.patientConflict }}</p><button type="button" @click="recoverCurrentPatient">{{ correctionCopy.recoverPatient }}</button></template>
+      <template v-else><p v-if="sourceFocus.state.loading" role="status">{{ correctionCopy.checkingSource }}</p><p v-if="sourceFocus.state.error" role="alert">{{ correctionCopy.sourceUnavailable }}</p><button type="button" :disabled="sourceFocus.state.loading" @click="sourceFocus.reload">{{ correctionCopy.recheckSource }}</button><button v-if="sourceFocus.state.record" type="button" @click="currentRecord=sourceFocus.state.record;detailDialogVisible=true">{{ correctionCopy.openDetails }}</button></template>
+    </section>
     <el-main v-if="!focusedMode" class="main-content">
       <div class="page-inner">
         <div class="page-header">
@@ -260,7 +266,7 @@
 
         <!-- Result Trends -->
         <div v-show="activeMenu === 'trend'" class="trend-panel">
-          <div class="toolbar">
+          <div class="toolbar control-row-toolbar">
             <el-form :inline="true" class="filter-form">
               <el-form-item label="患者">
                 <PatientSelect v-model="trendForm.patientId" placeholder="选择患者" filterable clearable style="width: 220px" :patients="patientList" />
@@ -310,7 +316,7 @@
               <el-table-column prop="referenceRange" label="参考范围" width="140" />
               <el-table-column prop="isAbnormal" label="状态" width="88" align="center">
                 <template #default="{ row }">
-                  <el-tag :type="getAbnormalType(row.isAbnormal)" size="small">{{ getAbnormalText(row.isAbnormal) }}</el-tag>
+                  <el-tag :type="getTrendStatusType(row)" size="small">{{ getTrendStatusText(row) }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="hospitalName" label="医院" min-width="160" show-overflow-tooltip />
@@ -321,7 +327,7 @@
 
         <!-- Record List / Abnormalrecord -->
         <template v-if="activeMenu === 'list' || activeMenu === 'abnormal'">
-        <div class="toolbar">
+        <div class="toolbar control-row-toolbar">
           <el-form :inline="true" :model="filterForm" class="filter-form">
             <el-form-item label="患者">
               <PatientSelect v-model="filterForm.patientId" placeholder="全部患者" filterable clearable style="width: 200px" :patients="patientList" />
@@ -349,6 +355,7 @@
                 <el-icon><Search /></el-icon>查询
               </el-button>
             </el-form-item>
+            <el-form-item><el-checkbox v-model="filterForm.includeInvalidated" :disabled="correctionViewState.locked || correctionViewState.dirty">{{ correctionCopy.includeInvalidated }}</el-checkbox></el-form-item>
             <el-form-item v-if="activeMenu === 'list' && canUpload">
               <el-button type="primary" @click="goUpload">
                 <el-icon><Upload /></el-icon>上传报告
@@ -357,7 +364,7 @@
           </el-form>
         </div>
 
-        <div class="list-panel" v-loading="loading">
+        <div ref="correctionSection" class="list-panel" tabindex="-1" v-loading="loading">
           <div class="list-panel-head">
             <div class="list-panel-title">
               <el-icon><FirstAidKit /></el-icon>
@@ -401,9 +408,8 @@
                 </template>
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" @click="viewDetail(row)">查看</el-button>
-                    <el-button link type="primary" size="small" @click="openEditDialog(row)">编辑</el-button>
-                    <el-button link type="danger" size="small" @click="deleteRecord(row)">删除</el-button>
+                    <el-button class="medical-record-management-entry" link type="primary" size="small" @click="viewDetail(row)">查看</el-button>
+                    <el-button class="medical-record-management-entry" link type="primary" size="small" @click="openCorrection(row)">{{ correctionCopy.listAction }}</el-button>
                   </div>
                 </template>
               </el-table-column>
@@ -541,8 +547,13 @@
       </template>
     </el-dialog>
 
+    <MedicalRecordCorrectionPanel v-if="correctionTarget && !focusedMode" :record-id="correctionTarget.recordId" :patient-id="correctionTarget.patientId" :patient-name="knownPatientName(correctionTarget.patientId)" :current-patient-id="currentPatientId" :route-key="route.fullPath" :fallback-element="correctionSection" @closed="correctionTarget = null" @view-state="Object.assign(correctionViewState, $event)" @changed="loadRecords" @legacy-edit="openLegacyEditor" @legacy-delete="deleteLegacyRecord" @original="openCorrectionOriginal" />
+
     <!-- Detailsdialog -->
     <el-dialog v-model="detailDialogVisible" title="医疗记录详情" width="min(900px, 95vw)" destroy-on-close>
+      <section v-if="currentRecord"><p>{{ correctionCopy.version }} {{ currentRecord.contentVersion }} · {{ correctionCopy.validities[currentRecord.validity] || correctionCopy.validities.UNKNOWN }} · {{ correctionCopy.reviews[currentRecord.verificationStatus] || correctionCopy.null }}</p><p v-if="currentRecord.sourceStatus">{{ correctionCopy.sourceStatuses[currentRecord.sourceStatus] || correctionCopy.sourceStatuses.UNAVAILABLE }}</p><p>{{ correctionCopy.verifiedHelp }}</p><button v-if="!focusedMode" class="medical-record-management-entry" type="button" @click="openCorrection(currentRecord)">{{ correctionCopy.listAction }}</button></section>
+      <OriginalImportFacts v-if="currentRecord" :original-import="currentRecord.originalImport" />
+      <h3 v-if="currentRecord">当前记录</h3>
       <el-descriptions :column="2" border v-if="currentRecord">
         <el-descriptions-item label="患者">{{ patientIdentity(currentRecord.patientId, currentRecord.patientName) }}</el-descriptions-item>
         <el-descriptions-item label="检查日期">{{ currentRecord.recordDate }}</el-descriptions-item>
@@ -560,7 +571,7 @@
         <el-table-column prop="referenceRange" label="参考范围" width="150" />
         <el-table-column prop="isAbnormal" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="getAbnormalType(row.isAbnormal)">{{ getAbnormalText(row.isAbnormal) }}</el-tag>
+            <el-tag :type="getRecordFlagType(currentRecord, row.isAbnormal)">{{ getRecordFlagText(currentRecord, row.isAbnormal) }}</el-tag>
           </template>
         </el-table-column>
       </el-table>
@@ -572,7 +583,7 @@
             <div><dt>检测值</dt><dd>{{ item.resultValue === null || item.resultValue === undefined || item.resultValue === '' ? '—' : item.resultValue }}</dd></div>
             <div><dt>单位</dt><dd>{{ item.unit || '—' }}</dd></div>
             <div><dt>参考范围</dt><dd>{{ item.referenceRange || '—' }}</dd></div>
-            <div><dt>状态</dt><dd><span class="medical-result-status" :class="'medical-result-status--' + getAbnormalType(item.isAbnormal)">{{ getAbnormalText(item.isAbnormal) }}</span></dd></div>
+            <div><dt>状态</dt><dd><span class="medical-result-status" :class="'medical-result-status--' + getRecordFlagType(currentRecord, item.isAbnormal)">{{ getRecordFlagText(currentRecord, item.isAbnormal) }}</span></dd></div>
           </dl>
         </article>
       </section>
@@ -752,15 +763,18 @@
 
 <script setup>
 import PatientSelect from '@/components/PatientSelect.vue';
+import MedicalRecordCorrectionPanel from '@/components/medical-record/MedicalRecordCorrectionPanel.vue';
+import { medicalRecordCopy as correctionCopy } from '@/components/medical-record/medicalRecordCorrectionCopy';
+import OriginalImportFacts from '@/components/OriginalImportFacts.vue';
 import { formatPatientIdentity } from '@/utils/patientPresentation';
 import { useFocusedCareSource } from '@/composables/useFocusedCareSource';
 import { localDateKey } from '@/utils/familyHealth';
 import { dedupeRecognizedItems } from '@/utils/medicalRecordItems';
 import recordsCareSmall from '@/assets/illustrations/records-care-small.webp';
 import recordsCare from '@/assets/illustrations/records-care.webp';
-import { ref, reactive, computed, onMounted, onUnmounted, watch, inject } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch, inject, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { captureAuthSession, isAuthSessionCurrent, readPermissionCache } from '@/utils/authSession';
+import { captureAuthSession, isAuthSessionCurrent, readPermissionCache, AUTH_STORAGE_KEYS } from '@/utils/authSession';
 import { canAccessWorkspace } from '@/utils/workspaceAccess';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { UploadFilled, Loading, Search, Upload, Setting, Camera, Picture, Document } from '@element-plus/icons-vue';
@@ -800,7 +814,8 @@ const filterForm = reactive({
   patientName: '',
   recordType: '',
   timeValue: '',
-  itemName: ''
+  itemName: '',
+  includeInvalidated: false
 });
 
 const route = useRoute();
@@ -825,6 +840,9 @@ const uploadRef = ref(null);
 const uploadDialogRef = ref(null);
 const editAttachmentUploadRef = ref(null);
 const currentRecord = ref(null);
+const correctionTarget = ref(null), correctionSection = ref(null);
+const correctionViewState = reactive({ locked: false, dirty: false, validity: null });
+watch(correctionTarget, target => { if (!target) Object.assign(correctionViewState, { locked: false, dirty: false, validity: null }); }, { flush: 'sync' });
 const recognizeLoading = ref(false);
 const recognizeResult = ref(false);
 const recognizeWarning = ref('');
@@ -845,9 +863,10 @@ const editLoading = ref(false), editReady = ref(false), editSaving = ref(false);
 const editPendingAttachments = ref(0);
 const editFilesProcessing = computed(() => editPendingAttachments.value > 0);
 const editLocked = computed(() => editLoading.value || !editReady.value || editSaving.value);
-let editSaveRequest = 0, editDisposed = false;
+let editSaveRequest = 0, editDisposed = false, editAuthority = null;
 
 function invalidateEditDialog() {
+  editAuthority?.controller.abort(); editAuthority = null;
   editSession.value++;
   editSaveRequest++;
   editLoading.value = false;
@@ -857,7 +876,10 @@ function invalidateEditDialog() {
 }
 
 function isCurrentEdit(session) {
-  return !editDisposed && editDialogVisible.value && session === editSession.value;
+  return !editDisposed && editDialogVisible.value && session === editSession.value && !!editAuthority
+    && isAuthSessionCurrent(editAuthority.auth) && editAuthority.auth.actorId === localStorage.getItem('userId')
+    && editAuthority.patient === currentPatientId.value && editAuthority.path === route.fullPath
+    && editAuthority.permission === JSON.stringify(readPermissionCache());
 }
 
 // Element Plus emits model=false only after its leave transition. Invalidate
@@ -1083,7 +1105,12 @@ const detailOtherAttachments = computed(() => {
 
 const trendChartOption = computed(() => {
   const dates = trendData.value.map(d => d.recordDate);
+  const hasManaged = trendData.value.some(d => d.managed === true);
   const values = trendData.value.map(d => {
+    if (d.managed === true) {
+      const value = d.plotEligible === true && d.numericValue != null ? Number(d.numericValue) : NaN;
+      return Number.isFinite(value) ? value : null;
+    }
     const v = parseFloat(String(d.resultValue).replace(/[^0-9.]/g, ''));
     return isNaN(v) ? null : v;
   });
@@ -1100,7 +1127,7 @@ const trendChartOption = computed(() => {
       type: 'line',
       data: values,
       smooth: true,
-      connectNulls: true,
+      connectNulls: !hasManaged,
       itemStyle: { color: '#6366f1' },
       label: { show: true, position: 'top', fontSize: 11, formatter: p => p.value }
     }]
@@ -1195,23 +1222,45 @@ function applyOcrResultToRecords(data) {
 }
 
 function hasAbnormal(record) {
-  return record.items?.some(i => i.isAbnormal !== 0);
+  return !(record.managed === true && (record.sourceStatus !== 'CURRENT' || record.validity !== 'ACTIVE' || record.verificationStatus !== 'VERIFIED')) && record.items?.some(i => i.isAbnormal === -1 || i.isAbnormal === 1);
 }
 
 function countAbnormal(record) {
-  return record.items?.filter(i => i.isAbnormal !== 0).length || 0;
+  if (record.managed === true && (record.sourceStatus !== 'CURRENT' || record.validity !== 'ACTIVE' || record.verificationStatus !== 'VERIFIED')) return 0;
+  return record.items?.filter(i => i.isAbnormal === -1 || i.isAbnormal === 1).length || 0;
+}
+
+function getRecordFlagType(record, flag) {
+  return record?.managed === true && record.sourceStatus !== 'CURRENT' ? 'info' : getAbnormalType(flag);
+}
+
+function getRecordFlagText(record, flag) {
+  if (record?.managed === true && record.sourceStatus !== 'CURRENT') return getTrendStatusText({ ...record, plotEligible: false });
+  return getAbnormalText(flag);
+}
+
+function getTrendStatusType(row) {
+  return row.managed === true && row.plotEligible !== true ? 'info' : getAbnormalType(row.isAbnormal);
+}
+
+function getTrendStatusText(row) {
+  if (row.managed === true && row.plotEligible !== true) {
+    const labels = { SOURCE_CHANGED: '来源已变更', SOURCE_INVALIDATED: '来源已作废', SOURCE_REVIEW_REQUIRED: '待核对', UNIT_UNKNOWN: '未绘图：单位未知', UNIT_MIXED: '未绘图：单位不一致', VALUE_NOT_PLOTTABLE: '仅文字：不可绘图' };
+    return labels[row.plotReason || row.sourceStatus] || '未绘图，保留原文';
+  }
+  return getAbnormalText(row.isAbnormal);
 }
 
 function getAbnormalType(status) {
   if (status === 1) return 'danger';
   if (status === -1) return 'warning';
-  return 'success';
+  return status === 0 ? 'success' : 'info';
 }
 
 function getAbnormalText(status) {
   if (status === 1) return '偏高';
   if (status === -1) return '偏低';
-  return '正常';
+  return status === 0 ? '正常' : '未知';
 }
 
 
@@ -1239,11 +1288,17 @@ function addRecognizedItem() {
   });
 }
 
-const sourceFocus=useFocusedCareSource(route,currentPatientId,(source,options)=>api.getRecord(source.sourceId,source.patientId,options),'MEDICAL_RECORD');
+// 聚焦证据只走原窄权限读取；患者冲突不切换档案，也不升级到普通详情、历史或写接口。
+function readFocusedMedicalSource(source, options) {
+  if (Number(source.patientId) !== Number(currentPatientId.value)) return Promise.reject(new Error('PATIENT_CONTEXT_CONFLICT'));
+  return api.getRecord(source.sourceId, source.patientId, { ...options, includeImportFacts: true });
+}
+const sourceFocus=useFocusedCareSource(route,currentPatientId,readFocusedMedicalSource,'MEDICAL_RECORD');
 const focusedMode=sourceFocus.attempted;
+const focusedPatientConflict = computed(() => !!sourceFocus.locator.value && Number(sourceFocus.locator.value.patientId) !== Number(currentPatientId.value));
 watch(()=>sourceFocus.state.record,record=>{currentRecord.value=record;detailDialogVisible.value=!!record;},{flush:'sync'});
-let detailReadEpoch=0
-watch(focusedMode,()=>{detailReadEpoch++;recordListRequest++;records.value=[];itemNamesRequest++;allItemNames.value=[];currentRecord.value=null;detailDialogVisible.value=false;uploadDialogVisible.value=false;editDialogVisible.value=false;if(!focusedMode.value&&route.fullPath?.split('?')[0]==='/medical-record'){loadRecords();loadItemNames();loadPatientList()}},{flush:'sync'});
+let detailReadEpoch=0, detailController=null
+watch(focusedMode,()=>{clearMedicalDetail();recordListRequest++;records.value=[];itemNamesRequest++;allItemNames.value=[];currentRecord.value=null;detailDialogVisible.value=false;uploadDialogVisible.value=false;editDialogVisible.value=false;if(!focusedMode.value&&route.fullPath?.split('?')[0]==='/medical-record'){loadRecords();loadItemNames();loadPatientList()}},{flush:'sync'});
 
 function dedupeRecognizedItemsLocal() {
   const rec = currentRecognizeRecord.value;
@@ -1715,23 +1770,101 @@ async function saveRecognizedRecord() {
   }
 }
 
+function knownPatientName(id) {
+  const patient = patientList.value.find(value => Number(value.id) === Number(id));
+  return patient?.patientName || patient?.name || '';
+}
+function openCorrection(row) {
+  if (focusedMode.value || !Number.isSafeInteger(row?.id)) return;
+  clearMedicalDetail();
+  correctionTarget.value = { recordId: row.id, patientId: row.patientId ?? null };
+}
+function openCorrectionOriginal(target) {
+  correctionTarget.value = null;
+  viewDetail({ id: target.recordId, patientId: target.patientId });
+}
+function openLegacyEditor(target) {
+  correctionTarget.value = null;
+  openEditDialog({ id: target.recordId, patientId: target.patientId });
+}
+function deleteLegacyRecord(target) {
+  correctionTarget.value = null;
+  deleteRecord({ id: target.recordId, patientId: target.patientId });
+}
+async function recoverCurrentPatient() {
+  filterForm.patientId = currentPatientId.value;
+  await router.replace({ path: route.path, query: { tab: 'list' } });
+  await nextTick();
+  if (!focusedMode.value) correctionSection.value?.focus();
+}
+
+// 筛选改变不是撤权。锁定请求或有草稿时拒绝切换，保留同一个请求 key/body。
+let restoringInvalidatedFilter = false;
+function changeInvalidatedFilter(enabled, previous) {
+  if (restoringInvalidatedFilter) return;
+  if (correctionViewState.locked || correctionViewState.dirty) {
+    restoringInvalidatedFilter = true;
+    filterForm.includeInvalidated = previous;
+    restoringInvalidatedFilter = false;
+    return;
+  }
+  if (!enabled) {
+    records.value = records.value.filter(record => record.validity !== 'INVALIDATED');
+    // 尚未返回的纯读还不知道有效性，取消其所属选择，免得旧响应重新打开已过滤记录。
+    if (currentRecord.value?.validity === 'INVALIDATED' || (!currentRecord.value && detailController)) clearMedicalDetail();
+    if (correctionTarget.value && (correctionViewState.validity === 'INVALIDATED' || correctionViewState.validity == null)) correctionTarget.value = null;
+  }
+  loadRecords();
+}
+watch(() => filterForm.includeInvalidated, changeInvalidatedFilter, { flush: 'sync' });
+
+// 原始事实与详情共用患者、来源、权限和会话所有权；切换上下文立即撤销旧读取。
+function clearMedicalDetail() {
+  detailReadEpoch++; detailController?.abort(); detailController=null;
+  currentRecord.value=null; detailDialogVisible.value=false;
+}
+function clearLegacyEditor() {
+  editDialogVisible.value = false;
+  invalidateEditDialog();
+  for (const field of Object.keys(editForm)) editForm[field] = null;
+  editItems.value = [];
+  editAttachments.value = [];
+}
+function clearCorrectionContext() {
+  correctionTarget.value = null;
+  clearLegacyEditor();
+}
+function invalidateMedicalContext() { clearMedicalDetail(); clearCorrectionContext(); sourceFocus.invalidate() }
+function detailStorageChanged(event) { if (event.key == null || [...AUTH_STORAGE_KEYS, 'permissionSession', 'userMenus', 'userRoleCodes'].includes(event.key)) invalidateMedicalContext() }
+watch(currentPatientId, () => { clearMedicalDetail(); clearCorrectionContext() }, { flush: 'sync' });
+watch(() => route.fullPath, () => { clearMedicalDetail(); clearCorrectionContext() }, { flush: 'sync' });
+watch(detailDialogVisible, (visible, previous) => { if (!visible && previous) clearMedicalDetail() }, { flush: 'sync' });
+onMounted(() => { window.addEventListener('auth-session-cleared', invalidateMedicalContext); window.addEventListener('auth-session-changed', invalidateMedicalContext); window.addEventListener('storage', detailStorageChanged) });
+onUnmounted(() => { clearMedicalDetail(); window.removeEventListener('auth-session-cleared', invalidateMedicalContext); window.removeEventListener('auth-session-changed', invalidateMedicalContext); window.removeEventListener('storage', detailStorageChanged) });
 async function viewDetail(row) {
   if(focusedMode.value)return;
-  const epoch=++detailReadEpoch,auth=captureAuthSession(),actor=localStorage.getItem('userId');
-  const owns=()=>!medicalReadDisposed&&!focusedMode.value&&epoch===detailReadEpoch&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId');
+  clearMedicalDetail();
+  const epoch=detailReadEpoch, auth={...captureAuthSession(),actorId:localStorage.getItem('userId')}, patient=currentPatientId.value, path=route.fullPath, permission=JSON.stringify(readPermissionCache());
+  const owns=()=>!medicalReadDisposed&&!focusedMode.value&&epoch===detailReadEpoch&&patient===currentPatientId.value&&path===route.fullPath&&permission===JSON.stringify(readPermissionCache())&&isAuthSessionCurrent(auth)&&auth.actorId===localStorage.getItem('userId');
+  detailController=new AbortController();
   try {
-    const res = await api.getRecord(row.id);
-    if (owns() && res.code === 200) {
-      currentRecord.value = res.data;
-      if(owns())detailDialogVisible.value = true;
-    }
-  } catch { if(owns())ElMessage.error('无法加载记录详情'); }
+    const res=await api.getRecord(row.id,undefined,{includeImportFacts:true,expectedAuth:auth,signal:detailController.signal});
+    if(!owns())return;
+    if(res.code!==200||String(res.data?.id)!==String(row.id)||String(res.data?.patientId??'')!==String(row.patientId??''))throw new Error('INVALID_DETAIL');
+    currentRecord.value=res.data; detailDialogVisible.value=true;
+  } catch { if(owns()){currentRecord.value=null;ElMessage.error('无法加载记录详情')} }
+  finally { if(epoch===detailReadEpoch&&!owns())clearMedicalDetail() }
 }
 
 async function deleteRecord(row) {
+  if (focusedMode.value) return;
+  const auth = { ...captureAuthSession(), actorId: localStorage.getItem('userId') }, patient = currentPatientId.value, path = route.fullPath, permission = JSON.stringify(readPermissionCache());
+  const owns = () => !medicalReadDisposed && !focusedMode.value && patient === currentPatientId.value && path === route.fullPath && permission === JSON.stringify(readPermissionCache()) && isAuthSessionCurrent(auth) && auth.actorId === localStorage.getItem('userId');
   try {
     await ElMessageBox.confirm('确认删除这条医疗记录吗？', '提示', { type: 'warning' });
-    const res = await api.deleteRecord(row.id);
+    if (!owns()) return;
+    const res = await api.deleteRecord(row.id, { expectedAuth: auth });
+    if (!owns()) return;
     if (res.code === 200) {
       ElMessage.success('删除成功');
       loadRecords();
@@ -1739,13 +1872,14 @@ async function deleteRecord(row) {
       ElMessage.error(res.message || '删除失败');
     }
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error('删除失败：' + e.message);
+    if (owns() && e !== 'cancel') ElMessage.error('删除失败：' + e.message);
   }
 }
 
 async function openEditDialog(row) {
-  if (!row?.id || editDisposed) return;
+  if (!row?.id || editDisposed || focusedMode.value) return;
   invalidateEditDialog();
+  editAuthority = { auth: { ...captureAuthSession(), actorId: localStorage.getItem('userId') }, patient: currentPatientId.value, path: route.fullPath, permission: JSON.stringify(readPermissionCache()), controller: new AbortController() };
   const session = editSession.value, recordId = row.id;
   editDialogKey.value = session;
   Object.assign(editForm, {
@@ -1757,9 +1891,9 @@ async function openEditDialog(row) {
   editDialogVisible.value = true;
   editLoading.value = true;
   try {
-    const res = await api.getRecord(recordId);
+    const res = await api.getRecord(recordId, undefined, { expectedAuth: editAuthority.auth, signal: editAuthority.controller.signal });
     if (!isCurrentEdit(session)) return;
-    if (res.code !== 200 || !res.data || String(res.data.id) !== String(recordId)) {
+    if (res.code !== 200 || !res.data || String(res.data.id) !== String(recordId) || (res.data.patientId ?? null) !== (row.patientId ?? null)) {
       throw new Error(res.message || '无法加载医疗记录');
     }
     const fullData = res.data;
@@ -1788,7 +1922,12 @@ async function openEditDialog(row) {
     }));
     editReady.value = true;
   } catch (e) {
-    if (isCurrentEdit(session)) ElMessage.error('表单数据加载失败：' + e.message);
+    if (!isCurrentEdit(session)) return;
+    const status = Number(e?.response?.status || e?.code);
+    if (status === 401 || status === 403) {
+      clearLegacyEditor();
+      ElMessage.error("访问权限已变化，当前编辑内容已清空。请重新检查访问权限。");
+    } else ElMessage.error('表单数据加载失败：' + e.message);
   } finally {
     if (isCurrentEdit(session)) editLoading.value = false;
   }
@@ -1845,7 +1984,7 @@ async function saveEditRecord() {
           fileContent: att.fileContent
         }))
       : [];
-    const res = await api.updateRecord(record, items, attachments);
+    const res = await api.updateRecord(record, items, attachments, { expectedAuth: editAuthority.auth, signal: editAuthority.controller.signal });
     if (!isCurrentSave()) return;
     if (res.code === 200) {
       ElMessage.success('保存成功');
@@ -1855,7 +1994,12 @@ async function saveEditRecord() {
       ElMessage.error(res.message || '保存失败');
     }
   } catch (e) {
-    if (isCurrentSave()) ElMessage.error('保存失败：' + e.message);
+    if (!isCurrentSave()) return;
+    const status = Number(e?.response?.status || e?.code);
+    if (status === 401 || status === 403) {
+      clearLegacyEditor();
+      ElMessage.error("访问权限已变化，当前编辑内容已清空。请重新检查访问权限。");
+    } else ElMessage.error('保存失败：' + e.message);
   } finally {
     if (isCurrentSave()) editSaving.value = false;
   }
@@ -2171,3 +2315,11 @@ watch(currentPatientId, (newVal, oldVal) => {
 </style>
 
 <style scoped>.focused-source{padding:24px;min-width:0;overflow-wrap:anywhere}.focused-source button{min-height:44px;padding:10px 16px;margin:8px;font:inherit}.focused-source button:focus-visible{outline:3px solid var(--care-600)}</style>
+
+<style scoped src="@/styles/control-row-toolbar.css"></style>
+
+<style scoped>
+.medical-record-management-entry { min-height: 44px; max-width: 100%; padding: 8px 10px; font: inherit; white-space: normal; overflow-wrap: anywhere; }
+.medical-record-management-entry:focus-visible { outline: 3px solid var(--care-600); outline-offset: 2px; }
+:global(body.care-senior) .medical-record-management-entry { min-height: 48px; }
+</style>

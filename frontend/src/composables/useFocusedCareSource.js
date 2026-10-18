@@ -39,5 +39,6 @@ export function useFocusedCareSource(route, currentPatientId, fetchSource, sourc
   watch(currentPatientId,contextChanged,{flush:'sync'})
   if(typeof window!=='undefined'){window.addEventListener('auth-session-cleared',contextChanged);window.addEventListener('storage',storageChanged)}
   onScopeDispose(()=>{disposed=true;clear();if(typeof window!=='undefined'){window.removeEventListener('auth-session-cleared',contextChanged);window.removeEventListener('storage',storageChanged)}})
-  return {locator,attempted,state,reload}
+  // 宿主需要撤销上下文时，复用同一代次和取消控制器，不能只清空展示值。
+  return {locator,attempted,state,reload,invalidate:contextChanged}
 }

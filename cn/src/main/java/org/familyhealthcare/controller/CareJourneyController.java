@@ -30,8 +30,8 @@ public class CareJourneyController {
         if(values==null||values.length!=1||!values[0].matches("[1-9][0-9]*"))throw new IllegalArgumentException("Invalid source selector.");
         try{return Long.parseLong(values[0]);}catch(NumberFormatException invalid){throw new IllegalArgumentException("Invalid source selector.");}
     }
-    @PostMapping("/measurements") public Result<Map<String,Object>> saveMeasurement(@RequestBody Map<String,Object> body){return Result.ok(service.saveMeasurement(body));}
-    @PutMapping("/measurements/{id}") public Result<Map<String,Object>> correctMeasurement(@PathVariable Long id,@RequestBody Map<String,Object> body){return Result.ok(service.updateMeasurement(id,body));}
+    @PostMapping("/measurements") public Result<Map<String,Object>> saveMeasurement(@RequestBody org.familyhealthcare.util.MeasurementInputBody body){return Result.ok(service.saveMeasurement(body));}
+    @PutMapping("/measurements/{id}") public Result<Map<String,Object>> correctMeasurement(@PathVariable Long id,@RequestBody org.familyhealthcare.util.MeasurementInputBody body){return Result.ok(service.updateMeasurement(id,body));}
     @PostMapping("/measurements/{id}/annotations") public Result<Map<String,Object>> annotate(@PathVariable Long id,@RequestBody Map<String,String>body){return Result.ok(service.annotateMeasurement(id,body.get("annotation")));}
 
     @GetMapping("/access-grants") public Result<List<Map<String,Object>>> grants(@RequestParam Long patientId){return Result.ok(service.grants(patientId));}
@@ -70,10 +70,33 @@ public class CareJourneyController {
     @GetMapping("/rehab-checkins") public Result<List<Map<String,Object>>> rehab(@RequestParam Long patientId){return Result.ok(service.rehabCheckins(patientId));}
     @PostMapping("/rehab-checkins") public Result<Map<String,Object>> saveRehab(@RequestBody Map<String,Object>body){return Result.ok(service.saveRehabCheckin(body));}
 
-    @GetMapping("/emergency-card") public Result<Map<String,Object>> emergencyCard(@RequestParam Long patientId){return Result.ok(service.emergencyCard(patientId));}
-    @GetMapping("/emergencies") public Result<List<Map<String,Object>>> emergencies(@RequestParam Long patientId){return Result.ok(service.emergencies(patientId));}
-    @GetMapping("/emergencies/{id}") public Result<Map<String,Object>> emergencyDetail(@PathVariable Long id){return Result.ok(service.emergency(id));}
-    @PostMapping("/emergencies") public Result<Map<String,Object>> emergency(@RequestBody Map<String,Object>body){return Result.ok(service.triggerEmergency(body));}
+    @GetMapping("/emergency-capabilities") public org.springframework.http.ResponseEntity<Result<?>> emergencyCapabilities(@RequestParam Long patientId){
+        return emergencyResponse(()->service.emergencyCapabilities(patientId));
+    }
+    @GetMapping("/emergency-card") public org.springframework.http.ResponseEntity<Result<?>> emergencyCard(@RequestParam Long patientId){
+        return emergencyResponse(()->service.emergencyCard(patientId));
+    }
+    @GetMapping("/emergencies") public org.springframework.http.ResponseEntity<Result<?>> emergencies(@RequestParam Long patientId){
+        return emergencyResponse(()->service.emergencies(patientId));
+    }
+    @GetMapping("/emergencies/{id}") public org.springframework.http.ResponseEntity<Result<?>> emergencyDetail(@PathVariable Long id){
+        return emergencyResponse(()->service.emergency(id));
+    }
+    @PostMapping("/emergencies") public org.springframework.http.ResponseEntity<Result<?>> emergency(@RequestBody Map<String,
+    Object>body){
+        return emergencyResponse(()->service.triggerEmergency(body));
+    }
+    /** 只转换这些紧急路由的B错误，不改变其它既有模块的异常处理。 */
+    private static org.springframework.http.ResponseEntity<Result<?>> emergencyResponse(java.util.function.Supplier<?> call){
+        try{
+            return org.springframework.http.ResponseEntity.ok().header("Cache-Control","no-store, private").body(Result.ok(call.get()));
+        }
+        catch(org.familyhealthcare.service.workflow.WorkflowException failure){
+            Result<Map<String,Object>> result=Result.error(failure.getStatus(),failure.getMessage());
+            result.setData(java.util.Collections.singletonMap("errorCode",failure.getErrorCode()));
+            return org.springframework.http.ResponseEntity.status(failure.getStatus()).header("Cache-Control","no-store, private").body(result);
+        }
+    }
 
     @GetMapping("/specialty/{type}") public Result<List<Map<String,Object>>> specialty(@PathVariable String type,@RequestParam Long patientId){return Result.ok(service.specialty(type,patientId));}
     @PostMapping("/specialty/{type}") public Result<Map<String,Object>> saveSpecialty(@PathVariable String type,@RequestBody Map<String,Object>body){return Result.ok(service.saveSpecialty(type,body));}
@@ -86,5 +109,11 @@ public class CareJourneyController {
     @GetMapping("/patient-groups") public Result<List<Map<String,Object>>> groups(){return Result.ok(service.patientGroups());}
     @PostMapping("/patient-groups") public Result<Map<String,Object>> saveGroup(@RequestBody Map<String,Object>body){return Result.ok(service.savePatientGroup(body));}
     @PostMapping("/patient-groups/{id}/patients/{patientId}") public Result<String> groupMember(@PathVariable Long id,@PathVariable Long patientId){service.addGroupMember(id,patientId);return Result.okMessage("Patient added to group.");}
+    @ModelAttribute public void questionCountsPrivacy(javax.servlet.http.HttpServletRequest request,javax.servlet.http.HttpServletResponse response){if(request.getRequestURI().endsWith("/operations")){response.setHeader("Cache-Control","no-store, private");response.setHeader("Pragma","no-cache");}}
     @GetMapping("/operations") public Result<Map<String,Object>> operations(@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE)LocalDate from,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE)LocalDate to){return Result.ok(service.operations(from,to));}
+    @ExceptionHandler(org.familyhealthcare.service.visitquestion.VisitQuestionFailure.class)
+    public org.springframework.http.ResponseEntity<Result<Map<String,Object>>> questionFailure(org.familyhealthcare.service.visitquestion.VisitQuestionFailure failure){
+        Result<Map<String,Object>> result=Result.error(failure.getStatus(),"问题记录当前不可读取，请检查权限或缩小读取范围后重试；原始内容未被截断");result.setData(java.util.Collections.singletonMap("errorCode",failure.getErrorCode()));
+        return org.springframework.http.ResponseEntity.status(failure.getStatus()).header("Cache-Control","no-store, private").body(result);
+    }
 }

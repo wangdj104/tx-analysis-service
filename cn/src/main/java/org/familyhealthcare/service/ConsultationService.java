@@ -16,6 +16,7 @@ import java.util.*;
 /** A consultation invitation grants access to that conversation, not the patient's full record. */
 @Service
 public class ConsultationService {
+    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DataScopeHelper scope;
     @Autowired private CareJourneyService journey;
@@ -97,7 +98,9 @@ public class ConsultationService {
         requireAccess(session, false);
         addSessionMetadata(session);
         List<Map<String,Object>> messages = jdbc.queryForList("SELECT m.*,COALESCE(NULLIF(u.real_name,''),u.username) AS sender_name FROM consultation_message m LEFT JOIN sys_user u ON u.id=m.sender_user_id WHERE m.consultation_id=? ORDER BY m.sent_at,m.id", id);
-        for (Map<String,Object> message : messages) addAttachmentMetadata(message, number(session.get("patient_id")));
+        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=new HashMap<>();List<Long> sourceIds=new ArrayList<>();for(Map<String,Object> message:messages)if(message.get("attachment_record_id")!=null)sourceIds.add(number(message.get("attachment_record_id")));
+        if(!sourceIds.isEmpty()&&canReadMedicalStatus(number(session.get("patient_id")))){org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();for(int start=0;start<sourceIds.size();start+=100)states.putAll(medical.batch(sourceIds.subList(start,Math.min(start+100,sourceIds.size()))));}
+        for (Map<String,Object> message : messages) addAttachmentMetadata(message, number(session.get("patient_id")),states);
         session.put("messages", messages);
         return session;
     }
@@ -115,7 +118,7 @@ public class ConsultationService {
         if (recordId != null) {
             scope.requirePatientAccess(patientId,"MEDICAL",false);
             journey.requireRead(patientId, "MEDICAL");
-            if (one("SELECT id FROM medical_record WHERE id=? AND patient_id=?", recordId, patientId) == null)
+            if (one("SELECT id FROM medical_record WHERE id=? AND patient_id=? AND "+medicalValidity.open().activeSql("medical_record.")+" FOR UPDATE", recordId, patientId) == null)
                 throw new IllegalArgumentException("The attachment does not belong to this patient.");
         }
         if (("IMAGE".equals(type) || "FILE".equals(type)) && recordId == null)
@@ -131,7 +134,8 @@ public class ConsultationService {
         requireAccess(session, false);
         Long patientId = number(session.get("patient_id"));
         try { scope.requirePatientAccess(patientId,"MEDICAL",false); journey.requireRead(patientId, "MEDICAL"); } catch (IllegalStateException denied) { return Collections.emptyList(); }
-        return jdbc.queryForList("SELECT id,record_date,record_type,hospital_name FROM medical_record WHERE patient_id=? ORDER BY record_date DESC,id DESC LIMIT 100", patientId);
+        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();
+        List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,record_date,record_type,hospital_name,content_version AS contentVersion,verification_status AS verificationStatus FROM medical_record WHERE patient_id=? AND "+medical.activeSql("medical_record.")+" ORDER BY record_date DESC,id DESC LIMIT 100",patientId);medical.projectRows(rows,"id");return rows;
     }
 
     public Map<String,Object> attachment(Long id, Long attachmentId) {
@@ -215,9 +219,14 @@ public class ConsultationService {
         return CurrentUserUtil.isAdmin() || Objects.equals(uid, number(session.get("patient_owner_id"))) || Objects.equals(uid, number(session.get("created_by"))) || Objects.equals(uid, number(session.get("doctor_user_id"))) && CurrentUserUtil.hasRole("doctor");
     }
 
+    private boolean canReadMedicalStatus(Long patientId){try{scope.requirePatientAccess(patientId,"MEDICAL",false);journey.requireRead(patientId,"MEDICAL");return true;}catch(IllegalStateException denied){return false;}}
     private void addAttachmentMetadata(Map<String,Object> message, Long patientId) {
+        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=message.get("attachment_record_id")==null||!canReadMedicalStatus(patientId)?Collections.emptyMap():medicalValidity.open().batch(Collections.singleton(number(message.get("attachment_record_id"))));addAttachmentMetadata(message,patientId,states);
+    }
+    private void addAttachmentMetadata(Map<String,Object> message,Long patientId,Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states) {
         if (message.get("attachment_record_id") == null) return;
         Map<String,Object> record = one("SELECT id,record_date,record_type,hospital_name FROM medical_record WHERE id=? AND patient_id=?", message.get("attachment_record_id"), patientId);
+        if(record!=null){record.put("referenceStatus","SOURCE_UNAVAILABLE");org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state=states.get(number(record.get("id")));if(state!=null){record.put("managed",state.managed);record.put("validity",state.validity);record.put("verificationStatus",state.review);record.put("contentVersion",state.version);record.put("referenceStatus",state.managed?(state.eligible()?"UNKNOWN_NEEDS_RECHECK":state.status()):"UNTRACKED");}}
         if (record != null) record.put("attachments", jdbc.queryForList("SELECT id,file_name,file_type FROM medical_record_attachment WHERE record_id=?", record.get("id")));
         message.put("attachment_record", record);
     }

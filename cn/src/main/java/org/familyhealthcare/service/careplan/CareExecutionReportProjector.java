@@ -24,6 +24,9 @@ import static org.familyhealthcare.service.careplan.CareExecutionReportContracts
 @Service
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 public class CareExecutionReportProjector {
+    @org.springframework.beans.factory.annotation.Autowired private org.familyhealthcare.service.visitquestion.VisitQuestionProjection questionProjection;
+    @org.springframework.beans.factory.annotation.Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
+    @org.springframework.beans.factory.annotation.Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions medicalReferences;
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final List<String> STATES = Arrays.asList("OPEN", "NEEDS_HELP", "SUBMITTED", "CONFIRMED");
     private static final List<String> ACTION_EVENTS = Arrays.asList("RECEIPT_SUBMITTED", "RECEIPT_RETURNED", "RECEIPT_CONFIRMED", "HELP_REQUESTED", "FOLLOW_UP_RECORDED");
@@ -80,6 +83,8 @@ public class CareExecutionReportProjector {
         private final Set<EvidenceKey> manifest = new LinkedHashSet<>();
         private final Map<Long, Boolean> assignees = new HashMap<>();
         private Instant asOf;
+        private final Map<Long,String> medicalStatuses=new HashMap<>();
+        private final Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> unboundMedical=new HashMap<>();
 
         Read(long actor, Request request, Access access, CareExecutionReportBudget budget, String dbNow) {
             this.actor=actor; this.request=request; this.access=access; this.budget=budget; this.dbNow=dbNow;
@@ -142,6 +147,7 @@ public class CareExecutionReportProjector {
                 latest.computeIfAbsent(a.id,k->new HashMap<>()).put(e.type,e);
             }
             Map<Long,List<Reference>> eventRefs=eventReferences(latestIds);
+            List<List<Reference>> currentGroups=new ArrayList<>(eventRefs.values());for(Map<Integer,List<Reference>> byOrdinal:revisionRefs.values())currentGroups.addAll(byOrdinal.values());loadMedicalStatuses(currentGroups);
             List<CurrentAction> result=new ArrayList<>();
             for(ActionRow a:rows) {
                 budget.checkTime();Map<String,EventRow> e=latest.getOrDefault(a.id,Collections.emptyMap());
@@ -185,7 +191,7 @@ public class CareExecutionReportProjector {
             if(!query("SELECT e.id"+scope+" AND (p.patient_id<>e.patient_id OR r.id IS NULL OR r.plan_id<>p.id OR (r.status='PUBLISHED' AND e.action_id IS NOT NULL AND (a.id IS NULL OR a.plan_id<>p.id OR a.revision_id<>r.id OR a.patient_id<>e.patient_id))) LIMIT 1",(rs,n)->rs.getLong(1),args).isEmpty())throw inconsistent();
             List<Long> ids=query("SELECT e.id"+scope+" AND r.status='PUBLISHED' ORDER BY e.recorded_at,e.id LIMIT 5001",(rs,n)->rs.getLong(1),args);
             budget.requireRows("PERIOD_EVENTS",ids.size(),MAX_PERIOD_EVENTS); if(ids.isEmpty())return Collections.emptyList();
-            List<EventRow> rows=eventRows(ids,true);Map<Long,List<Reference>> refs=eventReferences(ids);
+            List<EventRow> rows=eventRows(ids,true);Map<Long,List<Reference>> refs=eventReferences(ids);loadMedicalStatuses(refs.values());
             List<PeriodEvent> result=new ArrayList<>();
             for(EventRow e:rows) {
                 String history=historicalStatus(e);
@@ -223,9 +229,9 @@ public class CareExecutionReportProjector {
             Map<Long,List<Reference>> result=new HashMap<>();if(ids.isEmpty())return result;
             // Existing receipt contract is at most five references. LIMIT protects corrupt legacy rows too.
             List<Object> args=new ArrayList<>(ids);args.add(ids.size()*5+1);
-            query("SELECT event_id,source_type,source_id FROM care_plan_evidence WHERE event_id IN ("+marks(ids.size())+") ORDER BY event_id,id LIMIT ?",(rs,n)->{
+            query("SELECT id,event_id,source_type,source_id FROM care_plan_evidence WHERE event_id IN ("+marks(ids.size())+") ORDER BY event_id,id LIMIT ?",(rs,n)->{
                 List<Reference> refs=result.computeIfAbsent(rs.getLong("event_id"),k->new ArrayList<>());
-                if(refs.size()>=5)throw inconsistent();refs.add(new Reference(rs.getString("source_type"),rs.getLong("source_id")));return 0;
+                if(refs.size()>=5)throw inconsistent();refs.add(new Reference(rs.getLong("id"),rs.getString("source_type"),rs.getLong("source_id")));return 0;
             },args);return result;
         }
 
@@ -234,17 +240,32 @@ public class CareExecutionReportProjector {
             return new EventSummary(e.id,e.actor,e.type,e.actorName,e.actorRole,e.actorRelation,e.mode,e.note,e.kind,e.recorded,e.occurred,evidence(refs.getOrDefault(e.id,Collections.emptyList())));
         }
 
+        /** 只在本次独立报告快照内复用已发现锚点；权限清单在输出前仍由原有边界重新核对。 */
+        private void loadMedicalStatuses(Collection<List<Reference>> groups) {
+            List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> anchors=new ArrayList<>();List<Long> unbound=new ArrayList<>();
+            for(List<Reference> refs:groups)for(Reference ref:refs)if("MEDICAL_RECORD".equals(ref.type)){
+                ref.readable=auth.canReadEvidence(actor,request.getPatientId(),ref.type,ref.id);
+                if(ref.readable){if(ref.anchor>0&&!medicalStatuses.containsKey(ref.anchor))anchors.add(new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor(ref.anchor,request.getPatientId(),ref.id,null));else if(ref.anchor==0&&!unboundMedical.containsKey(ref.id))unbound.add(ref.id);}
+            }
+            if(anchors.isEmpty()&&unbound.isEmpty())return;org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope scope=medicalValidity.open();
+            Set<Long> sourceIds=new LinkedHashSet<>(unbound);for(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor anchor:anchors)sourceIds.add(anchor.record);
+            List<Long> sources=new ArrayList<>(sourceIds);Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=new HashMap<>();
+            for(int i=0;i<sources.size();i+=100){budget.checkTime();states.putAll(scope.batch(sources.subList(i,Math.min(i+100,sources.size()))));}
+            for(int i=0;i<anchors.size();i+=100){budget.checkTime();medicalStatuses.putAll(medicalReferences.projectStatuses(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind.CARE_PLAN_EVIDENCE,anchors.subList(i,Math.min(i+100,anchors.size())),scope,states));}
+            for(long source:unbound)if(states.containsKey(source))unboundMedical.put(source,states.get(source));
+        }
+        private String medicalStatus(Reference ref){if(ref.anchor>0)return medicalStatuses.getOrDefault(ref.anchor,"SOURCE_UNAVAILABLE");org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state=unboundMedical.get(ref.id);return state==null||!Objects.equals(state.patientId,request.getPatientId())?"SOURCE_UNAVAILABLE":state.managed?(state.eligible()?"UNKNOWN_NEEDS_RECHECK":state.status()):"UNTRACKED";}
         private List<Evidence> evidence(List<Reference> refs) {
             List<Evidence> result=new ArrayList<>();
             for(Reference ref:refs) {
                 budget.checkTime();
-                if(!auth.canReadEvidence(actor,request.getPatientId(),ref.type,ref.id)){result.add(new Evidence(true,null,null,null,null));continue;}
+                if(!(ref.readable!=null?ref.readable:auth.canReadEvidence(actor,request.getPatientId(),ref.type,ref.id))){result.add(new Evidence(true,null,null,null,null));continue;}
                 String table="MEASUREMENT".equals(ref.type)?"health_measurement":"medical_record";
                 String column="MEASUREMENT".equals(ref.type)?"metric_type":"record_type";
                 List<String> titles=query("SELECT "+column+" FROM "+table+" WHERE id=? AND patient_id=?",(rs,n)->rs.getString(1),ref.id,request.getPatientId());
                 if(titles.size()!=1){result.add(new Evidence(true,null,null,null,null));continue;}
                 String path="MEASUREMENT".equals(ref.type)?"/care-journey?tab=measurements&patientId="+request.getPatientId()+"&measurementId="+ref.id:"/medical-record?tab=list&patientId="+request.getPatientId()+"&recordId="+ref.id;
-                result.add(new Evidence(false,ref.type,ref.id,text(titles.get(0)),path));manifest.add(new EvidenceKey(ref.type,ref.id));
+                result.add(new Evidence(false,ref.type,ref.id,text(titles.get(0)),path,"MEDICAL_RECORD".equals(ref.type)?medicalStatus(ref):null));manifest.add(new EvidenceKey(ref.type,ref.id));
             }
             return result;
         }
@@ -252,12 +273,30 @@ public class CareExecutionReportProjector {
         private List<Question> questions() {
             List<Long> ids=query("SELECT id FROM care_item WHERE patient_id=? AND kind='QUESTION' ORDER BY id LIMIT 201",(rs,n)->rs.getLong(1),request.getPatientId());
             budget.requireRows("QUESTIONS",ids.size(),MAX_QUESTIONS);if(ids.isEmpty())return Collections.emptyList();
-            String from=" FROM care_item q WHERE q.patient_id=? AND q.kind='QUESTION' AND q.id IN ("+marks(ids.size())+")";
-            List<Object> args=new ArrayList<>();args.add(request.getPatientId());args.addAll(ids);
-            return boundedQuery("SELECT q.id,q.title,q.status,q.actor_id,q.actor_name,q.created_at,q.updated_at,q.event_at,q.data_json",from," ORDER BY q.id","q.id",args,1,(rs,n)->{
-                JsonNode details=json(rs.getString("data_json"));
-                return new Question(rs.getLong("id"),text(rs.getString("title")),text(rs.getString("status")),text(jsonText(details,"description")),text(jsonText(details,"answer")),text(jsonText(details,"followUp")),text(rs.getString("actor_name")),CarePlanData.nullableId(rs,"actor_id"),local(rs,"created_at"),local(rs,"updated_at"),local(rs,"event_at"));
-            },"q.title","q.status","q.actor_name","q.data_json");
+            List<Question> result=new ArrayList<>();
+            try {
+                // 原始单元的 8 MiB 失败语义保留，未知 JSON 字段也不能绕过预检。
+                List<Object> selected=new ArrayList<>();selected.add(request.getPatientId());selected.addAll(ids);
+                StringJoiner cells=new StringJoiner(",");String[] columns={"q.title","q.status","q.actor_name","q.data_json"};
+                for(int i=0;i<columns.length;i++)cells.add("COALESCE("+storageBytes(columns[i])+",0) AS bytes"+i);
+                query("SELECT q.id,"+cells+" FROM care_item q WHERE q.patient_id=? AND q.kind='QUESTION' AND q.id IN ("+marks(ids.size())+")",(rs,n)->{
+                    for(int i=0;i<columns.length;i++)if(rs.getLong("bytes"+i)>MAX_SOURCE_TEXT_BYTES)throw CareExecutionReportException.limitExceeded("SOURCE_TEXT_BYTES",MAX_SOURCE_TEXT_BYTES);
+                    return rs.getLong("id");
+                },selected);
+                for(org.familyhealthcare.entity.CareItem note:questionProjection.report(actor,request.getPatientId(),ids,budget,"CURRENT_TIMESTAMP".equals(dbNow))){
+                    Map<String,Object> d=note.getDetails(),provenance=org.familyhealthcare.service.visitquestion.VisitQuestionProjection.metadata(note);Object recorder=provenance.get("answerRecorderId");
+                    result.add(new Question(note.getId(),text(note.getTitle()),text(note.getStatus()),text((String)d.get("description")),text((String)d.get("answer")),text((String)d.get("followUp")),null,recorder instanceof Number?((Number)recorder).longValue():null,
+                            note.getCreatedAt()==null?null:note.getCreatedAt().toString(),note.getUpdatedAt()==null?null:note.getUpdatedAt().toString(),note.getEventAt()==null?null:note.getEventAt().toString(),
+                            text((String)provenance.get("answerOrigin")),text((String)provenance.get("projectionBasis")),text((String)provenance.get("detailLink")),text((String)provenance.get("answerRecordedAt"))));
+                }
+                questionProjection.finish(actor,request.getPatientId());
+            }catch(org.familyhealthcare.service.workflow.WorkflowException failure){
+                if(failure.getStatus()==413)throw CareExecutionReportException.limitExceeded("SOURCE_TEXT_BYTES",org.familyhealthcare.service.visitquestion.VisitQuestionContracts.RAW_BYTES);
+                if(failure.getStatus()==403)throw CareExecutionReportException.denied();
+                if(failure.getStatus()==503)throw CareExecutionReportException.timeout();
+                throw inconsistent();
+            }
+            budget.checkTime();return result;
         }
 
         /**
@@ -303,11 +342,11 @@ public class CareExecutionReportProjector {
     private static String jsonText(JsonNode node,String field){JsonNode value=node.get(field);if(value==null||value.isNull())return null;if(!value.isTextual())throw inconsistent();return value.textValue();}
     private static List<Reference> references(JsonNode values) {
         if(values==null||values.isNull())return Collections.emptyList();if(!values.isArray()||values.size()>5)throw inconsistent();List<Reference> result=new ArrayList<>();
-        for(JsonNode value:values){String type=jsonText(value,"sourceType");JsonNode id=value.get("sourceId");if(type==null||id==null||!id.isIntegralNumber()||!id.canConvertToLong()||id.longValue()<=0)throw inconsistent();result.add(new Reference(type,id.longValue()));}return result;
+        for(JsonNode value:values){String type=jsonText(value,"sourceType");JsonNode id=value.get("sourceId");if(type==null||id==null||!id.isIntegralNumber()||!id.canConvertToLong()||id.longValue()<=0)throw inconsistent();result.add(new Reference(0L,type,id.longValue()));}return result;
     }
     private static CareExecutionReportException inconsistent(){return new CareExecutionReportException(CareExecutionReportException.Code.REPORT_DATA_INCONSISTENT);}
     private static final class CellSize {final long id,bytes;CellSize(long id,long bytes){this.id=id;this.bytes=bytes;}}
-    private static final class Reference {final String type;final long id;Reference(String type,long id){this.type=type;this.id=id;}}
+    private static final class Reference {Boolean readable;final String type;final long id,anchor;Reference(long anchor,String type,long id){this.anchor=anchor;this.type=type;this.id=id;}}
     private static final class ActionRow {long id,plan,revision,assigned;int ordinal,revisionNo;String title,instructions,instruction,status;Instant due,waiting;}
     private static final class EventRow {long id,plan,revision,actor;Long action;int revisionNo;String type,actorName,actorRole,actorRelation,mode,note,kind,historicalStatus,title,instructions,instruction,lifecycle;Instant recorded,occurred;boolean current;}
     public static final class Projection {

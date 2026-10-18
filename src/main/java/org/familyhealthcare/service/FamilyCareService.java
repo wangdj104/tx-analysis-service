@@ -13,6 +13,13 @@ import java.util.*;
 
 @Service
 public class FamilyCareService {
+    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
+    @Autowired private org.familyhealthcare.service.visitquestion.VisitQuestionProjection questionProjection;
+    @Autowired private org.familyhealthcare.service.visitquestion.VisitQuestionLegacyAdapter questions;
+    @Autowired private org.familyhealthcare.service.familyassistance.FamilyAssistanceQueryService familyQueries;
+    @Autowired private org.familyhealthcare.service.familyassistance.FamilyAssistanceSourceBridge familyAssistance;
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard tracking;
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationBoundaryService boundary;
     @Autowired private CareItemMapper items;
     @Autowired private DataScopeHelper scope;
     @Autowired private CareMembershipService membership;
@@ -21,17 +28,22 @@ public class FamilyCareService {
     @Autowired private MedicalRecordMapper reports;
     @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
-    public List<CareItem> list(Long pid,String kind){scope.requirePatient(pid);QueryWrapper<CareItem>q=new QueryWrapper<CareItem>().eq("patient_id",pid);if(kind!=null)q.eq("kind",kind);return items.selectList(q.orderByDesc("event_at").orderByDesc("id"));}
-    public CareItem get(Long id){CareItem v=items.selectById(id);if(v==null)throw new IllegalArgumentException("The record does not exist.");scope.requirePatient(v.getPatientId());return v;}
+    public List<CareItem> list(Long pid,String kind){scope.requirePatient(pid);QueryWrapper<CareItem>q=new QueryWrapper<CareItem>().eq("patient_id",pid);if("QUESTION".equals(kind))return (List<CareItem>)questionProjection.editingPage(scope.requireUserId(),pid,null,25).get("items");if(kind!=null)q.eq("kind",kind);else q.ne("kind","QUESTION");return projectReports(pid,tracking.legacyRead(pid).untrackedOrders(familyQueries.legacyItems(scope.requireUserId(),pid,(familyAssistance.appointmentReadStorageAvailable()?items.selectFollowUpItems(pid,kind,null):items.selectList(q.orderByDesc("event_at").orderByDesc("id"))))));}
+    public CareItem get(Long id){if(questions.isQuestion(id))return questionProjection.locate(scope.requireUserId(),id);CareItem v; if(familyAssistance.appointmentReadStorageAvailable()){List<CareItem> projected=items.selectFollowUpItems(null,null,id);v=projected.isEmpty()?null:projected.get(0);}else v=items.selectById(id);if(v==null)throw new IllegalArgumentException("The record does not exist.");scope.requirePatient(v.getPatientId());List<CareItem> visible=tracking.legacyRead(v.getPatientId()).untrackedOrders(familyQueries.legacyItems(scope.requireUserId(),v.getPatientId(),Collections.singletonList(v)));if(visible.isEmpty())throw org.familyhealthcare.service.familyassistance.FamilyAssistanceAuthorizationService.denied();return projectReports(v.getPatientId(),visible).get(0);}
+    public Map<String,Object> questionPage(Long patient,String cursor,Integer limit){return org.familyhealthcare.service.visitquestion.VisitQuestionFailure.expose(()->questionProjection.editingPage(scope.requireUserId(),patient,cursor,limit));}
+    public void finishQuestionRead(Long patient,Map<String,Object> page){org.familyhealthcare.service.visitquestion.VisitQuestionFailure.expose(()->{questionProjection.finishEditing(scope.requireUserId(),patient,(List<CareItem>)page.get("items"));return null;});}
+    public CareItem publicProfile(Long pid){CareItem row=profile(pid);if(row==null)return null;List<CareItem> visible=familyQueries.legacyItems(scope.requireUserId(),pid,Collections.singletonList(row));return visible.isEmpty()?null:visible.get(0);}
     public CareItem profile(Long pid){return items.selectOne(new QueryWrapper<CareItem>().eq("patient_id",pid).eq("kind","PROFILE").last("limit 1"));}
     public Long coordinator(Long pid){CareItem p=profile(pid);Object id=p==null?null:p.getDetails().get("escalationUserId");return id==null||id.toString().isEmpty()?null:Long.valueOf(id.toString());}
     public int delayMinutes(Long pid){CareItem p=profile(pid);Object delay=p==null?null:p.getDetails().get("escalationMinutes");return delay==null?60:Math.max(15,Integer.parseInt(delay.toString()));}
 
-    @Transactional public CareItem save(CareItem v){
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public CareItem save(CareItem v){
+        if(questions.isQuestion(v))return org.familyhealthcare.service.visitquestion.VisitQuestionFailure.expose(()->questions.save(scope.requireUserId(),v));
         Patient patient=scope.requirePatient(v.getPatientId());if(patient==null)throw new IllegalArgumentException("SelectFamily Member");
         if(!Arrays.asList("APPOINTMENT","ORDER","SYMPTOM","QUESTION","HANDOVER","PROFILE").contains(v.getKind()))throw new IllegalArgumentException("recordtypeNonevalid");
         if(v.getTitle()==null||v.getTitle().trim().isEmpty()||v.getTitle().length()>200)throw new IllegalArgumentException("Please fillwrite200charactertowithin title");
         if(!membership.canAssign(v.getPatientId(),v.getAssignedUserId()))throw new IllegalArgumentException("responsible forpersonmustYesthis Family Member carecompletemember");
+        if(v.getId()!=null&&!"ORDER".equals(v.getKind()))familyAssistance.requireLegacyItemWrite(scope.requireUserId(),v.getPatientId(),v.getId());
         CareItem old=v.getId()==null?null:get(v.getId());
         if(old!=null&&(!Objects.equals(old.getPatientId(),v.getPatientId())||!Objects.equals(old.getKind(),v.getKind())))throw new IllegalArgumentException("cannotchangerecordbelongFamily Member or type");
         if(old!=null&&"ORDER".equals(old.getKind()))throw new IllegalArgumentException("prescriptionchangePlease Addversionthis , keeporiginalsolution");
@@ -50,14 +62,26 @@ public class FamilyCareService {
             if(d.get("nextAt")!=null&&!d.get("nextAt").toString().isEmpty()&&!LocalDateTime.parse(d.get("nextAt").toString().replace(' ','T')).isAfter(v.getEventAt()))throw new IllegalArgumentException("down timesfollow-up examinationshouldlater thanthis timesappointment");
             if(old!=null&&!Objects.equals(v.getEventAt(),old.getEventAt())){v.setNotifiedAt(null);v.setEscalatedAt(null);}
             if(d.get("reportId")!=null){MedicalRecord r=reports.selectById(Long.valueOf(d.get("reportId").toString()));if(r==null||!Objects.equals(r.getPatientId(),v.getPatientId()))throw new IllegalArgumentException("Reportdoes not belong tocurrentFamily Member");}
+            if(d.get("reportId")!=null&&(old==null||!Objects.equals(String.valueOf(d.get("reportId")),String.valueOf(old.getDetails().get("reportId"))))) {
+                long report=Long.parseLong(d.get("reportId").toString());jdbc.queryForList("SELECT id FROM medical_record WHERE id=? AND patient_id=? FOR UPDATE",Long.class,report,v.getPatientId());
+                org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state=medicalValidity.open().one(report);
+                if(state==null||!Objects.equals(state.patientId,v.getPatientId())||!state.active())throw org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.changed();
+            }
         }
         if("SYMPTOM".equals(v.getKind())){int severity=Integer.parseInt(String.valueOf(d.getOrDefault("severity",0)));if(severity<0||severity>10)throw new IllegalArgumentException("symptomlevelshouldin 0to 10between");if(v.getEventAt()==null)throw new IllegalArgumentException("SelectsymptomoccurTime");}
         if("QUESTION".equals(v.getKind())&&d.get("appointmentId")!=null){CareItem a=get(Long.valueOf(d.get("appointmentId").toString()));if(!"APPOINTMENT".equals(a.getKind())||!Objects.equals(a.getPatientId(),v.getPatientId()))throw new IllegalArgumentException("SelectcurrentFamily Member appointment");}
         if("PROFILE".equals(v.getKind())&&d.get("escalationUserId")!=null&&!membership.canAssign(v.getPatientId(),Long.valueOf(d.get("escalationUserId").toString())))throw new IllegalArgumentException("Selecthas valid follow-upfamily caregiver");
-        if("ORDER".equals(v.getKind()))validateOrder(v);
+        if("ORDER".equals(v.getKind())){tracking.requireLegacyOrderWriteAllowed(scope.requireUserId(),v.getPatientId(),v.getId(),Long.parseLong(String.valueOf(v.getDetails().get("medicationId"))));validateOrder(v);}
         if(v.getId()==null)items.insert(v);else items.updateById(v);
         if("ORDER".equals(v.getKind()))activateIfDue(v,LocalDate.now());
         activity(v,"Create or Edit: "+v.getTitle());return v;
+    }
+    private List<CareItem> projectReports(Long patient,List<CareItem> rows) {
+        List<Long> ids=new ArrayList<>();for(CareItem row:rows){Object report=row.getDetails().get("reportId");if(report!=null)try{ids.add(Long.valueOf(report.toString()));row.setReportSourceStatus("SOURCE_UNAVAILABLE");}catch(NumberFormatException ignored){row.setReportSourceStatus("SOURCE_UNAVAILABLE");}}
+        if(ids.isEmpty())return rows;try{scope.requirePatientAccess(patient,"MEDICAL",false);}catch(IllegalStateException denied){return rows;}
+        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=new HashMap<>();for(int start=0;start<ids.size();start+=100)states.putAll(medical.batch(ids.subList(start,Math.min(start+100,ids.size()))));
+        for(CareItem row:rows){Object report=row.getDetails().get("reportId");if(report!=null)try{org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state=states.get(Long.valueOf(report.toString()));if(state!=null&&Objects.equals(state.patientId,patient))row.setReportSourceStatus(state.managed?(state.eligible()?"UNKNOWN_NEEDS_RECHECK":state.status()):"UNTRACKED");}catch(NumberFormatException ignored){}}
+        return rows;
     }
     private void validateOrder(CareItem v){Map<String,Object>d=v.getDetails();
         if(!Boolean.TRUE.equals(d.get("confirmed")))throw new IllegalArgumentException("Please Confirmalready based onClinicianprescriptionverifysolution");
@@ -74,11 +98,14 @@ public class FamilyCareService {
         }
         d.remove("reminderIds");v.setDetails(d);v.setEventAt(start.atStartOfDay());v.setNotifyAt(null);
     }
-    @Transactional public void activateIfDue(CareItem v,LocalDate today){
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public void activateIfDue(CareItem v,LocalDate today){
+        Map<String,Object> route=tracking.lockLegacyOrderTick(v.getId());
+        if(route!=null&&Boolean.TRUE.equals(route.get("tracked"))){if(Boolean.TRUE.equals(route.get("owned")))tracking.applyTrackedOrderBoundary(route,Instant.now(),boundary,false);return;}
+        v=items.selectById(v.getId());if(v==null)return;
         if(!"SCHEDULED".equals(v.getStatus())||v.getEventAt().toLocalDate().isAfter(today))return;
         CareItem locked=items.selectOne(new QueryWrapper<CareItem>().eq("id",v.getId()).last("FOR UPDATE"));
         if(locked==null||!"SCHEDULED".equals(locked.getStatus()))return;
-        Map<String,Object>d=v.getDetails();Long mid=Long.valueOf(d.get("medicationId").toString());
+        Map<String,Object>d=locked.getDetails();v=locked;Long mid=Long.valueOf(d.get("medicationId").toString());
         if(d.get("endDate")!=null&&!d.get("endDate").toString().isEmpty()&&LocalDate.parse(d.get("endDate").toString()).isBefore(today)){v.setStatus("STOPPED");items.updateById(v);return;}
         for(CareItem old:items.selectList(new QueryWrapper<CareItem>().eq("patient_id",v.getPatientId()).eq("kind","ORDER").eq("status","ACTIVE"))){if(String.valueOf(mid).equals(String.valueOf(old.getDetails().get("medicationId")))){old.setStatus("STOPPED");items.updateById(old);}}
         reminders.update(null,new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<MedicationReminder>().eq("patient_id",v.getPatientId()).eq("medication_id",mid).set("enabled",0));
@@ -86,8 +113,12 @@ public class FamilyCareService {
         List<Long>ids=new ArrayList<>();if(!stop)for(Object obj:(List<?>)d.get("doses")){Map<?,?>dose=(Map<?,?>)obj;MedicationReminder r=new MedicationReminder();r.setPatientId(v.getPatientId());r.setUserId(v.getUserId());r.setMedicationId(mid);r.setEnabled(1);r.setRemindTime(LocalTime.parse(dose.get("time").toString()).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));r.setRepeatDays(d.get("repeatDays").toString());r.setDosage(dose.get("quantity")+" "+d.getOrDefault("unit","tablet"));r.setRemark("prescriptionversionthis  #"+v.getId());reminders.insert(r);ids.add(r.getId());}
         d.put("reminderIds",ids);v.setDetails(d);v.setStatus(stop?"STOPPED":"ACTIVE");items.updateById(v);
     }
-    @Transactional public CareItem action(Long id,String status,String note){CareItem v=items.selectOne(new QueryWrapper<CareItem>().eq("id",id).last("FOR UPDATE"));
-        if(v==null)throw new IllegalArgumentException("The record does not exist.");scope.requirePatient(v.getPatientId());
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public CareItem action(Long id,String status,String note){return action(id,status,note,Collections.emptyMap());}
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public CareItem action(Long id,String status,String note,Map<String,String> command){if(questions.isQuestion(id))return org.familyhealthcare.service.visitquestion.VisitQuestionFailure.expose(()->questions.action(scope.requireUserId(),id,status,note,command));CareItem discovered=items.selectById(id);if(discovered==null)throw new IllegalArgumentException("Record not found");
+        if(!"ORDER".equals(discovered.getKind()))familyAssistance.requireLegacyItemWrite(scope.requireUserId(),discovered.getPatientId(),id);
+        if("ORDER".equals(discovered.getKind()))tracking.requireLegacyOrderWriteAllowed(scope.requireUserId(),discovered.getPatientId(),id,Long.parseLong(String.valueOf(discovered.getDetails().get("medicationId"))));
+        CareItem v=items.selectOne(new QueryWrapper<CareItem>().eq("id",id).last("FOR UPDATE"));
+        if(v==null||!Objects.equals(discovered.getPatientId(),v.getPatientId())||!Objects.equals(discovered.getKind(),v.getKind()))throw new IllegalStateException("Record changed");scope.requirePatient(v.getPatientId());
         String previousStatus=v.getStatus();
         if("ORDER".equals(v.getKind())){if(!"CANCELLED".equals(status)||!"SCHEDULED".equals(v.getStatus()))throw new IllegalArgumentException("take effectprescriptionPlease throughAddchange or stop medicationprescriptionprocess");}
         else if(!Arrays.asList("OPEN","DONE","CANCELLED","ANSWERED","RESOLVED").contains(status))throw new IllegalArgumentException("Invalid status.");
@@ -99,6 +130,9 @@ public class FamilyCareService {
         }
         v.setDetails(d);if("OPEN".equals(status)){v.setNotifiedAt(null);v.setEscalatedAt(null);}items.updateById(v);activity(v,"Statuschangefor  "+status+(note==null?"":": "+note));return v;
     }
-    @Transactional public void delete(Long id){CareItem v=get(id);if("ORDER".equals(v.getKind()))throw new IllegalArgumentException("prescriptionhistorycannotDelete, Please Cancelnot take effectversionthis  or Addstop medicationprescription");items.deleteById(id);activity(v,"Delete: "+v.getTitle());}
-    public void activity(CareItem source,String title){CareItem a=new CareItem();a.setPatientId(source.getPatientId());a.setUserId(source.getUserId());a.setKind("ACTIVITY");a.setTitle(title.length()>200?title.substring(0,200):title);a.setStatus("DONE");a.setActorId(CurrentUserUtil.getCurrentUserId());a.setActorName(CurrentUserUtil.getCurrentUsername());a.setEventAt(LocalDateTime.now());Map<String,Object>d=new HashMap<>();d.put("sourceId",source.getId());a.setDetails(d);items.insert(a);}
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public void delete(Long id){delete(id,Collections.emptyMap());}
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public boolean delete(Long id,Map<String,String> command){if(questions.isQuestion(id))return org.familyhealthcare.service.visitquestion.VisitQuestionFailure.expose(()->questions.delete(scope.requireUserId(),id,command));CareItem candidate=items.selectById(id);if(candidate==null)throw new IllegalArgumentException("Record not found");if(!"ORDER".equals(candidate.getKind()))familyAssistance.requireLegacyItemWrite(scope.requireUserId(),candidate.getPatientId(),id);CareItem v=get(id);if("ORDER".equals(v.getKind()))tracking.requireLegacyOrderWriteAllowed(scope.requireUserId(),v.getPatientId(),id,Long.parseLong(String.valueOf(v.getDetails().get("medicationId"))));if("ORDER".equals(v.getKind()))throw new IllegalArgumentException("prescriptionhistorycannotDelete, Please Cancelnot take effectversionthis  or Addstop medicationprescription");items.deleteById(id);activity(v,"Delete: "+v.getTitle());return false;}
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public void endOrderIfDue(Long order,LocalDate today){Map<String,Object> route=tracking.lockLegacyOrderTick(order);if(route!=null&&Boolean.TRUE.equals(route.get("tracked"))){if(Boolean.TRUE.equals(route.get("owned")))tracking.applyTrackedOrderBoundary(route,Instant.now(),boundary,true);return;}CareItem current=items.selectOne(new QueryWrapper<CareItem>().eq("id",order).last("FOR UPDATE"));if(current==null||!"ORDER".equals(current.getKind())||!"ACTIVE".equals(current.getStatus()))return;Object end=current.getDetails().get("endDate");if(end==null||end.toString().isEmpty()||!LocalDate.parse(end.toString()).isBefore(today))return;List<?> ids=(List<?>)current.getDetails().getOrDefault("reminderIds",Collections.emptyList());if(!ids.isEmpty())reminders.update(null,new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<MedicationReminder>().in("id",ids).eq("patient_id",current.getPatientId()).set("enabled",0));current.setStatus("STOPPED");items.updateById(current);}
+    public void activity(CareItem source,String title){if(org.familyhealthcare.service.familyassistance.FamilyAssistanceQueryService.restricted(source.getDetails()))return;CareItem a=new CareItem();a.setPatientId(source.getPatientId());a.setUserId(source.getUserId());a.setKind("ACTIVITY");a.setTitle(title.length()>200?title.substring(0,200):title);a.setStatus("DONE");a.setActorId(CurrentUserUtil.getCurrentUserId());a.setActorName(CurrentUserUtil.getCurrentUsername());a.setEventAt(LocalDateTime.now());Map<String,Object>d=new HashMap<>();d.put("sourceId",source.getId());a.setDetails(d);items.insert(a);}
 }

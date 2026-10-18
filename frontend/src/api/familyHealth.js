@@ -3,7 +3,7 @@ export const getHealthTarget = patientId => request({ url: '/family-health/targe
 export const saveHealthTarget = data => request({ url: '/family-health/target', method: 'post', data })
 export const getIntakes = (patientId, date) => request({ url: '/family-health/intakes', params: { patientId, date } })
 export const actionIntake = (id, status, reason) => request({ url: `/family-health/intakes/${id}/action`, method: 'put', params: { status, reason } })
-export const getTimeline = (patientId, from, to) => request({ url: '/family-health/timeline', params: { patientId, from, to } })
+export const getTimeline = (patientId, from, to, options = {}) => request({ url: '/family-health/timeline', params: { patientId, from, to }, expectedAuth: options.expectedAuth, signal: options.signal, ...(options.expectedAuth ? { alertWorkflow: true } : {}) })
 export const saveEvent = data => request({ url: '/family-health/events', method: 'post', data })
 export const getDialysisSchedules = patientId => request({ url: '/family-health/dialysis-schedules', params: { patientId } })
 export const saveDialysisSchedule = data => request({ url: '/family-health/dialysis-schedules', method: 'post', data })

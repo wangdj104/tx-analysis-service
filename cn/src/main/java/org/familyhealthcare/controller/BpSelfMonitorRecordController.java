@@ -38,12 +38,12 @@ public class BpSelfMonitorRecordController {
     }
 
     @PostMapping("/save")
-    public Result<?> save(@RequestBody java.util.Map<String,Object> body) {
+    public Result<?> save(@RequestBody org.familyhealthcare.util.MeasurementInputBody body) {
         try{return Result.ok(bpSelfMonitorRecordService.saveRequest(body));}catch(IllegalStateException denied){return Result.error(403,denied.getMessage());}
     }
 
     @PutMapping("/update")
-    public Result<?> update(@RequestBody java.util.Map<String,Object> body) {
+    public Result<?> update(@RequestBody org.familyhealthcare.util.MeasurementInputBody body) {
         try {
             java.util.Map<String,Object> result=bpSelfMonitorRecordService.updateRequest(body);
             if(result.containsKey("updated"))return Boolean.TRUE.equals(result.get("updated"))?Result.okMessage("Updated successfully"):Result.error("Update failed");
@@ -60,5 +60,14 @@ public class BpSelfMonitorRecordController {
         } catch (IllegalStateException e) {
             return Result.error(403, e.getMessage());
         }
+    }
+
+    /** 新增事实错误独立设置真实状态和私有缓存头，不改变旧接口的其他错误分支。 */
+    @ExceptionHandler(org.familyhealthcare.service.ClinicalImportFacts.Failure.class)
+    public org.springframework.http.ResponseEntity<Result<java.util.Map<String,Object>>> importFactsFailure(org.familyhealthcare.service.ClinicalImportFacts.Failure failure) {
+        Result<java.util.Map<String,Object>> result=Result.error(failure.getStatus(),failure.getMessage());
+        result.setData(java.util.Collections.singletonMap("errorCode",failure.getCode()));
+        return org.springframework.http.ResponseEntity.status(failure.getStatus()).header("Cache-Control","no-store, private")
+                .header("X-Content-Type-Options","nosniff").body(result);
     }
 }

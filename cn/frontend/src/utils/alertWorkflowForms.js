@@ -1,13 +1,15 @@
 // Wall times stay unchanged. The offset is explicit user context, never guessed from a stored value.
-export function measurementInstant(wall, offset) {
+export function measurementInstant(wall, offset, { localOnly = false } = {}) {
     const value = String(wall || '').replace(' ', 'T'), zone = String(offset || '').trim();
-    if (!/^[+-](?:0\d|1[0-4]):[0-5]\d$/.test(zone) || (zone.slice(1, 3) === '14' && zone.slice(4) !== '00'))
+    if (!localOnly && (!/^[+-](?:0\d|1[0-4]):[0-5]\d$/.test(zone) || (zone.slice(1, 3) === '14' && zone.slice(4) !== '00')))
         throw new Error('OFFSET_REQUIRED');
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?$/.test(value))
         throw new Error('TIME_REQUIRED');
     const normalized = value.length === 16 ? `${value}:00` : value, stamp = new Date(`${normalized.slice(0, 19)}Z`);
     if (!Number.isFinite(stamp.getTime()) || stamp.toISOString().slice(0, 19) !== normalized.slice(0, 19))
         throw new Error('TIME_REQUIRED');
+    // 旧原表没有时区；仅验证新草稿的当地时间，不替它补时区。
+    if (localOnly) return normalized;
     const instant = `${normalized}${zone}`;
     if (Date.parse(instant) > Date.now())
         throw new Error('FUTURE_OCCURRENCE');
@@ -80,7 +82,12 @@ export function actionBody(action, form, detail, capabilities = {}) {
     throw new Error('INVALID_ACTION');
 }
 /** Hidden fields are not a second reading. Explicit nulls also match native correction semantics. */
-export function selfMonitorInput(form) {
+export function selfMonitorInput(form, requireNewContext = false) {
+    if (requireNewContext) {
+        measurementInstant(`${form.recordDate}T${form.recordTime}`, null, { localOnly: true });
+        if (!['BP', 'BG', 'BP_BG'].includes(form.measureType)) throw new Error('TYPE_REQUIRED');
+        if (form.measureType !== 'BP' && (!['mmol/L', 'mg/dL'].includes(form.bgUnit) || !['Fasting', 'After Meal2h', 'Random'].includes(form.measurePeriod))) throw new Error('CONTEXT_REQUIRED');
+    }
     return { ...form, ...(form.measureType === 'BG' ? { systolicBp: null, diastolicBp: null } : {}), ...(form.measureType === 'BP' ? { bloodGlucose: null, bgUnit: null, measurePeriod: null } : {}) };
 }
 

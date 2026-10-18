@@ -62,7 +62,7 @@ export function toOffsetIso(localDateTime, offsetMinutes, { timeZone = browserZo
   return `${clock.text}${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`
 }
 
-export function formatPlanTime(iso, locale, { timeZone = browserZone() } = {}) {
+function parsePlanTime(iso) {
   const match = typeof iso === 'string' && iso.match(/^(.*)(Z|[+-]\d{2}:\d{2})$/)
   if (!match) throw new RangeError('An explicit ISO time offset is required.')
   const clock = parseClock(match[1])
@@ -71,7 +71,17 @@ export function formatPlanTime(iso, locale, { timeZone = browserZone() } = {}) {
   const timestamp = clock.base - offset * 60000
   const instantMicros = BigInt(timestamp) * 1000n + BigInt(clock.micros)
   if (instantMicros < MIN_MICROS || instantMicros > MAX_MICROS) throw new RangeError('Time is outside the supported UTC storage range.')
-  const date = new Date(timestamp + Math.floor(clock.micros / 1000))
+  return { timestamp, micros: clock.micros, instantMicros }
+}
+
+/** Exact UTC microseconds, using the same explicit-offset validation as display. */
+export function parsePlanTimeMicros(iso) {
+  return parsePlanTime(iso).instantMicros
+}
+
+export function formatPlanTime(iso, locale, { timeZone = browserZone() } = {}) {
+  const { timestamp, micros } = parsePlanTime(iso)
+  const date = new Date(timestamp + Math.floor(micros / 1000))
   const display = new Intl.DateTimeFormat(locale, { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'longOffset' }).format(date)
   const offsetSeconds = (wallMillis(zonedParts(new Date(timestamp), formatter(timeZone))) - timestamp) / 1000
   const sign = offsetSeconds < 0 ? '-' : '+', absolute = Math.abs(offsetSeconds)

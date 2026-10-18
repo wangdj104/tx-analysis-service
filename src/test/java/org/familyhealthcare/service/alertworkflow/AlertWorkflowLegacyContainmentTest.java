@@ -50,9 +50,34 @@ class AlertWorkflowLegacyContainmentTest {
         assertThrows(IllegalArgumentException.class,()->backup.readArchive(partial));assertEquals(0,h.count("alert_record"));
     }
     org.familyhealthcare.service.FamilyBackupService backup() {
-        org.familyhealthcare.service.FamilyBackupService backup=new org.familyhealthcare.service.FamilyBackupService();ReflectionTestUtils.setField(backup,"jdbc",h.db.jdbc);
+        org.familyhealthcare.service.FamilyBackupService backup=new org.familyhealthcare.service.FamilyBackupService();ReflectionTestUtils.setField(backup,"jdbc",h.db.jdbc);ReflectionTestUtils.setField(backup,"householdSchema",absentHouseholdSchema());ReflectionTestUtils.setField(backup,"medicalValidity",h.medicalValidity);
         DataScopeHelper scope=mock(DataScopeHelper.class);when(scope.requireUserId()).thenReturn(1L);when(scope.accessiblePatientIds(1L)).thenReturn(Arrays.asList(10L));ReflectionTestUtils.setField(backup,"scope",scope);return backup;
     }
+    static org.familyhealthcare.service.workflow.HouseholdWorkflowSchema absentHouseholdSchema(){
+        // 同连接只回答两条精确的缺失模式查询；意外 SQL 直接使夹具失败。
+        try {
+            Set<String> presence=new HashSet<>();
+            for(String resource:Arrays.asList("household-workflow-schema.json","visit-followup-schema.json")) {
+                try(java.io.InputStream input=AlertWorkflowLegacyContainmentTest.class.getClassLoader().getResourceAsStream(resource)) {
+                    presence.add(new com.fasterxml.jackson.databind.ObjectMapper().readTree(input).get("presenceSql").asText());
+                }
+            }
+            javax.sql.DataSource source=mock(javax.sql.DataSource.class);
+            java.sql.Connection connection=mock(java.sql.Connection.class);
+            java.sql.Statement statement=mock(java.sql.Statement.class);
+            when(source.getConnection()).thenReturn(connection);when(connection.createStatement()).thenReturn(statement);
+            when(statement.executeQuery(anyString())).thenAnswer(call->{
+                if(!presence.contains(call.getArgument(0)))throw new AssertionError("Unexpected schema SQL: "+call.getArgument(0));
+                java.sql.ResultSet result=mock(java.sql.ResultSet.class);
+                java.sql.ResultSetMetaData metadata=mock(java.sql.ResultSetMetaData.class);
+                when(metadata.getColumnCount()).thenReturn(1);when(result.getMetaData()).thenReturn(metadata);
+                when(result.next()).thenReturn(true,false);when(result.getLong(1)).thenReturn(0L);return result;
+            });
+            when(connection.prepareStatement(anyString())).thenAnswer(call->{throw new AssertionError("Unexpected prepared schema SQL: "+call.getArgument(0));});
+            return new org.familyhealthcare.service.workflow.HouseholdWorkflowSchema(new org.springframework.jdbc.core.JdbcTemplate(source));
+        } catch(java.io.IOException|java.sql.SQLException failure){throw new AssertionError(failure);}
+    }
+    static org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard absentMedicationTracking(org.springframework.jdbc.core.JdbcTemplate jdbc){org.familyhealthcare.service.medicationexecution.MedicationExecutionProperties p=new org.familyhealthcare.service.medicationexecution.MedicationExecutionProperties();org.familyhealthcare.service.medicationexecution.MedicationExecutionAuthorizationService a=new org.familyhealthcare.service.medicationexecution.MedicationExecutionAuthorizationService(jdbc,p);return new org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard(jdbc,p,a,new org.familyhealthcare.service.medicationexecution.MedicationExecutionRepository(jdbc,null,absentHouseholdSchema(),a),null);}
     static byte[] zip(Map<String,Object>root)throws Exception{java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();try(java.util.zip.ZipOutputStream zip=new java.util.zip.ZipOutputStream(bytes)){zip.putNextEntry(new java.util.zip.ZipEntry("family-health.json"));zip.write(json(root).getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();}return bytes.toByteArray();}
 
     @Test void concreteFamilyClinicalAndMonitoringProjectionsExcludeWorkflowContentAfterDisableAndRevocation() throws Exception {
@@ -84,7 +109,7 @@ class AlertWorkflowLegacyContainmentTest {
         h.db.jdbc.update("INSERT INTO alert_record(id,patient_id,user_id,alert_type,alert_title,status) VALUES(1,10,1,NULL,'Old row','PENDING'),(2,10,1,'MEASUREMENT_FOLLOW_UP','Reserved','PENDING')");
         assertEquals(1,legacy.listRecords(10L,null).size());assertNull(legacy.getById(2L));assertTrue(legacy.deleteRecord(1L));assertFalse(legacy.deleteRecord(2L));
     }
-    static void mockFields(Object object)throws Exception{for(java.lang.reflect.Field field:object.getClass().getDeclaredFields())if(field.isAnnotationPresent(org.springframework.beans.factory.annotation.Autowired.class))ReflectionTestUtils.setField(object,field.getName(),mock(field.getType()));}
+    static void mockFields(Object object)throws Exception{for(java.lang.reflect.Field field:object.getClass().getDeclaredFields())if(field.isAnnotationPresent(org.springframework.beans.factory.annotation.Autowired.class))ReflectionTestUtils.setField(object,field.getName(),field.getType()==org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.class?absentMedicationTracking(new org.springframework.jdbc.core.JdbcTemplate()):mock(field.getType()));}
 
     @Test void mysqlCaseInsensitiveReservedMarkerCannotBeForgedThroughLegacySave() {
         AlertRecord row=new AlertRecord();row.setPatientId(10L);row.setUserId(1L);row.setAlertType("measurement_follow_up");

@@ -1,0 +1,21 @@
+<template>
+ <section aria-label="Stock detail"><h3>{{ d.drugName }}</h3><p>Remaining: {{ d.quantity == null ? '—' : d.quantity }} {{ d.unit }} · Cycle {{ d.cycle || '—' }}</p>
+ <StockNotificationStatus :policy="d.reminderPolicy" :stock-id="d.stockId" @review="$emit('notification-review',$event)" />
+ <p>{{ stateText[d.state] || d.state }}</p><p v-if="!d.usageKnown" role="status">Daily use is unknown. This cannot establish sufficient stock or safety.</p>
+ <p v-if="d.responsibleCurrent===false" role="status">The responsible person no longer has medication write access. Choose a current writer using Change manual rule; this does not grant permission.</p>
+ <p>Unresolved facts: {{ d.unresolvedCount }}. A physical count does not automatically settle unknown facts.</p>
+ <p v-if="d.currentCount">Current cycle count: {{ d.currentCount.quantity }} {{ d.currentCount.unit }} · {{ d.currentCount.counted_at }}</p>
+ <div><button v-for="command in d.allowedCommands.filter(x=>x!=='RESOLVE_INTAKE')" :key="command" type="button" :disabled="busy" @click="$emit('command',command)">{{ labels[command] }}</button><button type="button" @click="flow.close()">Close detail</button></div>
+ <ul><li v-for="row in d.unresolved" :key="row.intake_id">Intake {{ row.intake_id }} · {{ row.unit || 'Unit unknown' }} <button v-if="row.action_id && d.allowedCommands.includes('RESOLVE_INTAKE')" type="button" :disabled="busy" @click="$emit('command','RESOLVE_INTAKE',row)">Review count inclusion</button><span v-else>Record a genuine factual correction in medication follow-up</span></li></ul>
+ <p v-if="d.unresolvedWindowLimited">Only the first 1000 unresolved facts are shown. Refresh after resolving them to advance the queue; all facts block closure.</p>
+ <button type="button" @click="flow.open(d.stockId)">Refresh unresolved queue</button><button type="button" @click="flow.loadEvents()">Event history</button><button type="button" @click="flow.loadDeliveries()">My notification status</button>
+ <ul><li v-for="event in flow.state.events" :key="event.id">{{ event.type }} · {{ event.occurred_at }} · {{ event.settlement_status }}</li></ul><button v-if="flow.state.eventCursor" type="button" @click="flow.loadEvents(true)">More events</button>
+ <ul><li v-for="row in flow.state.deliveries" :key="row.id">{{ row.status }} · {{ row.lastResult }}<label v-if="row.canRetry&&row.requiresDuplicateRiskAcknowledgement"><input v-model="risk[row.id]" type="checkbox"/>Retry may send a duplicate</label><button v-if="row.canRetry" type="button" :disabled="row.requiresDuplicateRiskAcknowledgement&&!risk[row.id]" @click="flow.retryDelivery(row,!!risk[row.id])">Retry notification</button></li></ul><button v-if="flow.state.deliveryCursor" type="button" @click="flow.loadDeliveries(true)">More notification attempts</button><p>Delivered only means the provider accepted the message.</p>
+ </section>
+</template>
+<script setup>
+import StockNotificationStatus from '@/components/stock-notification/StockNotificationStatus.vue';
+import {computed,reactive} from 'vue';const props=defineProps({flow:{type:Object,required:true}});defineEmits(['command','notification-review']);const d=computed(()=>props.flow.state.detail),busy=computed(()=>['submitting','unknown'].includes(props.flow.state.phase)),risk=reactive({});
+const labels={ADOPT_STOCK:'Start stock review',RECORD_REPLENISHMENT:'Record received stock',RECORD_COUNT:'Record physical count',RECONCILE:'Explicitly reconcile',CHANGE_RULE:'Change manual rule',CANCEL_MISTAKE:'Cancel mistaken review'};const stateText={UNTRACKED:'Select “Start stock review” to track this native ledger',OPEN:'Open: review facts and record a current physical count',RESOLVED:'Reconciled with the evidence recorded in this cycle',NOT_APPLICABLE:'No longer applicable because the manual rule changed',CANCELLED_MISTAKE:'Cancelled as recorded in error'};
+</script>
+<style scoped>button{min-height:44px;min-width:44px;padding:.6rem;margin:.25rem;border:1px solid var(--el-border-color);border-radius:var(--el-border-radius-base);background:var(--el-fill-color-light);color:inherit}li{margin:.5rem 0;overflow-wrap:anywhere}label{display:block;min-height:44px;padding:.5rem}input{min-height:24px;min-width:24px}</style>

@@ -1,7 +1,7 @@
 import request from '@/utils/request'
 
 export const getMedicalReviewPreview = (recordId, options = {}) => request({
-  url: `/medical-record/${recordId}/review-preview`, method: 'get',
+  url: `/medical-record/${recordId}/review-preview`, method: 'get', params: { includeImportFacts: true },
   expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true
 })
 

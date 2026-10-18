@@ -18,6 +18,7 @@
     </section>
 
     <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" :disabled="collaborationEditing" @change="loadPatientContext" /><FollowUpList :patient-id="selectedPatientId" /></section>
+    <ReconciliationPanel :patient-id="selectedPatientId" :navigation-key="tab" />
     <el-tabs v-model="tab" class="doctor-tabs">
       <el-tab-pane label="患者面板" name="patients">
         <section class="panel">
@@ -25,7 +26,7 @@
           <el-table :data="patients" v-loading="loading" stripe empty-text="暂未分配患者">
             <el-table-column prop="name" label="患者" min-width="140"><template #default="{row}"><button class="patient-link" @click="selectPatient(row)">{{ row.name }} · #{{ row.id }}</button></template></el-table-column>
             <el-table-column prop="careTeamRole" label="团队角色" min-width="140" />
-            <el-table-column prop="lastVitalAt" label="最近生命体征" min-width="170"><template #default="{row}">{{ row.lastVitalAt || '暂无读数' }}</template></el-table-column>
+            <el-table-column prop="lastVitalAt" label="最近生命体征" min-width="170"><template #default="{row}">{{row.lastVitalAt ? recordedTime(row.lastVitalAt) : '暂无读数'}}</template></el-table-column>
             <el-table-column prop="criticalAlerts" label="危急提醒" width="130"><template #default="{row}"><el-tag :type="Number(row.criticalAlerts)>0?'danger':'success'">{{ row.criticalAlerts || 0 }}</el-tag></template></el-table-column>
             <el-table-column label="操作" width="210"><template #default="{row}"><el-button link type="primary" @click="openNote(row)">添加笔记</el-button><el-button link @click="openPlan(row)">照护计划</el-button></template></el-table-column>
           </el-table>
@@ -68,6 +69,8 @@
 </template>
 
 <script setup>
+import {recordedTime} from '@/utils/originalMeasurementPresentation';
+import ReconciliationPanel from '@/components/medication-execution/ReconciliationPanel.vue';
 import FollowUpList from '@/components/alert-workflow/FollowUpList.vue';
 import AiAnalysisReviewDialog from '@/components/care-plan/AiAnalysisReviewDialog.vue';
 import MedicalRecordReviewDialog from '@/components/MedicalRecordReviewDialog.vue';

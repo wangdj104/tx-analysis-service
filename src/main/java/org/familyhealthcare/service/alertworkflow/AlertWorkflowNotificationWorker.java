@@ -4,6 +4,9 @@ import org.familyhealthcare.service.workflow.*;
 import org.familyhealthcare.service.workflow.NotificationClaim.SessionRestoreException;
 import org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryAttempt;
 import org.familyhealthcare.service.careplan.CarePlanNotificationTransport.DeliveryOutcome;
+import org.familyhealthcare.service.workflow.NotificationAttemptLifecycle.Attempt;
+import org.familyhealthcare.service.workflow.NotificationAttemptLifecycle.Change;
+import org.familyhealthcare.service.workflow.NotificationAttemptLifecycle.Outcome;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.jdbc.core.*;
@@ -140,20 +143,38 @@ public class AlertWorkflowNotificationWorker {
         }
         if(blocked!=null){update("UPDATE alert_notification SET status=?,next_attempt_at=NULL,claim_token=NULL,last_result=?,updated_at=? WHERE id=?",blocked,blocked,now,current.id);return null;}
         String request=current.attempts==0?(current.requestId==null?UUID.randomUUID().toString():current.requestId.split(":")[0])+":"+now.toEpochMilli():current.requestId;
-        NotificationAttemptPolicy.firstAttempt(request); // Corrupt cycle metadata fails closed before any network call.
-        // 发送前先记下尝试，恢复时才能区分尚未发送和结果未知；结果未知不自动重试，避免重复通知。
-        update("UPDATE alert_notification SET attempt_count=attempt_count+1,request_id=?,last_result='ATTEMPT_STARTED',updated_at=? WHERE id=?",request,now,current.id);
-        current.attempts++;current.requestId=request;return current;
+        Attempt started=NotificationAttemptLifecycle.markStarted(attempt(current),request,now,this::applyAttemptChange);
+        if(started==null)return null;
+        current.attempts=started.getAttemptCount();current.requestId=started.getRequestId();current.lastResult=started.getLastResult();return current;
     }
     private void complete(Job row,String result,Instant now,boolean retryable) {
-        inTransaction(()->{
-            Instant next=NotificationAttemptPolicy.nextAttempt(row.requestId,result,retryable,row.attempts);
-            String code="FAILED".equals(result)?retryable?"FAILED_RETRYABLE":"FAILED_MANUAL_RETRY_REQUIRED":result;
-            update("UPDATE alert_notification SET status=?,next_attempt_at=?,claim_token=NULL,last_result=?,delivered_at=?,updated_at=? WHERE id=? AND status='CLAIMED' AND claim_token=?",result,next,code,"DELIVERED".equals(result)?now:null,now,row.id,row.token);return null;
-        });
+        inTransaction(()->{NotificationAttemptLifecycle.complete(attempt(row),new Outcome(result,retryable),now,this::applyAttemptChange);return null;});
     }
     private void recover(Instant now) {
-        update("UPDATE alert_notification SET status=CASE WHEN last_result='ATTEMPT_STARTED' THEN 'UNKNOWN' ELSE 'QUEUED' END,next_attempt_at=CASE WHEN last_result='ATTEMPT_STARTED' THEN NULL ELSE ? END,last_result=CASE WHEN last_result='ATTEMPT_STARTED' THEN 'UNKNOWN' ELSE 'QUEUED' END,claim_token=NULL,claimed_at=NULL,updated_at=? WHERE status='CLAIMED' AND claimed_at<=?",now,now,now.minusSeconds(LEASE_SECONDS));
+        List<Attempt> expired=query("SELECT id,status,claim_token,claimed_at,request_id,attempt_count,last_result FROM alert_notification WHERE status='CLAIMED' AND claimed_at<=? FOR UPDATE",this::attempt,now.minusSeconds(LEASE_SECONDS));
+        for(Attempt current:expired)NotificationAttemptLifecycle.recoverClaim(current,now,this::applyAttemptChange);
+    }
+
+    /** Fixed-table persistence and field masks; recovery compares the selected expired claim snapshot. */
+    private boolean applyAttemptChange(Attempt expected,Change change) {
+        mutationTransaction(jdbc);
+        switch(change.getKind()) {
+            case START:
+                return update("UPDATE alert_notification SET attempt_count=?,request_id=?,last_result=?,updated_at=? WHERE id=? AND status='CLAIMED' AND claim_token=? AND attempt_count=?",
+                        change.getAttemptCount(),change.getRequestId(),change.getLastResult(),change.getUpdatedAt(),expected.getId(),expected.getClaimToken(),expected.getAttemptCount())==1;
+            case RECOVER:
+                return update("UPDATE alert_notification SET status=?,next_attempt_at=?,claim_token=NULL,claimed_at=NULL,last_result=?,updated_at=? WHERE id=? AND status='CLAIMED' AND (claim_token=? OR (claim_token IS NULL AND ? IS NULL)) AND claimed_at=? AND (last_result=? OR (last_result IS NULL AND ? IS NULL))",
+                        change.getStatus(),change.getNextAttemptAt(),change.getLastResult(),change.getUpdatedAt(),expected.getId(),expected.getClaimToken(),expected.getClaimToken(),expected.getClaimedAt(),expected.getLastResult(),expected.getLastResult())==1;
+            case COMPLETE:
+                return update("UPDATE alert_notification SET status=?,next_attempt_at=?,claim_token=NULL,last_result=?,delivered_at=?,updated_at=? WHERE id=? AND status='CLAIMED' AND claim_token=?",
+                        change.getStatus(),change.getNextAttemptAt(),change.getLastResult(),change.getDeliveredAt(),change.getUpdatedAt(),expected.getId(),expected.getClaimToken())==1;
+            default: throw new IllegalStateException("Unsupported notification transition.");
+        }
+    }
+    private Attempt attempt(Job row) {return new Attempt(row.id,row.status,row.token,row.claimedAt,row.requestId,row.attempts,row.lastResult);}
+    private Attempt attempt(ResultSet rs,int index)throws SQLException {
+        String claimed=time(rs,"claimed_at");
+        return new Attempt(rs.getLong("id"),rs.getString("status"),rs.getString("claim_token"),claimed==null?null:Instant.parse(claimed),rs.getString("request_id"),rs.getInt("attempt_count"),rs.getString("last_result"));
     }
 
     private String blocked(Job row,Context context){

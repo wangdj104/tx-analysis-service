@@ -1,13 +1,14 @@
 <template>
   <section class="care-plan-detail" aria-label="Collaboration plan details">
     <p v-if="state.opening || loading" role="status">Loading authorized plan…</p><p v-if="message" role="status" class="feedback">{{ message }}</p>
-    <template v-if="enabled && state.plan">
+    <p v-if="navigationMismatch" role="alert">{{visitText('navigationChanged')}}</p>
+    <template v-if="enabled && state.plan && !navigationMismatch">
       <header><div><span>Collaboration plan · Version {{ state.plan.revisionNo }} · {{ lifecycleLabel(state.plan.lifecycle) }}</span><h2>{{ state.plan.title }}</h2></div><button type="button" data-testid="reload-detail" :disabled="busy" @click="requestReload">Reload server state</button></header>
       <router-link v-if="state.plan.revisionStatus!=='DRAFT'" :to="`/care-plans/reports?patientId=${state.plan.patientId}&planId=${planId}`" class="execution-report-entry" data-testid="detail-execution-report">Execution report for this plan</router-link>
       <p class="instructions">{{ state.plan.instructions }}</p><p v-if="state.plan.revisionStatus==='DRAFT'" class="notice">Private clinical draft. It has not been published to the patient or care partners.</p>
       <label v-if="revisions.length">Version history <select :value="historyRevisionId || ''" @change="selectHistory($event.target.value)"><option value="">Current published version</option><option v-for="revision in revisions" :key="revision.id" :value="revision.id">Version {{ revision.revisionNo }} · {{ revisionLabel(revision.status) }} · {{ displayTime(revision.publishedAt || revision.createdAt) }}</option></select></label><button v-if="revisionCursor" type="button" :disabled="busy" @click="loadRevisions(revisionCursor)">More versions</button>
       <p v-if="historical" class="notice">Historical snapshot. Receipts remain attached to this version. Viewing history requires current permission.</p>
-      <article v-for="action in state.plan.actions || []" :key="action.id || action.ordinal" class="action-card">
+      <article v-for="action in state.plan.actions || []" :key="action.id || action.ordinal" class="action-card" :ref="node=>setNavigationTarget(action.id,node)" :tabindex="props.visitNavigation?.actionId===action.id ? -1 : undefined">
         <header><h3>{{ action.ordinal }}. {{ action.instruction }}</h3><span>{{ actionLabel(action.status) }}<template v-if="action.overdue"> · Currently overdue</template></span></header>
         <p>Deadline: {{ displayTime(action.dueAt) }} · Responsible account #{{ action.assignedUserId }}</p>
         <p v-if="action.firstSubmittedAt">Original submission: {{ displayTime(action.firstSubmittedAt) }} · {{ originalTiming(action) }}</p><p v-if="action.latestSubmittedAt">Latest submission: {{ displayTime(action.latestSubmittedAt) }}</p><p v-if="action.reviewWaitingSince">Waiting for doctor review since {{ displayTime(action.reviewWaitingSince) }}. Submitted records awaiting review do not mean patient delay.</p>
@@ -29,19 +30,26 @@
   </section>
 </template>
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useCarePlan } from '@/composables/useCarePlan'
 import { getCarePlanCapabilities, listPlanRevisions } from '@/api/carePlan'
 import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession'
 import { formatPlanTime } from '@/utils/carePlanTime'
+import {matchesVisitAction} from '@/utils/visitDispositionNavigation'
+import {visitText} from '@/utils/visitDispositionCopy'
 import PlanEditor from './PlanEditor.vue'
-const props=defineProps({planId:{type:Number,required:true}}),emit=defineEmits(['changed'])
+const props=defineProps({planId:{type:Number,required:true},visitNavigation:{type:Object,default:null}}),emit=defineEmits(['changed'])
 const client=useCarePlan(ref(null)),{state}=client,enabled=ref(false),loading=ref(false),message=ref(''),revisions=ref([]),revisionCursor=ref(null),historyRevisionId=ref(null),reviewTarget=ref(null),reviewNote=ref(''),transitionAction=ref(null),transitionReason=ref(''),editingRevision=ref(null),abandonIntent=ref(null)
+const navigationMismatch=computed(()=>!!props.visitNavigation && !!state.plan && !matchesVisitAction(state.plan,props.visitNavigation))
+let navigationNode=null,navigationFocus=0
+function setNavigationTarget(id,node){if(id===props.visitNavigation?.actionId)navigationNode=node}
+// 仅对当前患者、版本和确切行动聚焦；不同版本不回退到同序号。
+watch(()=>[state.plan,props.visitNavigation],async()=>{const sequence=++navigationFocus,c=context();await nextTick();if(sequence===navigationFocus&&owns(c)&&props.visitNavigation&&!navigationMismatch.value&&navigationNode?.isConnected)navigationNode.focus()},{flush:'post'})
 let generation=0,controller=null,lastCommand=null,historyGeneration=0
 const busy=computed(()=>loading.value||state.opening||state.commandPhase==='pending'),unresolved=computed(()=>state.commandPhase==='unknown')
 const historical=computed(()=>!!historyRevisionId.value && state.plan?.revisionId!==state.plan?.currentRevisionId && state.plan?.revisionStatus==='PUBLISHED')
-const planAllowed=name=>!historical.value && !!state.editor && !!state.plan?.allowedActions?.includes(name)
-const actionAllowed=(a,name)=>!historical.value && !!state.editor && !!state.plan?.actions?.find(current=>current.id===a?.id)?.allowedActions?.includes(name)
+const planAllowed=name=>!navigationMismatch.value && !historical.value && !!state.editor && !!state.plan?.allowedActions?.includes(name)
+const actionAllowed=(a,name)=>!navigationMismatch.value && !historical.value && !!state.editor && !!state.plan?.actions?.find(current=>current.id===a?.id)?.allowedActions?.includes(name)
 const canClose=computed(()=>planAllowed('CLOSE_PLAN') && state.plan?.actions?.length>0 && state.plan.actions.every(a=>a.status==='CONFIRMED'))
 const reviewAction=computed(()=>state.plan?.actions?.find(action=>action.id===reviewTarget.value?.id)||null)
 const reviewContextCurrent=computed(()=>!!reviewTarget.value && reviewTarget.value.planId===state.plan?.id && reviewTarget.value.revisionId===state.plan?.revisionId)
@@ -84,11 +92,11 @@ function roleLabel(role){return ({user:'User',family:'Family caregiver',doctor:'
 function evidenceLabel(type){return type==='MEASUREMENT'?'Measurement':'Medical record'}
 function eventLabel(type){return ({SUBMITTED:'Execution record submitted',RECEIPT_SUBMITTED:'Execution record submitted',CONFIRMED:'Doctor reviewed the record',RECEIPT_CONFIRMED:'Doctor reviewed the record',RETURNED:'More information requested',RECEIPT_RETURNED:'More information requested',HELP_REQUESTED:'Help requested',FOLLOW_UP:'Care-team follow-up',FOLLOW_UP_RECORDED:'Care-team follow-up',PUBLISHED:'Version published',PLAN_CANCELLED:'Plan cancelled',PLAN_CLOSED:'Plan closed'})[type]||type}
 function beforeUnload(event){if(unresolved.value||state.commandPhase==='pending'){event.preventDefault();event.returnValue=''}}
-watch(()=>props.planId,initialize,{immediate:true,flush:'sync'})
+watch(()=>[props.planId,props.visitNavigation],initialize,{immediate:true,flush:'sync'})
 watch(historyRevisionId,()=>{if(enabled.value)loadDetail()},{flush:'sync'})
 watch(()=>state.editor,editor=>{if(!editor){revisions.value=[];revisionCursor.value=null;reviewTarget.value=null;reviewNote.value='';transitionAction.value=null;transitionReason.value='';editingRevision.value=null;abandonIntent.value=null}},{flush:'sync'})
 onMounted(()=>window.addEventListener('beforeunload',beforeUnload))
-onUnmounted(()=>{generation++;historyGeneration++;controller?.abort();window.removeEventListener('beforeunload',beforeUnload)})
+onUnmounted(()=>{navigationFocus++;navigationNode=null;generation++;historyGeneration++;controller?.abort();window.removeEventListener('beforeunload',beforeUnload)})
 defineExpose({requestLeave})
 </script>
 <style scoped>

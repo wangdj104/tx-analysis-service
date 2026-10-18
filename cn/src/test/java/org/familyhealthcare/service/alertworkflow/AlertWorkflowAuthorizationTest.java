@@ -17,7 +17,7 @@ class AlertWorkflowAuthorizationTest {
         auth=new AlertWorkflowAuthorizationService(db.jdbc,properties,new CarePlanProperties(true,Clock.fixed(AlertWorkflowTestDatabase.NOW,ZoneOffset.UTC)));
         db.jdbc.update("INSERT INTO health_measurement(id,patient_id,recorded_by,metric_type,value_primary,unit,measured_at) VALUES(101,10,1,'GLUCOSE',8,'mmol/L',?),(202,20,6,'GLUCOSE',8,'mmol/L',?)",AlertWorkflowTestDatabase.NOW,AlertWorkflowTestDatabase.NOW);
         db.jdbc.update("INSERT INTO bp_self_monitor_record(id,user_id,patient_id,record_date,record_time,measure_type,blood_glucose,bg_unit,measure_period) VALUES(102,1,10,'2026-10-13','12:00','BG',8,'mmol/L','Fasting')");
-        db.jdbc.update("INSERT INTO medical_record VALUES(103,10)");
+        db.jdbc.update("INSERT INTO medical_record(id,patient_id) VALUES(103,10)");
     }
     @Test void ownerCanReadRecordAndManageButCannotPerformClinicalClosure() {
         allow("requireRead",1);allow("requireRecord",1);allow("requireOwner",1);deny("requireClinical",1);deny("requireNursing",1);
@@ -66,7 +66,7 @@ class AlertWorkflowAuthorizationTest {
     }
     @Test void currentCarePlanActionRequiresPlanRelationshipAndItsOwnSourcePermissions() {
         plan();db.jdbc.update("UPDATE care_access_grant SET visible_modules='MEASUREMENTS,CARE_PLAN' WHERE grantee_user_id=2");assertTrue(evidence(2,"CARE_PLAN_ACTION",104));
-        db.jdbc.update("INSERT INTO care_plan_event VALUES(1000,105,104,'RECEIPT_SUBMITTED')");db.jdbc.update("INSERT INTO care_plan_evidence VALUES(1000,'MEDICAL_RECORD',103)");
+        db.jdbc.update("INSERT INTO care_plan_event(id,plan_id,action_id,event_type,patient_id) VALUES(1000,105,104,'RECEIPT_SUBMITTED',10)");db.jdbc.update("INSERT INTO care_plan_evidence(event_id,source_type,source_id) VALUES(1000,'MEDICAL_RECORD',103)");
         assertFalse(evidence(2,"CARE_PLAN_ACTION",104));db.jdbc.update("UPDATE care_access_grant SET visible_modules='MEASUREMENTS,CARE_PLAN,MEDICAL' WHERE grantee_user_id=2");assertTrue(evidence(2,"CARE_PLAN_ACTION",104));
         db.jdbc.update("UPDATE care_plan_action SET revision_id=999 WHERE id=104");assertFalse(evidence(2,"CARE_PLAN_ACTION",104));
     }

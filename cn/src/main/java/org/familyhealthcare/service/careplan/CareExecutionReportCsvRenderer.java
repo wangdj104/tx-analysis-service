@@ -85,7 +85,7 @@ public final class CareExecutionReportCsvRenderer {
         for(Evidence e:refs) {
             if(e.isRestricted()){result.add(labels.t("Restricted evidence exists","存在受限证据"));continue;}
             StringBuilder text=new StringBuilder();text.append(e.getSourceType()==null?"":e.getSourceType()).append(" | ").append(labels.code(e.getSourceType())).append(" | ").append(e.getSourceId()==null?"":e.getSourceId()).append(" | ").append(e.getTitle()==null?"":e.getTitle());
-            String path=CareExecutionReportHtmlRenderer.safePath(e,report.getPatient().getId());if(path!=null)text.append(" | ").append(path);result.add(text.toString());
+            if(e.getSourceStatus()!=null)text.append(" | ").append(e.getSourceStatus()).append(" | ").append(labels.code(e.getSourceStatus()));String path=CareExecutionReportHtmlRenderer.safePath(e,report.getPatient().getId());if(path!=null)text.append(" | ").append(path);result.add(text.toString());
         }
         return result.toString();
     }

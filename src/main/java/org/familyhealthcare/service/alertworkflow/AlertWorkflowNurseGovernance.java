@@ -1,9 +1,12 @@
 package org.familyhealthcare.service.alertworkflow;
 
+import org.familyhealthcare.service.workflow.HouseholdAuthorityLocks;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.sql.*;
 import java.time.Instant;
@@ -15,34 +18,47 @@ import java.util.*;
 public class AlertWorkflowNurseGovernance {
     private final JdbcTemplate jdbc;
     private final AlertWorkflowAuthorizationService auth;
+    private final HouseholdAuthorityLocks authorityLocks;
     private final AlertWorkflowProperties properties;
 
-    public AlertWorkflowNurseGovernance(JdbcTemplate jdbc, AlertWorkflowAuthorizationService auth, AlertWorkflowProperties properties) {
-        this.jdbc = jdbc; this.auth = auth; this.properties=properties;
+    public AlertWorkflowNurseGovernance(JdbcTemplate jdbc, AlertWorkflowAuthorizationService auth, AlertWorkflowProperties properties, HouseholdAuthorityLocks authorityLocks) {
+        this.jdbc = jdbc; this.auth = auth; this.properties=properties; this.authorityLocks=Objects.requireNonNull(authorityLocks);
     }
 
     @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Map<String,Object> assign(long adminId, Map<String,Object> body) {
-        auth.requireAssignmentAdmin(adminId);
         if (body == null || !new HashSet<>(Arrays.asList("patientId", "nurseUserId", "expiresAt")).containsAll(body.keySet()))
             throw AlertWorkflowException.invalid("Invalid nurse assignment fields.");
         long patientId = AlertWorkflowContracts.requireId(body.get("patientId"), "patientId");
         long nurseId = AlertWorkflowContracts.requireId(body.get("nurseUserId"), "nurseUserId");
-        auth.requireActivePatient(patientId); auth.requireActiveNurse(nurseId);
-        Instant now = properties.now(), expiry = null;
+        Instant expiry = null;
         if (body.get("expiresAt") != null) {
             if (!(body.get("expiresAt") instanceof String)) throw AlertWorkflowException.invalid("Expiry must include an ISO-8601 offset.");
             expiry = AlertWorkflowContracts.parseOffsetInstant((String)body.get("expiresAt"));
-            if (!expiry.isAfter(now)) throw AlertWorkflowException.invalid("Assignment expiry must be in the future.");
         }
         final Instant expires = expiry;
+        authorityLocks.lockNurseAssignmentSubjects(patientId,adminId,nurseId);
+        Instant now=requireAssignmentAuthority(adminId,patientId,nurseId,expires);
         jdbc.update(connection -> {
             PreparedStatement ps = connection.prepareStatement("INSERT INTO care_nurse_assignment(patient_id,nurse_user_id,assigned_by,assigned_at,expires_at,status) VALUES(?,?,?,?,?,'ACTIVE') ON DUPLICATE KEY UPDATE assigned_by=VALUES(assigned_by),assigned_at=VALUES(assigned_at),expires_at=VALUES(expires_at),revoked_at=NULL,status='ACTIVE'");
             ps.setLong(1, patientId); ps.setLong(2, nurseId); ps.setLong(3, adminId);
             setInstant(ps, 4, now); setInstant(ps, 5, expires); return ps;
         });
+        Map<String,Object> result=rows("a.patient_id=? AND a.nurse_user_id=?", patientId, nurseId).get(0);
+        requireAssignmentAuthority(adminId,patientId,nurseId,expires);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void beforeCommit(boolean readOnly) {
+                requireAssignmentAuthority(adminId,patientId,nurseId,expires);
+            }
+        });
+        return result;
+    }
+
+    private Instant requireAssignmentAuthority(long adminId,long patientId,long nurseId,Instant expiry) {
         auth.requireAssignmentAdmin(adminId);auth.requireActivePatient(patientId);auth.requireActiveNurse(nurseId);
-        return rows("a.patient_id=? AND a.nurse_user_id=?", patientId, nurseId).get(0);
+        Instant now=properties.now();
+        if (expiry!=null && !expiry.isAfter(now)) throw AlertWorkflowException.invalid("Assignment expiry must be in the future.");
+        return now;
     }
 
     @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)

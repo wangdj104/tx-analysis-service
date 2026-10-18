@@ -3,6 +3,7 @@ package org.familyhealthcare.service.impl;
 import org.familyhealthcare.entity.BpSelfMonitorRecord;
 import org.familyhealthcare.mapper.BpSelfMonitorRecordMapper;
 import org.familyhealthcare.service.BpSelfMonitorRecordService;
+import org.familyhealthcare.service.ClinicalImportFacts;
 import org.familyhealthcare.util.CurrentUserUtil;
 import org.familyhealthcare.util.DataScopeHelper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -78,16 +79,25 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
         BpSelfMonitorRecord row=JSON.parseObject(JSON.toJSONString(body),BpSelfMonitorRecord.class);
         if("BOTH".equals(row.getMeasureType()))row.setMeasureType("BP_BG");return row;
     }
+    // effective 副本只负责原 patch；精度仍核对同一请求中服务器保留的原值。
+    private void validateExactNumbers(Map<String,Object> body,BpSelfMonitorRecord row,BpSelfMonitorRecord original) {
+        if(body!=null)for(String key:Arrays.asList("systolicBp","diastolicBp"))if(body.containsKey(key))org.familyhealthcare.util.MeasurementInputNumbers.requireSelfInteger(org.familyhealthcare.util.MeasurementInputBody.originalValue(body,key),key);
+        java.math.BigDecimal glucose=org.familyhealthcare.util.MeasurementInputBody.decimalValue(body,"bloodGlucose",row.getBloodGlucose());
+        if(original==null||org.familyhealthcare.util.MeasurementInputNumbers.changed(glucose,original.getBloodGlucose()))org.familyhealthcare.util.MeasurementInputNumbers.selfGlucose(glucose);
+        else row.setBloodGlucose(original.getBloodGlucose());
+    }
     @Override @Transactional(isolation=Isolation.READ_COMMITTED)
     public Map<String,Object> saveRequest(Map<String,Object> body) {
-        if(!alertWorkflowProperties.isEnabled()){disabledEnvelope(body);BpSelfMonitorRecord row=input(body);if(!saveOwned(row))throw new IllegalStateException("Failed to save");return JSON.parseObject(JSON.toJSONString(row));}
+        ClinicalImportFacts.rejectOrdinaryClientFacts(body);
+        if(!alertWorkflowProperties.isEnabled()){disabledEnvelope(body);BpSelfMonitorRecord row=input(body);if(!saveOwned(row,body))throw new IllegalStateException("Failed to save");return JSON.parseObject(JSON.toJSONString(row));}
         fields(body,INPUT_FIELDS);long patient=requireId(body.get("patientId"),"patientId"),actor=dataScopeHelper.requireUserId();
         BpSelfMonitorRecord row=input(body);validateMeasurements(row);row.setId(null);row.setUserId(actor);
-        return measurementWorkflow.save(actor,"BP_SELF_MONITOR",patient,body,()->{if(baseMapper.insert(row)!=1)throw new IllegalStateException("Failed to save");return row.getId();});
+        return measurementWorkflow.save(actor,"BP_SELF_MONITOR",patient,body,()->{validateExactNumbers(body,row,null);if(baseMapper.insert(row)!=1)throw new IllegalStateException("Failed to save");return row.getId();});
     }
     @Override @Transactional(isolation=Isolation.READ_COMMITTED)
     public Map<String,Object> updateRequest(Map<String,Object> body) {
-        if(!alertWorkflowProperties.isEnabled()){disabledEnvelope(body);return Collections.singletonMap("updated",updateOwned(input(body)));}
+        ClinicalImportFacts.rejectOrdinaryClientFacts(body);
+        if(!alertWorkflowProperties.isEnabled()){disabledEnvelope(body);return Collections.singletonMap("updated",updateOwned(input(body),body));}
         Set<String> allowed=new HashSet<>(INPUT_FIELDS);allowed.add("id");allowed.add("reason");fields(body,allowed);
         long source=requireId(body.get("id"),"id"),actor=dataScopeHelper.requireUserId();
         return measurementWorkflow.correct(actor,"BP_SELF_MONITOR",source,body,false,before->{
@@ -98,28 +108,41 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
             Map<String,Object> effective=JSON.parseObject(JSON.toJSONString(existing));
             for(String key:INPUT_FIELDS)if(body.containsKey(key))effective.put(key,body.get(key));
             BpSelfMonitorRecord row=input(effective);row.setPatientId(existing.getPatientId());row.setUserId(existing.getUserId());validateMeasurements(row);
+            validateExactNumbers(body,row,existing);
             com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<BpSelfMonitorRecord> update=new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<BpSelfMonitorRecord>().eq("id",source).eq("patient_id",existing.getPatientId());
             // Explicit nulls clear a corrected-away metric; omitted keys retain the old native patch behavior.
             for(String key:Arrays.asList("systolicBp","diastolicBp","bloodGlucose","bgUnit","measurePeriod","recordTime"))if(body.containsKey(key)&&body.get(key)==null)update.set(key.replaceAll("([A-Z])","_$1").toLowerCase(Locale.ROOT),null);
-            if(baseMapper.update(row,update)!=1)throw AlertWorkflowException.conflict();
+            try { if(baseMapper.update(row,update)!=1)throw AlertWorkflowException.conflict(); }
+            catch(RuntimeException error){throw ClinicalImportFacts.translateBinding(error);}
         });
     }
     /** Clinical imports are deliberately independent historical rows; they require later explicit adoption. */
-    @Override public boolean saveImportedOwned(BpSelfMonitorRecord row) {
+    @Override @Transactional(rollbackFor=Exception.class)
+    public boolean saveImportedOwned(BpSelfMonitorRecord row, ClinicalImportFacts facts) {
         if(!"REVIEW_REQUIRED".equals(row.getVerificationStatus())||row.getSourceExternalId()==null)throw new IllegalArgumentException("An import must retain its external provenance.");
-        return insertOwned(row);
+        if(row.getPatientId()==null)throw new IllegalStateException("Select a patient");
+        dataScopeHelper.requirePatient(row.getPatientId());
+        Long actor=dataScopeHelper.requireUserId();
+        validateMeasurements(row);validateExactNumbers(null,row,null);
+        row.setId(null);row.setUserId(actor);
+        if("BOTH".equals(row.getMeasureType()))row.setMeasureType("BP_BG");
+        facts.requireBpProjection(row);
+        return baseMapper.insertImported(row,facts.toCanonicalJson())==1;
     }
 
     @Override
-    public boolean saveOwned(BpSelfMonitorRecord record) {
+    public boolean saveOwned(BpSelfMonitorRecord record) { return saveOwned(record,null); }
+    private boolean saveOwned(BpSelfMonitorRecord record,Map<String,Object> body) {
         if(alertWorkflowProperties.isEnabled())throw AlertWorkflowException.invalid("Refresh the client before saving: commandKey is required.");
-        return insertOwned(record);
+        return insertOwned(record,body);
     }
-    private boolean insertOwned(BpSelfMonitorRecord record) {
+    private boolean insertOwned(BpSelfMonitorRecord record) { return insertOwned(record,null); }
+    private boolean insertOwned(BpSelfMonitorRecord record,Map<String,Object> body) {
         if (record.getPatientId() == null) throw new IllegalStateException("Select a patient");
         dataScopeHelper.requirePatient(record.getPatientId());
         Long userId = dataScopeHelper.requireUserId();
         validateMeasurements(record);
+        validateExactNumbers(body,record,null);
         record.setId(null);
         if ("BOTH".equals(record.getMeasureType())) record.setMeasureType("BP_BG");
         record.setUserId(userId);
@@ -129,7 +152,8 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
     @Override @Transactional(isolation=Isolation.READ_COMMITTED)
     public boolean updateById(BpSelfMonitorRecord row) {
         tracking.requireUntrackedMutation("BP_SELF_MONITOR",row.getId());
-        return super.updateById(row);
+        try {return super.updateById(row);}
+        catch(RuntimeException error){throw ClinicalImportFacts.translateBinding(error);}
     }
     @Override @Transactional(isolation=Isolation.READ_COMMITTED)
     public boolean removeById(java.io.Serializable sourceId) {
@@ -139,7 +163,8 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
 
     @Override
     @Transactional(isolation=Isolation.READ_COMMITTED)
-    public boolean updateOwned(BpSelfMonitorRecord record) {
+    public boolean updateOwned(BpSelfMonitorRecord record) { return updateOwned(record,null); }
+    private boolean updateOwned(BpSelfMonitorRecord record,Map<String,Object> body) {
         if(alertWorkflowProperties.isEnabled())throw AlertWorkflowException.invalid("Use the versioned measurement correction request.");
         tracking.requireUntrackedMutation("BP_SELF_MONITOR",record.getId());
         BpSelfMonitorRecord existing = getById(record.getId());
@@ -154,6 +179,9 @@ public class BpSelfMonitorRecordServiceImpl extends ServiceImpl<BpSelfMonitorRec
         effective.setBloodGlucose(record.getBloodGlucose() == null ? existing.getBloodGlucose() : record.getBloodGlucose());
         effective.setBgUnit(record.getBgUnit() == null ? existing.getBgUnit() : record.getBgUnit());
         validateMeasurements(effective);
+        validateExactNumbers(body,effective,existing);
+        // 只保留实际提交的同值血糖；省略或 null 仍按原 MyBatis patch 处理。
+        if(record.getBloodGlucose()!=null)record.setBloodGlucose(effective.getBloodGlucose());
         record.setPatientId(existing.getPatientId());
         if ("BOTH".equals(record.getMeasureType())) record.setMeasureType("BP_BG");
         record.setUserId(existing.getUserId());

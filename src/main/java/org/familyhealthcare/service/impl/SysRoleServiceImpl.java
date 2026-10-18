@@ -17,6 +17,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> implements SysRoleService {
+    @Autowired private org.familyhealthcare.service.workflow.HouseholdAuthorityLocks householdAuthorityLocks;
+
 
     @Autowired
     private SysRoleMenuMapper roleMenuMapper;
@@ -59,8 +61,9 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public boolean deleteRole(Long roleId) {
+        if(householdAuthorityLocks!=null)householdAuthorityLocks.lockRoleForDeletion(roleId);
         roleMenuMapper.deleteByRoleId(roleId);
         userRoleMapper.deleteByRoleId(roleId);
         return removeById(roleId);

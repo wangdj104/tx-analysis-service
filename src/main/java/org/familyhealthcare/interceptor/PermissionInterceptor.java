@@ -86,7 +86,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
         String root = prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix;
         return path.equals(root) || path.startsWith(root + "/");
     }
-    private boolean hasPermission(String required, String granted) {
+    public static boolean hasPermission(String required, String granted) {
         if (required.equals(granted)) return true;
         return "monitoring:view".equals(required) && "health-monitoring:view".equals(granted);
     }

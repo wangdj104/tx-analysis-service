@@ -32,8 +32,8 @@ public class AlertWorkflowService {
     public Map<String,Object> command(long actor,long alertId,String operation,Map<String,Object> body,String commandKey,long expectedVersion) {
         properties.requireEnabled();WorkflowData.mutationTransaction(jdbc);requireId(alertId,"alertId");requireVersion(expectedVersion);commandKey(commandKey);choice(operation,"operation",OPERATIONS);
         Map<String,Object> normalized=normalize(operation,body);Map<String,Object> initial=repo.readAlert(actor,alertId);authorize(actor,initial,operation,normalized);
-        List<Map<String,Object>> requested=requested(normalized);evidence.requireReadable(actor,id(initial.get("patientId")),requested);
-        AlertWorkflowEvidenceService.Locks locks=evidence.lock(initial,requested);Map<String,Object> alert=repo.lockAlert(alertId);
+        List<Map<String,Object>> requested=requested(normalized);
+        AlertWorkflowEvidenceService.Locks locks=evidence.lock(initial,requested,actor);Map<String,Object> alert=repo.lockAlert(alertId);
         if(alert==null||id(alert.get("workflowVersion"))!=1)throw AlertWorkflowException.denied();evidence.verify(locks);authorize(actor,alert,operation,normalized);requireSource(actor,alert);
         String payload=json(map("operation",operation,"alertId",alertId,"expectedVersion",expectedVersion,"body",normalized));
         Map<String,Object> result=repo.executeCommand(WorkflowCommandExecutor.Domain.ALERT,actor,commandKey,payload,alertId,expectedVersion,()->{
@@ -206,7 +206,7 @@ public class AlertWorkflowService {
     private void resolve(long actor,Map<String,Object> alert,Map<String,Object> body,Map<String,Object> payload) {
         Map<String,Object> ref=evidence.reference(id(alert.get("id")),id(body.get("evidenceId")));long patient=id(alert.get("patientId"));
         if("CLINICAL".equals(alert.get("workflowMode"))||"CARE_PLAN_ACTION".equals(ref.get("sourceType"))||isPlanReplacement(body))auth.requireClinical(actor,patient);else auth.requireOwner(actor,patient);
-        if(!evidence.readable(actor,patient,ref,true))throw AlertWorkflowException.denied();
+        if(evidence.hasLockedGraph()&&!evidence.readable(actor,patient,ref,true))throw AlertWorkflowException.denied();
         Map<String,Object> replacement=body.get("replacement")==null?null:cast(body.get("replacement"));
         if("CARE_PLAN_ACTION".equals(ref.get("sourceType"))&&replacement!=null&&!"CARE_PLAN_ACTION".equals(replacement.get("sourceType")))throw AlertWorkflowException.invalid("A clinical plan dependency requires a replacement plan action or explicit termination.");
         payload.put("previousReference",map("sourceType",ref.get("sourceType"),"sourceId",ref.get("sourceId"),"sourceRevision",ref.get("sourceRevision"),"dependencyVersion",ref.get("dependencyVersion")));
@@ -214,7 +214,7 @@ public class AlertWorkflowService {
     }
     private void authorize(long actor,Map<String,Object> alert,String operation,Map<String,Object> body) {
         long patient=id(alert.get("patientId"));auth.requireRead(actor,patient);
-        if("CLOSE".equals(operation))for(Map<String,Object> ref:evidence.dependencies(id(alert.get("id"))))if(!evidence.readable(actor,patient,ref,true))throw AlertWorkflowException.denied();
+        if("CLOSE".equals(operation)&&evidence.hasLockedGraph())for(Map<String,Object> ref:evidence.dependencies(id(alert.get("id"))))if(evidence.hasLockedGraph()&&!evidence.readable(actor,patient,ref,true))throw AlertWorkflowException.denied();
         if(set("ASSIGN","ESCALATE").contains(operation)) {
             if("ESCALATE".equals(operation)||"CLINICAL".equals(alert.get("workflowMode")))ownerOrDoctor(actor,patient);else auth.requireOwner(actor,patient);
             if(body.containsKey("dueAt")&&("ESCALATE".equals(operation)||"CLINICAL".equals(alert.get("workflowMode"))))auth.requireClinical(actor,patient);
@@ -227,7 +227,7 @@ public class AlertWorkflowService {
         }else if("RESOLVE_REFERENCE_CHANGE".equals(operation)) {
             Map<String,Object> ref=evidence.reference(id(alert.get("id")),id(body.get("evidenceId")));
             if("CLINICAL".equals(alert.get("workflowMode"))||"CARE_PLAN_ACTION".equals(ref.get("sourceType"))||isPlanReplacement(body))auth.requireClinical(actor,patient);else auth.requireOwner(actor,patient);
-            if(!evidence.readable(actor,patient,ref,true))throw AlertWorkflowException.denied();
+            if(evidence.hasLockedGraph()&&!evidence.readable(actor,patient,ref,true))throw AlertWorkflowException.denied();
         }else if("CLINICAL".equals(alert.get("workflowMode")))auth.requireClinical(actor,patient);else auth.requireOwner(actor,patient);
     }
     private boolean isPlanReplacement(Map<String,Object> body){return body.get("replacement") instanceof Map&&"CARE_PLAN_ACTION".equals(cast(body.get("replacement")).get("sourceType"));}

@@ -15,11 +15,14 @@ import java.util.stream.Collectors;
 
 @Service
 public class SysUserRoleServiceImpl extends ServiceImpl<SysUserRoleMapper, SysUserRole> implements SysUserRoleService {
+    @Autowired private org.familyhealthcare.service.workflow.HouseholdAuthorityLocks householdAuthorityLocks;
+
     @Autowired private JdbcTemplate jdbc;
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void assignRoles(Long userId, List<Long> roleIds) {
+        if(householdAuthorityLocks!=null)householdAuthorityLocks.lockRoleMappingsForUser(userId,roleIds);
         if (roleIds != null && !roleIds.isEmpty()) {
             String placeholders = String.join(",", java.util.Collections.nCopies(roleIds.size(), "?"));
             Integer specialtyCount = jdbc.queryForObject(

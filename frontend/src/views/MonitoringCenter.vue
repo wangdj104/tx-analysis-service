@@ -31,7 +31,11 @@
 
     <el-alert v-if="!patientId" title="Select a patient from the header to view monitoring data." type="warning" :closable="false" show-icon />
 
-    <template v-else>
+    <!-- 更正入口不依赖概览读取成功，患者权限由原记录及更正接口分别核验。 -->
+    <MeasurementCorrectionEntry :patient-id="patientId" :patient-name="currentPatientName" @changed="loadSnapshot()" />
+
+    <template v-if="patientId">
+      <TrustedMeasurementTrend :patient-id="patientId" :patient-name="currentPatientName" @changed="loadSnapshot()" />
       <div v-if="loadError" role="alert" class="read-state read-state--error">
         <p>{{ loadError }}</p>
         <p v-if="hasSnapshot" data-testid="monitoring-stale">Showing the last successful results. Data may be stale. Last successful read: {{ formatDateTime(lastSuccessAt) }}</p>
@@ -42,15 +46,15 @@
       <section class="status-hero" :class="`status-hero--${statusTone}`" v-loading="loading && !snapshot.generatedAt">
         <div class="status-orb"><el-icon :size="34"><component :is="statusIcon" /></el-icon></div>
         <div class="status-copy">
-          <span class="status-label">Current status</span>
-          <h2>{{ snapshot.statusLabel || 'Preparing the health summary' }}</h2>
+          <span class="status-label">{{ot('legacyOverview')}}</span>
+          <h2>{{snapshot.overallStatus==='STABLE'?ot('legacyStable'):snapshot.statusLabel}}</h2>
           <p>{{ primarySuggestion }}</p>
         </div>
         <div class="status-side">
           <div class="status-meta">
             <span><i></i>{{ loadError ? 'Last successful results' : (autoRefresh ? 'Watching for new records' : 'Manual checks') }}</span>
-            <small>Updated {{ formatDateTime(snapshot.generatedAt) }}</small>
-            <small>Latest record {{ formatRelative(snapshot.lastDataAt) }}</small>
+            <small>{{ot('generated')}} {{ formatDateTime(snapshot.generatedAt) }}</small>
+
           </div>
           <div class="status-actions">
             <el-button type="primary" @click="$router.push('/bp-self-monitor')">Record health data</el-button>
@@ -66,6 +70,7 @@
         </router-link>
       </nav>
 
+      <p v-if="todayTasks.some(task => task.nextAction)" role="status" class="workflow-metric-limit">Collaborative medication follow-up is excluded from this legacy completion rate. A recorded fact or ended follow-up does not establish safety.</p>
       <section class="monitor-metrics">
         <article class="monitor-metric">
           <span class="monitor-metric__icon monitor-metric__icon--alert"><el-icon><Bell /></el-icon></span>
@@ -77,11 +82,11 @@
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><DataLine /></el-icon></span>
-          <div><strong>{{ metrics.dataCompleteness ?? 0 }}%</strong><span>data coverage</span><small>across monitoring sources</small></div>
+          <div><strong>{{ metrics.dataCompleteness ?? 0 }}%</strong><span>{{ot('categories')}}</span><small>{{ot('legacyRule')}}</small></div>
         </article>
         <article class="monitor-metric">
           <span class="monitor-metric__icon"><el-icon><Clock /></el-icon></span>
-          <div><strong class="monitor-metric__time">{{ latestUpdateText }}</strong><span>latest update</span><small>{{ formatDateTime(snapshot.lastDataAt) }}</small></div>
+          <div><strong class="monitor-metric__time">{{formatDateTime(snapshot.generatedAt)}}</strong><span>{{ot('generated')}}</span></div>
         </article>
       </section>
 
@@ -92,48 +97,32 @@
       </nav>
 
       <section class="signal-grid">
-        <article v-for="signal in snapshot.signals || []" :key="signal.key" class="signal-card" :class="`signal-card--${signalTone(signal.status)}`">
+        <article v-for="signal in displaySignals" :key="signal.key" class="signal-card" :class="`signal-card--${signalTone(signal.original && signal.status==='NORMAL'?'UNASSESSED':signal.status)}`">
           <header><span>{{ signal.label }}</span><em><i></i>{{ signal.statusLabel }}</em></header>
-          <div class="signal-value">{{ signal.value }} <small>{{ signal.unit }}</small></div>
-          <footer><span>{{ signal.freshnessText }}</span><span>{{ shortDateTime(signal.updatedAt) }}</span></footer>
+          <p v-if="signal.original">{{ot('windowLatest')}} {{measurementContext.from}} – {{measurementContext.to}}</p><div class="signal-value">{{ signal.value }} <small>{{ signal.unit }}</small></div>
+          <p v-if="signal.original && signal.key==='glucose'">{{signal.period || ot('periodUnknown')}}</p><p v-if="signal.original" class="mr-quality" data-testid="measurement-quality">{{signal.issues.join(' · ')}} {{ot('unassessed')}}</p><footer><span>{{signal.freshnessText}}</span><span>{{signal.original?signal.rawTime:shortDateTime(signal.updatedAt)}}</span></footer>
         </article>
       </section>
 
       <section class="monitoring-main-grid">
         <div class="monitoring-primary-column">
-          <article class="monitor-panel trend-panel">
-            <header class="panel-head">
-              <div><span class="panel-kicker">Trend monitoring</span><h2 id="monitoring-trends" tabindex="-1" class="monitor-section-heading">Vital-sign trends</h2><p>Abnormal data points are marked with diamonds.</p></div>
-              <div class="chart-legend"><span><i class="legend-systolic"></i>Systolic Pressure</span><span><i class="legend-diastolic"></i>Diastolic Pressure</span><span><i class="legend-glucose"></i>Blood Glucose</span></div>
-            </header>
-            <div class="trend-view-controls" role="group" aria-label="Trend presentation">
-              <button type="button" :aria-pressed="trendView === 'chart'" @click="trendView = 'chart'">Chart</button>
-              <button type="button" :aria-pressed="trendView === 'data'" @click="trendView = 'data'">Data</button>
-            </div>
-            <p class="trend-context">Patient record #{{ patientId }} · Last {{ loadedDays }} days</p>
-            <div v-if="trendView === 'chart' && hasTrendData" class="monitoring-reference-legend"><span data-reference-value="140"><i></i>Blood-pressure reference: 140 mmHg</span></div>
-            <div v-if="trendView === 'data' && hasTrendData" class="trend-data-wrap" tabindex="0" role="region" aria-label="Raw trend data">
-              <table data-testid="monitoring-trend-data">
-                <caption>Source readings in the same chart range; glucose retains its original unit</caption>
-                <thead><tr><th scope="col">Date and time</th><th scope="col">Systolic (mmHg)</th><th scope="col">Diastolic (mmHg)</th><th scope="col">Glucose (source unit)</th><th scope="col">Existing marker</th></tr></thead>
-                <tbody><tr v-for="(row, index) in trendRows" :key="index"><th scope="row">{{ row.date }} {{ row.time || '—' }}</th><td>{{ row.systolic ?? '—' }}</td><td>{{ row.diastolic ?? '—' }}</td><td>{{ row.glucose ?? '—' }} {{ row.glucose != null ? (row.glucoseUnit || 'mmol/L') : '' }}</td><td>{{ row.abnormal ? 'Abnormal' : '—' }}</td></tr></tbody>
-              </table>
-            </div>
-            <v-chart v-else-if="hasTrendData" class="monitor-chart" :option="chartOption" autoresize />
-            <el-empty v-else description="No vital-sign records in this time range">
-              <el-button type="primary" @click="$router.push('/bp-self-monitor')">Record blood pressure or glucose</el-button>
-            </el-empty>
+          <article class="monitor-panel trend-panel measurement-read-model">
+            <h2 id="monitoring-trends" tabindex="-1" class="monitor-section-heading">{{ot('originalTitle')}}</h2><p>{{ot('rawChartHelp')}}</p>
+            <button type="button" data-action="toggle-monitoring-original" :aria-expanded="rawOpen" @click="rawOpen=!rawOpen">{{ot(rawOpen?'close':'open')}}</button>
+            <template v-if="rawOpen"><OriginalMeasurementPageStatus :state="raw.state" @refresh="raw.refresh()" @retry="raw.refresh({keepPosition:true})" @next="raw.next()" @previous="raw.previous()" />
+            <div v-if="raw.state.phase==='ready' && raw.state.items.length" class="mr-table-wrap" tabindex="0" role="region" :aria-label="ot('originalTitle')"><table data-testid="monitoring-trend-data"><caption>{{ot('pageScope')}}</caption><thead><tr><th>{{ot('originalTime')}}</th><th>{{ot('BP')}}</th><th>{{ot('GLUCOSE')}}</th><th>{{ot('source')}}</th></tr></thead><tbody><tr v-for="row in raw.state.items" :key="row.id"><th>{{selfTime(row)}}</th><td>{{selfBp(row)}}</td><td>{{selfGlucose(row)}}</td><td>#{{row.id}} · {{row.measurePeriod || ot('periodUnknown')}}<p>{{originalIssues(row).join(' · ')}}</p></td></tr></tbody></table></div></template>
           </article>
 
           <article class="monitor-panel task-panel">
             <header class="panel-head panel-head--compact"><div><span class="panel-kicker">Care plan</span><h2 id="monitoring-tasks" tabindex="-1" class="monitor-section-heading">Today's tasks</h2></div><span class="panel-count">{{ todayTasks.length }} items</span></header>
             <div v-if="todayTasks.length" class="task-list">
-              <article v-for="task in todayTasks" :key="`${task.taskType}-${task.id}`" class="task-item" :class="{ 'task-item--done': isTaskDone(task) }">
+              <article v-for="task in todayTasks" :key="`${task.taskType}-${task.id}`" class="task-item" :class="{ 'task-item--done': isTaskDone(task), 'task-item--workflow': !!task.nextAction }">
                 <span class="task-time">{{ timeOnly(task.scheduledAt) }}</span>
                 <span class="task-icon"><el-icon><component :is="task.taskType === 'MEDICATION' ? 'FirstAidKit' : 'Calendar'" /></el-icon></span>
-                <div><strong>{{ task.title }}</strong><p>{{ task.dosage || task.description || taskTypeText(task.taskType) }}</p></div>
-                <el-tag :type="taskTagType(task.status)" effect="light">{{ taskStatusText(task.status) }}</el-tag>
-                <el-button v-if="task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">Mark as taken</el-button>
+                <div :class="{ 'workflow-task-copy': !!task.nextAction }"><strong>{{ task.title }}</strong><p v-if="!task.nextAction">{{ task.dosage || task.description || taskTypeText(task.taskType) }}</p><span v-if="task.nextAction" role="status" class="workflow-task-truth">{{ medicationText(task.followUpState) }} · {{ medicationText(task.followUpKind) }} · {{ medicationText(task.status) }}</span></div>
+                <el-tag v-if="!task.nextAction" :type="taskTagType(task.status)" effect="light">{{ taskStatusText(task.status) }}</el-tag>
+                <router-link v-if="task.nextAction" class="workflow-task-link" :to="{ path: '/medication', query: { patientId, ...(task.executionId ? { executionId: task.executionId } : {}) } }">{{ medicationText('intakeTitle') }}</router-link>
+                <el-button v-if="!task.nextAction && task.taskType === 'MEDICATION' && ['PENDING','MISSED','SNOOZED'].includes(task.status)" size="small" type="primary" @click="completeMedication(task)">Mark as taken</el-button>
                 <el-button v-if="task.taskType === 'DIALYSIS'" size="small" @click="$router.push('/family-health')">Manage schedule</el-button>
               </article>
             </div>
@@ -173,7 +162,7 @@
       </section>
 
       <section class="care-guidance">
-        <header><el-icon><Opportunity /></el-icon><div><strong>Current care recommendations</strong><span>Automatically generated from monitoring data for health-management reference only.</span></div></header>
+        <header><el-icon><Opportunity /></el-icon><div><strong>{{ot('legacySuggestions')}}</strong><span>Automatically generated from monitoring data for health-management reference only.</span></div></header>
         <ol><li v-for="item in snapshot.careSuggestions || []" :key="item">{{ item }}</li></ol>
       </section>
       </template>
@@ -183,21 +172,23 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import TrustedMeasurementTrend from '@/components/measurement-read-model/TrustedMeasurementTrend.vue'
+import MeasurementCorrectionEntry from '@/components/measurement-read-model/MeasurementCorrectionEntry.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Bell, Calendar, CircleCheck, CircleCheckFilled, Clock, DataLine,
-  FirstAidKit, Opportunity, Refresh, SuccessFilled, WarningFilled
+  FirstAidKit, Opportunity, Refresh, WarningFilled
 } from '@element-plus/icons-vue'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
-import VChart from '@/components/HealthChart.vue'
-import { getMonitoringSnapshot } from '@/api/monitoring'
+import {monitoringSnapshotBounded} from '@/api/originalMeasurements'
+import {useOriginalMeasurementPage} from '@/composables/useOriginalMeasurementPage'
+import OriginalMeasurementPageStatus from '@/components/measurement-read-model/OriginalMeasurementPageStatus.vue'
+import {originalText as ot} from '@/utils/originalMeasurementCopy'
+import {selfTime,selfBp,selfGlucose,originalIssues,boundedMeasurementContext} from '@/utils/originalMeasurementPresentation'
 import { acknowledge, checkThresholds, resolve } from '@/api/alert'
 import { actionIntake } from '@/api/familyHealth'
+import { medicationText } from '@/utils/medicationExecutionCopy'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
-import { readPermissionCache } from '@/utils/authSession'
+import {readPermissionCache,captureAuthSession,isAuthSessionCurrent} from '@/utils/authSession'
 import { canAccessWorkspace, resolveWorkspaceEntry } from '@/utils/workspaceAccess'
 import careMoments from '@/assets/illustrations/care-moments.webp'
 import careMomentsSmall from '@/assets/illustrations/care-moments-small.webp'
@@ -206,21 +197,35 @@ import medicationCareSmall from '@/assets/illustrations/medication-care-small.we
 import dialysisCareSmall from '@/assets/illustrations/dialysis-care-small.webp'
 import recordsCareSmall from '@/assets/illustrations/records-care-small.webp'
 
-use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent])
 
-const { currentPatientId } = useCurrentPatient()
+const { currentPatientId, currentPatientName } = useCurrentPatient()
 const patientId = computed(() => currentPatientId.value)
-const snapshot = ref({ signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {}, vitalTrend: [] })
+const snapshot = ref({ signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {} })
 const loading = ref(false)
 const checking = ref(false)
 const days = ref(7)
-const loadedDays = ref(7)
 const loadError = ref('')
 const accessDenied = ref(false)
 const lastSuccessAt = ref('')
 const hasSnapshot = computed(() => !!lastSuccessAt.value)
-const trendView = ref('chart')
-const trendRows = computed(() => snapshot.value.vitalTrend || [])
+const rawOpen=ref(false);
+const measurementContext=computed(()=>snapshot.value.measurementContext||null);
+const raw=useOriginalMeasurementPage(patientId,computed(()=>({sourceType:'BP_SELF_MONITOR',from:measurementContext.value?.from,to:measurementContext.value?.to})),computed(()=>rawOpen.value&&!!measurementContext.value));
+// 最新卡只取服务器窗口内各指标原记录，旧信号仅保留为带来源的历史规则提示。
+const displaySignals=computed(()=>{
+  if(!measurementContext.value)return [];
+  const signals=snapshot.value.signals||[];
+  const originals=['bloodPressure','glucose'].map(key=>{
+    const legacy=signals.find(signal=>signal.key===key),metric=key==='bloodPressure'?'BP':'GLUCOSE';
+    const row=measurementContext.value[metric==='BP'?'latestBloodPressure':'latestGlucose'];
+    return {...legacy,key,label:legacy?.label||ot(metric),status:legacy?.status||'UNASSESSED',original:true,
+      value:row?(metric==='BP'?selfBp(row):selfGlucose(row)):ot('noReading'),unit:'',updatedAt:null,
+      rawTime:row?selfTime(row):ot('noTime'),period:row?.measurePeriod,freshnessText:ot('localTime'),issues:originalIssues(row,metric),
+      statusLabel:legacy?ot('legacyRule')+' · '+(legacy.status==='NORMAL'?ot('legacyNormal'):legacy.statusLabel):ot('unassessed')};
+  });
+  return [...originals,...signals.filter(signal=>!['bloodPressure','glucose'].includes(signal.key))];
+});
+const measurementNeedsReview=computed(()=>displaySignals.value.some(signal=>signal.original&&signal.issues.length));
 
 function focusSection(id) {
   const target = document.getElementById(id)
@@ -252,11 +257,12 @@ let timer = null
 let snapshotRequestEpoch = 0
 let snapshotAccessEpoch = 0
 let snapshotPending = null
+let snapshotController=null
 let snapshotDisposed = false
 
 function captureReaderSession() {
   if (typeof localStorage === 'undefined') return null;
-  return JSON.stringify(['token', 'userId', 'username'].map(key => localStorage.getItem(key)));
+  return JSON.stringify({...captureAuthSession(),actor:localStorage.getItem('userId'),permissions:readPermissionCache()});
 }
 let readerSession = captureReaderSession();
 let readerSessionEpoch = 0;
@@ -267,7 +273,8 @@ function clearProtectedSnapshot(message) {
   snapshotAccessEpoch++
   snapshotRequestEpoch++
   snapshotPending = null
-  snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {}, vitalTrend: [] }
+  snapshotController?.abort();snapshotController=null;raw.clear()
+  snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {} }
   lastSuccessAt.value = ''
   loading.value = false
   checking.value = false
@@ -275,8 +282,9 @@ function clearProtectedSnapshot(message) {
   loadError.value = message
 }
 function readerSessionChanged(event) {
-  if (snapshotDisposed || (event?.key != null && !['token', 'userId', 'username', 'realName'].includes(event.key))) return
+  if (snapshotDisposed || (event?.key != null && !['token','userId','username','realName','permissionSession','userMenus','userRoleCodes'].includes(event.key))) return
   readerSessionEpoch++
+  rawOpen.value=false;raw.clear()
   clearProtectedSnapshot('Your sign-in session changed. Sign in again and reselect the patient.')
 }
 function ensureReaderSession() {
@@ -289,11 +297,9 @@ const metrics = computed(() => snapshot.value.metrics || {})
 const activeAlerts = computed(() => snapshot.value.activeAlerts || [])
 const todayTasks = computed(() => snapshot.value.todayTasks || [])
 const recentEvents = computed(() => snapshot.value.recentEvents || [])
-const primarySuggestion = computed(() => snapshot.value.careSuggestions?.[0] || 'Continue recording data to build a more reliable trend assessment.')
-const statusTone = computed(() => ({ CRITICAL: 'critical', WARNING: 'warning', STABLE: 'stable', NO_DATA: 'empty' }[snapshot.value.overallStatus] || 'empty'))
-const statusIcon = computed(() => snapshot.value.overallStatus === 'STABLE' ? SuccessFilled : WarningFilled)
-const hasTrendData = computed(() => (snapshot.value.vitalTrend || []).some(p => p.systolic != null || p.diastolic != null || p.glucose != null))
-const latestUpdateText = computed(() => formatRelative(snapshot.value.lastDataAt))
+const primarySuggestion = computed(() => measurementNeedsReview.value ? ot('missingContext') : ot('unassessed'))
+const statusTone = computed(() => ({ CRITICAL: 'critical', WARNING: 'warning', STABLE: 'empty', NO_DATA: 'empty' }[snapshot.value.overallStatus] || 'empty'))
+const statusIcon = computed(() => ['CRITICAL','WARNING'].includes(snapshot.value.overallStatus)?WarningFilled:Clock)
 const illustratedShortcuts = computed(() => {
   const { menuPaths = [], roleCodes = [] } = readPermissionCache() || {}
   return [
@@ -305,60 +311,23 @@ const illustratedShortcuts = computed(() => {
     .map(item => ({ ...item, path: resolveWorkspaceEntry(item.path, menuPaths, roleCodes) }))
 })
 
-// Existing chart reference lines are in mmol/L. Keep source values and units unchanged.
-function glucoseInMmol(value, unit) {
-  if (!['number', 'string'].includes(typeof value) || String(value).trim() === '' || !Number.isFinite(Number(value))) return null;
-  const normalizedUnit = String(unit ?? '').trim().toLowerCase() || 'mmol/l';
-  if (normalizedUnit === 'mg/dl') return Number((Number(value) / 18).toFixed(8));
-  return normalizedUnit === 'mmol/l' ? Number(value) : null;
-}
-
-const chartOption = computed(() => {
-  const rows = snapshot.value.vitalTrend || []
-  const labels = rows.map(p => `${String(p.date || '').slice(5)} ${p.time || ''}`.trim())
-  const symbol = p => p.abnormal ? 'diamond' : 'circle'
-  return {
-    animationDuration: 350,
-    tooltip: {
-      trigger: 'axis', renderMode: 'richText', backgroundColor: 'rgba(12,47,45,.94)', borderWidth: 0,
-      textStyle: { color: '#fff' },
-      formatter(params = []) {
-        const items = Array.isArray(params) ? params : [params]
-        const row = rows[items[0]?.dataIndex]
-        const lines = [items[0]?.axisValueLabel || 'Measurement record', ...items.map(item => `${item.seriesName}: ${item.value ?? '—'}`)]
-        if (row?.abnormal) lines.push('This time point has an abnormal marker. Review the original record for details.')
-        return lines.join('\n')
-      }
-    },
-    grid: { left: 48, right: 50, top: 28, bottom: 52 },
-    xAxis: { type: 'category', data: labels, boundaryGap: false, axisLine: { lineStyle: { color: '#dbe7e4' } }, axisTick: { show: false }, axisLabel: { color: '#708783', hideOverlap: true } },
-    yAxis: [
-      { type: 'value', name: 'mmHg', min: 40, axisLabel: { color: '#708783' }, splitLine: { lineStyle: { color: '#edf3f1' } } },
-      { type: 'value', name: 'mmol/L', min: 0, axisLabel: { color: '#708783' }, splitLine: { show: false } }
-    ],
-    series: [
-      { name: 'Systolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.systolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.5, color: '#236b63' }, itemStyle: { color: '#236b63' }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d6a642', type: 'dashed' }, label: { show: false, color: '#8a6110', formatter: 'Reference 140' }, data: [{ yAxis: 140 }] } },
-      { name: 'Diastolic Pressure', type: 'line', smooth: .25, connectNulls: true, data: rows.map(p => ({ value: p.diastolic, symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#589b91' }, itemStyle: { color: '#589b91' } },
-      { name: 'Blood Glucose', type: 'line', yAxisIndex: 1, smooth: .25, connectNulls: true, data: rows.map(p => ({ value: glucoseInMmol(p.glucose, p.glucoseUnit), symbol: symbol(p) })), symbolSize: 7, lineStyle: { width: 2.2, color: '#d59c2f' }, itemStyle: { color: '#d59c2f' } }
-    ]
-  }
-})
-
 async function loadSnapshot(silent = false) {
   const requestedPatientId = patientId.value
   const requestedDays = days.value
   if (snapshotDisposed || !requestedPatientId || !ensureReaderSession()) return
-  const session = readerSession, sessionEpoch = readerSessionEpoch
+  const session = readerSession, sessionEpoch = readerSessionEpoch,auth={...captureAuthSession(),actorId:localStorage.getItem('userId')},permissions=JSON.stringify(readPermissionCache())
   const requestEpoch = ++snapshotRequestEpoch
   const pending = { patientId: requestedPatientId, days: requestedDays }
   snapshotPending = pending
+  snapshotController?.abort();const controller=new AbortController();snapshotController=controller;
+  snapshot.value={signals:[],activeAlerts:[],todayTasks:[],recentEvents:[],careSuggestions:[],metrics:{}};lastSuccessAt.value='';
   loading.value = true
   try {
-    const res = await getMonitoringSnapshot(requestedPatientId, requestedDays)
-    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch)) return
+    const res = await monitoringSnapshotBounded({patientId:requestedPatientId,days:requestedDays},{expectedAuth:auth,signal:controller.signal})
+    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch) || requestedDays!==days.value || !isAuthSessionCurrent(auth) || permissions!==JSON.stringify(readPermissionCache())) return
     if (res.code === 200) {
-      snapshot.value = localizeSnapshot(res.data || {})
-      loadedDays.value = requestedDays
+      if(!boundedMeasurementContext(res.data,requestedPatientId,requestedDays))throw new Error(ot('unavailable'));
+      snapshot.value = localizeSnapshot(res.data)
       loadError.value = ''
       lastSuccessAt.value = new Date().toISOString()
       accessDenied.value = false
@@ -366,16 +335,15 @@ async function loadSnapshot(silent = false) {
       throw Object.assign(new Error(res.msg || 'Monitoring data could not be loaded.'), { code: res.code })
     }
   } catch (error) {
-    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch)) return
+    if (snapshotDisposed || requestEpoch !== snapshotRequestEpoch || requestedPatientId !== patientId.value || !ownsReaderSession(session, sessionEpoch) || requestedDays!==days.value || !isAuthSessionCurrent(auth) || permissions!==JSON.stringify(readPermissionCache())) return
     if ([401, 403].includes(Number(error.response?.status || error.status || error.code))) {
       clearProtectedSnapshot('Monitoring access is unavailable or has been revoked. Retry to recheck access.')
       return
     }
-    days.value = loadedDays.value
     loadError.value = error.message || 'Monitoring data could not be loaded.'
   } finally {
     if (snapshotPending === pending) snapshotPending = null
-    if (!snapshotDisposed && requestEpoch === snapshotRequestEpoch) loading.value = false
+    if (!snapshotDisposed && requestEpoch === snapshotRequestEpoch) { loading.value = false;if(!ownsReaderSession(session,sessionEpoch)||!isAuthSessionCurrent(auth)||permissions!==JSON.stringify(readPermissionCache()))clearProtectedSnapshot(ot('denied')) }
   }
 }
 
@@ -445,10 +413,10 @@ async function completeMedication(task) {
 
 function signalTone(status) { return ({ CRITICAL: 'critical', WARNING: 'warning', DELAYED: 'delayed', NORMAL: 'normal', PENDING: 'pending' }[status] || 'empty') }
 function alertLevel(level) { return ({ CRITICAL: 'Critical', WARNING: 'Warning', INFO: 'Notice' }[level] || 'Notice') }
-function isTaskDone(task) { return task.status === 'TAKEN' || task.status === 'COMPLETED' }
+function isTaskDone(task) { return !task.nextAction && (task.status === 'TAKEN' || task.status === 'COMPLETED') }
 function taskStatusText(status) { return ({ PENDING: 'Pending', TAKEN: 'Taken', SNOOZED: 'Snoozed', SKIPPED: 'Skipped', MISSED: 'Missed', PLANNED: 'Planned', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }[status] || status || 'Pending') }
 function taskTagType(status) { return ({ TAKEN: 'success', COMPLETED: 'success', MISSED: 'danger', SKIPPED: 'info', SNOOZED: 'warning', CANCELLED: 'info' }[status] || 'warning') }
-function taskTypeText(type) { return type === 'DIALYSIS' ? 'Dialysis schedule' : 'Medication plan' }
+function taskTypeText(type) { if (type === 'MEDICATION_WORKFLOW') return medicationText('intakeTitle'); return type === 'DIALYSIS' ? 'Dialysis schedule' : 'Medication plan' }
 function eventTypeText(type) { return ({ SYMPTOM: 'Symptom record', VISIT: 'Visit record', NOTE: 'Health note', MEDICATION: 'Medication', DIALYSIS: 'Dialysis', MEASUREMENT: 'Measurement', INTAKE: 'Medication check-in', MEDICATION_LOG: 'Medication record' }[type] || 'Health event') }
 function timeOnly(value) { return value ? String(value).slice(11, 16) : '—' }
 function shortDateTime(value) { return value ? String(value).slice(5, 16).replace('T', ' ') : '—' }
@@ -466,6 +434,7 @@ function formatRelative(value) {
 }
 
 function localizeSnapshot(data) {
+  const hasWorkflowTasks = (data.todayTasks || []).some(item => item.nextAction)
   const statusLabels = { CRITICAL: 'Immediate attention required', WARNING: 'Items need attention', NO_DATA: 'Awaiting health data', STABLE: 'Health status is stable' }
   const signalLabels = { bloodPressure: 'Blood pressure', glucose: 'Blood glucose', dialysis: 'Dialysis monitoring', medication: "Today's medications" }
   const signalStatus = { CRITICAL: 'Critical', WARNING: 'Needs attention', DELAYED: 'Data overdue', PENDING: 'In progress', NO_DATA: 'No data', NORMAL: 'Normal' }
@@ -473,36 +442,37 @@ function localizeSnapshot(data) {
     ...signal,
     label: signalLabels[signal.key] || signal.label,
     statusLabel: signalStatus[signal.status] || signal.statusLabel,
-    freshnessText: signal.updatedAt ? formatRelative(signal.updatedAt) : (signal.key === 'medication' ? 'No medication tasks scheduled today' : 'Awaiting the first record')
+    freshnessText: hasWorkflowTasks && signal.key === 'medication' ? 'This legacy summary includes only independent legacy tasks; review collaborative facts and follow-up separately.' : signal.updatedAt ? formatRelative(signal.updatedAt) : (signal.key === 'medication' ? 'No medication tasks scheduled today' : 'Awaiting the first record')
   }))
   const suggestions = []
+  if ((data.todayTasks || []).some(item => item.nextAction)) suggestions.push('Collaborative medication follow-up is excluded from this legacy completion rate. A recorded fact or ended follow-up does not establish safety.')
   if (data.overallStatus === 'CRITICAL') suggestions.push('A critical reading was detected. Repeat the measurement now and contact a clinician promptly if symptoms are present.')
   if (!signals.some(item => item.key === 'bloodPressure' && item.status !== 'NO_DATA')) suggestions.push('No recent blood-pressure record is available. Consider taking a resting measurement.')
   if (!signals.some(item => item.key === 'glucose' && item.status !== 'NO_DATA')) suggestions.push('No recent blood-glucose record is available. Add one if it is part of the care plan.')
-  const pending = (data.todayTasks || []).filter(item => ['PENDING', 'MISSED', 'SNOOZED'].includes(item.status)).length
+  const pending = (data.todayTasks || []).filter(item => !item.nextAction && ['PENDING', 'MISSED', 'SNOOZED'].includes(item.status)).length
   if (pending) suggestions.push(`${pending} medication task${pending === 1 ? '' : 's'} still need attention today.`)
   if ((data.metrics?.dataCompleteness ?? 0) < 50) suggestions.push('Monitoring coverage is limited. Regular entries will make trend assessments more reliable.')
   if (!suggestions.length) suggestions.push('No urgent items are present. Continue recording measurements, medications, and follow-up visits as planned.')
   return { ...data, statusLabel: statusLabels[data.overallStatus] || data.statusLabel, signals, careSuggestions: suggestions }
 }
 
+watch(days,()=>{clearProtectedSnapshot('');accessDenied.value=false},{flush:'sync'})
 watch(patientId, () => {
+  rawOpen.value=false;raw.clear();snapshotController?.abort();
   snapshotAccessEpoch++
   readerSession = captureReaderSession()
   readerSessionEpoch++
   snapshotRequestEpoch++
   snapshotPending = null
   loading.value = false
-  snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {}, vitalTrend: [] }
-  loadedDays.value = days.value
+  snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {} }
   loadError.value = ''
   lastSuccessAt.value = ''
   accessDenied.value = false
-  trendView.value = 'chart'
   loadSnapshot()
   resetTimer()
 }, { immediate: true, flush: 'sync' })
-onMounted(() => { resetTimer(); document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('storage', readerSessionChanged); window.addEventListener('auth-session-cleared', readerSessionChanged) })
+onMounted(() => { resetTimer(); document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('storage', readerSessionChanged); window.addEventListener('auth-session-cleared', readerSessionChanged);window.addEventListener('auth-session-changed',readerSessionChanged) })
 onUnmounted(() => {
   snapshotDisposed = true
   snapshotRequestEpoch++
@@ -510,12 +480,14 @@ onUnmounted(() => {
   if (timer) window.clearInterval(timer)
   document.removeEventListener('visibilitychange', handleVisibility)
   window.removeEventListener('storage', readerSessionChanged)
-  window.removeEventListener('auth-session-cleared', readerSessionChanged)
+  window.removeEventListener('auth-session-cleared', readerSessionChanged);window.removeEventListener('auth-session-changed',readerSessionChanged);snapshotController?.abort()
 })
 function handleVisibility() { return refreshSnapshotInBackground() }
 </script>
 
 <style scoped>
+.workflow-task-link{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:.5rem;overflow-wrap:anywhere}.workflow-task-link:focus-visible{outline:2px solid var(--el-color-primary);outline-offset:2px}.workflow-task-truth,.workflow-metric-limit{overflow-wrap:anywhere}
+
 .read-state { padding: 14px 18px; margin-bottom: 16px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-subtle); color: var(--ink-800); overflow-wrap: anywhere; }
 .read-state--error { border-color: var(--danger); }
 .alert-list-summary, .trend-view-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
@@ -1211,6 +1183,13 @@ function handleVisibility() { return refreshSnapshotInBackground() }
   border-bottom: 1px solid var(--line-soft, #edf2f1);
 }
 
+/* 跟踪任务的名称与真实随访状态共用纵向文本流，链接另起一行，不能挤窄名称或覆盖状态。 */
+.task-item.task-item--workflow { grid-template-columns: 46px 36px minmax(0, 1fr); align-items: start; }
+.workflow-task-copy { min-width: 0; overflow-wrap: anywhere; }
+.workflow-task-copy strong { display: block; }
+.workflow-task-truth { display: block; margin-top: 6px; line-height: 1.5; }
+.task-item--workflow .workflow-task-link { grid-column: 3 / -1; justify-self: start; max-width: 100%; white-space: normal; }
+
 .task-item:last-child {
   border-bottom: 0;
 }
@@ -1585,4 +1564,24 @@ function handleVisibility() { return refreshSnapshotInBackground() }
   .monitoring-section-nav a { flex: 1; padding-inline: 8px; }
 }
 
+</style>
+
+<style scoped>
+.monitoring-controls {
+  --control-row-size: 44px;
+}
+body.care-senior .monitoring-controls {
+  --control-row-size: 48px;
+}
+.monitoring-controls .range-select {
+  --el-component-size: var(--control-row-size);
+}
+.monitoring-controls .range-select :deep(.el-select__wrapper),
+.monitoring-controls .refresh-button {
+  box-sizing: border-box;
+  min-height: var(--control-row-size);
+}
+.monitoring-controls .refresh-button {
+  height: auto;
+}
 </style>

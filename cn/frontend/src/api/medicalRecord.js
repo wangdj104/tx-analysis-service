@@ -1,4 +1,5 @@
 import request from '@/utils/request';
+import { captureAuthSession } from '@/utils/authSession';
 import { prepareUploadFiles } from '@/utils/imageCompress';
 
 export const uploadAndRecognize = async (files, patientId, recordType) => {
@@ -15,7 +16,15 @@ export const recognizeBase64 = (base64Image, recordType) =>
 
 export const listRecords = (params) => request({ url: '/medical-record/list', method: 'get', params });
 
-export const getRecord = (id, patientId, options = {}) => request({ url: `/medical-record/${id}`, method: 'get', ...(patientId != null ? { params: { patientId }, expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {}) });
+// 新详情显式选择事实，并将取消信号和同一会话传到现有拦截器；旧编辑读取保持原合同。
+export const getRecord = (id, patientId, options = {}) => request({
+  url: `/medical-record/${id}`, method: 'get',
+  ...(options.includeImportFacts === true ? {
+    params: { ...(patientId != null ? { patientId } : {}), includeImportFacts: true },
+    expectedAuth: options.expectedAuth ?? { ...captureAuthSession(), actorId: localStorage.getItem('userId') },
+    signal: options.signal, executionReport: true
+  } : patientId != null ? { params: { patientId }, expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : options.expectedAuth ? { expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {})
+});
 
 export const saveRecord = (record, items, attachments) =>
   request({ url: '/medical-record/save', method: 'post', data: { record, items, attachments } });
@@ -23,10 +32,10 @@ export const saveRecord = (record, items, attachments) =>
 export const saveRecordsBatch = (records, itemsList, attachments) =>
   request({ url: '/medical-record/save-batch', method: 'post', data: { records, itemsList, attachments } });
 
-export const updateRecord = (record, items, attachments) =>
-  request({ url: '/medical-record/update', method: 'put', data: { record, items, attachments } });
+export const updateRecord = (record, items, attachments, options = {}) =>
+  request({ url: '/medical-record/update', method: 'put', data: { record, items, attachments }, ...(options.expectedAuth ? { expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {}) });
 
-export const deleteRecord = (id) => request({ url: `/medical-record/delete/${id}`, method: 'delete' });
+export const deleteRecord = (id, options = {}) => request({ url: `/medical-record/delete/${id}`, method: 'delete', ...(options.expectedAuth ? { expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {}) });
 
 export const getItemTrend = (patientId, patientName, itemName) => {
   const params = { itemName };

@@ -1,0 +1,28 @@
+/* 仅共同目标面板和原生顶层对话框；复用现有主题、边框和大字模式。 */
+.cg{color:var(--ink-950);line-height:1.65;min-width:0;max-width:100%;overflow-wrap:anywhere}
+.cg *{box-sizing:border-box}
+.cg :is(h2,h3,h4){line-height:1.45;overflow-wrap:anywhere}
+.cg :is(p,dd){white-space:pre-wrap;overflow-wrap:anywhere}
+.cg small{display:inline-block;font-size:.85em;color:var(--ink-500);margin-inline-start:.4em;overflow-wrap:anywhere}
+.cg-card,.cg-notice{min-width:0;border:1px solid var(--line);border-radius:12px;padding:16px;margin-block:14px;background:var(--paper)}
+.cg-notice{background:var(--surface-subtle);border-color:var(--control-border)}
+.cg-row,.cg-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.cg-row{justify-content:space-between}.cg-row h2,.cg-row h3{margin:0;min-width:0}
+.cg-actions{margin-block-start:16px}.cg-list{list-style:none;padding:0;margin:0}
+.cg label{display:flex;flex-direction:column;gap:6px;min-width:0;margin-block:14px}
+.cg :is(button,input,select,textarea){font:inherit;color:var(--ink-950);background:var(--paper);border:1px solid var(--control-border);border-radius:8px;min-height:44px;max-width:100%;min-width:0;padding:9px 12px;line-height:1.5}
+.cg button{cursor:pointer;white-space:normal;overflow-wrap:anywhere;min-inline-size:44px}
+.cg :is(input,select,textarea){width:100%}.cg textarea{resize:vertical}
+.cg button:disabled,.cg fieldset:disabled :is(input,select,textarea){opacity:1;color:var(--disabled-text);background:var(--disabled-bg);border-color:var(--disabled-border);cursor:not-allowed}
+.cg :is(button,input,select,textarea):focus-visible{outline:3px solid var(--info);outline-offset:3px}
+.cg fieldset{border:0;margin:0;padding:0;min-width:0}
+.cg .cg-check{flex-direction:row;align-items:center;gap:12px;min-height:44px}
+.cg input[type=checkbox]{width:24px;height:24px;min-height:24px;min-inline-size:24px;flex-shrink:0}
+.cg-search{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-block:14px}
+.cg-search label{flex:1 1 240px;margin:0}.cg-search button{flex:0 1 auto}
+.cg dl{display:grid;grid-template-columns:minmax(120px,1fr) minmax(0,2fr);gap:8px 16px}.cg dt{font-weight:600}.cg dd{margin:0;min-width:0}
+.cg-entry{padding-block:8px;border-block-start:1px solid var(--line)}.cg-error{color:var(--danger)}
+.cg-dialog{position:fixed;inset:0;margin:auto;width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain;border:2px solid var(--control-border);border-radius:14px;padding:20px;background:var(--paper);color:var(--ink-950)}
+.cg-dialog::backdrop{background:#10282c99}.cg-dialog footer{border-top:1px solid var(--line);padding-top:16px;margin-bottom:4px}
+.care-senior .cg{font-size:20px}.care-senior .cg :is(button,input,select,textarea){min-height:48px}.care-senior .cg button{min-inline-size:48px}.care-senior .cg .cg-check{min-height:48px}.care-senior .cg input[type=checkbox]{min-height:24px}
+@media(max-width:600px){.cg-card,.cg-notice,.cg-dialog{padding:12px}.cg dl{grid-template-columns:minmax(0,1fr)}.cg-actions{display:grid;grid-template-columns:minmax(0,1fr)}.cg-actions button,.cg-search button{width:100%}.cg-search{display:grid;grid-template-columns:minmax(0,1fr)}.cg-row{align-items:flex-start}.cg-dialog{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}}

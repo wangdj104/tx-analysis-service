@@ -14,8 +14,9 @@
           <p v-if="form.entryMode==='SELF'">This is your declaration, not patient identity verification.</p>
           <fieldset :disabled="busy"><legend>Existing record references only (maximum 5; no uploads)</legend>
             <label>Reference type<select v-model="referenceType" aria-label="Reference type"><option value="MEASUREMENT">Measurement</option><option value="MEDICAL_RECORD">Medical record</option></select></label>
-            <button type="button" :disabled="referencesLoading" @click="loadReferences">{{ referencesLoading ? 'Loading records…' : 'Browse authorized records' }}</button>
-            <p v-if="referencesError" role="alert">{{ referencesError }}</p><p v-else-if="referencesQueried && !referencesLoading && !referenceOptions.length">No accessible records of this type for this patient.</p>
+            <button type="button" data-testid="browse-original-references" :disabled="referencesLoading" @click="loadReferences">{{ referencesLoading ? 'Loading records…' : 'Browse authorized records' }}</button>
+            <OriginalMeasurementPageStatus v-if="referenceType==='MEASUREMENT' && measurementBrowse" :state="measurementPage.state" :locked="busy" @refresh="measurementPage.refresh()" @retry="measurementPage.refresh({keepPosition:true})" @next="measurementPage.next()" @previous="measurementPage.previous()" />
+            <p v-if="referencesError" role="alert">{{ referencesError }}</p><p v-else-if="referenceType==='MEDICAL_RECORD' && referencesQueried && !referencesLoading && !referenceOptions.length">No accessible records of this type for this patient.</p>
             <label v-if="referenceOptions.length">Select an existing record<select v-model.number="selectedReferenceId" data-testid="receipt-existing-record"><option :value="null">Select an existing record</option><option v-for="record in referenceOptions" :key="record.id" :value="record.id" :disabled="form.evidence.some(e => e.sourceType === referenceType && e.sourceId === record.id)">{{ record.label }}</option></select></label>
             <button type="button" data-testid="add-existing-reference" :disabled="form.evidence.length>=5 || !selectedReferenceId || referencesLoading" @click="addReference">Add existing reference</button>
             <div v-for="(e,index) in form.evidence" :key="e.sourceType+':'+e.sourceId" class="evidence-row"><p :id="`receipt-reference-${e.sourceType}-${e.sourceId}`">{{ referenceLabels[e.sourceType+':'+e.sourceId] || referenceFallback(e) }}</p><button type="button" class="remove-reference" :aria-describedby="`receipt-reference-${e.sourceType}-${e.sourceId}`" @click="form.evidence.splice(index,1)">Remove reference</button></div>
@@ -38,27 +39,31 @@ import {computed,ref,reactive,watch,onMounted,onUnmounted,nextTick} from 'vue'
 import {useCarePlan} from '@/composables/useCarePlan'
 import {formatPlanTime,getLocalTimeOffsets,toOffsetIso} from '@/utils/carePlanTime'
 import request from '@/utils/request'
-import {captureAuthSession,isAuthSessionCurrent} from '@/utils/authSession'
+import {captureAuthSession,isAuthSessionCurrent,readPermissionCache} from '@/utils/authSession'
+import {useOriginalMeasurementPage} from '@/composables/useOriginalMeasurementPage'
+import OriginalMeasurementPageStatus from '@/components/measurement-read-model/OriginalMeasurementPageStatus.vue'
+import {recordedTime,journeyValues,journeyName} from '@/utils/originalMeasurementPresentation'
 const props=defineProps({action:{type:Object,required:true},planVersion:{type:Number,required:true},command:{type:String,default:'submitReceipt'}}),emit=defineEmits(['submitted','closed'])
 const patientId=computed(()=>props.action?.patientId??null),client=useCarePlan(patientId),{state}=client,dialog=ref(null),message=ref(''),abandonIntent=ref(false),needsReload=ref(false),visibleAction=ref(null),actorName=ref(''),actorId=ref('')
 const form=reactive({note:'',occurredAt:'',entryMode:'ASSISTED',evidence:[],kind:'CONTACTED'})
 const executionClock=ref(''),executionOffset=ref(null),executionZone=Intl.DateTimeFormat().resolvedOptions().timeZone,executionTimeError=ref(''),patientName=ref('')
 const referenceType=ref('MEASUREMENT'),referenceOptions=ref([]),referenceLabels=reactive({}),selectedReferenceId=ref(null),referencesLoading=ref(false),referencesError=ref(''),referencesQueried=ref(false)
+const measurementBrowse=ref(false)
 let referenceEpoch=0,referenceController=null,identityController=null
 const executionOffsets=computed(()=>{try{return getLocalTimeOffsets(executionClock.value,{timeZone:executionZone})}catch{return []}})
 function offsetLabel(value){const absolute=Math.abs(value);return `UTC${value<0?'-':'+'}${String(Math.floor(absolute/60)).padStart(2,'0')}:${String(absolute%60).padStart(2,'0')}`}
 watch(executionClock,()=>{const offsets=executionOffsets.value;executionOffset.value=offsets.length===1?offsets[0]:null},{flush:'sync'})
 watch(()=>[executionClock.value,executionOffset.value],()=>{try{form.occurredAt=toOffsetIso(executionClock.value,executionOffset.value,{timeZone:executionZone});executionTimeError.value=''}catch{form.occurredAt='';executionTimeError.value='Choose a valid local time and explicit offset. Repeated daylight-saving times need an offset; skipped times cannot be used.'}},{flush:'sync'})
 function setExecutionInstant(date){const pad=value=>String(value).padStart(2,'0');executionClock.value=`${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3,'0')}`;executionOffset.value=-date.getTimezoneOffset()}
-function resetReferences(){referenceEpoch++;referenceController?.abort();referenceOptions.value=[];selectedReferenceId.value=null;referencesLoading.value=false;referencesQueried.value=false;referencesError.value=''}
+function resetReferences(){measurementBrowse.value=false;measurementPage.clear();referenceEpoch++;referenceController?.abort();referenceOptions.value=[];selectedReferenceId.value=null;referencesLoading.value=false;referencesQueried.value=false;referencesError.value=''}
 watch(referenceType,resetReferences,{flush:'sync'})
 function referenceFallback(e){return `${e.sourceType==='MEASUREMENT'?'Measurement':'Medical record'} #${e.sourceId}`}
 function referenceLabel(record,type){
-  const metricLabels={BP:'Blood pressure',GLUCOSE:'Blood glucose',SPO2:'Oxygen saturation',WEIGHT:'Weight',HEART_RATE:'Heart rate',TEMPERATURE:'Temperature',CUSTOM:'Measurement'}
+  if(type==='MEASUREMENT')return `${recordedTime(record.measured_at)} · ${journeyName(record)} · ${journeyValues(record)} · #${record.id}`
   const recordLabels={BLOOD:'Blood test',URINE:'Urinalysis',LIVER:'Liver function',KIDNEY:'Kidney function',BONE:'Bone metabolism',IRON:'Iron metabolism',IMAGE:'Imaging report',OTHER:'Other'}
-  const date=type==='MEASUREMENT'?record.measured_at||record.measuredAt:record.recordDate
-  const title=type==='MEASUREMENT'?record.metric_name||record.metricName||metricLabels[record.metric_type||record.metricType]||record.metric_type||record.metricType:recordLabels[record.recordType]||record.recordType
-  const value=type==='MEASUREMENT'?`${record.value_primary ?? record.valuePrimary ?? ''}${record.value_secondary != null || record.valueSecondary != null ? '/'+(record.value_secondary ?? record.valueSecondary) : ''} ${record.unit||''}`:record.hospitalName||record.remark||''
+  const date=record.recordDate
+  const title=recordLabels[record.recordType]||record.recordType
+  const value=record.hospitalName||record.remark||''
   return `${date||'Date unavailable'} · ${title||'Existing record'} · ${value} · #${record.id}`
 }
 async function loadPatientIdentity(){
@@ -68,10 +73,11 @@ async function loadPatientIdentity(){
 }
 async function loadReferences(){
   if(!state.editor||!visibleAction.value||referencesLoading.value)return
+  if(referenceType.value==='MEASUREMENT'){if(measurementBrowse.value)return measurementPage.refresh();measurementBrowse.value=true;return}
   resetReferences();const turn=referenceEpoch,c=capture(),id=patientId.value,type=referenceType.value
   referenceController=new AbortController();referencesLoading.value=true;referencesQueried.value=true
   try{
-    const result=await request({url:type==='MEASUREMENT'?'/care-journey/measurements':'/medical-record/list',method:'get',params:{patientId:id},expectedAuth:{...c.auth,actorId:c.actor},signal:referenceController.signal,executionReport:true})
+    const result=await request({url:'/medical-record/list',method:'get',params:{patientId:id},expectedAuth:{...c.auth,actorId:c.actor},signal:referenceController.signal,executionReport:true})
     if(turn!==referenceEpoch||!owns(c))return
     if(result.code!=null&&result.code!==200)throw Object.assign(new Error('Restricted source'),{code:result.code})
     referenceOptions.value=(Array.isArray(result.data)?result.data:[]).filter(record=>Number.isSafeInteger(Number(record.id))&&Number(record.id)>0&&String(record.patientId??record.patient_id)===String(id)).map(record=>({id:Number(record.id),label:referenceLabel(record,type)}))
@@ -87,11 +93,19 @@ let generation=0,opener=null,currentVersion=null
 const names={submitReceipt:'SUBMIT_RECEIPT',requestHelp:'REQUEST_HELP',followUp:'FOLLOW_UP'}
 const commandLabel=computed(()=>({submitReceipt:'Record execution',requestHelp:'Ask the care team for help',followUp:'Record nursing follow-up'})[props.command]||'Unavailable action')
 const busy=computed(()=>state.commandPhase==='pending'||state.opening),unresolved=computed(()=>state.commandPhase==='unknown')
+// 候选翻页只清未加入的选择；已明确加入的最多五项引用保留。
+const measurementPage=useOriginalMeasurementPage(patientId,{sourceType:'HEALTH_MEASUREMENT'},computed(()=>measurementBrowse.value&&referenceType.value==='MEASUREMENT'&&!!state.editor&&!!visibleAction.value),{contextKey:computed(()=>[props.action?.id,props.planVersion,props.command])})
+watch(()=>[measurementPage.state.generation,measurementPage.state.phase],()=>{
+  if(referenceType.value!=='MEASUREMENT')return
+  selectedReferenceId.value=null;referencesLoading.value=measurementPage.state.phase==='loading';referencesQueried.value=measurementBrowse.value;referencesError.value=''
+  referenceOptions.value=measurementPage.state.phase==='ready'?measurementPage.state.items.map(record=>({id:Number(record.id),label:referenceLabel(record,'MEASUREMENT')})):[]
+  if(measurementPage.state.phase==='denied'){form.evidence=[];Object.keys(referenceLabels).forEach(key=>delete referenceLabels[key])}
+},{flush:'sync'})
 const entryModes=computed(()=>visibleAction.value?.allowedEntryModes||[])
 const canSubmit=computed(()=>!!state.editor&&visibleAction.value?.allowedActions?.includes(names[props.command])&&(props.command!=='submitReceipt'||entryModes.value.includes(form.entryMode)))
 const payload=()=>props.command==='submitReceipt'?{note:form.note.trim(),occurredAt:form.occurredAt,entryMode:form.entryMode,evidence:JSON.parse(JSON.stringify(form.evidence))}:props.command==='followUp'?{note:form.note.trim(),kind:form.kind}:{note:form.note.trim()}
-const owns=c=>c.generation===generation&&isAuthSessionCurrent(c.auth)&&c.actor===localStorage.getItem('userId')
-const capture=()=>({generation,auth:captureAuthSession(),actor:localStorage.getItem('userId')})
+const owns=c=>c.generation===generation&&isAuthSessionCurrent(c.auth)&&c.actor===localStorage.getItem('userId')&&c.permissions===JSON.stringify(readPermissionCache())
+const capture=()=>({generation,auth:captureAuthSession(),actor:localStorage.getItem('userId'),permissions:JSON.stringify(readPermissionCache())})
 function displayTime(value){try{return formatPlanTime(value,'en')}catch{return 'Enter a valid ISO time with an explicit offset.'}}
 function clearForm(){identityController?.abort();resetReferences();patientName.value='';executionClock.value='';executionOffset.value=null;Object.keys(referenceLabels).forEach(key=>delete referenceLabels[key]);Object.assign(form,{note:'',occurredAt:'',entryMode:'ASSISTED',evidence:[],kind:'CONTACTED'});visibleAction.value=null;actorName.value='';actorId.value='';abandonIntent.value=false;needsReload.value=false}
 async function initialize(){generation++;client.reset();clearForm();message.value='';visibleAction.value=props.action;currentVersion=props.planVersion;actorId.value=localStorage.getItem('userId')||'';actorName.value=localStorage.getItem('realName')||localStorage.getItem('username')||'Current account';setExecutionInstant(new Date());await client.open(null,{draft:payload()});if(state.editor)loadPatientIdentity()}
@@ -123,8 +137,9 @@ function containFocus(event){
     ;(event.shiftKey?last:first).focus()
   }
 }
-onMounted(async()=>{opener=document.activeElement;await nextTick();dialog.value?.showModal?.();window.addEventListener('beforeunload',beforeUnload);window.addEventListener('care-plan-before-context-change',contextChange)})
-onUnmounted(()=>{generation++;identityController?.abort();resetReferences();window.removeEventListener('beforeunload',beforeUnload);window.removeEventListener('care-plan-before-context-change',contextChange);dialog.value?.close?.();opener?.focus?.()})
+function referenceSessionChanged(event){if(event?.key!=null&&!['token','userId','username','realName','permissionSession','userMenus','userRoleCodes'].includes(event.key))return;generation++;resetReferences();form.evidence=[];Object.keys(referenceLabels).forEach(key=>delete referenceLabels[key]);patientName.value=''}
+onMounted(async()=>{opener=document.activeElement;await nextTick();dialog.value?.showModal?.();window.addEventListener('auth-session-cleared',referenceSessionChanged);window.addEventListener('auth-session-changed',referenceSessionChanged);window.addEventListener('storage',referenceSessionChanged);window.addEventListener('beforeunload',beforeUnload);window.addEventListener('care-plan-before-context-change',contextChange)})
+onUnmounted(()=>{generation++;identityController?.abort();resetReferences();window.removeEventListener('auth-session-cleared',referenceSessionChanged);window.removeEventListener('auth-session-changed',referenceSessionChanged);window.removeEventListener('storage',referenceSessionChanged);window.removeEventListener('beforeunload',beforeUnload);window.removeEventListener('care-plan-before-context-change',contextChange);dialog.value?.close?.();opener?.focus?.()})
 defineExpose({guardLeave,requestClose})
 </script>
 <style scoped>

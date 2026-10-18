@@ -28,6 +28,20 @@ import java.util.*;
  */
 @Service
 public class CareJourneyService {
+    @Autowired private org.familyhealthcare.service.visitquestion.VisitQuestionProjection questionProjection;
+    @Autowired private org.familyhealthcare.service.emergencyassistance.EmergencyAssistanceService emergencyAssistance;
+    @Autowired private org.familyhealthcare.service.emergencyassistance.EmergencyAssistanceQueryService emergencyQueries;
+    @Autowired private org.familyhealthcare.service.emergencyassistance.EmergencyAssistanceProperties emergencyProperties;
+    @Autowired private org.familyhealthcare.service.emergencyassistance.EmergencyAssistanceAuthorizationService emergencyAuthorization;
+    @Autowired private org.familyhealthcare.service.emergencyassistance.EmergencyInformationSnapshotService emergencySnapshot;
+    @Autowired private org.familyhealthcare.service.workflow.HouseholdWorkflowSchema emergencySchema;
+
+    @Autowired private org.familyhealthcare.service.familyassistance.FamilyAssistanceSourceBridge familyAssistance;
+    @Autowired private org.familyhealthcare.service.familyassistance.FamilyAssistanceAuthorizationService familyAssistanceAuthorization;
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationSourceBridge medicationSourceBridge;
+    @Autowired private org.familyhealthcare.service.workflow.HouseholdAuthorityLocks householdAuthorityLocks;
+    @Autowired private org.familyhealthcare.service.visitfollowup.VisitFollowUpSourceBridge visitFollowUp;
+
     @Autowired private JdbcTemplate jdbc;
     @Autowired private org.familyhealthcare.service.alertworkflow.MeasurementAssessmentService measurementAssessment;
     @Autowired private DataScopeHelper scope;
@@ -96,8 +110,12 @@ public class CareJourneyService {
         BigDecimal assessedPrimary = "GLUCOSE".equals(type) && "mg/dL".equals(unit)
                 ? primary.divide(new BigDecimal("18"),8,java.math.RoundingMode.HALF_UP) : primary;
         String status = measurementStatus(patientId,type,assessedPrimary,secondary);
-        java.util.function.Supplier<Long> write=()->insert("INSERT INTO health_measurement(patient_id,recorded_by,metric_type,metric_name,value_primary,value_secondary,unit,measured_at,source_type,status,remark) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        java.util.function.Supplier<Long> write=()->{
+            org.familyhealthcare.util.MeasurementInputNumbers.journeyReading(org.familyhealthcare.util.MeasurementInputBody.decimalValue(body,"valuePrimary",primary));
+            org.familyhealthcare.util.MeasurementInputNumbers.journeyReading(org.familyhealthcare.util.MeasurementInputBody.decimalValue(body,"valueSecondary",secondary));
+            return insert("INSERT INTO health_measurement(patient_id,recorded_by,metric_type,metric_name,value_primary,value_secondary,unit,measured_at,source_type,status,remark) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 patientId,userId(),type,text(body,"metricName",null),primary,secondary,unit,at,text(body,"sourceType","MANUAL"),status,text(body,"remark",null));
+        };
         if(workflowEnabled)return measurementWorkflow.save(userId(),"HEALTH_MEASUREMENT",patientId,body,write);
         long id=write.get();
         if (!"NORMAL".equals(status)) audience.notifyCareTeam(patientId,"MEASUREMENT_ALERT","Abnormal health measurement",type+" recorded at "+at+" crossed the configured safety range. Please review and confirm the next action.");
@@ -113,7 +131,13 @@ public class CareJourneyService {
             org.familyhealthcare.service.alertworkflow.AlertWorkflowContracts.requireUnchangedMetadata(body,"metricName",metadata.get("metric_name"));
             org.familyhealthcare.service.alertworkflow.AlertWorkflowContracts.requireUnchangedMetadata(body,"remark",metadata.get("remark"));
             String type=required(body,"metricType").toUpperCase();if(!METRICS.contains(type))throw new IllegalArgumentException("Unsupported metric type.");
-            BigDecimal primary=decimal(body,"valuePrimary",true),secondary=decimal(body,"valueSecondary",false);validateMeasurement(type,primary,secondary);
+            // 没传次值就保留本次事务锁定的原值；明确空值仍按原合同清空。
+            BigDecimal primary=decimal(body,"valuePrimary",true),secondary=body.containsKey("valueSecondary")?decimal(body,"valueSecondary",false):(BigDecimal)source.get("valueSecondary");
+            BigDecimal rawPrimary=org.familyhealthcare.util.MeasurementInputBody.decimalValue(body,"valuePrimary",primary),rawSecondary=org.familyhealthcare.util.MeasurementInputBody.decimalValue(body,"valueSecondary",secondary);
+            // 原始输入与锁定值相同，就沿用原 BigDecimal，避免旧 JSON 数字转换损失历史精度。
+            if(org.familyhealthcare.util.MeasurementInputNumbers.changed(rawPrimary,(BigDecimal)source.get("valuePrimary")))org.familyhealthcare.util.MeasurementInputNumbers.journeyReading(rawPrimary);else primary=(BigDecimal)source.get("valuePrimary");
+            if(org.familyhealthcare.util.MeasurementInputNumbers.changed(rawSecondary,(BigDecimal)source.get("valueSecondary")))org.familyhealthcare.util.MeasurementInputNumbers.journeyReading(rawSecondary);else secondary=(BigDecimal)source.get("valueSecondary");
+            validateMeasurement(type,primary,secondary);
             String unit=measurementUnit(type,required(body,"unit"));LocalDateTime at=dateTime(body.get("measuredAt"),null);
             if(at==null)throw new IllegalArgumentException("Measurement time is required.");
             BigDecimal comparison="GLUCOSE".equals(type)&&"mg/dL".equals(unit)?primary.divide(new BigDecimal("18"),8,java.math.RoundingMode.HALF_UP):primary;
@@ -139,7 +163,13 @@ public class CareJourneyService {
 
     @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Map<String,Object> saveGrant(Map<String,Object> body) {
-        Long patientId=requiredLong(body,"patientId"), grantee=requiredLong(body,"granteeUserId"); requireOwner(patientId);
+        Long patientId=requiredLong(body,"patientId"), grantee=requiredLong(body,"granteeUserId");
+        // 父锁先于授权读取；等待期间发生的撤权必须在当前事务中可见。
+        if (householdAuthorityLocks != null) {
+            householdAuthorityLocks.lockPatientAndSubjects(patientId, Arrays.asList(userId(), grantee));
+            org.familyhealthcare.service.workflow.HouseholdGovernance.requireCurrentOwnerOrAdmin(jdbc, patientId, userId());
+        }
+        requireOwner(patientId);
         String role=required(body,"granteeRole").toUpperCase(), level=required(body,"accessLevel").toUpperCase();
         if(!Arrays.asList("DOCTOR","FAMILY","GUARDIAN","NURSE").contains(role) || !ACCESS_LEVELS.contains(level)) throw new IllegalArgumentException("Invalid access grant.");
         if(Objects.equals(grantee,userId())) throw new IllegalArgumentException("The record owner already has full access.");
@@ -180,9 +210,17 @@ public class CareJourneyService {
         return one("SELECT * FROM care_access_grant WHERE patient_id=? AND grantee_user_id=? AND grantee_role=?",patientId,grantee,role);
     }
 
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void revokeGrant(Long id) {
-        Map<String,Object> grant=one("SELECT * FROM care_access_grant WHERE id=?",id); if(grant==null)return;
-        requireOwner(number(grant.get("patient_id"))); jdbc.update("UPDATE care_access_grant SET status='REVOKED' WHERE id=?",id);
+        Map<String,Object> discovered=one("SELECT * FROM care_access_grant WHERE id=?",id); if(discovered==null)return;
+        Long patientId=number(discovered.get("patient_id")),grantee=number(discovered.get("grantee_user_id"));
+        if (householdAuthorityLocks != null) {
+            householdAuthorityLocks.lockPatientAndSubjects(patientId, Arrays.asList(userId(), grantee));
+            org.familyhealthcare.service.workflow.HouseholdGovernance.requireCurrentOwnerOrAdmin(jdbc, patientId, userId());
+        }
+        Map<String,Object> grant=one("SELECT * FROM care_access_grant WHERE id=? FOR UPDATE",id);if(grant==null)return;
+        if(!Objects.equals(patientId,number(grant.get("patient_id")))||!Objects.equals(grantee,number(grant.get("grantee_user_id"))))throw new IllegalStateException("Access grant changed; refresh and retry.");
+        requireOwner(patientId); jdbc.update("UPDATE care_access_grant SET status='REVOKED' WHERE id=?",id);
     }
 
     public List<Map<String,Object>> doctorSchedules(Long doctorId, LocalDate from, LocalDate to) {
@@ -206,22 +244,27 @@ public class CareJourneyService {
 
     public List<Map<String,Object>> appointments(Long patientId) {
         requireRead(patientId,"APPOINTMENTS");
-        return jdbc.queryForList("SELECT a.*,u.real_name AS doctor_name FROM care_appointment a LEFT JOIN sys_user u ON u.id=a.doctor_user_id WHERE a.patient_id=? ORDER BY a.start_at DESC",patientId);
+        boolean managed=familyAssistance.appointmentReadStorageAvailable();
+        return jdbc.queryForList("SELECT a.*,u.real_name AS doctor_name"+appointmentFactColumns(managed)+" FROM care_appointment a LEFT JOIN sys_user u ON u.id=a.doctor_user_id"+appointmentFactJoin(managed)+" WHERE a.patient_id=? ORDER BY a.start_at DESC",patientId);
     }
 
     /** Booking a clinician shares this appointment, not the patient's complete medical record. */
     public List<Map<String,Object>> appointmentInbox() {
         requireDoctor();
-        String sql="SELECT a.*,p.name AS patient_name,u.real_name AS doctor_name FROM care_appointment a JOIN patient p ON p.id=a.patient_id LEFT JOIN sys_user u ON u.id=a.doctor_user_id WHERE COALESCE(p.deleted,0)=0";
+        boolean managed=familyAssistance.appointmentReadStorageAvailable();
+        String sql="SELECT a.*,p.name AS patient_name,u.real_name AS doctor_name"+appointmentFactColumns(managed)+" FROM care_appointment a JOIN patient p ON p.id=a.patient_id LEFT JOIN sys_user u ON u.id=a.doctor_user_id"+appointmentFactJoin(managed)+" WHERE COALESCE(p.deleted,0)=0";
         if(CurrentUserUtil.isAdmin())return jdbc.queryForList(sql+" ORDER BY CASE WHEN a.status='BOOKED' THEN 0 ELSE 1 END,a.start_at DESC LIMIT 200");
         return jdbc.queryForList(sql+" AND a.doctor_user_id=? ORDER BY CASE WHEN a.status='BOOKED' THEN 0 ELSE 1 END,a.start_at DESC LIMIT 200",userId());
     }
 
-    @Transactional
+    private static String appointmentFactColumns(boolean installed) { return installed ? ",(vf.id IS NOT NULL) AS visit_follow_up_managed,vf.attendance AS visit_follow_up_attendance,vf.attendance_origin AS visit_follow_up_attendance_origin" : ""; }
+    private static String appointmentFactJoin(boolean installed) { return installed ? " LEFT JOIN visit_followup_state vf ON vf.source_kind='CARE_APPOINTMENT' AND vf.care_appointment_id=a.id AND vf.patient_id=a.patient_id" : ""; }
+
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Map<String,Object> saveAppointment(Map<String,Object> body) {
-        Long patientId=requiredLong(body,"patientId"), doctorId=requiredLong(body,"doctorUserId"); requireWrite(patientId,"APPOINTMENTS");
-        requireActiveDoctor(doctorId);
-        one("SELECT id FROM sys_user WHERE id=? FOR UPDATE",doctorId);
+        Long patientId=requiredLong(body,"patientId"), doctorId=requiredLong(body,"doctorUserId"); lockAppointmentAuthority(patientId,body.get("id")==null?null:requiredLong(body,"id"),doctorId);
+        familyAssistanceAuthorization.requireWrite(userId(),patientId,"ACCOMPANIMENT");
+        familyAssistanceAuthorization.requireDoctor(doctorId);
         LocalDateTime start=dateTime(body.get("startAt"),null), end=dateTime(body.get("endAt"),null);
         if(start==null||end==null||!end.isAfter(start))throw new IllegalArgumentException("A valid appointment time is required.");
         int recurrence = integer(body,"recurrenceDays",0);
@@ -239,43 +282,68 @@ public class CareJourneyService {
         if(conflicts!=null&&conflicts>0)throw new IllegalStateException("The clinician time slot is already occupied.");
         if(appointmentId==null){appointmentId=insert("INSERT INTO care_appointment(patient_id,doctor_user_id,schedule_id,appointment_type,consultation_mode,start_at,end_at,status,reason,recurrence_days,next_follow_up_at,created_by) VALUES(?,?,?,?,?,?,?,'BOOKED',?,?,?,?)",patientId,doctorId,scheduleId,text(body,"appointmentType","FOLLOW_UP"),text(body,"consultationMode","IN_PERSON"),start,end,text(body,"reason",null),integer(body,"recurrenceDays",null),dateTime(body.get("nextFollowUpAt"),null),userId());}
         else {jdbc.update("UPDATE care_appointment SET doctor_user_id=?,schedule_id=?,appointment_type=?,consultation_mode=?,start_at=?,end_at=?,reason=?,recurrence_days=?,next_follow_up_at=?,notified_at=NULL WHERE id=?",doctorId,scheduleId,text(body,"appointmentType","FOLLOW_UP"),text(body,"consultationMode","IN_PERSON"),start,end,text(body,"reason",null),integer(body,"recurrenceDays",null),dateTime(body.get("nextFollowUpAt"),null),appointmentId);}
-        notifyAppointment(patientId,doctorId,"APPOINTMENT_UPDATED","Appointment updated","Appointment scheduled for "+start+". The shared care calendar has been updated.");
+        familyAssistance.appointmentChangedLocked(patientId,appointmentId,"CARE_APPOINTMENT");
+        if(!familyAssistance.storageAvailable()||one("SELECT family_assistance_id FROM care_appointment WHERE id=?",appointmentId).get("family_assistance_id")==null)notifyAppointment(patientId,appointmentId,doctorId,start,"BOOKED","APPOINTMENT_UPDATED","Appointment updated","Appointment scheduled for "+start+". The shared care calendar has been updated.");
         jdbc.update("UPDATE care_appointment SET notified_at=NULL WHERE id=?",appointmentId);
         return one("SELECT * FROM care_appointment WHERE id=?",appointmentId);
     }
 
-    @Transactional public void cancelAppointment(Long id, String reason) {
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public void cancelAppointment(Long id, String reason) {
+        Map<String,Object> discovered=one("SELECT patient_id,doctor_user_id FROM care_appointment WHERE id=?",id);if(discovered==null)throw new IllegalArgumentException("Appointment not found.");lockAppointmentAuthority(number(discovered.get("patient_id")),id,number(discovered.get("doctor_user_id")));
         Map<String,Object> appointment = one("SELECT * FROM care_appointment WHERE id=? FOR UPDATE",id);
         if (appointment == null) throw new IllegalArgumentException("Appointment not found.");
         Long patientId = number(appointment.get("patient_id")),doctorId=number(appointment.get("doctor_user_id"));
-        if(!CurrentUserUtil.hasRole("doctor")||!Objects.equals(doctorId,userId()))requireWrite(patientId,"APPOINTMENTS");
+        familyAssistanceAuthorization.requireWrite(userId(),patientId,"ACCOMPANIMENT");
         if ("CANCELLED".equals(appointment.get("status"))) return;
         if (!"BOOKED".equals(appointment.get("status")))throw new IllegalArgumentException("Only a booked appointment can be cancelled.");
         jdbc.update("UPDATE care_appointment SET status='CANCELLED',cancel_reason=?,next_follow_up_at=NULL WHERE id=?",limit(reason,500),id);
-        notifyAppointment(patientId,doctorId,"APPOINTMENT_CANCELLED","Appointment cancelled",reason==null?"The shared appointment was cancelled.":reason);
+        familyAssistance.appointmentChangedLocked(patientId,id,"CARE_APPOINTMENT");
+        if(!familyAssistance.storageAvailable()||appointment.get("family_assistance_id")==null)notifyAppointment(patientId,id,doctorId,dateTime(appointment.get("start_at"),null),"CANCELLED","APPOINTMENT_CANCELLED","Appointment cancelled",reason==null?"The shared appointment was cancelled.":reason);
     }
 
-    @Transactional public Map<String,Object> completeAppointment(Long id) {
-        requireDoctor();Map<String,Object> appointment=one("SELECT * FROM care_appointment WHERE id=? FOR UPDATE",id);
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public Map<String,Object> completeAppointment(Long id) {
+        Map<String,Object> discovered=one("SELECT patient_id,doctor_user_id FROM care_appointment WHERE id=?",id);if(discovered==null)throw new IllegalArgumentException("Appointment not found.");lockAppointmentAuthority(number(discovered.get("patient_id")),id,number(discovered.get("doctor_user_id")));familyAssistanceAuthorization.requireDoctor(userId());familyAssistanceAuthorization.requireWrite(userId(),number(discovered.get("patient_id")),"ACCOMPANIMENT");Map<String,Object> appointment=one("SELECT * FROM care_appointment WHERE id=? FOR UPDATE",id);
         if(appointment==null)throw new IllegalArgumentException("Appointment not found.");
-        if(!CurrentUserUtil.isAdmin()&&!Objects.equals(number(appointment.get("doctor_user_id")),userId()))throw new IllegalStateException("Only the selected clinician can complete this appointment.");
+        if(!Objects.equals(number(appointment.get("doctor_user_id")),userId()))throw new IllegalStateException("Only the selected clinician can complete this appointment.");
         if("COMPLETED".equals(appointment.get("status")))return appointment;
         if(!"BOOKED".equals(appointment.get("status")))throw new IllegalArgumentException("Only a booked appointment can be completed.");
         jdbc.update("UPDATE care_appointment SET status='COMPLETED' WHERE id=?",id);
+        familyAssistance.appointmentChangedLocked(number(appointment.get("patient_id")),id,"CARE_APPOINTMENT");
         return one("SELECT * FROM care_appointment WHERE id=?",id);
     }
 
-    private void notifyAppointment(Long patientId,Long doctorId,String eventType,String title,String content) {
-        Set<Long> notified=audience.notifyCareTeam(patientId,eventType,title,content);
-        if(doctorId!=null&&(notified==null||!notified.contains(doctorId)))audience.notify(Collections.singleton(doctorId),patientId,eventType,title,content);
+    /** 父锁后重读旧/新医生；标签和管理员身份不构成预约来源权限。 */
+    private void lockAppointmentAuthority(long patient,Long appointment,Long nextDoctor){
+        one("SELECT id FROM patient WHERE id=? FOR UPDATE",patient);
+        if(appointment!=null)familyAssistance.requireLegacyAppointmentWrite(patient,appointment);
+        Map<String,Object> prior=appointment==null?null:one("SELECT patient_id,doctor_user_id FROM care_appointment WHERE id=?",appointment);
+        if(appointment!=null&&(prior==null||!Objects.equals(number(prior.get("patient_id")),patient)))throw new IllegalArgumentException("Appointment not found.");
+        SortedSet<Long> users=new TreeSet<>();users.add(userId());if(nextDoctor!=null)users.add(nextDoctor);if(prior!=null)users.add(number(prior.get("doctor_user_id")));
+        users.addAll(familyAssistance.nativeAppointmentSubjects(patient,appointment));
+        org.familyhealthcare.service.workflow.HouseholdAuthorityLocks.LockedAuthority token=householdAuthorityLocks.lockPatientAndSubjects(patient,users);
+        familyAssistanceAuthorization.requireWrite(userId(),patient,"ACCOMPANIMENT");
+        if(nextDoctor!=null)familyAssistanceAuthorization.requireDoctor(nextDoctor);
+        if(prior!=null){familyAssistanceAuthorization.requireDoctor(number(prior.get("doctor_user_id")));Map<String,Object> current=one("SELECT patient_id,doctor_user_id FROM care_appointment WHERE id=? FOR UPDATE",appointment);if(current==null||!Objects.equals(number(current.get("patient_id")),patient)||!Objects.equals(current.get("doctor_user_id"),prior.get("doctor_user_id")))throw new IllegalStateException("Appointment changed; refresh.");familyAssistance.validateNativeAppointmentLocked(token,userId(),patient,appointment);}
+    }
+
+    private void notifyAppointment(Long patientId,Long appointmentId,Long doctorId,LocalDateTime start,String status,String eventType,String title,String content) {
+        final Long actor=userId();
+        Runnable send=()->{
+            for(long recipient:familyAssistance.legacyAppointmentRecipients(patientId,doctorId)) {
+                if(!familyAssistance.admitLegacyAppointmentNotification(patientId,appointmentId,actor,recipient,doctorId,start,status))continue;
+                // 每人发送前重验当前来源与权限；外部 provider 不持原生业务锁。
+                audience.notify(Collections.singleton(recipient),patientId,eventType,title,content);
+            }
+        };
+        if(org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive())org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){@Override public void afterCommit(){org.springframework.transaction.support.TransactionTemplate outside=new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));outside.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_NOT_SUPPORTED);outside.execute(tx->{send.run();return null;});}});else send.run();
     }
 
     public List<Map<String,Object>> visits(Long patientId) {
         requireRead(patientId, "VISITS");
         String publishedOnly = CurrentUserUtil.isAdmin() || CurrentUserUtil.hasRole("doctor") ? "" : " AND v.status='PUBLISHED'";
-        List<Map<String,Object>> rows = jdbc.queryForList("SELECT v.*,u.real_name AS doctor_name FROM visit_record v LEFT JOIN sys_user u ON u.id=v.doctor_user_id WHERE v.patient_id=?" + publishedOnly + " ORDER BY v.visited_at DESC", patientId);
-        for (Map<String,Object> row : rows) row.put("prescriptions", prescriptions(number(row.get("id")), patientId));
-        return rows;
+        // 旧未纳管列表仍兼容；就诊权限不能顺带预读用药，处方沿独立MEDICATION入口读取。
+        boolean managed=visitFollowUp.storageAvailable();
+        return jdbc.queryForList("SELECT v.*,u.real_name AS doctor_name"+(managed?",(vf.id IS NOT NULL) AS visit_follow_up_managed":"")+" FROM visit_record v LEFT JOIN sys_user u ON u.id=v.doctor_user_id"+(managed?" LEFT JOIN visit_followup_state vf ON vf.visit_record_id=v.id AND vf.patient_id=v.patient_id AND vf.source_kind='VISIT_RECORD'":"")+" WHERE v.patient_id=?" + publishedOnly + " ORDER BY v.visited_at DESC", patientId);
     }
 
     public List<Map<String,Object>> prescriptions(Long patientId) {
@@ -284,6 +352,7 @@ public class CareJourneyService {
     }
 
     @Transactional public Map<String,Object> saveVisit(Map<String,Object> body) {
+        visitFollowUp.requireLegacyVisitCreation();
         requireDoctor(); Long patientId = requiredLong(body, "patientId"); requireWrite(patientId, "VISITS");
         Long appointmentId = optionalLong(body, "appointmentId");
         if (appointmentId != null && one("SELECT id FROM care_appointment WHERE id=? AND patient_id=?", appointmentId, patientId) == null) throw new IllegalArgumentException("Appointment not found for this patient.");
@@ -293,10 +362,18 @@ public class CareJourneyService {
         return one("SELECT * FROM visit_record WHERE id=?",id);
     }
 
-    @Transactional public Map<String,Object> publishVisit(Long id) {
-        requireDoctor(); Map<String,Object> visit = one("SELECT * FROM visit_record WHERE id=? FOR UPDATE", id);
-        if (visit == null) throw new IllegalArgumentException("Visit record not found.");
-        Long patientId = number(visit.get("patient_id")); requireWrite(patientId, "VISITS");
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public Map<String,Object> publishVisit(Long id) {
+        requireDoctor();
+        Map<String,Object> discovered=one("SELECT patient_id,doctor_user_id FROM visit_record WHERE id=?",id);
+        if(discovered==null)throw new IllegalArgumentException("Visit record not found.");
+        Long patientId=number(discovered.get("patient_id"));
+        // 先稳定患者与当前主体，再取原生锁；功能关闭也不能绕过已纳管摘要。
+        visitFollowUp.requireLegacyWrite(patientId,org.familyhealthcare.service.visitfollowup.VisitFollowUpContracts.SourceKind.VISIT_RECORD,id);
+        householdAuthorityLocks.lockPatientAndSubjects(patientId,Arrays.asList(userId(),number(discovered.get("doctor_user_id"))));
+        requireDoctor();requireWrite(patientId,"VISITS");
+        Map<String,Object> visit=one("SELECT * FROM visit_record WHERE id=? FOR UPDATE",id);
+        if(visit==null||!Objects.equals(number(visit.get("patient_id")),patientId)||!Objects.equals(visit.get("doctor_user_id"),discovered.get("doctor_user_id")))
+            throw new org.familyhealthcare.service.workflow.WorkflowException(409,"SOURCE_CHANGED","The visit changed. Refresh and compare before publishing.");
         if ("PUBLISHED".equals(visit.get("status"))) return visit;
         jdbc.update("UPDATE visit_record SET status='PUBLISHED',published_at=NOW() WHERE id=?", id);
         Long owner = jdbc.queryForObject("SELECT user_id FROM patient WHERE id=?", Long.class, patientId);
@@ -305,7 +382,7 @@ public class CareJourneyService {
         return one("SELECT * FROM visit_record WHERE id=?", id);
     }
 
-    @SuppressWarnings("unchecked") @Transactional public Map<String,Object> savePrescription(Map<String,Object> body) {
+    @SuppressWarnings("unchecked") @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public Map<String,Object> savePrescription(Map<String,Object> body) {
         requireDoctor(); Long patientId = requiredLong(body, "patientId"); requireWrite(patientId, "MEDICATION");
         Long visitId = optionalLong(body, "visitId");
         if (visitId != null && one("SELECT id FROM visit_record WHERE id=? AND patient_id=?", visitId, patientId) == null) throw new IllegalArgumentException("Visit record not found for this patient.");
@@ -322,11 +399,13 @@ public class CareJourneyService {
         }
         String instructions = text(body,"instructions",null); checkedLength(instructions,1000);
         one("SELECT id FROM patient WHERE id=? FOR UPDATE",patientId);
+        boolean trackedPublication=medicationSourceBridge.preparePublicationLocked(userId(),patientId);
         Integer version = jdbc.queryForObject("SELECT COALESCE(MAX(version_no),0)+1 FROM electronic_prescription WHERE patient_id=?",Integer.class,patientId);
         jdbc.update("UPDATE electronic_prescription SET status='SUPERSEDED' WHERE patient_id=? AND status='ACTIVE'",patientId);
         long id = insert("INSERT INTO electronic_prescription(visit_id,patient_id,doctor_user_id,version_no,status,instructions,published_at) VALUES(?,?,?,?,'ACTIVE',?,NOW())",visitId,patientId,userId(),version,instructions);
         for (Map<String,Object> item : items) jdbc.update("INSERT INTO electronic_prescription_item(prescription_id,drug_name,dosage,frequency,administration_route,duration_days,remark) VALUES(?,?,?,?,?,?,?)",id,required(item,"drugName"),required(item,"dosage"),required(item,"frequency"),text(item,"administrationRoute",null),integer(item,"durationDays",null),text(item,"remark",null));
-        audience.notifyCareTeam(patientId,"PRESCRIPTION_UPDATED","Medication instructions updated","A clinician published prescription version "+version+". Review the new dose and frequency before the next intake.");
+        if(trackedPublication)medicationSourceBridge.sourcePublishedLocked(patientId,id);
+        else audience.notifyCareTeam(patientId,"PRESCRIPTION_UPDATED","Medication instructions updated","A clinician published prescription version "+version+". Review the new dose and frequency before the next intake.");
         Map<String,Object> result = one("SELECT * FROM electronic_prescription WHERE id=?",id);
         result.put("items",jdbc.queryForList("SELECT * FROM electronic_prescription_item WHERE prescription_id=?",id)); return result;
     }
@@ -351,35 +430,104 @@ public class CareJourneyService {
         return one("SELECT * FROM rehab_checkin WHERE id=?",id);
     }
 
-    public Map<String,Object> emergencyCard(Long patientId){requireRead(patientId,"EMERGENCY");Map<String,Object>card=new LinkedHashMap<>();card.put("patient",one("SELECT id,name,gender,birth_date,emergency_contact,emergency_phone,medical_history FROM patient WHERE id=?",patientId));card.put("clinical",one("SELECT allergy_drugs,blood_type,primary_diagnosis,dialysis_type,vascular_access,target_dry_weight,remark FROM patient_clinical WHERE patient_id=?",patientId));card.put("medications",jdbc.queryForList("SELECT drug_name,default_dosage,remark FROM medication WHERE patient_id=? AND is_active=1 ORDER BY drug_name",patientId));card.put("generatedAt",LocalDateTime.now());card.put("offlineReadable",true);card.put("disclaimer","Emergency information is patient-maintained and must be clinically verified.");return card;}
-
-    @Transactional public Map<String,Object> triggerEmergency(Map<String,Object>body){
-        Long patientId=requiredLong(body,"patientId");requireWrite(patientId,"EMERGENCY");
+    /** 紧急开关关闭且A-only才允许旧入口；部分模式和已跟踪请求绝不退回旧命令。 */
+    public Map<String,Object> emergencyCapabilities(Long patientId){
+        org.familyhealthcare.service.workflow.HouseholdWorkflowSchema.StorageReadiness ready=emergencySchema.inspectStorageMetadata();
+        if(!emergencyProperties.isEnabled()&&ready.getStatus()==org.familyhealthcare.service.workflow.HouseholdWorkflowSchema.StorageStatus.ABSENT){
+            requireRead(patientId,"EMERGENCY");
+            boolean write;
+            try{
+                requireWrite(patientId,"EMERGENCY");
+                write=true;
+            }
+            catch(IllegalStateException denied){
+                write=false;
+            }
+            requireRead(patientId,"EMERGENCY");
+            if(write)requireWrite(patientId,"EMERGENCY");
+            Map<String,Object> result=new LinkedHashMap<>();
+            result.put("patientId",patientId);
+            result.put("actorId",userId());
+            result.put("blockedReasons",Collections.emptyList());
+            result.put("allowedCommands",Collections.emptyList());
+            result.put("source",true);
+            result.put("retry",false);
+            result.put("write",write);
+            result.put("enabled",false);
+            result.put("schemaStatus","ABSENT");
+            result.put("read",false);
+            result.put("create",false);
+            result.put("legacyAvailable",true);
+            result.put("legacyCanWrite",write);
+            return result;
+        }
+        return emergencyQueries.capabilities(userId(),patientId);
+    }
+    public Map<String,Object> emergencyCard(Long patientId){
+        requireRead(patientId,"EMERGENCY");
+        if(emergencyProperties.isEnabled())emergencyAuthorization.requireRead(userId(),patientId);
+        Map<String,Object> card=emergencySnapshot.project(patientId);
+        requireRead(patientId,"EMERGENCY");
+        if(emergencyProperties.isEnabled())emergencyAuthorization.requireRead(userId(),patientId);
+        return card;
+    }
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED,timeout=5) public Map<String,
+    Object> triggerEmergency(Map<String,Object>body){
+        org.familyhealthcare.service.workflow.HouseholdWorkflowSchema.StorageReadiness readiness=emergencySchema.inspectStorageMetadata();
+        if(body.containsKey("commandKey")||body.containsKey("expectedVersion")||body.containsKey("body"))return emergencyAssistance.command(userId(),
+        null,org.familyhealthcare.service.emergencyassistance.EmergencyAssistanceContracts.parse("CREATE_REQUEST",
+        body));
+        if(emergencyProperties.isEnabled())throw org.familyhealthcare.service.workflow.WorkflowException.invalid("Emergency command metadata is required. No request was established.");
+        if(readiness.getStatus()!=org.familyhealthcare.service.workflow.HouseholdWorkflowSchema.StorageStatus.ABSENT){
+            readiness.requireStructurallyReady();
+            throw new org.familyhealthcare.service.workflow.WorkflowException(503,"FEATURE_DISABLED","Emergency requests are disabled. No request was established.");
+        }
+        Long patientId=requiredLong(body,"patientId");
+        requireWrite(patientId,"EMERGENCY");
         Map<String,Object>snapshot=emergencyCard(patientId);
-        Set<Long>recipients=audience.recipients(patientId);recipients.remove(userId());
+        Set<Long>recipients=audience.recipients(patientId);
+        recipients.remove(userId());
         String location=text(body,"locationText","Not provided");
         BigDecimal latitude=decimal(body,"latitude",false),longitude=decimal(body,"longitude",false);
-        long id=insert("INSERT INTO emergency_event(patient_id,triggered_by,latitude,longitude,location_text,snapshot_json,status,notified_user_ids) VALUES(?,?,?,?,?,?,'TRIGGERED',?)",patientId,userId(),latitude,longitude,text(body,"locationText",null),JSON.toJSONString(snapshot),join(recipients));
+        long id=insert("INSERT INTO emergency_event(patient_id,triggered_by,latitude,longitude,location_text,snapshot_json,status,notified_user_ids) VALUES(?,?,?,?,?,?,'TRIGGERED',?)",
+        patientId,userId(),latitude,longitude,text(body,"locationText",null),JSON.toJSONString(snapshot),join(recipients));
         Map<?,?> patient=(Map<?,?>)snapshot.get("patient");
         String patientName=patient==null?"Patient":String.valueOf(patient.get("name"));
         String content="Emergency event #"+id+" for "+patientName+". Location: "+location+(latitude==null||longitude==null?"":" ("+latitude+", "+longitude+")")+". Open Care journey > Emergency to review the medical snapshot.";
-        int delivered=audience.notifyWithDeliveryCount(recipients,patientId,"EMERGENCY","Emergency call from bound patient",content);
+        int delivered=audience.notifyWithDeliveryCount(recipients,patientId,"EMERGENCY","Emergency call from bound patient",
+        content);
         Map<String,Object>result=one("SELECT * FROM emergency_event WHERE id=?",id);
-        result.put("snapshot",snapshot);result.put("recipientCount",recipients.size());result.put("deliveryCount",delivered);
+        result.put("snapshot",snapshot);
+        result.put("recipientCount",recipients.size());
+        result.put("deliveryCount",delivered);
         return result;
     }
-
     public List<Map<String,Object>> emergencies(Long patientId){
         requireRead(patientId,"EMERGENCY");
-        return jdbc.queryForList("SELECT id,patient_id,triggered_by,latitude,longitude,location_text,status,triggered_at,notified_user_ids FROM emergency_event WHERE patient_id=? ORDER BY triggered_at DESC,id DESC LIMIT 100",patientId);
+        org.familyhealthcare.service.workflow.HouseholdWorkflowSchema.StorageReadiness readiness=emergencySchema.inspectStorageMetadata();
+        boolean absent=readiness.getStatus()==org.familyhealthcare.service.workflow.HouseholdWorkflowSchema.StorageStatus.ABSENT;
+        if(!absent)readiness.requireStructurallyReady();
+        List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,patient_id,triggered_by,latitude,longitude,location_text,status,triggered_at"+(absent?"":",workflow_version,workflow_state,response_status")+" FROM emergency_event WHERE patient_id=? ORDER BY triggered_at DESC,id DESC LIMIT 100",
+        patientId);
+        for(Map<String,Object> row:rows)if(!absent&&number(row.get("workflow_version"))!=0){
+            emergencyAuthorization.requireRead(userId(),patientId);
+            for(String key:Arrays.asList("triggered_by","latitude","longitude","location_text"))row.remove(key);
+        }
+        requireRead(patientId,"EMERGENCY");
+        if(!absent&&rows.stream().anyMatch(r->number(r.get("workflow_version"))!=0))emergencyAuthorization.requireRead(userId(),
+        patientId);
+        return rows;
     }
-
     public Map<String,Object> emergency(Long id){
         Map<String,Object>event=one("SELECT * FROM emergency_event WHERE id=?",id);
-        if(event==null)throw new IllegalArgumentException("Emergency event not found.");
+        if(event==null)throw org.familyhealthcare.service.emergencyassistance.EmergencyAssistanceAuthorizationService.denied();
+        if(event.containsKey("workflow_version")&&number(event.get("workflow_version"))!=0)return emergencyQueries.detail(userId(),
+        id);
         requireRead(number(event.get("patient_id")),"EMERGENCY");
         event.put("snapshot",JSON.parseObject(String.valueOf(event.get("snapshot_json"))));
         event.remove("snapshot_json");
+        event.remove("notified_user_ids");
+        requireRead(number(event.get("patient_id")),"EMERGENCY");
         return event;
     }
 
@@ -458,11 +606,28 @@ public class CareJourneyService {
         }
         Map<String,Object> out = new LinkedHashMap<>();
         out.put("period", Arrays.asList(start, end));
-        out.put("followUp", one("SELECT COUNT(*) total,SUM(CASE WHEN status IN ('DONE','COMPLETED','ANSWERED') THEN 1 ELSE 0 END) completed,ROUND(100.0*SUM(CASE WHEN status IN ('DONE','COMPLETED','ANSWERED') THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0),1) completion_rate FROM care_item WHERE kind IN ('APPOINTMENT','HANDOVER','QUESTION') AND CAST(COALESCE(event_at,created_at) AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
+        // 旧原生状态、行政关闭和专业复核不能相加成“临床完成率”。
+        out.put("legacyAppointments",one("SELECT COUNT(*) total,SUM(CASE WHEN status='OPEN' THEN 1 ELSE 0 END) open,SUM(CASE WHEN status='DONE' THEN 1 ELSE 0 END) native_completed,SUM(CASE WHEN status='NO_SHOW' THEN 1 ELSE 0 END) no_show,SUM(CASE WHEN status='CANCELLED' THEN 1 ELSE 0 END) cancelled FROM care_item WHERE kind='APPOINTMENT' AND CAST(COALESCE(event_at,created_at) AS DATE) BETWEEN ? AND ?"+patientFilter,start,end));
+        out.put("legacyHandovers",one("SELECT COUNT(*) total,SUM(CASE WHEN status IN ('DONE','COMPLETED') THEN 1 ELSE 0 END) administrative_closed FROM care_item WHERE kind='HANDOVER' AND CAST(COALESCE(event_at,created_at) AS DATE) BETWEEN ? AND ?"+patientFilter,start,end));
+        long questionTotal=0,questionClosed=0,legacyQuestions=0;boolean questionsAvailable=true;Set<Long> questionPatients=new LinkedHashSet<>();
+        Long anyQuestions=jdbc.queryForObject("SELECT COUNT(*) FROM care_item WHERE kind='QUESTION'",Long.class);
+        if(anyQuestions!=null&&anyQuestions>0){
+            long after=0;while(true){
+                List<Long> page=jdbc.queryForList("SELECT DISTINCT patient_id FROM care_item WHERE kind='QUESTION' AND patient_id>?"+patientFilter+" ORDER BY patient_id LIMIT 50",Long.class,after);
+                if(page.isEmpty())break;
+                for(Long patient:page){after=patient;try{
+                    Map<String,Object> count=questionProjection.counts(userId(),patient,start,end);questionsAvailable&=Boolean.TRUE.equals(count.get("available"));
+                    questionTotal+=((Number)count.get("total")).longValue();questionClosed+=((Number)count.get("closed")).longValue();legacyQuestions+=((Number)count.get("legacy")).longValue();questionPatients.add(patient);
+                }catch(org.familyhealthcare.service.workflow.WorkflowException denied){if(denied.getStatus()!=403)throw new org.familyhealthcare.service.visitquestion.VisitQuestionFailure(denied);questionsAvailable=false;}}
+                if(page.size()<50)break;
+            }
+        }
+        out.put("questions",org.familyhealthcare.service.workflow.WorkflowData.map("total",questionTotal,"administrativeClosed",questionClosed,"legacyUnverified",legacyQuestions,"available",questionsAvailable));
         out.put("medication", one("SELECT COUNT(*) total,SUM(CASE WHEN status='TAKEN' THEN 1 ELSE 0 END) taken,ROUND(100.0*SUM(CASE WHEN status='TAKEN' THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0),1) adherence_rate FROM medication_intake WHERE CAST(scheduled_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
         out.put("measurements", one("SELECT COUNT(*) total,SUM(CASE WHEN status='NORMAL' THEN 1 ELSE 0 END) on_target,ROUND(100.0*SUM(CASE WHEN status='NORMAL' THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0),1) target_rate FROM health_measurement WHERE CAST(measured_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
-        out.put("appointments", one("SELECT COUNT(*) total,SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END) completed,SUM(CASE WHEN status='CANCELLED' THEN 1 ELSE 0 END) cancelled FROM care_appointment WHERE CAST(start_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
+        out.put("appointments", one("SELECT COUNT(*) total,SUM(CASE WHEN status='BOOKED' THEN 1 ELSE 0 END) booked,SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END) native_completed,SUM(CASE WHEN status='NO_SHOW' THEN 1 ELSE 0 END) no_show,SUM(CASE WHEN status='CANCELLED' THEN 1 ELSE 0 END) cancelled FROM care_appointment WHERE CAST(start_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
         out.put("alerts", one("SELECT COUNT(*) total,SUM(CASE WHEN status='RESOLVED' THEN 1 ELSE 0 END) resolved FROM alert_record WHERE (alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP') AND CAST(triggered_at AS DATE) BETWEEN ? AND ?" + patientFilter, start, end));
+        for(Long patient:questionPatients)org.familyhealthcare.service.visitquestion.VisitQuestionFailure.expose(()->{questionProjection.finish(userId(),patient);return null;});
         return out;
     }
 
@@ -516,7 +681,17 @@ public class CareJourneyService {
         return expected;
     }
     private void validateMeasurement(String type,BigDecimal a,BigDecimal b){if(a==null)throw new IllegalArgumentException("Measurement value is required.");if("GLUCOSE".equals(type)&&a.compareTo(BigDecimal.ZERO)<=0)throw new IllegalArgumentException("Blood glucose must be greater than zero.");if("BP".equals(type)&&(a.compareTo(new BigDecimal("40"))<0||a.compareTo(new BigDecimal("300"))>0||b==null||b.compareTo(new BigDecimal("20"))<0||b.compareTo(new BigDecimal("200"))>0))throw new IllegalArgumentException("Blood pressure is outside the accepted input range.");if("SPO2".equals(type)&&(a.compareTo(BigDecimal.ZERO)<0||a.compareTo(new BigDecimal("100"))>0))throw new IllegalArgumentException("SpO2 must be between 0 and 100.");}
-    private List<Map<String,Object>> prescriptions(Long visitId,Long patientId){String sql="SELECT p.* FROM electronic_prescription p WHERE p.patient_id=?";List<Object>a=new ArrayList<>();a.add(patientId);if(visitId!=null){sql+=" AND p.visit_id=?";a.add(visitId);}sql+=" ORDER BY p.version_no DESC";List<Map<String,Object>>rows=jdbc.queryForList(sql,a.toArray());for(Map<String,Object>r:rows)r.put("items",jdbc.queryForList("SELECT * FROM electronic_prescription_item WHERE prescription_id=?",r.get("id")));return rows;}
+    private List<Map<String,Object>> prescriptions(Long visitId,Long patientId){
+        medicationSourceBridge.requireCurrentReadIfTracked(userId(),patientId);
+        String sql="SELECT p.id,p.visit_id,p.patient_id,p.doctor_user_id,p.version_no,p.status,p.instructions,p.published_at,p.created_at FROM electronic_prescription p WHERE p.patient_id=?";
+        List<Object> args=new ArrayList<>();args.add(patientId);
+        if(visitId!=null){sql+=" AND p.visit_id=?";args.add(visitId);}
+        sql+=" ORDER BY p.version_no DESC";
+        List<Map<String,Object>> rows=jdbc.queryForList(sql,args.toArray());
+        for(Map<String,Object> row:rows)row.put("items",jdbc.queryForList("SELECT id,prescription_id,drug_name,dosage,frequency,administration_route,duration_days,remark FROM electronic_prescription_item WHERE prescription_id=? ORDER BY id",row.get("id")));
+        medicationSourceBridge.requireCurrentReadIfTracked(userId(),patientId);
+        return rows;
+    }
     private String specialtyTable(String type){switch(type.toLowerCase()){case"growth":return"growth_record";case"vaccination":return"vaccination_plan";case"maternity":return"maternity_record";default:throw new IllegalArgumentException("Unsupported specialty record type.");}}
     private String specialtyDateColumn(String type){return"vaccination".equalsIgnoreCase(type)?"planned_date":"record_date";}
     private Map<String,Object> one(String sql,Object...args){List<Map<String,Object>>r=jdbc.queryForList(sql,args);return r.isEmpty()?null:r.get(0);}

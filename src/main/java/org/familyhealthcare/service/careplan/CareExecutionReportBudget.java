@@ -55,6 +55,13 @@ public final class CareExecutionReportBudget {
         if (count > limit) throw CareExecutionReportException.limitExceeded(kind, limit);
     }
 
+    /** 普通问题先合计 SQL 字节元数据，再分配正文；实际记账仍由 addSourceText 完成。 */
+    public void requireSourceTextCapacity(long additionalBytes) {
+        checkTime();
+        if(additionalBytes<0||additionalBytes>CareExecutionReportContracts.MAX_SOURCE_TEXT_BYTES-sourceTextBytes)
+            throw CareExecutionReportException.limitExceeded("SOURCE_TEXT_BYTES",CareExecutionReportContracts.MAX_SOURCE_TEXT_BYTES);
+    }
+
     public void addSourceText(String value) {
         checkTime();
         if (value == null) return;

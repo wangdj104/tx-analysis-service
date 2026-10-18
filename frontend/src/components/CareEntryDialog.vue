@@ -8,16 +8,29 @@
     @update:model-value="onVisibilityChange"
   >
     <div v-care-entry-lifecycle>
+    <p v-if="questionSaveUnknown" role="alert">Save outcome not confirmed. Do not submit again. Review the earlier question list to check whether it was saved; absence does not prove failure.</p>
+    <p v-if="saving" role="status" aria-live="polite">Saving…</p>
     <p class="entry-patient">Current patient: <strong>{{ patientName || '—' }}</strong> · Record ID: {{ patientId }}</p>
     <section v-if="discardVisible" class="draft-warning" role="alert">
       <p>You have unsaved changes. Keep editing retains them for this patient. Discard clears this draft; a save already sent may still complete.</p>
       <div class="draft-warning-actions">
         <el-button @click="keepEditing">Keep editing</el-button>
-        <el-button type="danger" @click="discardChanges">Discard changes</el-button>
+        <el-button v-if="!managedQuestion || !managedFlow.locked()" type="danger" @click="discardChanges">Discard changes</el-button>
       </div>
     </section>
+    <AppointmentFollowUpPanel v-if="managedAppointment" ref="appointmentPanel" :patient-id="patientId" source-kind="CARE_ITEM_APPOINTMENT" :source-id="row.id" :active="modelValue" @changed="emit('saved')" />
+    <section v-if="managedQuestion" class="vq">
+      <p role="status" aria-live="polite">{{ qt(managedFlow.state.availability) }}</p>
+      <p v-if="managedFlow.locked()" role="alert">{{ qt('uncertain') }}</p>
+      <template v-if="!managedFlow.state.dialog">
+        <p>{{ qt('singleOrdinaryAction') }}</p>
+        <article v-if="managedFlow.state.detail"><h3>{{ managedFlow.state.detail.title }}</h3><p>{{ managedFlow.state.detail.description }}</p><p>{{ qt(managedFlow.state.detail.state) }}</p><p>{{ qt('recordedAnswer') }}: {{ managedFlow.state.detail.recordedAnswer || qt('noAnswer') }}</p><p>{{ qt('followUp') }}: {{ managedFlow.state.detail.followUp || qt('noNext') }}</p></article>
+        <div class="vq-actions"><button v-for="operation in ['EDIT','RECORD_ANSWER']" v-show="managedFlow.allowed(operation)" :key="operation" type="button" @click="beginOrdinaryAction(operation)">{{ qt(operation) }}</button><button type="button" @click="loadManagedQuestion">{{ qt('refreshDecision') }}</button></div><p>{{ qt('ordinaryReadOnly') }}</p>
+      </template>
+      <VisitQuestionActionDialog :flow="managedFlow" embedded ordinary-editor :appointments="appointments" />
+    </section>
     <section v-if="Object.keys(errors).length" class="entry-errors" role="alert" aria-live="polite"><strong>Correct these fields before saving</strong><ul><li v-for="(message, field) in errors" :key="field">{{ message }}</li></ul></section>
-    <el-form label-position="top" :model="form" class="care-entry">
+    <el-form v-if="!managedQuestion && !managedAppointment" label-position="top" :model="form" class="care-entry" :disabled="saving || questionSaveUnknown">
       <el-form-item label="Title" required :error="errors.title">
         <el-input v-model="form.title" ref="titleInput" :aria-invalid="!!errors.title" :aria-describedby="errors.title ? 'care-entry-error-title' : undefined" maxlength="200" placeholder="For example: nephrology follow-up, dizziness, question for clinician" />
       <template #error="{ error }"><p id="care-entry-error-title" class="field-error">{{ error }}</p></template></el-form-item>
@@ -81,9 +94,10 @@
       </template>
 
       <template v-if="form.kind === 'QUESTION'">
+        <p>An ordinary entry records what was reported; it is not a clinician-authored publication.</p>
         <el-form-item label="Appointment"><el-select v-model="form.details.appointmentId" clearable><el-option v-for="a in appointments" :key="a.id" :value="a.id" :label="`${a.eventAt || ''} ${a.title}`" /></el-select></el-form-item>
         <el-form-item label="Question details"><el-input v-model="form.details.description" type="textarea" /></el-form-item>
-        <el-form-item label="Clinician's answer"><el-input v-model="form.details.answer" type="textarea" /></el-form-item>
+        <el-form-item label="Recorded answer"><el-input v-model="form.details.answer" type="textarea" /></el-form-item>
         <el-form-item label="Follow-up action"><el-input v-model="form.details.followUp" type="textarea" /></el-form-item>
       </template>
 
@@ -97,20 +111,38 @@
       </template>
     </el-form>
     </div>
-    <template #footer><el-button @click="requestClose()">Cancel</el-button><el-button type="primary" :loading="saving" @click="submit">Save</el-button></template>
+    <template #footer><el-button v-if="!managedQuestion || !managedFlow.state.dialog" @click="requestClose()">Cancel</el-button><el-button v-if="!managedQuestion && !managedAppointment" type="primary" :loading="saving" :disabled="questionSaveUnknown" @click="submit">Save</el-button></template>
   </el-dialog>
 </template>
 
 <script setup>
-import { nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { saveCareItem } from '@/api/care'
+import * as questionApi from '@/api/visitQuestion'
+import { useVisitQuestion } from '@/composables/useVisitQuestion'
+import { questionText as qt } from '@/utils/visitQuestionCopy'
+import AppointmentFollowUpPanel from '@/components/visit-follow-up/AppointmentFollowUpPanel.vue'
+import VisitQuestionActionDialog from '@/components/visit-question/VisitQuestionActionDialog.vue'
 import { localDateKey } from '@/utils/familyHealth'
-import { AUTH_STORAGE_KEYS } from '@/utils/authSession'
+import { AUTH_STORAGE_KEYS, captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession'
 
 const props = defineProps({ modelValue: Boolean, kind: String, row: Object, patientId: [Number, String], patientName: String, members: { type: Array, default: () => [] }, medications: { type: Array, default: () => [] }, reports: { type: Array, default: () => [] }, appointments: { type: Array, default: () => [] } })
 const emit = defineEmits(['update:modelValue', 'saved'])
 const form = reactive({ details: {} })
+const appointmentPanel = ref(null)
+const managedAppointment = computed(() => props.kind === 'APPOINTMENT' && props.row?.visitFollowUpManaged === true)
+const managedQuestion = computed(() => props.kind === 'QUESTION' && Number(props.row?.questionProjection?.questionVersion) > 0)
+const managedFlow = useVisitQuestion(computed(() => props.patientId), { api: { ...questionApi, command: questionApi.ordinaryCommand } })
+watch(() => managedFlow.state.commandPhase, phase => { if (managedQuestion.value && phase === 'saved') { clearSensitive(); emit('saved'); emit('update:modelValue', false) } })
+watch(() => managedFlow.state.availability, phase => { if (managedQuestion.value && phase === 'denied') sessionCleared() }, { flush: 'sync' })
+async function loadManagedQuestion() {
+  const epoch = draftEpoch, row = props.row
+  const loaded = await managedFlow.loadCapabilities()
+  if (epoch !== draftEpoch || !props.modelValue || row !== props.row || loaded.status !== 'loaded' || managedFlow.state.availability !== 'READY') return
+  await managedFlow.open(row.id)
+}
+function beginOrdinaryAction(operation) { managedFlow.begin(operation) }
 const saving = ref(false)
 const days = ref([])
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -118,9 +150,11 @@ const titles = { APPOINTMENT: 'Appointment / follow-up', ORDER: 'Prescription & 
 
 const errors = ref({}), attempted = ref(false), discardVisible = ref(false)
 const titleInput = ref(null), timeInput = ref(null), medicationInput = ref(null), dateInput = ref(null), confirmationInput = ref(null)
+let saveController = null
+const questionSaveUnknown = ref(false)
 let baseline = '', draftEpoch = 0, pendingClose = null
 const snapshot = () => JSON.stringify({ form, days: days.value })
-const isDirty = () => props.modelValue && (saving.value || snapshot() !== baseline)
+const isDirty = () => props.modelValue && (managedAppointment.value ? appointmentPanel.value?.dirty() || appointmentPanel.value?.locked() : managedQuestion.value ? managedFlow.dirty() : saving.value || snapshot() !== baseline)
 function validationErrors() {
   const result = {}
   if (!String(form.title || '').trim()) result.title = 'Enter a title'
@@ -134,18 +168,19 @@ function validationErrors() {
 }
 watch(form, () => { if (attempted.value) errors.value = validationErrors() }, { deep: true, flush: 'sync' })
 function clearSensitive() {
-  draftEpoch++; saving.value = false; pendingClose = null; discardVisible.value = false; attempted.value = false; errors.value = {}
+  draftEpoch++; managedFlow.clear(); saveController?.abort(); saveController=null; questionSaveUnknown.value=false; saving.value = false; pendingClose = null; discardVisible.value = false; attempted.value = false; errors.value = {}
   Object.keys(form).forEach(key => delete form[key]); Object.assign(form, { title: '', details: {} }); days.value = []
   baseline = snapshot()
 }
 function requestClose(done) {
+  if (managedAppointment.value && appointmentPanel.value?.locked()) return false
   if (isDirty()) { pendingClose = typeof done === 'function' ? done : null; discardVisible.value = true; return false }
   clearSensitive(); if (typeof done === 'function') done(); else emit('update:modelValue', false)
   return true
 }
 function onVisibilityChange(open) { if (!open) requestClose(); else emit('update:modelValue', true) }
 function keepEditing() { pendingClose = null; discardVisible.value = false }
-function discardChanges() { const close = pendingClose; clearSensitive(); if (close) close(); emit('update:modelValue', false) }
+function discardChanges() { if (managedAppointment.value && appointmentPanel.value?.locked()) return; if (managedQuestion.value && managedFlow.locked()) return; const close = pendingClose; clearSensitive(); if (close) close(); emit('update:modelValue', false) }
 function protectNavigation() { if (!isDirty()) return true; pendingClose = null; discardVisible.value = true; return false }
 function contextChange(event) { if (!event.defaultPrevented && !protectNavigation()) event.preventDefault() }
 function beforeUnload(event) { if (isDirty()) { event.preventDefault(); event.returnValue = '' } }
@@ -184,18 +219,19 @@ const vCareEntryLifecycle = {
     window.addEventListener('care-plan-before-context-change', contextChange)
     window.addEventListener('beforeunload', beforeUnload)
     window.addEventListener('auth-session-cleared', sessionCleared)
+    window.addEventListener('auth-session-changed', sessionCleared)
     window.addEventListener('storage', sessionStorageChanged)
-    element.__careEntryCleanup = () => { removeGuard(); window.removeEventListener('care-plan-before-context-change', contextChange); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('auth-session-cleared', sessionCleared); window.removeEventListener('storage', sessionStorageChanged); clearSensitive() }
+    element.__careEntryCleanup = () => { removeGuard(); window.removeEventListener('care-plan-before-context-change', contextChange); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('auth-session-cleared', sessionCleared); window.removeEventListener('auth-session-changed', sessionCleared); window.removeEventListener('storage', sessionStorageChanged); clearSensitive() }
   },
   unmounted(element) { element.__careEntryCleanup?.() }
 }
 watch(() => props.patientId, sessionCleared, { flush: 'sync' })
 
-watch(() => props.modelValue, open => {
+watch([() => props.modelValue, () => props.row], ([open]) => {
   if (!open) { clearSensitive(); return }
   draftEpoch++; attempted.value = false; errors.value = {}; discardVisible.value = false; pendingClose = null
   Object.keys(form).forEach(k => delete form[k])
-  Object.assign(form, { kind: props.kind, title: '', eventAt: null, notifyAt: null, assignedUserId: null, details: { startDate: localDateKey(), endDate: null, action: 'CHANGE', unit: 'tablet', repeatDays: '1,2,3,4,5,6,7', doses: [{ time: '08:00', quantity: 1 }], attachments: [], confirmed: false, severity: 3, progress: 'ONGOING' } }, props.row ? JSON.parse(JSON.stringify(props.row)) : {})
+  Object.assign(form, { kind: props.kind, title: '', eventAt: null, notifyAt: null, assignedUserId: null, details: { startDate: localDateKey(), endDate: null, action: 'CHANGE', unit: 'tablet', repeatDays: '1,2,3,4,5,6,7', doses: [{ time: '08:00', quantity: 1 }], attachments: [], confirmed: false, severity: 3, progress: 'ONGOING' } }, !managedQuestion.value && props.row ? JSON.parse(JSON.stringify(props.row)) : {})
   if (props.kind === 'ORDER') {
     delete form.id
     form.details.confirmed = false
@@ -203,6 +239,7 @@ watch(() => props.modelValue, open => {
   days.value = String(form.details.repeatDays || '1,2,3,4,5,6,7').split(',')
   if (props.kind === 'SYMPTOM' && !form.eventAt) form.eventAt = localDateKey() + ' ' + new Date().toTimeString().slice(0, 8)
   baseline = snapshot()
+  if (managedQuestion.value) { managedFlow.clear(); loadManagedQuestion() }
 }, { immediate: true, flush: 'sync' })
 
 async function attach(e) {
@@ -226,7 +263,7 @@ async function attach(e) {
 }
 
 async function submit() {
-  if (saving.value || !props.modelValue || !props.patientId) return
+  if (managedQuestion.value || managedAppointment.value || saving.value || questionSaveUnknown.value || !props.modelValue || !props.patientId) return
   attempted.value = true; errors.value = validationErrors()
   const first = Object.keys(errors.value)[0]
   if (first) {
@@ -236,18 +273,27 @@ async function submit() {
     return
   }
   saving.value = true
-  const pid = props.patientId, epoch = draftEpoch, submitted = snapshot()
-  const current = () => epoch === draftEpoch && pid === props.patientId && props.modelValue
+  const pid = props.patientId, epoch = draftEpoch, submitted = snapshot(), auth = {...captureAuthSession(),actorId:localStorage.getItem('userId')}
+  saveController=new AbortController()
+  const current = () => epoch === draftEpoch && pid === props.patientId && props.modelValue && isAuthSessionCurrent(auth) && auth.actorId===localStorage.getItem('userId')
   try {
     const data = JSON.parse(JSON.stringify(form)); data.patientId = pid
     if (data.kind === 'ORDER') data.details.repeatDays = days.value.join(',')
-    await saveCareItem(data)
+    if(data.kind==='QUESTION'){
+      // 普通入口只发送普通文字，不能把旧表单默认字段或专业署名写回问题。
+      const details=data.details
+      data.details=Object.fromEntries(['description','answer','followUp'].filter(key=>details[key]!=null).map(key=>[key,details[key]]))
+      // 遗漏表示保留，明确清空必须传 null，不能被普通字段过滤器丢掉。
+      if(Object.prototype.hasOwnProperty.call(details,'appointmentId')) data.details.appointmentId=details.appointmentId==null || details.appointmentId==='' ? null : details.appointmentId
+    }
+    await saveCareItem(data,{expectedAuth:auth,signal:saveController.signal,...(data.kind==='QUESTION'?{visitQuestion:true}:{})})
     if (!current() || snapshot() !== submitted) return
     clearSensitive(); emit('saved'); emit('update:modelValue', false)
     ElMessage.success('Saved successfully')
   } catch (error) {
     if (!current()) return
-    if (Number(error?.response?.status || error?.code) === 403) sessionCleared()
+    if ([401,403].includes(Number(error?.response?.status || error?.code))) sessionCleared()
+    else if(form.kind==='QUESTION' && !error?.notDispatched && (!Number(error?.response?.status || error?.code) || Number(error?.response?.status || error?.code)>=500)){questionSaveUnknown.value=true}
     else ElMessage.error('Unable to save. Your input is kept; please retry.')
   } finally { if (epoch === draftEpoch) saving.value = false }
 }

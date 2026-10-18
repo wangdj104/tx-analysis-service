@@ -19,6 +19,8 @@ public interface MedicalRecordService extends IService<MedicalRecord> {
      */
     boolean saveRecordWithItems(MedicalRecord record, List<MedicalRecordItem> items);
 
+    boolean saveImportedRecordWithItem(MedicalRecord record, MedicalRecordItem item, ClinicalImportFacts facts);
+
     /**
      * updaterecordanditsExaminationitem
      */
@@ -34,6 +36,7 @@ public interface MedicalRecordService extends IService<MedicalRecord> {
      * queryRecord List
      */
     List<MedicalRecord> listRecords(Long patientId, String patientName, String recordType, String timeValue);
+    List<MedicalRecord> listRecords(Long patientId, String patientName, String recordType, String timeValue, boolean includeInvalidated);
 
     /**
      * Deleterecord (levelconnectDeleteExaminationitem and Attachment)
@@ -62,6 +65,11 @@ public interface MedicalRecordService extends IService<MedicalRecord> {
                          List<MedicalRecordAttachment> sharedAttachments);
 
     MedicalRecord getReviewPreview(Long id);
+
+    org.familyhealthcare.dto.MedicalRecordImportDetail getImportDetails(Long id);
+    org.familyhealthcare.dto.MedicalRecordImportDetail getImportDetails(Long id, Long patientId);
+    org.familyhealthcare.dto.MedicalRecordImportDetail getImportReviewPreview(Long id);
+
 
     boolean reviewRecord(Long id, boolean approved, String note, Long expectedContentVersion);
 

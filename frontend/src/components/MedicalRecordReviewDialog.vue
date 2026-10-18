@@ -4,7 +4,13 @@
       <p v-if="loading" role="status">Loading the source medical record…</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <template v-if="preview">
-        <h2>{{ preview.patientName }} · Record #{{ preview.patientId }} · {{ preview.recordDate }}</h2>
+        <OriginalImportFacts :original-import="preview.originalImport" />
+        <h3>Current record</h3>
+        <h2>{{ reviewPatientName }}</h2>
+        <p>{{ correctionCopy.patientId }} {{ preview.patientId ?? correctionCopy.null }} · {{ correctionCopy.recordId }} {{ preview.id }} · {{ preview.recordDate }}</p>
+        <p>{{ correctionCopy.validity }}: {{ correctionCopy.validities[preview.validity] || correctionCopy.validities.UNKNOWN }} · {{ correctionCopy.review }}: {{ correctionCopy.reviews[preview.verificationStatus] || correctionCopy.null }}</p>
+        <p v-if="preview.sourceStatus">{{ correctionCopy.sourceStatuses[preview.sourceStatus] || correctionCopy.sourceStatuses.UNAVAILABLE }}</p>
+        <p>{{ correctionCopy.verifiedHelp }}</p>
         <dl class="medical-review-context">
           <dt>Content version</dt><dd>{{ preview.contentVersion }}</dd>
           <dt>Record type</dt><dd>{{ preview.recordType || '—' }}</dd>
@@ -29,7 +35,7 @@
       </template>
       <div class="medical-review-actions">
         <button type="button" data-testid="reload-medical-preview" :disabled="loading || saving" @click="load">Reload source</button>
-        <button type="button" data-testid="confirm-medical-approve" :disabled="!canSubmit" @click="submit(true)">Approve this version</button>
+        <button type="button" data-testid="confirm-medical-approve" :disabled="!canSubmit || preview?.validity === 'INVALIDATED'" @click="submit(true)">Approve this version</button>
         <button type="button" data-testid="confirm-medical-reject" :disabled="!canSubmit" @click="submit(false)">Reject this version</button>
         <button type="button" @click="emit('closed')">Close</button>
       </div>
@@ -40,20 +46,27 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { getMedicalReviewPreview, submitMedicalReview } from '@/api/medicalReview'
-import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession'
+import { captureAuthSession, isAuthSessionCurrent, readPermissionCache, AUTH_STORAGE_KEYS } from '@/utils/authSession'
+import OriginalImportFacts from '@/components/OriginalImportFacts.vue'
+import { medicalRecordCopy as correctionCopy } from '@/components/medical-record/medicalRecordCorrectionCopy'
+import { useCurrentPatient } from '@/composables/useCurrentPatient'
+import { useRoute } from 'vue-router'
 
 const props = defineProps({ recordId: { type: Number, required: true }, patientId: { type: [Number, String], required: true }, workspace: Boolean })
 const emit = defineEmits(['closed', 'reviewed'])
+const { currentPatient, currentPatientId } = useCurrentPatient()
+const route = useRoute()
 const preview = ref(null), note = ref(''), acknowledged = ref(false), loading = ref(false), saving = ref(false), conflict = ref(false), error = ref('')
-let epoch = 0, controller = null, session = null
-const currentSession = () => !!session && isAuthSessionCurrent(session) && session.actorId === localStorage.getItem('userId')
+const reviewPatientName = computed(() => (String(currentPatient.value?.id) === String(props.patientId) ? currentPatient.value?.patientName || currentPatient.value?.name : '') || preview.value?.patientName || correctionCopy.patientProfile)
+let epoch = 0, controller = null, session = null, permission = null
+const currentSession = () => !!session && isAuthSessionCurrent(session) && session.actorId === localStorage.getItem('userId') && permission === JSON.stringify(readPermissionCache()) && session.contextPatient === currentPatientId.value && session.contextRoute === route.fullPath
 const canSubmit = computed(() => !!preview.value && acknowledged.value && !loading.value && !saving.value && !conflict.value)
 function abnormalLabel(value) { return ({ 1: 'High', '-1': 'Low', 0: 'Normal' })[value] || '—' }
-function invalidate() { epoch++; controller?.abort(); preview.value = null; acknowledged.value = false; loading.value = false; saving.value = false; session = null }
+function invalidate() { epoch++; controller?.abort(); preview.value = null; note.value = ''; error.value = ''; conflict.value = false; acknowledged.value = false; loading.value = false; saving.value = false; session = null }
 function current(turn, record, patient) { return turn === epoch && record === props.recordId && String(patient) === String(props.patientId) && currentSession() }
 async function load() {
   invalidate(); const turn = epoch, record = props.recordId, patient = props.patientId
-  session = { ...captureAuthSession(), actorId: localStorage.getItem('userId') }; controller = new AbortController()
+  session = { ...captureAuthSession(), actorId: localStorage.getItem('userId'), contextPatient: currentPatientId.value, contextRoute: route.fullPath }; permission = JSON.stringify(readPermissionCache()); controller = new AbortController()
   if (!currentSession()) return
   loading.value = true; conflict.value = false; error.value = ''; note.value = ''
   try {
@@ -68,7 +81,7 @@ async function load() {
 }
 async function submit(approved) {
   if (!currentSession()) { invalidate(); return }
-  if (!canSubmit.value) return
+  if (!canSubmit.value || approved && preview.value?.validity === 'INVALIDATED') return
   const turn = epoch, record = props.recordId, patient = props.patientId
   // Submit the displayed version. A failed review must never silently fetch a new version and retry.
   const body = { approved, note: note.value, expectedContentVersion: preview.value.contentVersion }
@@ -80,13 +93,19 @@ async function submit(approved) {
     if (!current(turn, record, patient)) return
     acknowledged.value = false; conflict.value = true
     const status = Number(failure?.response?.status || failure?.code)
-    if (status === 401 || status === 403) preview.value = null
+    if (status === 401 || status === 403) {
+      // 失权时连同草稿清空；新的读取必须重新建立会话，旧回调不能恢复预览。
+      invalidate(); error.value = "Access changed. The source preview and review-note draft were cleared. Reload before reviewing."; return
+    }
     error.value = status === 409 ? 'The record changed. Reload and check the new version before reviewing.' : 'The review outcome is uncertain. Reload the source before deciding again.'
   } finally { if (turn === epoch) saving.value = false }
 }
+watch(() => [currentPatientId.value, route.fullPath], invalidate, { flush: 'sync' })
 watch(() => [props.recordId, props.patientId], load, { immediate: true, flush: 'sync' })
-onMounted(() => window.addEventListener('auth-session-cleared', invalidate))
-onUnmounted(() => { invalidate(); window.removeEventListener('auth-session-cleared', invalidate) })
+// 会话或权限改变时，原始事实与所属预览一起清空；旧响应不能重新填回。
+function storageChanged(event) { if (event.key == null || [...AUTH_STORAGE_KEYS, 'permissionSession', 'userMenus', 'userRoleCodes'].includes(event.key)) invalidate() }
+onMounted(() => { window.addEventListener('auth-session-cleared', invalidate); window.addEventListener('auth-session-changed', invalidate); window.addEventListener('storage', storageChanged) })
+onUnmounted(() => { invalidate(); window.removeEventListener('auth-session-cleared', invalidate); window.removeEventListener('auth-session-changed', invalidate); window.removeEventListener('storage', storageChanged) })
 </script>
 
 <style scoped>

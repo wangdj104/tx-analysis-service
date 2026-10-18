@@ -38,6 +38,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class DashboardServiceImpl implements DashboardService {
+    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
+
 
     @Autowired
     private DataScopeHelper dataScopeHelper;
@@ -114,6 +116,7 @@ public class DashboardServiceImpl implements DashboardService {
         if (patientId != null) {
             recordQw.eq("patient_id", patientId);
         }
+        recordQw.apply(medicalValidity.open().eligibleSql("medical_record."));
         List<MedicalRecord> userRecords = medicalRecordService.list(recordQw);
         List<Long> recordIds = userRecords.stream().map(MedicalRecord::getId).collect(Collectors.toList());
         long abnormalCount = 0;
@@ -122,13 +125,15 @@ public class DashboardServiceImpl implements DashboardService {
             List<MedicalRecordItem> abnormalItems = medicalRecordItemMapper.selectList(
                     new QueryWrapper<MedicalRecordItem>()
                             .in("record_id", recordIds)
-                            .ne("is_abnormal", 0)
+                            .apply("EXISTS (SELECT 1 FROM medical_record r WHERE r.id=medical_record_item.record_id AND "+medicalValidity.open().eligibleSql("r.")+")")
+                            .in("is_abnormal", -1, 1)
                             .orderByDesc("created_at")
                             .last("limit 20"));
             abnormalCount = medicalRecordItemMapper.selectCount(
                     new QueryWrapper<MedicalRecordItem>()
                             .in("record_id", recordIds)
-                            .ne("is_abnormal", 0));
+                            .apply("EXISTS (SELECT 1 FROM medical_record r WHERE r.id=medical_record_item.record_id AND "+medicalValidity.open().eligibleSql("r.")+")")
+                            .in("is_abnormal", -1, 1));
             Map<Long, MedicalRecord> recordMap = userRecords.stream()
                     .collect(Collectors.toMap(MedicalRecord::getId, r -> r, (a, b) -> a));
             for (MedicalRecordItem item : abnormalItems) {
@@ -181,8 +186,9 @@ public class DashboardServiceImpl implements DashboardService {
         if (patientId != null) {
             recentMedicalQw.eq("patient_id", patientId);
         }
+        recentMedicalQw.apply(medicalValidity.open().activeSql("medical_record."));
         recentMedicalQw.orderByDesc("record_date").last("limit 5");
-        vo.setRecentMedicalRecords(medicalRecordMapper.selectList(recentMedicalQw));
+        List<MedicalRecord> recentMedical=medicalRecordMapper.selectList(recentMedicalQw);medicalValidity.open().project(recentMedical);vo.setRecentMedicalRecords(recentMedical);
 
         vo.setMonthlyTrend(buildMonthlyTrend(userId, patientId));
         Map<String, Long> dehydrationStats = buildDehydrationStats(userId, month, patientId);

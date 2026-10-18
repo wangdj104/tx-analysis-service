@@ -123,11 +123,17 @@ body, #app, .care-workspace { background: var(--page); color: var(--ink-950); }
 .workspace-search, .workspace-utility-panel { background: var(--surface-subtle); border-color: var(--line-strong); }
 .workspace-utility-guide { border-left-color: var(--line); }
 .workspace-utility-identity:hover, .workspace-utility-guide:hover { background: var(--paper); }
-.workspace-nav__link:hover { background: var(--surface-hover); }
+.workspace-nav__link:not(.is-active):hover { background: var(--surface-hover); }
 .workspace-nav__link.is-active, .workspace-account__avatar, .skip-content { color: var(--on-accent); }
 .platform-ownership { color: var(--ink-500); }
 .care-workspace .content-panel { background: var(--paper) !important; }
 .care-workspace .toolbar { background: var(--surface-subtle) !important; }
+/* 深色模式下，列表标题栏使用主题底色，保证文字清晰。 */
+@media screen {
+  :root[data-health-theme="dark"] .module-page .list-panel-head {
+    background: var(--surface-subtle) !important;
+  }
+}
 .el-table, .care-workspace .el-table {
   --el-table-bg-color: var(--paper); --el-table-tr-bg-color: var(--paper);
   --el-table-header-bg-color: var(--surface-subtle); --el-table-row-hover-bg-color: var(--surface-hover);

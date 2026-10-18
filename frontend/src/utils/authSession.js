@@ -8,11 +8,13 @@ export function clearPermissionCache() {
 }
 
 export function saveAuthSession(data = {}) {
+  sessionRevision++;
   if (data.token && data.token !== localStorage.getItem('token')) clearAuthSession();
   if (data.token) localStorage.setItem('token', data.token);
   if (data.userId != null) localStorage.setItem('userId', String(data.userId));
   if (data.username) localStorage.setItem('username', data.username);
   if (data.realName != null) localStorage.setItem('realName', data.realName);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('auth-session-changed'));
 }
 
 export function clearAuthSession() {
@@ -61,3 +63,11 @@ export function getAuthSessionKey() {
   if (!token) return 'guest';
   return userId || username || token.slice(-8);
 }
+
+// Cross-tab account/cache changes invalidate same-token requests too. No protected data is persisted.
+if (typeof window !== 'undefined') window.addEventListener('storage', event => {
+  if (event.key === null || [...AUTH_STORAGE_KEYS, 'permissionSession'].includes(event.key)) {
+    sessionRevision++;
+    window.dispatchEvent(new Event('auth-session-changed'));
+  }
+});

@@ -48,10 +48,13 @@ import java.util.Set;
 
 @Service
 public class MonitoringServiceImpl implements MonitoringService {
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard medicationTracking;
 
     private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("H:mm");
 
     @Autowired private DataScopeHelper dataScopeHelper;
+    @Autowired private org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization originalMeasurementAuthorization;
+    @Autowired private org.familyhealthcare.service.measurementread.OriginalMeasurementRepository originalMeasurementRepository;
     @Autowired private BpSelfMonitorRecordMapper monitorMapper;
     @Autowired private AlertRecordMapper alertMapper;
     @Autowired private MedicationIntakeMapper intakeMapper;
@@ -68,10 +71,37 @@ public class MonitoringServiceImpl implements MonitoringService {
 
     @Override
     public MonitoringSnapshotVO getSnapshot(Long patientId, Integer days) {
-        if (patientId == null) {
-            throw new IllegalArgumentException("请选择患者。");
+        return snapshot(patientId,days,false,0);
+    }
+
+    @Override
+    public MonitoringSnapshotVO getBoundedSnapshot(Long patientId,Integer days) {
+        long actor=org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization.actor();
+        if(patientId==null||patientId<=0||days!=null&&(days<1||days>90))throw org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization.invalid();
+        try{return snapshot(patientId,days,true,actor);}
+        catch(org.familyhealthcare.service.alertworkflow.AlertWorkflowException failure){throw failure;}
+        catch(org.familyhealthcare.service.workflow.WorkflowException failure){
+            if(failure.getStatus()==403)throw org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization.denied();
+            throw org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization.unavailable();
         }
-        Patient patient = dataScopeHelper.requirePatient(patientId);
+        catch(org.familyhealthcare.service.careplan.CarePlanException failure){
+            if(failure.getStatus()==403)throw org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization.denied();
+            throw org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization.unavailable();
+        }
+        catch(IllegalStateException failure){
+            // 旧委托可能在最终复核前拒权；重新确认当前权限，未知业务状态仍为503。
+            originalMeasurementAuthorization.monitoring(actor,patientId);
+            throw org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization.unavailable();
+        }
+        catch(org.springframework.dao.DataAccessException failure){throw org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization.unavailable();}
+        catch(RuntimeException failure){throw org.familyhealthcare.service.measurementread.OriginalMeasurementReadAuthorization.unavailable();}
+    }
+
+    private MonitoringSnapshotVO snapshot(Long patientId,Integer days,boolean bounded,long actor) {
+        if (patientId == null) {
+            throw new IllegalArgumentException("请选择患者");
+        }
+        Patient patient = bounded ? originalMeasurementAuthorization.monitoring(actor,patientId) : dataScopeHelper.requirePatient(patientId);
         int rangeDays = days == null ? 7 : Math.max(1, Math.min(days, 90));
         LocalDate today = LocalDate.now();
         LocalDate from = today.minusDays(rangeDays - 1L);
@@ -80,12 +110,21 @@ public class MonitoringServiceImpl implements MonitoringService {
         PatientHealthTarget target = targetMapper.selectOne(
                 new QueryWrapper<PatientHealthTarget>().eq("patient_id", patientId).last("limit 1"));
 
-        List<BpSelfMonitorRecord> monitorRows = monitorMapper.selectList(
-                new QueryWrapper<BpSelfMonitorRecord>()
-                        .eq("patient_id", patientId)
-                        .ge("record_date", from)
-                        .orderByAsc("record_date")
-                        .orderByAsc("record_time"));
+        List<BpSelfMonitorRecord> monitorRows;
+        Map<String,Object> rawBp=null,rawGlucose=null;
+        if(bounded){
+            // 在原无界查询之前分支；两条latest与时间线自己的有限读取分别计数。
+            rawBp=originalMeasurementRepository.latestSelf(patientId,from,today.plusDays(1),true);
+            rawGlucose=originalMeasurementRepository.latestSelf(patientId,from,today.plusDays(1),false);
+            monitorRows=Collections.emptyList();
+        }else{
+            monitorRows = monitorMapper.selectList(
+                    new QueryWrapper<BpSelfMonitorRecord>()
+                            .eq("patient_id", patientId)
+                            .ge("record_date", from)
+                            .orderByAsc("record_date")
+                            .orderByAsc("record_time"));
+        }
 
         List<AlertRecord> activeAlerts = alertMapper.selectList(
                 new QueryWrapper<AlertRecord>().apply("(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')")
@@ -104,6 +143,9 @@ public class MonitoringServiceImpl implements MonitoringService {
                                 .or().ge("snooze_until", dayStart).lt("snooze_until", dayEnd))
                         .orderByAsc("scheduled_at"));
 
+        org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy=medicationTracking.legacyRead(patientId);
+        intakes=legacy.intakes(dataScopeHelper.requireUserId(),intakes);
+        List<MedicationIntake> legacyIntakes=legacy.untrackedIntakes(intakes);
         List<DialysisSchedule> schedules = scheduleService.list(patientId).stream()
                 .filter(r -> today.equals(r.getScheduleDate())).collect(java.util.stream.Collectors.toList());
 
@@ -124,8 +166,8 @@ public class MonitoringServiceImpl implements MonitoringService {
 
         List<HealthEvent> events = timelineService.list(patientId, null, null, 30);
 
-        BpSelfMonitorRecord latestBp = null;
-        BpSelfMonitorRecord latestGlucose = null;
+        BpSelfMonitorRecord latestBp = bounded ? org.familyhealthcare.service.measurementread.OriginalMeasurementRepository.legacyRecord(rawBp) : null;
+        BpSelfMonitorRecord latestGlucose = bounded ? org.familyhealthcare.service.measurementread.OriginalMeasurementRepository.legacyRecord(rawGlucose) : null;
         for (BpSelfMonitorRecord row : monitorRows) {
             if (row.getSystolicBp() != null || row.getDiastolicBp() != null) latestBp = row;
             if (row.getBloodGlucose() != null) latestGlucose = row;
@@ -133,6 +175,10 @@ public class MonitoringServiceImpl implements MonitoringService {
 
         MonitoringSnapshotVO result = new MonitoringSnapshotVO();
         result.setGeneratedAt(now);
+        if(bounded)result.setMeasurementContext(org.familyhealthcare.service.workflow.WorkflowData.map(
+                "mode","RAW_BOUNDED_V1","coverage","WINDOW_LATEST_NON_SNAPSHOT","sourceType","BP_SELF_MONITOR",
+                "from",from.toString(),"to",today.toString(),"timeBasis","RECORDED_LOCAL_TIME_ZONE_UNKNOWN",
+                "latestBloodPressure",rawBp,"latestGlucose",rawGlucose));
         result.setPatient(toPatientSummary(patient));
         result.setVitalTrend(buildTrend(monitorRows, target));
         result.setActiveAlerts(buildAlerts(activeAlerts));
@@ -144,14 +190,16 @@ public class MonitoringServiceImpl implements MonitoringService {
         signals.add(buildBloodPressureSignal(latestBp, target, now));
         signals.add(buildGlucoseSignal(latestGlucose, target, now));
         signals.add(buildDialysisSignal(latestDialysis, now));
-        signals.add(buildMedicationSignal(intakes, now));
+        signals.add(buildMedicationSignal(legacyIntakes, now));
         result.setSignals(signals);
 
         MonitoringSnapshotVO.Metrics metrics = buildMetrics(activeAlerts, result.getTodayTasks(), signals);
         result.setMetrics(metrics);
         resolveOverallStatus(result, latestBp, latestGlucose, target);
         result.setLastDataAt(resolveLastDataAt(latestBp, latestGlucose, latestDialysis, activeAlerts, events));
-        result.setCareSuggestions(buildSuggestions(result, latestBp, latestGlucose, intakes));
+        result.setCareSuggestions(buildSuggestions(result, latestBp, latestGlucose, legacyIntakes));
+        legacy.finish(dataScopeHelper.requireUserId());
+        if(bounded)originalMeasurementAuthorization.monitoring(actor,patientId);
         return result;
     }
 
@@ -211,19 +259,20 @@ public class MonitoringServiceImpl implements MonitoringService {
             Medication medication = medicationMap.get(intake.getMedicationId());
             MonitoringSnapshotVO.TaskItem task = new MonitoringSnapshotVO.TaskItem();
             task.setId(intake.getId());
-            task.setTaskType("MEDICATION");
+            task.setTaskType(intake.getNextAction()==null?"MEDICATION":"MEDICATION_WORKFLOW");
+            task.setNextAction(intake.getNextAction());task.setExecutionId(intake.getExecutionId());task.setFollowUpState(intake.getFollowUpState());task.setFollowUpKind(intake.getFollowUpKind());
             task.setTitle(medication != null ? medication.getDrugName() : org.familyhealthcare.util.ExportLocalization.text("Take medication on time", "按时服药"));
             task.setScheduledAt(intake.getSnoozeUntil() != null ? intake.getSnoozeUntil() : intake.getScheduledAt());
             task.setStatus(intake.getStatus());
             task.setDosage(intake.getDosage());
-            task.setDescription(intake.getReason());
+            task.setDescription(intake.getNextAction()==null?intake.getReason():String.valueOf(intake.getFollowUpState())+" / "+String.valueOf(intake.getFollowUpKind()));
             tasks.add(task);
         }
         for (DialysisSchedule schedule : schedules) {
             MonitoringSnapshotVO.TaskItem task = new MonitoringSnapshotVO.TaskItem();
             task.setId(schedule.getId());
             task.setTaskType("DIALYSIS");
-            task.setTitle("透析排班");
+            task.setTitle(org.familyhealthcare.util.ExportLocalization.text("Dialysis schedule", "透析计划"));
             task.setScheduledAt(schedule.getScheduleDate().atTime(parseTime(schedule.getScheduleTime())));
             task.setStatus(schedule.getStatus());
             task.setDescription(schedule.getRemark());
@@ -368,7 +417,7 @@ public class MonitoringServiceImpl implements MonitoringService {
         int critical = 0;
         for (AlertRecord alert : alerts) if ("CRITICAL".equals(alert.getAlertLevel())) critical++;
         metrics.setCriticalAlertCount(critical);
-        tasks = tasks.stream().filter(t -> !"CANCELLED".equals(t.getStatus())).collect(java.util.stream.Collectors.toList());
+        tasks = tasks.stream().filter(t -> !"MEDICATION_WORKFLOW".equals(t.getTaskType())&&!"CANCELLED".equals(t.getStatus())).collect(java.util.stream.Collectors.toList());
         metrics.setTodayTaskCount(tasks.size());
         int completed = 0;
         for (MonitoringSnapshotVO.TaskItem task : tasks) {

@@ -109,10 +109,10 @@ class NotificationSafetyPrimitivesTest {
     @Test void carePlanRecoveryMakesAnAttemptedExpiredClaimUnknownAndOnlyRequeuesUnattemptedWork() {
         Instant now = FIRST.plusSeconds(1000);
         JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:recovery_" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        jdbc.execute("CREATE TABLE care_plan_notification(id BIGINT,status VARCHAR(30),last_result VARCHAR(40),next_attempt_at TIMESTAMP,claim_token VARCHAR(36),claimed_at TIMESTAMP,updated_at TIMESTAMP)");
-        jdbc.update("INSERT INTO care_plan_notification VALUES(1,'CLAIMED','ATTEMPT_STARTED',NULL,'old',?,NULL)", ps -> ps.setTimestamp(1, Timestamp.from(now.minusSeconds(300)), Calendar.getInstance(TimeZone.getTimeZone("UTC"))));
-        jdbc.update("INSERT INTO care_plan_notification VALUES(2,'CLAIMED','CLAIMED_UNATTEMPTED',NULL,'old',?,NULL)", ps -> ps.setTimestamp(1, Timestamp.from(now.minusSeconds(301)), Calendar.getInstance(TimeZone.getTimeZone("UTC"))));
-        jdbc.update("INSERT INTO care_plan_notification VALUES(3,'CLAIMED','ATTEMPT_STARTED',NULL,'recent',?,NULL)", ps -> ps.setTimestamp(1, Timestamp.from(now.minusSeconds(299)), Calendar.getInstance(TimeZone.getTimeZone("UTC"))));
+        jdbc.execute("CREATE TABLE care_plan_notification(id BIGINT,status VARCHAR(30),last_result VARCHAR(40),next_attempt_at TIMESTAMP,claim_token VARCHAR(36),claimed_at TIMESTAMP,updated_at TIMESTAMP,request_id VARCHAR(100),attempt_count INT DEFAULT 0)");
+        jdbc.update("INSERT INTO care_plan_notification(id,status,last_result,next_attempt_at,claim_token,claimed_at,updated_at) VALUES(1,'CLAIMED','ATTEMPT_STARTED',NULL,'old',?,NULL)", ps -> ps.setTimestamp(1, Timestamp.from(now.minusSeconds(300)), Calendar.getInstance(TimeZone.getTimeZone("UTC"))));
+        jdbc.update("INSERT INTO care_plan_notification(id,status,last_result,next_attempt_at,claim_token,claimed_at,updated_at) VALUES(2,'CLAIMED','CLAIMED_UNATTEMPTED',NULL,'old',?,NULL)", ps -> ps.setTimestamp(1, Timestamp.from(now.minusSeconds(301)), Calendar.getInstance(TimeZone.getTimeZone("UTC"))));
+        jdbc.update("INSERT INTO care_plan_notification(id,status,last_result,next_attempt_at,claim_token,claimed_at,updated_at) VALUES(3,'CLAIMED','ATTEMPT_STARTED',NULL,'recent',?,NULL)", ps -> ps.setTimestamp(1, Timestamp.from(now.minusSeconds(299)), Calendar.getInstance(TimeZone.getTimeZone("UTC"))));
         CarePlanProperties properties = new CarePlanProperties(true, Clock.systemUTC());
         CarePlanNotificationWorker worker = new CarePlanNotificationWorker(jdbc, new CarePlanAuthorizationService(jdbc, properties), properties,
                 (channel, event, title, path) -> { throw new AssertionError("Recovery must not send"); });
@@ -125,6 +125,9 @@ class NotificationSafetyPrimitivesTest {
         assertEquals("QUEUED", jdbc.queryForObject("SELECT status FROM care_plan_notification WHERE id=2", String.class));
         assertEquals(now, jdbc.queryForObject("SELECT next_attempt_at FROM care_plan_notification WHERE id=2", (rs, index) -> rs.getTimestamp(1, Calendar.getInstance(TimeZone.getTimeZone("UTC"))).toInstant()));
         assertEquals("CLAIMED", jdbc.queryForObject("SELECT status FROM care_plan_notification WHERE id=3", String.class));
+        assertNull(jdbc.queryForObject("SELECT claimed_at FROM care_plan_notification WHERE id=1", Timestamp.class));
+        assertNull(jdbc.queryForObject("SELECT claimed_at FROM care_plan_notification WHERE id=2", Timestamp.class));
+        assertEquals(0, jdbc.queryForObject("SELECT attempt_count FROM care_plan_notification WHERE id=2", Integer.class));
     }
 
     private Instant firstAttempt(String request) { return NotificationAttemptPolicy.firstAttempt(request); }

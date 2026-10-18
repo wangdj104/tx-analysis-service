@@ -1,13 +1,14 @@
 <template>
   <section class="care-plan-detail" aria-label="协作计划详情">
     <p v-if="state.opening || loading" role="status">正在加载获授权的计划…</p><p v-if="message" role="status" class="feedback">{{ message }}</p>
-    <template v-if="enabled && state.plan">
+    <p v-if="navigationMismatch" role="alert">{{visitText('navigationChanged')}}</p>
+    <template v-if="enabled && state.plan && !navigationMismatch">
       <header><div><span>协作计划 · 版本 {{ state.plan.revisionNo }} · {{ lifecycleLabel(state.plan.lifecycle) }}</span><h2>{{ state.plan.title }}</h2></div><button type="button" data-testid="reload-detail" :disabled="busy" @click="requestReload">重新加载服务器状态</button></header>
       <router-link v-if="state.plan.revisionStatus!=='DRAFT'" :to="`/care-plans/reports?patientId=${state.plan.patientId}&planId=${planId}`" class="execution-report-entry" data-testid="detail-execution-report">此计划执行报告</router-link>
       <p class="instructions">{{ state.plan.instructions }}</p><p v-if="state.plan.revisionStatus==='DRAFT'" class="notice">私有临床草稿，尚未向患者或照护协作者发布。</p>
       <label v-if="revisions.length">版本历史 <select :value="historyRevisionId || ''" @change="selectHistory($event.target.value)"><option value="">当前已发布版本</option><option v-for="revision in revisions" :key="revision.id" :value="revision.id">版本 {{ revision.revisionNo }} · {{ revisionLabel(revision.status) }} · {{ displayTime(revision.publishedAt || revision.createdAt) }}</option></select></label><button v-if="revisionCursor" type="button" :disabled="busy" @click="loadRevisions(revisionCursor)">更多版本</button>
       <p v-if="historical" class="notice">历史快照，回执仍属于此版本。查看历史也需要当前权限。</p>
-      <article v-for="action in state.plan.actions || []" :key="action.id || action.ordinal" class="action-card">
+      <article v-for="action in state.plan.actions || []" :key="action.id || action.ordinal" class="action-card" :ref="node=>setNavigationTarget(action.id,node)" :tabindex="props.visitNavigation?.actionId===action.id ? -1 : undefined">
         <header><h3>{{ action.ordinal }}. {{ action.instruction }}</h3><span>{{ actionLabel(action.status) }}<template v-if="action.overdue"> · 当前逾期</template></span></header>
         <p>截止时间： {{ displayTime(action.dueAt) }} · 负责账号 #{{ action.assignedUserId }}</p>
         <p v-if="action.firstSubmittedAt">原始提交时间： {{ displayTime(action.firstSubmittedAt) }} · {{ originalTiming(action) }}</p><p v-if="action.latestSubmittedAt">最近提交时间： {{ displayTime(action.latestSubmittedAt) }}</p><p v-if="action.reviewWaitingSince">等待医生复核始于 {{ displayTime(action.reviewWaitingSince) }}. 已提交且待复核的记录不表示患者延迟。</p>
@@ -29,19 +30,26 @@
   </section>
 </template>
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useCarePlan } from '@/composables/useCarePlan'
 import { getCarePlanCapabilities, listPlanRevisions } from '@/api/carePlan'
 import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession'
 import { formatPlanTime } from '@/utils/carePlanTime'
+import {matchesVisitAction} from '@/utils/visitDispositionNavigation'
+import {visitText} from '@/utils/visitDispositionCopy'
 import PlanEditor from './PlanEditor.vue'
-const props=defineProps({planId:{type:Number,required:true}}),emit=defineEmits(['changed'])
+const props=defineProps({planId:{type:Number,required:true},visitNavigation:{type:Object,default:null}}),emit=defineEmits(['changed'])
 const client=useCarePlan(ref(null)),{state}=client,enabled=ref(false),loading=ref(false),message=ref(''),revisions=ref([]),revisionCursor=ref(null),historyRevisionId=ref(null),reviewTarget=ref(null),reviewNote=ref(''),transitionAction=ref(null),transitionReason=ref(''),editingRevision=ref(null),abandonIntent=ref(null)
+const navigationMismatch=computed(()=>!!props.visitNavigation && !!state.plan && !matchesVisitAction(state.plan,props.visitNavigation))
+let navigationNode=null,navigationFocus=0
+function setNavigationTarget(id,node){if(id===props.visitNavigation?.actionId)navigationNode=node}
+// 仅对当前患者、版本和确切行动聚焦；不同版本不回退到同序号。
+watch(()=>[state.plan,props.visitNavigation],async()=>{const sequence=++navigationFocus,c=context();await nextTick();if(sequence===navigationFocus&&owns(c)&&props.visitNavigation&&!navigationMismatch.value&&navigationNode?.isConnected)navigationNode.focus()},{flush:'post'})
 let generation=0,controller=null,lastCommand=null,historyGeneration=0
 const busy=computed(()=>loading.value||state.opening||state.commandPhase==='pending'),unresolved=computed(()=>state.commandPhase==='unknown')
 const historical=computed(()=>!!historyRevisionId.value && state.plan?.revisionId!==state.plan?.currentRevisionId && state.plan?.revisionStatus==='PUBLISHED')
-const planAllowed=name=>!historical.value && !!state.editor && !!state.plan?.allowedActions?.includes(name)
-const actionAllowed=(a,name)=>!historical.value && !!state.editor && !!state.plan?.actions?.find(current=>current.id===a?.id)?.allowedActions?.includes(name)
+const planAllowed=name=>!navigationMismatch.value && !historical.value && !!state.editor && !!state.plan?.allowedActions?.includes(name)
+const actionAllowed=(a,name)=>!navigationMismatch.value && !historical.value && !!state.editor && !!state.plan?.actions?.find(current=>current.id===a?.id)?.allowedActions?.includes(name)
 const canClose=computed(()=>planAllowed('CLOSE_PLAN') && state.plan?.actions?.length>0 && state.plan.actions.every(a=>a.status==='CONFIRMED'))
 const reviewAction=computed(()=>state.plan?.actions?.find(action=>action.id===reviewTarget.value?.id)||null)
 const reviewContextCurrent=computed(()=>!!reviewTarget.value && reviewTarget.value.planId===state.plan?.id && reviewTarget.value.revisionId===state.plan?.revisionId)
@@ -84,11 +92,11 @@ function roleLabel(role){return ({user:'个人用户',family:'家庭照护者',d
 function evidenceLabel(type){return type==='MEASUREMENT'?'测量':'医疗记录'}
 function eventLabel(type){return ({SUBMITTED:'执行记录已提交',RECEIPT_SUBMITTED:'执行记录已提交',CONFIRMED:'医生已复核记录',RECEIPT_CONFIRMED:'医生已复核记录',RETURNED:'已要求补充信息',RECEIPT_RETURNED:'已要求补充信息',HELP_REQUESTED:'已请求帮助',FOLLOW_UP:'照护团队跟进',FOLLOW_UP_RECORDED:'照护团队跟进',PUBLISHED:'版本已发布',PLAN_CANCELLED:'计划已取消',PLAN_CLOSED:'计划已关闭'})[type]||type}
 function beforeUnload(event){if(unresolved.value||state.commandPhase==='pending'){event.preventDefault();event.returnValue=''}}
-watch(()=>props.planId,initialize,{immediate:true,flush:'sync'})
+watch(()=>[props.planId,props.visitNavigation],initialize,{immediate:true,flush:'sync'})
 watch(historyRevisionId,()=>{if(enabled.value)loadDetail()},{flush:'sync'})
 watch(()=>state.editor,editor=>{if(!editor){revisions.value=[];revisionCursor.value=null;reviewTarget.value=null;reviewNote.value='';transitionAction.value=null;transitionReason.value='';editingRevision.value=null;abandonIntent.value=null}},{flush:'sync'})
 onMounted(()=>window.addEventListener('beforeunload',beforeUnload))
-onUnmounted(()=>{generation++;historyGeneration++;controller?.abort();window.removeEventListener('beforeunload',beforeUnload)})
+onUnmounted(()=>{navigationFocus++;navigationNode=null;generation++;historyGeneration++;controller?.abort();window.removeEventListener('beforeunload',beforeUnload)})
 defineExpose({requestLeave})
 </script>
 <style scoped>

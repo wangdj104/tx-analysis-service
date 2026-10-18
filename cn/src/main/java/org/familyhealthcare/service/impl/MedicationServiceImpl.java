@@ -23,11 +23,18 @@ import java.util.List;
 public class MedicationServiceImpl extends ServiceImpl<MedicationMapper, Medication>
         implements MedicationService {
 
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard tracking;
+
     @Autowired
     private MedicationLogMapper logMapper;
 
     @Autowired
     private DataScopeHelper dataScopeHelper;
+
+    @Override @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public boolean updateById(Medication medication){Medication old=getById(medication.getId());if(old==null)return false;tracking.requireMedicationMutationAllowed(dataScopeHelper.requireUserId(),old.getPatientId(),old.getId());if(!java.util.Objects.equals(old.getPatientId(),medication.getPatientId()))throw new IllegalStateException("Medication identity changed");return super.updateById(medication);}
+    @Override @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public boolean removeById(java.io.Serializable id){Medication old=getById(id);if(old==null)return false;tracking.requireMedicationMutationAllowed(dataScopeHelper.requireUserId(),old.getPatientId(),old.getId());return super.removeById(id);}
 
     private void syncPatient(MedicationLog log) {
         Patient patient = dataScopeHelper.requirePatient(log.getPatientId());
@@ -122,7 +129,9 @@ public class MedicationServiceImpl extends ServiceImpl<MedicationMapper, Medicat
             qw.eq("patient_id", patientId);
         }
         qw.eq("is_active", 1).orderByAsc("drug_name");
-        return super.list(qw);
+        List<Medication> rows=super.list(qw);
+        if(tracking.storageAvailable())for(Medication medication:rows)tracking.decorateMedication(medication);
+        return rows;
     }
 
     @Override
@@ -133,7 +142,9 @@ public class MedicationServiceImpl extends ServiceImpl<MedicationMapper, Medicat
             qw.eq("patient_id", patientId);
         }
         qw.orderByAsc("drug_name");
-        return super.list(qw);
+        List<Medication> rows=super.list(qw);
+        if(tracking.storageAvailable())for(Medication medication:rows)tracking.decorateMedication(medication);
+        return rows;
     }
 
     @Override

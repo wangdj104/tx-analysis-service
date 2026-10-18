@@ -23,7 +23,8 @@
           </div>
         </div>
 
-        <div class="content-panel">
+        <ReconciliationPanel :key="`${reconciliationPatient}:${currentPatientId}:${reconciliationExecution}`" :patient-id="reconciliationPatient" :execution-id="reconciliationExecution" :navigation-key="String(route.query.tab || '')" />
+        <div v-if="!medicationDeepLink" class="content-panel">
           <!-- Upload and Recognize -->
           <div v-show="activeMenu === 'upload'" class="upload-panel">
             <el-form :model="uploadForm" label-width="100px" class="upload-form">
@@ -179,8 +180,9 @@
                   </template>
                   <template #default="{ row }">
                     <div class="table-actions">
-                      <el-button link type="primary" size="small" @click="showDrugDialog(row)">编辑</el-button>
-                      <el-button link type="danger" size="small" @click="deleteDrug(row)">删除</el-button>
+                      <router-link class="medication-typed-link" v-if="row.executionId" :to="`/medication?patientId=${row.patientId}&executionId=${row.executionId}`">{{medicationText('open')}}</router-link>
+                      <el-button link type="primary" size="small" :disabled="!!row.executionId" @click="showDrugDialog(row)">编辑</el-button>
+                      <el-button link type="danger" size="small" :disabled="!!row.executionId" @click="deleteDrug(row)">删除</el-button>
                     </div>
                   </template>
                 </el-table-column>
@@ -190,7 +192,7 @@
 
           <!-- medicationrecord -->
           <div v-show="activeMenu === 'logs'">
-            <div class="toolbar">
+            <div class="toolbar control-row-toolbar">
               <el-form :inline="true" class="filter-form">
                 <el-form-item label="患者">
                   <el-select v-model="logFilter.patientId" placeholder="选择患者" filterable clearable style="width: 200px">
@@ -411,6 +413,8 @@ import { getPatientNames } from '@/api/patient';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import { useRoute } from 'vue-router';
 import MedicationReminderPanel from '@/components/MedicationReminderPanel.vue';
+import ReconciliationPanel from '@/components/medication-execution/ReconciliationPanel.vue';
+import {medicationText} from '@/utils/medicationExecutionCopy';
 
 import TableActionHeader from '@/components/TableActionHeader.vue';
 import { useTableColumns } from '@/composables/useTableColumns';
@@ -425,6 +429,11 @@ const isMobile = ref(false);
 const patientList = ref([]);
 
 const { currentPatientId } = useCurrentPatient();
+const medicationDeepLink = computed(() => route.query.executionId != null || route.query.patientId != null);
+const safeLinkId = value => typeof value === 'string' && /^[1-9][0-9]*$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : null;
+const reconciliationPatient = computed(() => medicationDeepLink.value ? safeLinkId(route.query.patientId) : currentPatientId.value);
+const reconciliationExecution = computed(() => medicationDeepLink.value ? safeLinkId(route.query.executionId) : null);
+
 
 const DRUG_COLUMN_DEFS = [
   { key: 'drugName', label: '药品' },
@@ -727,6 +736,7 @@ function getEffectType(code) {
 }
 
 async function loadDrugs() {
+  if (medicationDeepLink.value) return;
   const request = ++drugReadVersion;
   const context = patientVersion;
   const patientId = currentPatientId.value;
@@ -745,6 +755,7 @@ async function loadDrugs() {
 }
 
 async function loadActiveDrugs() {
+  if (medicationDeepLink.value) return;
   const request = ++activeDrugReadVersion;
   const context = patientVersion;
   const patientId = logDialogVisible.value ? editingLog.patientId : currentPatientId.value;
@@ -978,6 +989,7 @@ async function saveRecognizedDrug() {
 }
 
 async function loadLogs() {
+  if (medicationDeepLink.value) return;
   const request = ++logReadVersion;
   const context = patientVersion;
   const isCurrent = () => viewActive && context === patientVersion && request === logReadVersion;
@@ -1091,6 +1103,7 @@ function handlePaste(e) {
 }
 
 async function loadPatientList() {
+  if (medicationDeepLink.value) return;
   try {
     const res = await getPatientNames();
     if (viewActive && res.code === 200) {
@@ -1120,7 +1133,8 @@ onUnmounted(() => {
 });
 </script>
 
-<style scoped src="@/styles/module-layout.css"></style>
+<style scoped src="@/styles/module-layout.css">.medication-typed-link{display:inline-flex;align-items:center;min-height:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere;padding:4px 8px;box-sizing:border-box}
+</style>
 <style scoped>
 .medication-manager .top-bar.medication-heading {
   align-items: center;
@@ -1275,4 +1289,7 @@ onUnmounted(() => {
   }
 }
 .remind-panel > .el-empty { display: none; }
+.medication-typed-link{display:inline-flex;align-items:center;min-height:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere;padding:4px 8px;box-sizing:border-box}
 </style>
+
+<style scoped src="@/styles/control-row-toolbar.css"></style>

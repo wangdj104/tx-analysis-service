@@ -17,6 +17,9 @@ import static org.familyhealthcare.service.careplan.CarePlanData.*;
 @ConditionalOnProperty(name="care-plan.enabled",havingValue="true")
 @Transactional(readOnly=true,isolation=Isolation.READ_COMMITTED)
 public class CarePlanTimelineProjector {
+    @org.springframework.beans.factory.annotation.Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
+    @org.springframework.beans.factory.annotation.Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions medicalReferences;
+
     private static final List<String> PUBLIC=Arrays.asList("PLAN_PUBLISHED","REVISION_PUBLISHED","RECEIPT_SUBMITTED","HELP_REQUESTED","FOLLOW_UP_RECORDED","RECEIPT_CONFIRMED","RECEIPT_RETURNED","PLAN_CANCELLED","PLAN_CLOSED");
     private static final List<String> PRIVATE=Arrays.asList("DRAFT_CREATED","DRAFT_SAVED","REVISION_CREATED");
     private static final List<String> TIMELINE=Arrays.asList("PLAN_PUBLISHED","REVISION_PUBLISHED","RECEIPT_SUBMITTED","RECEIPT_CONFIRMED","RECEIPT_RETURNED","PLAN_CANCELLED","PLAN_CLOSED");
@@ -54,13 +57,20 @@ public class CarePlanTimelineProjector {
         sql+=" ORDER BY e.recorded_at DESC,e.id DESC LIMIT ?";args.add(limit+1);final String statement=sql;
         List<Map<String,Object>> rows=jdbc.query(connection->{PreparedStatement ps=connection.prepareStatement(statement);bind(ps,args);return ps;},(rs,i)->map("id",rs.getLong("id"),"actorId",rs.getLong("actor_id"),"actorName",rs.getString("actor_name"),"actorRole",rs.getString("actor_role"),"entryMode",rs.getString("entry_mode"),"eventType",rs.getString("event_type"),"note",rs.getString("note"),"occurredAt",time(rs,"occurred_at"),"recordedAt",time(rs,"recorded_at")));
         String next=null;if(rows.size()>limit){rows.remove(rows.size()-1);Map<String,Object> last=rows.get(rows.size()-1);next=encode(actorId,planId,visibility,(String)last.get("recordedAt"),id(last.get("id")));}
-        for(Map<String,Object> event:rows)event.put("evidence",evidence(actorId,patient,id(event.get("id"))));
+        List<Map<String,Object>> allRefs=new ArrayList<>();for(Map<String,Object> event:rows){List<Map<String,Object>> refs=evidence(actorId,patient,id(event.get("id")));event.put("evidence",refs);allRefs.addAll(refs);}
+        Map<Long,String> statuses=medicalStatuses(actorId,patient,allRefs);for(Map<String,Object> ref:allRefs)if("MEDICAL_RECORD".equals(ref.get("sourceType"))&&!Boolean.TRUE.equals(ref.get("restricted")))ref.put("sourceStatus",statuses.get(ref.get("anchorId")));
         auth.requireRead(actorId,patient);if(clinical!=clinical(actorId,patient))throw CarePlanException.denied();
         return map("items",rows,"nextCursor",next);
     }
+    private Map<Long,String> medicalStatuses(long actor,long patient,List<Map<String,Object>> rows) {
+        List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> anchors=new ArrayList<>();
+        for(Map<String,Object> row:rows)if("MEDICAL_RECORD".equals(row.get("sourceType"))&&row.get("anchorId")!=null&&!Boolean.TRUE.equals(row.get("restricted")))anchors.add(new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor(id(row.get("anchorId")),patient,id(row.get("sourceId")),null));
+        Map<Long,String> result=new HashMap<>();if(!anchors.isEmpty()){org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope scope=medicalValidity.open();for(int i=0;i<anchors.size();i+=100)result.putAll(medicalReferences.statuses(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind.CARE_PLAN_EVIDENCE,anchors.subList(i,Math.min(i+100,anchors.size())),scope));}return result;
+    }
     private List<Map<String,Object>> evidence(long actor,long patient,long event){
-        List<Map<String,Object>> rows=jdbc.query("SELECT source_type,source_id FROM care_plan_evidence WHERE event_id=? ORDER BY id",(rs,i)->map("sourceType",rs.getString("source_type"),"sourceId",rs.getLong("source_id")),event);
-        for(Map<String,Object> ref:rows){String type=(String)ref.get("sourceType");long source=id(ref.get("sourceId"));boolean readable=auth.canReadEvidence(actor,patient,type,source);ref.put("restricted",!readable);
+        List<Map<String,Object>> rows=jdbc.query("SELECT id,source_type,source_id FROM care_plan_evidence WHERE event_id=? ORDER BY id",(rs,i)->map("anchorId",rs.getLong("id"),"sourceType",rs.getString("source_type"),"sourceId",rs.getLong("source_id")),event);
+        for(Map<String,Object> ref:rows){String type=(String)ref.get("sourceType");long source=id(ref.get("sourceId"));boolean readable=auth.canReadEvidence(actor,patient,type,source);ref.put("restricted",!readable);if("MEDICAL_RECORD".equals(type))ref.put("sourceStatus",readable?"UNKNOWN_NEEDS_RECHECK":"SOURCE_UNAVAILABLE");
+            if(!readable)ref.remove("anchorId");
             if(readable){String table="MEASUREMENT".equals(type)?"health_measurement":"medical_record",column="MEASUREMENT".equals(type)?"metric_type":"record_type";
                 List<String> titles=jdbc.queryForList("SELECT "+column+" FROM "+table+" WHERE id=? AND patient_id=?",String.class,source,patient);if(titles.isEmpty())ref.put("restricted",true);else ref.put("title",titles.get(0));}
         }return rows;

@@ -27,7 +27,7 @@
             <div v-if="overview.attention?.items?.length" class="issue-list">
               <article v-for="item in overview.attention.items" :key="`${item.type}-${item.sourceId}`" class="issue-row">
                 <div class="issue-marker" :class="`is-${(item.severity || 'info').toLowerCase()}`"></div>
-                <div class="issue-copy"><div><el-tag size="small" :type="tagType(item.severity)">{{ severityText(item.severity) }}</el-tag><b>{{ item.title }}</b></div><p>{{ item.evidence || '相关依据可在源记录中查看' }}</p><small>截止 {{ formatDate(item.dueAt) }} · 响应时限 {{ formatSla(item.slaMinutes) }}<span v-if="item.ownerId"> · 负责人 #{{ item.ownerId }}</span></small></div>
+                <div class="issue-copy"><div><el-tag size="small" :type="tagType(item.severity)">{{ severityText(item.severity) }}</el-tag><b>{{ item.title }}</b></div><p>{{ item.evidence || '相关依据可在源记录中查看' }}</p><small><span v-if="item.dueAt">到期 {{formatDate(item.dueAt)}}</span><span v-if="Number.isFinite(item.slaMinutes)"> · SLA {{formatSla(item.slaMinutes)}}</span><span v-if="item.ownerId"> · 负责人 #{{ item.ownerId }}</span></small></div>
                 <div class="row-actions"><span>{{ item.recommendedAction }}</span><el-button type="primary" plain @click="openPath(item.path)">查看来源</el-button></div>
               </article>
             </div>
@@ -109,12 +109,26 @@
             <el-form label-position="top" class="import-form">
               <el-form-item label="数据来源"><el-radio-group v-model="importMode" @change="loadImportSample"><el-radio-button value="FHIR">FHIR 数据包</el-radio-button><el-radio-button value="DEVICE">设备读数</el-radio-button></el-radio-group></el-form-item>
               <el-form-item label="JSON 数据"><el-input v-model="importText" type="textarea" :rows="13" spellcheck="false" /></el-form-item>
-              <div class="button-cluster"><el-button @click="previewImport">校验并预览</el-button><el-button type="primary" :disabled="!importPreview?.itemCount" @click="commitImport">确认导入</el-button></div>
+              <div class="button-cluster"><el-button :loading="importBusy" :disabled="importBusy || submitting" @click="previewImport">校验并预览</el-button><el-button type="primary" :disabled="importBusy || !importPreview?.itemCount || !lastImportContext" @click="commitImport">确认导入</el-button></div>
             </el-form>
-            <el-alert v-for="warning in importPreview?.warnings || []" :key="warning" :title="warning" type="warning" :closable="false" show-icon />
+            <p class="import-notice">中止请求不代表回滚。若提交后中断，请先核验记录再重试；没有稳定来源编号的数据可能重复导入。</p>
+            <p v-if="importPreview" class="import-counts" role="status">有效 {{ importPreview.itemCount || 0 }} 项；已拒绝 {{ importPreview.rejectedCount || 0 }} 项。仅导入有效项，请修正拒绝项后重新预览。</p>
+            <el-alert v-for="(warning, index) in importWarnings" :key="index" :title="warning" type="warning" :closable="false" show-icon />
+            <article v-for="(row, index) in importRejectedRows" :key="index" class="import-rejected-row" data-testid="import-rejected-row">
+              <p><strong>{{ importFactsText('rejectedRow') }} {{ row.sourceType }} #{{ row.rowIndex }}</strong> · {{ row.message }}</p>
+              <ul><li v-for="(problem, fieldIndex) in (row.fields || []).slice(0, 8)" :key="fieldIndex">{{ importProblemText(problem) }}</li></ul>
+            </article>
+            <el-alert v-if="importError" :title="importError" type="error" :closable="false" show-icon />
+            <el-alert v-if="importResult" :title="`已创建 ${importResult.created || 0} 条，跳过 ${importResult.skipped || 0} 条，失败 ${importResult.errors || 0} 条。`" :type="importResult.errors > 0 ? 'warning' : 'success'" :closable="false" show-icon />
+            <el-alert v-for="(message, index) in importResult?.messages || []" :key="index" :title="message" type="warning" :closable="false" show-icon />
             <el-table v-if="importPreview?.items?.length" :data="importPreview.items" class="import-preview-table">
               <el-table-column prop="kind" label="类型" width="90"/><el-table-column prop="date" label="日期" width="120"/><el-table-column prop="display" label="观察指标" min-width="160"><template #default="{row}">{{ row.display || row.measureType }}</template></el-table-column><el-table-column label="数值" min-width="160"><template #default="{row}">{{ importValue(row) }}</template></el-table-column><el-table-column prop="externalId" label="来源 ID" min-width="160" show-overflow-tooltip/>
+              <el-table-column :label="importFactsText('previewHeading')" min-width="180"><template #default="{ $index }"><button type="button" class="import-facts-toggle" data-action="review-import-facts" :disabled="importBusy" :aria-expanded="expandedImportIndex === $index" aria-controls="import-original-facts" @click="expandedImportIndex = expandedImportIndex === $index ? null : $index">{{ importFactsText(expandedImportIndex === $index ? 'hideFacts' : 'reviewFacts') }} {{ $index + 1 }}</button></template></el-table-column>
             </el-table>
+            <section v-if="expandedImportRow" id="import-original-facts" class="import-facts-preview" :aria-label="importFactsText('previewHeading')">
+              <p><strong>{{ importFactsText('previewRow') }} {{ expandedImportIndex + 1 }}</strong></p>
+              <OriginalImportFacts :original-import="expandedImportRow.originalImport" preview />
+            </section>
           </el-tab-pane>
         </el-tabs>
       </section>
@@ -125,10 +139,13 @@
 
 <script setup>
 import MedicalRecordReviewDialog from '@/components/MedicalRecordReviewDialog.vue'
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import OriginalImportFacts from '@/components/OriginalImportFacts.vue'
+import { originalFactsText as importFactsText, importProblemText } from '@/utils/originalImportFacts'
+import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
+import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession'
 import { platformBranding } from '@/utils/platformBranding'
 import AutomationRunStatus from '@/components/AutomationRunStatus.vue'
 import { getClinicalWorkbenchOverview, getDialysisQuality, reviewAnalysisDraft, generateDialysisSchedule, previewClinicalImport, commitClinicalImport } from '@/api/clinicalWorkbench'
@@ -136,7 +153,17 @@ import { getClinicalWorkbenchOverview, getDialysisQuality, reviewAnalysisDraft, 
 const router = useRouter()
 const { currentPatientId: patientId, currentPatientName } = useCurrentPatient()
 const loading = ref(false), activeTab = ref('attention'), overview = ref({}), dialysisDays = ref(90)
-const schedulePreview = ref([]), importMode = ref('FHIR'), importText = ref(''), importPreview = ref(null), lastImportBody = ref(null)
+const schedulePreview = ref([]), importMode = ref('FHIR'), importText = ref(''), importPreview = ref(null), lastImportContext = ref(null)
+const importBusy = ref(false), importResult = ref(null), importError = ref('')
+const expandedImportIndex = ref(null)
+const expandedImportRow = computed(() => expandedImportIndex.value === null ? null : importPreview.value?.items?.[expandedImportIndex.value])
+const importRejectedRows = computed(() => Array.isArray(importPreview.value?.rejectedRows) ? importPreview.value.rejectedRows.slice(0, 1000) : [])
+const importWarnings = computed(() => {
+  const rejectedMessages = new Set(importRejectedRows.value.map(row => row.message))
+  return (importPreview.value?.warnings || []).filter(message => !rejectedMessages.has(message))
+})
+watch(importPreview, preview => { expandedImportIndex.value = preview?.items?.length ? 0 : null }, { flush: 'sync' })
+let importAttempt = null, importDisposed = false
 const medicalReviewTarget = ref(null)
 const submitting = ref(false)
 let loadEpoch = 0, importEpoch = 0, scheduleEpoch = 0
@@ -206,34 +233,129 @@ const res=await generateDialysisSchedule(body); ElMessage.success(`已创建 ${r
   finally { submitting.value=false }
 }
 function printCard(){ window.print() }
-function loadImportSample(){ importPreview.value=null; lastImportBody.value=null; importText.value=JSON.stringify(importMode.value==='FHIR'?fhirSample:deviceSample,null,2) }
-function importBody(){ const value=JSON.parse(importText.value); return importMode.value==='FHIR'?{patientId:patientId.value,bundle:value}:{patientId:patientId.value,readings:Array.isArray(value)?value:value.readings} }
-async function previewImport(){
-  if(!patientId.value || submitting.value)return
-  const epoch=++importEpoch, selectedPatient=patientId.value
-  importPreview.value=null; lastImportBody.value=null
-  try{ const body=importBody(); const res=await previewClinicalImport(body); if(epoch!==importEpoch || selectedPatient!==patientId.value)return; importPreview.value=res.data; lastImportBody.value=body; if(!res.data?.itemCount)ElMessage.warning('未找到支持导入的数据项。') }catch(error){ if(error instanceof SyntaxError)ElMessage.error('JSON 数据格式无效。'); else console.error(error) }
+function loadImportSample(){ importText.value=JSON.stringify(importMode.value==='FHIR'?fhirSample:deviceSample,null,2) }
+function buildImportRequest(selectedPatient, mode, rawText, confirmed=false) {
+  if (!Number.isSafeInteger(selectedPatient) || selectedPatient <= 0 || !['FHIR', 'DEVICE'].includes(mode) || typeof rawText !== 'string') throw new Error('IMPORT_INPUT_INVALID')
+  const value = JSON.parse(rawText)
+  const object = value !== null && typeof value === 'object' && !Array.isArray(value)
+  if (mode === 'FHIR' ? !object : !(Array.isArray(value) || (object && Array.isArray(value.readings)))) throw new Error('IMPORT_INPUT_INVALID')
+  // 解析仅用于语法与外层形状检查；数值始终取原文，内层包装不能覆盖患者或确认信息。
+  const body = `{"patientId":${JSON.stringify(selectedPatient)},"confirmed":${confirmed === true},"${mode === 'FHIR' ? 'bundle' : 'readings'}":${rawText}}`
+  if (new TextEncoder().encode(body).length > 1048576) throw new Error('IMPORT_TOO_LARGE')
+  return body
 }
-async function commitImport(){
-  if(submitting.value || !lastImportBody.value || !importPreview.value?.itemCount)return
-  const body=lastImportBody.value, epoch=importEpoch
-  submitting.value=true
+function captureImportContext() {
+  return Object.freeze({ patientId: patientId.value, mode: importMode.value, rawText: importText.value, epoch: importEpoch,
+    auth: Object.freeze({ ...captureAuthSession(), actorId: localStorage.getItem('userId') }) })
+}
+function isImportContextCurrent(context) {
+  return !importDisposed && context?.epoch === importEpoch && context.patientId === patientId.value && context.mode === importMode.value &&
+    context.rawText === importText.value && isAuthSessionCurrent(context.auth) && context.auth.actorId === localStorage.getItem('userId')
+}
+function ownsImport(attempt) {
+  return attempt === importAttempt && !attempt.controller.signal.aborted && isImportContextCurrent(attempt.context)
+}
+function beginImport(context) {
+  // 新尝试先中止旧请求；中止只忽略过期响应，并不表示服务端已回滚。
+  importAttempt?.controller.abort()
+  const attempt = { context, controller: new AbortController() }
+  importAttempt = attempt
+  importBusy.value = true
+  importError.value = ''
+  return attempt
+}
+function invalidateImport() {
+  ++importEpoch
+  importAttempt?.controller.abort()
+  importAttempt = null
+  importBusy.value = false
+  importPreview.value = null
+  lastImportContext.value = null
+  importResult.value = null
+  importError.value = ''
+}
+function importStorageChanged(event) {
+  if (event.key === null || ['token', 'userId', 'username', 'realName', 'permissionSession', 'userMenus', 'userMenuNames', 'userRoleCodes', 'currentPatientId'].includes(event.key)) invalidateImport()
+}
+function showImportInputError(error) {
+  importError.value = error?.message === 'IMPORT_TOO_LARGE' ? '导入请求超过 1 MiB，请拆分后重试。' : 'JSON 数据或外层结构无效，请提供 FHIR 对象、设备数组或单层 readings 数组包装。'
+  ElMessage.error(importError.value)
+}
+async function previewImport() {
+  if (importDisposed || !patientId.value || submitting.value || importBusy.value) return
+  const context = captureImportContext()
+  if (!isImportContextCurrent(context)) return
+  const attempt = beginImport(context)
+  importPreview.value = null
+  lastImportContext.value = null
+  importResult.value = null
+  let body
+  try { body = buildImportRequest(context.patientId, context.mode, context.rawText) }
+  catch (error) { if (ownsImport(attempt)) { showImportInputError(error); importBusy.value = false } return }
   try {
-  await ElMessageBox.confirm(`确认导入 ${importPreview.value.itemCount} 项数据，并将其标记为待审核吗？`, '确认临床数据导入', {type:'warning'})
-  if(epoch!==importEpoch || body!==lastImportBody.value || body.patientId!==patientId.value)return
-const res=await commitClinicalImport(body); ElMessage.success(`已创建 ${res.data?.created||0} 条，跳过 ${res.data?.skipped||0} 条，失败 ${res.data?.errors||0} 条。`); if(epoch===importEpoch){importPreview.value=null; lastImportBody.value=null; await load()}
-  } catch(error) { if(error!=='cancel' && error!=='close')console.error(error) }
-  finally { submitting.value=false }
+    if (!ownsImport(attempt)) return
+    const res = await previewClinicalImport(body, { signal: attempt.controller.signal, expectedAuth: context.auth })
+    if (!ownsImport(attempt)) return
+    importPreview.value = res.data
+    lastImportContext.value = context
+    if (!res.data?.itemCount) ElMessage.warning('没有可导入的有效数据项，请修正后重新预览。')
+  } catch {
+    // 当前请求错误由共享拦截器显示；过期响应不得再次提示或记录请求内容。
+  } finally { if (ownsImport(attempt)) importBusy.value = false }
+}
+async function commitImport() {
+  const context = lastImportContext.value
+  if (importBusy.value || submitting.value || !context || !importPreview.value?.itemCount || !isImportContextCurrent(context)) return
+  const valid = importPreview.value.itemCount, rejected = importPreview.value.rejectedCount || 0
+  const attempt = beginImport(context)
+  let dispatched = false
+  try {
+    await ElMessageBox.confirm(`确认仅导入 ${valid} 项有效数据并标记为待审核？${rejected} 项已拒绝的数据不会导入。`, '确认临床数据导入', { type: 'warning' })
+    if (!ownsImport(attempt) || context !== lastImportContext.value) return
+    const body = buildImportRequest(context.patientId, context.mode, context.rawText, true)
+    if (!ownsImport(attempt)) return
+    // 已派发的提交不自动重试；后续必须重新预览并由用户作出新决定。
+    dispatched = true
+    lastImportContext.value = null
+    const res = await commitClinicalImport(body, { signal: attempt.controller.signal, expectedAuth: context.auth })
+    if (!ownsImport(attempt)) return
+    importResult.value = res.data
+    importPreview.value = null
+    const summary = `已创建 ${res.data?.created || 0} 条，跳过 ${res.data?.skipped || 0} 条，失败 ${res.data?.errors || 0} 条。`
+    if (res.data?.errors > 0) ElMessage.warning(summary)
+    else ElMessage.success(summary)
+    if (ownsImport(attempt)) await load()
+  } catch (error) {
+    if (!ownsImport(attempt) || error === 'cancel' || error === 'close') return
+    if (dispatched) importError.value = '尚未确认导入结果，部分数据可能已保存。再次导入前请先核验记录；中止请求不代表回滚。'
+    else showImportInputError(error)
+  } finally {
+    // 旧请求的 finally 不能清除新请求的忙碌状态。
+    if (ownsImport(attempt)) importBusy.value = false
+  }
 }
 function importValue(row){ if(row.measureType==='BP'||row.measureType==='BOTH')return `${row.systolic}/${row.diastolic} mmHg${row.glucose!=null?` · ${row.glucose} ${row.unit}`:''}`; if(row.measureType==='BG')return `${row.glucose} ${row.unit}`; return `${row.value??'—'} ${row.unit||''}` }
 
-watch([patientId, importText, importMode],()=>{ ++importEpoch; importPreview.value=null; lastImportBody.value=null },{flush:'sync'})
+watch([patientId, importText, importMode], invalidateImport, { flush: 'sync' })
 watch(()=>JSON.stringify(scheduleBody()),()=>{ ++scheduleEpoch; schedulePreview.value=[]; scheduleSnapshot='' },{flush:'sync'})
-watch(patientId,()=>{ overview.value={}; schedulePreview.value=[]; importPreview.value=null; lastImportBody.value=null; schedule.weekdays=[]; schedule.time=''; load() },{flush:'sync'})
+watch(patientId,()=>{ overview.value={}; schedulePreview.value=[];  schedule.weekdays=[]; schedule.time=''; load() },{flush:'sync'})
+window.addEventListener('auth-session-changed', invalidateImport)
+window.addEventListener('auth-session-cleared', invalidateImport)
+window.addEventListener('storage', importStorageChanged)
+onBeforeUnmount(() => {
+  importDisposed = true
+  invalidateImport()
+  window.removeEventListener('auth-session-changed', invalidateImport)
+  window.removeEventListener('auth-session-cleared', invalidateImport)
+  window.removeEventListener('storage', importStorageChanged)
+})
 onMounted(()=>{ loadImportSample(); load() })
 </script>
 
 <style scoped>
+.import-facts-toggle{min-height:44px;max-width:100%;padding:8px 12px;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800);font:inherit;line-height:1.5;white-space:normal;overflow-wrap:anywhere;cursor:pointer}.import-facts-toggle:disabled{opacity:.55;cursor:not-allowed}.import-facts-toggle:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.import-facts-preview,.import-rejected-row{min-width:0;overflow-wrap:anywhere;line-height:1.6}.import-facts-preview>p{margin:16px 0 0}.import-rejected-row{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-subtle);color:var(--ink-800)}.import-rejected-row p{margin:0}.import-rejected-row ul{padding-inline-start:24px;margin:8px 0 0}
+
+.import-form :deep(.el-button),.import-form :deep(.el-radio-button__inner){min-height:44px}.import-form :deep(.el-radio-button__inner){display:inline-flex;align-items:center}.import-notice,.import-counts{line-height:1.6;overflow-wrap:anywhere}.import-notice{color:var(--ink-500);font-size:12px}
 .clinical-workbench{max-width:1440px;margin:0 auto;padding:28px 32px 48px;color:var(--ink-950)}.workbench-hero,.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.workbench-hero{margin-bottom:20px}.workbench-hero h1{margin:6px 0;font-size:30px;letter-spacing:-.04em}.workbench-hero p,.section-heading p,.schedule-builder p{margin:0;color:var(--ink-500);line-height:1.6}.eyebrow{font-size:11px;font-weight:700;letter-spacing:.15em;color:var(--care-700)}.metric-grid,.quality-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}.metric-grid article,.quality-metrics article{padding:18px 20px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}.metric-grid span,.quality-metrics span{display:block;color:var(--ink-500);font-size:12px}.metric-grid strong,.quality-metrics strong{display:block;margin:8px 0 3px;font-size:28px}.metric-grid small{color:var(--ink-500)}.workbench-panel{padding:4px 22px 24px;border:1px solid var(--line);border-radius:16px;background:var(--paper)}.section-heading{margin:12px 0 18px}.section-heading h2{margin:0 0 5px;font-size:20px}.issue-list{display:grid;gap:10px}.issue-row{display:grid;grid-template-columns:4px minmax(0,1fr) minmax(180px,auto);gap:14px;align-items:center;padding:15px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface-subtle)}.issue-marker{align-self:stretch;border-radius:3px;background:var(--info)}.issue-marker.is-critical{background:var(--danger)}.issue-marker.is-warning{background:var(--warning)}.issue-copy>div,.finding-card>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.issue-copy b,.finding-card b{font-size:14px}.issue-copy p,.finding-card p{margin:7px 0 4px;color:var(--ink-700)}.issue-copy small,.finding-card small{color:var(--ink-500)}.row-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;max-width:390px}.row-actions span{font-size:12px;color:var(--ink-700);text-align:right}.button-cluster{display:flex;flex-wrap:wrap;gap:8px}.button-cluster :deep(.el-button + .el-button){margin-left:0}.quality-metrics{margin:18px 0}.quality-metrics .small-value{font-size:16px;line-height:1.3;overflow-wrap:anywhere}.finding-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}.finding-grid.compact{grid-template-columns:repeat(3,minmax(0,1fr))}.finding-card{padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--surface-subtle)}.finding-card.is-critical{border-color:var(--danger-soft);background:var(--danger-soft)}.finding-card.is-warning{border-color:var(--warning-soft);background:var(--warning-soft)}.schedule-builder{margin-top:20px;padding:20px;border-radius:14px;background:var(--surface-subtle);border:1px solid var(--line)}.schedule-builder h3{margin:0 0 5px}.schedule-form{display:grid;grid-template-columns:minmax(300px,2fr) repeat(3,minmax(130px,1fr));gap:12px;margin-top:18px}.schedule-form :deep(.el-form-item){margin-bottom:4px}.schedule-form :deep(.el-date-editor),.schedule-form :deep(.el-time-picker){width:100%}.schedule-preview{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px;max-height:130px;overflow:auto}.emergency-card{padding:26px;border:2px solid var(--care-800);border-radius:16px;background:var(--paper)}.emergency-card>header{display:flex;justify-content:space-between;gap:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}.emergency-card header span{font-size:10px;letter-spacing:.13em}.emergency-card h2{margin:5px 0}.emergency-card header p{margin:0;color:var(--ink-700)}.emergency-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0}.emergency-card section{padding:15px;border:1px solid var(--line);border-radius:10px}.emergency-card h3{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.06em}.emergency-card dl{display:grid;grid-template-columns:130px 1fr;gap:7px;margin:0}.emergency-card dt{color:var(--ink-500)}.emergency-card dd{margin:0;font-weight:600}.critical-section{border-color:var(--danger-soft)!important;background:var(--danger-soft)}.medication-chips{display:flex;gap:8px;flex-wrap:wrap}.medication-chips span{padding:6px 10px;border-radius:999px;background:var(--care-50)}.emergency-card footer{margin-top:15px;font-size:11px;color:var(--ink-500)}.import-form{max-width:900px}.import-form :deep(textarea){font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:1.55}.import-preview-table{margin-top:18px}.workbench-tabs :deep(.el-tabs__header){position:sticky;top:76px;z-index:4;background:var(--paper);padding-top:8px}
 @media(max-width:900px){.metric-grid,.quality-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.schedule-form{grid-template-columns:repeat(2,minmax(0,1fr))}.finding-grid.compact{grid-template-columns:1fr}.issue-row{grid-template-columns:4px 1fr}.issue-row>.row-actions,.issue-row>.button-cluster,.issue-row>.el-button{grid-column:2;justify-self:start}.row-actions{max-width:none;justify-content:flex-start;flex-wrap:wrap}.row-actions span{text-align:left}.emergency-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.clinical-workbench{padding:20px 14px 32px}.workbench-hero,.section-heading{flex-direction:column}.metric-grid,.quality-metrics,.finding-grid,.schedule-form{grid-template-columns:1fr}.workbench-panel{padding:2px 14px 18px}.issue-row{padding:13px 10px}.button-cluster{width:100%}.button-cluster :deep(.el-button){flex:1;margin:0;min-width:min(140px,100%)}.emergency-card{padding:16px}.emergency-card>header{flex-direction:column}.emergency-card dl{grid-template-columns:1fr}.emergency-card dd{margin-bottom:6px}.workbench-tabs :deep(.el-tabs__header){top:64px}.workbench-tabs :deep(.el-tabs__nav-wrap){overflow-x:auto}.workbench-tabs :deep(.el-tabs__nav){float:none}.workbench-tabs :deep(.el-tabs__item){padding:0 12px;white-space:nowrap}}

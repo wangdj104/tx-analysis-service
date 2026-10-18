@@ -7,14 +7,28 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 import java.util.*;
 
-/** Current authority uses its own fresh transaction, never the preview's older snapshot. */
+/** 当前授权单独开启新事务，不能使用详情的旧内容快照。 */
 @Service
 public class MedicalRecordReviewAccess {
     private final JdbcTemplate jdbc;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.familyhealthcare.service.careplan.CarePlanAuthorizationService carePlanAuthorization;
+
     public MedicalRecordReviewAccess(JdbcTemplate jdbc) {this.jdbc=jdbc;}
 
     @Transactional(readOnly=true, propagation=Propagation.REQUIRES_NEW, isolation=Isolation.READ_COMMITTED)
     public void requireCurrent(MedicalRecord snapshot, boolean write, boolean doctorWorkspace) {
+        requireAuthority(snapshot, write, doctorWorkspace);
+    }
+
+    /** 写入口已持有 authority 父锁；不得再开启独立事务等待自己持有的锁。 */
+    public void requireLockedCurrent(MedicalRecord snapshot, long actor, boolean write, boolean doctorWorkspace) {
+        org.familyhealthcare.service.workflow.WorkflowData.mutationTransaction(jdbc);
+        if (!Long.valueOf(actor).equals(CurrentUserUtil.getCurrentUserId())) denied();
+        requireAuthority(snapshot, write, doctorWorkspace);
+    }
+
+    private void requireAuthority(MedicalRecord snapshot, boolean write, boolean doctorWorkspace) {
         List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,patient_id,user_id FROM medical_record WHERE id=?",snapshot.getId());
         if(rows.size()!=1 || !Objects.equals(number(rows.get(0).get("id")),snapshot.getId())
                 || !Objects.equals(number(rows.get(0).get("patient_id")),snapshot.getPatientId())
@@ -39,6 +53,18 @@ public class MedicalRecordReviewAccess {
         for(Map<String,Object> member:jdbc.queryForList("SELECT access_level,visible_modules FROM care_member WHERE user_id=? AND patient_id=?",actor,patient)) if(permits(member,write)) return;
         denied();
     }
+    /** 聚焦来源严格沿用照护证据权限；管理员或任务指派不能替代该权限。 */
+    @Transactional(readOnly=true, propagation=Propagation.REQUIRES_NEW, isolation=Isolation.READ_COMMITTED)
+    public void requireCurrentEvidence(MedicalRecord snapshot, long actor, long patient) {
+        List<Map<String,Object>> rows = jdbc.queryForList("SELECT id,patient_id,user_id FROM medical_record WHERE id=?", snapshot.getId());
+        if (rows.size() != 1 || !Objects.equals(number(rows.get(0).get("id")), snapshot.getId())
+                || !Objects.equals(number(rows.get(0).get("patient_id")), snapshot.getPatientId())
+                || !Objects.equals(number(rows.get(0).get("user_id")), snapshot.getUserId())
+                || !Long.valueOf(patient).equals(snapshot.getPatientId())
+                || !Long.valueOf(actor).equals(CurrentUserUtil.getCurrentUserId())
+                || !carePlanAuthorization.canReadEvidence(actor, patient, "MEDICAL_RECORD", snapshot.getId())) denied();
+    }
+
     private boolean permits(Map<String,Object> row,boolean write) {
         if(write && !Arrays.asList("WRITE","PROXY").contains(String.valueOf(row.get("access_level")))) return false;
         String modules=row.get("visible_modules")==null?"":String.valueOf(row.get("visible_modules")).trim();

@@ -62,6 +62,12 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
     }
     @Override public boolean removeById(java.io.Serializable id) {return baseMapper.delete(new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY).eq("id",id))>0;}
 
+    @Autowired
+    private org.familyhealthcare.service.medicalrecord.MedicalRecordThresholdWriter thresholdWriter;
+    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
+    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions medicalReferences;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     // ---- rulemanagement ----
 
     @Override
@@ -131,7 +137,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
         qw.eq("patient_id", patientId);
         if (status != null && !status.isEmpty()) qw.eq("status", status);
         qw.orderByDesc("triggered_at");
-        return baseMapper.selectList(qw);
+        List<AlertRecord> rows=baseMapper.selectList(qw);projectSourceStatus(rows);return rows;
     }
 
     @Override
@@ -217,6 +223,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
     @Override
     public void checkThresholdsSystem(Long patientId, Long userId) {
         if (patientId == null || userId == null) return;
+        String activeSources=medicalValidity.open().activeSql("r.");
 
         // getthis Patienthas Enabled rule
         QueryWrapper<AlertRule> ruleQw = new QueryWrapper<>();
@@ -228,21 +235,21 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
             if (indicatorCode == null) continue;
 
             // through JOIN medical_record tableby PatientID + indicatorCodequerylatestExaminationitem
-            MedicalRecordItem latestItem = medicalRecordItemMapper.selectLatestByPatientIdAndItemCode(patientId, indicatorCode);
+            MedicalRecordItem latestItem = medicalRecordItemMapper.selectLatestByPatientIdAndItemCode(patientId, indicatorCode, activeSources);
 
             // if item_code not match, trythroughindicatorNamematch (supportstandardname and alias)
             if (latestItem == null) {
                 HealthIndicator indicator = healthIndicatorService.findByCode(indicatorCode);
                 if (indicator != null) {
                     // 1. firsttrystandardName
-                    latestItem = medicalRecordItemMapper.selectLatestByPatientIdAndItemName(patientId, indicator.getItemName());
+                    latestItem = medicalRecordItemMapper.selectLatestByPatientIdAndItemName(patientId, indicator.getItemName(), activeSources);
                     // 2. againtry aliases in alias (comma-separated)
                     if (latestItem == null && indicator.getAliases() != null && !indicator.getAliases().isEmpty()) {
                         String[] aliases = indicator.getAliases().split(",");
                         for (String alias : aliases) {
                             String trimmedAlias = alias.trim();
                             if (!trimmedAlias.isEmpty()) {
-                                latestItem = medicalRecordItemMapper.selectLatestByPatientIdAndItemName(patientId, trimmedAlias);
+                                latestItem = medicalRecordItemMapper.selectLatestByPatientIdAndItemName(patientId, trimmedAlias, activeSources);
                                 if (latestItem != null) {
                                     break;
                                 }
@@ -254,99 +261,18 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
 
             if (latestItem == null || latestItem.getResultValue() == null) continue;
 
-            // extractcountvalue (supportfrom containUnit stringinextract, for example  "200.5μmol/L")
-            BigDecimal numericValue = extractNumericValue(latestItem.getResultValue());
-            if (numericValue == null) continue;
-
-            // Examinationthreshold
-            boolean breached = checkThreshold(numericValue, rule.getThresholdType(), rule.getThresholdValue());
-            if (!breached) continue;
-
-            String dedupeKey = "RULE:" + rule.getId() + ":ITEM:" + latestItem.getId();
-            QueryWrapper<AlertRecord> activeQw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
-            activeQw.eq("patient_id", patientId).eq("dedupe_key", dedupeKey)
-                    .in("status", "PENDING", "CONFIRMED", "OBSERVING", "CONSULTED", "RECHECKED")
-                    .orderByDesc("id").last("limit 1");
-            AlertRecord active = baseMapper.selectOne(activeQw);
-            if (active != null) {
-                active.setLastTriggeredAt(LocalDateTime.now());
-                active.setTriggeredValue(latestItem.getResultValue() + (latestItem.getUnit() != null ? " " + latestItem.getUnit() : ""));
-                active.setOccurrenceCount((active.getOccurrenceCount() == null ? 1 : active.getOccurrenceCount()) + 1);
-                baseMapper.updateById(active);
-                continue;
-            }
-
-            // Create one active alert for one source observation. Repeated scans only refresh lastTriggeredAt.
-            AlertRecord record = new AlertRecord();
-            record.setRuleId(rule.getId());
-            record.setPatientId(patientId);
-            record.setUserId(userId);
-            record.setAlertType("INDICATOR");
-            record.setAlertLevel(rule.getAlertLevel());
-            record.setAlertTitle(rule.getIndicatorName() + " Health Alerts");
-            record.setTriggeredValue(latestItem.getResultValue() + (latestItem.getUnit() != null ? " " + latestItem.getUnit() : ""));
-            record.setTriggeredAt(LocalDateTime.now());
-            record.setLastTriggeredAt(record.getTriggeredAt());
-            record.setSourceType("MEDICAL_RECORD_ITEM");
-            record.setSourceId(latestItem.getId());
-            record.setDedupeKey(dedupeKey);
-            record.setOccurrenceCount(1);
-            record.setStatus("PENDING");
-            baseMapper.insert(record);
-            if ("WARNING".equals(rule.getAlertLevel()) || "CRITICAL".equals(rule.getAlertLevel())) {
-                notificationAudienceService.notifyCareTeam(patientId, "INDICATOR_ALERT", record.getAlertTitle(),
-                        "A new result crossed the configured threshold. Review it in the Attention Center; clinical action still requires confirmation.");
-            }
+            org.familyhealthcare.service.medicalrecord.MedicalRecordThresholdWriter.Candidate candidate =
+                    thresholdWriter.evaluate(patientId,userId,latestItem.getRecordId(),latestItem.getId(),rule.getId());
+            thresholdWriter.dispatch(candidate);
         }
     }
 
-    /**
-     * from testresultvalueinextractcountvalue, supportpurenumbers or containUnit string (for example  "200.5μmol/L", ">200")
-     */
-    private static final Pattern NUMERIC_PATTERN = Pattern.compile("(-?\\d+\\.?\\d*)");
-
-    private BigDecimal extractNumericValue(String resultValue) {
-        if (resultValue == null) return null;
-        String trimmed = resultValue.trim();
-        try {
-            return new BigDecimal(trimmed);
-        } catch (NumberFormatException e) {
-            // tryfrom stringinextractnumberspart
-            Matcher matcher = NUMERIC_PATTERN.matcher(trimmed);
-            if (matcher.find()) {
-                try {
-                    return new BigDecimal(matcher.group(1));
-                } catch (NumberFormatException ex) {
-                    return null;
-                }
-            }
-            return null;
-        }
-    }
-
-    private boolean checkThreshold(BigDecimal value, String thresholdType, String thresholdValue) {
-        try {
-            switch (thresholdType) {
-                case "ABOVE":
-                    BigDecimal aboveThreshold = new BigDecimal(thresholdValue.trim());
-                    return value.compareTo(aboveThreshold) > 0;
-                case "BELOW":
-                    BigDecimal belowThreshold = new BigDecimal(thresholdValue.trim());
-                    return value.compareTo(belowThreshold) < 0;
-                case "OUT_OF_RANGE":
-                    // thresholdValue format: "min-max"
-                    String[] range = thresholdValue.trim().split("-");
-                    if (range.length == 2) {
-                        BigDecimal min = new BigDecimal(range[0]);
-                        BigDecimal max = new BigDecimal(range[1]);
-                        return value.compareTo(min) < 0 || value.compareTo(max) > 0;
-                    }
-                    return false;
-                default:
-                    return false;
-            }
-        } catch (Exception e) {
-            return false;
+    private void projectSourceStatus(List<AlertRecord> rows) {
+        List<AlertRecord> medical=new java.util.ArrayList<>();for(AlertRecord row:rows)if("MEDICAL_RECORD_ITEM".equals(row.getSourceType()))medical.add(row);if(medical.isEmpty())return;
+        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope view=medicalValidity.open();
+        for(int start=0;start<medical.size();start+=100){List<AlertRecord> part=medical.subList(start,Math.min(start+100,medical.size()));List<Long> ids=new java.util.ArrayList<>();for(AlertRecord row:part)ids.add(row.getSourceId());java.util.Map<Long,Long> parents=new java.util.HashMap<>();jdbc.query("SELECT id,record_id FROM medical_record_item WHERE id IN ("+String.join(",",java.util.Collections.nCopies(ids.size(),"?"))+")",rs->{parents.put(rs.getLong("id"),rs.getLong("record_id"));},ids.toArray());
+            List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> anchors=new java.util.ArrayList<>();for(AlertRecord row:part){row.setSourceStatus("SOURCE_UNAVAILABLE");Long parent=parents.get(row.getSourceId());if(parent!=null&&row.getPatientId()!=null)anchors.add(new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor(row.getId(),row.getPatientId(),parent,row.getSourceId()));}
+            java.util.Map<Long,String> statuses=medicalReferences.statuses(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind.LEGACY_ALERT,anchors,view);for(AlertRecord row:part)if(statuses.containsKey(row.getId()))row.setSourceStatus(statuses.get(row.getId()));
         }
     }
 
@@ -379,7 +305,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
 
         QueryWrapper<AlertRecord> recentQw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
         recentQw.eq("patient_id", patientId).orderByDesc("triggered_at").last("limit 5");
-        stats.setRecentAlerts(baseMapper.selectList(recentQw));
+        List<AlertRecord> recent=baseMapper.selectList(recentQw);projectSourceStatus(recent);stats.setRecentAlerts(recent);
 
         return stats;
     }

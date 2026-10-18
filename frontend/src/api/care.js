@@ -1,7 +1,7 @@
 import request from '@/utils/request'
 export const getCareHome = () => request({ url: '/care/home' })
-export const getCareContext = patientId => request({ url: '/care/context', params: { patientId } })
-export const saveCareItem = data => request({ url: '/care/items', method: 'post', data })
+export const getCareContext = (patientId, filters = {}, options = {}) => request({ ...options, url: '/care/context', params: { ...filters, patientId } })
+export const saveCareItem = (data, options = {}) => request({ ...options, url: '/care/items', method: 'post', data })
 export const careAction = (id,status,note) => request({ url: `/care/items/${id}/status`, method: 'put', data: { status,note } })
 export const deleteCareItem = id => request({ url: `/care/items/${id}`, method: 'delete' })
 export const createCareInvite = patientId => request({ url: '/care/invitations', method: 'post', params: { patientId } })

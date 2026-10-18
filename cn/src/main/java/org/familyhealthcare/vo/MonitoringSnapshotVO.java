@@ -25,6 +25,7 @@ public class MonitoringSnapshotVO {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastDataAt;
     private Map<String, Object> latestVitals = new LinkedHashMap<>();
+    private Map<String, Object> measurementContext;
     private Metrics metrics = new Metrics();
     private List<Signal> signals = new ArrayList<>();
     private List<VitalPoint> vitalTrend = new ArrayList<>();
@@ -94,6 +95,10 @@ public class MonitoringSnapshotVO {
 
     @Data
     public static class TaskItem {
+        private String nextAction;
+        private Long executionId;
+        private String followUpState;
+        private String followUpKind;
         private Long id;
         private String taskType;
         private String title;

@@ -9,21 +9,30 @@
         <article class="status-card"><span>Dialysis schedule</span><strong>{{ scheduleState==='ready' ? (todaySchedule ? statusText(todaySchedule.status) : 'No schedule') : scheduleStateText(scheduleState) }}</strong><small>{{ todaySchedule?.scheduleTime || '—' }}</small></article>
         <article class="status-card"><span>Personal targets</span><strong>{{ target.id ? 'Configured' : 'Not configured' }}</strong><small>Personal targets improve alert accuracy</small></article>
       </section>
-      <el-tabs v-model="tab" class="workspace">
+      <p v-if="intakes.some(item=>item.nextAction)" role="status">Collaborative follow-up is excluded from the legacy taken/missed summary. Unknown facts or ended follow-up do not establish execution or safety.</p>
+      <AppointmentSchedulePreview ref="appointmentPreview" :patient-id="patientId" />
+      <el-tabs v-model="tab" class="workspace" :before-leave="() => !measurementHistoryLocked && appointmentPreview?.protectNavigation()!==false">
         <el-tab-pane v-if="availableTabs.includes('today')" label="Today's Tasks" name="today">
           <div class="toolbar"><el-button type="primary" @click="openEvent()">Record symptom or event</el-button><el-button @click="$router.push('/bp-self-monitor')">Quick blood pressure / glucose entry</el-button><el-button @click="$router.push('/medication?tab=remind')">Medication reminders</el-button></div>
           <el-empty v-if="reloadState==='ready' && ['ready','disabled'].includes(scheduleState) && !intakes.length && !todaySchedule" description="Nothing needs attention today" />
           <div v-if="todaySchedule" class="task-row"><div><b>{{ todaySchedule.scheduleTime || 'Time not set' }} Dialysis session</b><p>{{ todaySchedule.remark }}</p></div><el-tag>{{statusText(todaySchedule.status)}}</el-tag><div class="actions"><el-button @click="openSchedule(todaySchedule)">View schedule</el-button><el-button v-if="todaySchedule.status==='PLANNED'" :disabled="saving" @click="changeSchedule(todaySchedule,'COMPLETED')">Mark complete</el-button></div></div>
-          <div v-for="item in intakes" :key="item.id" class="task-row">
-            <div><b>{{ item.scheduledAt?.slice(11,16) }} {{ item.drugName }}</b><p>{{ item.dosage || 'As prescribed' }}</p><small v-if="item.status==='SNOOZED'">Snoozed until {{ item.snoozeUntil }}</small></div>
-            <el-tag :type="tagType(item.status)">{{ intakeText(item.status) }}</el-tag>
-            <div v-if="['PENDING','MISSED','SNOOZED'].includes(item.status)" class="actions"><el-button type="success" :disabled="saving" @click="doIntake(item,'TAKEN')">Taken</el-button><el-button :disabled="saving" @click="doIntake(item,'SNOOZED')">Remind in 15 minutes</el-button><el-button type="danger" plain :disabled="saving" @click="doIntake(item,'SKIPPED')">Skip</el-button></div>
+          <div v-for="item in intakes" :key="item.id" class="task-row" :class="{ 'task-row--workflow': !!item.nextAction }">
+            <div :class="{ 'workflow-task-copy': !!item.nextAction }"><b>{{ item.scheduledAt?.slice(11,16) }} {{ item.drugName }}</b><p v-if="!item.nextAction">{{ item.dosage || 'As prescribed' }}</p><small v-if="!item.nextAction && item.status==='SNOOZED'">Snoozed until {{ item.snoozeUntil }}</small><span v-if="item.nextAction" role="status" class="workflow-task-truth">{{medicationText(item.followUpState)}} · {{medicationText(item.followUpKind)}} · {{medicationText(item.status)}}</span></div>
+            <router-link v-if="item.nextAction" class="medication-typed-link" :to="`/medication?patientId=${patientId}${item.executionId ? '&executionId='+item.executionId : ''}`">{{medicationText('intakeTitle')}}</router-link>
+            <el-tag v-else :type="tagType(item.status)">{{ intakeText(item.status) }}</el-tag>
+            <div v-if="!item.nextAction && ['PENDING','MISSED','SNOOZED'].includes(item.status)" class="actions"><el-button type="success" :disabled="saving" @click="doIntake(item,'TAKEN')">Taken</el-button><el-button :disabled="saving" @click="doIntake(item,'SNOOZED')">Remind in 15 minutes</el-button><el-button type="danger" plain :disabled="saving" @click="doIntake(item,'SKIPPED')">Skip</el-button></div>
           </div>
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('timeline')" label="Health Timeline" name="timeline">
-          <div class="toolbar"><el-button type="primary" @click="openEvent()">Add health event</el-button><el-date-picker v-model="eventRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="Start Date" end-placeholder="End Date" @change="reload" /></div>
+          <div class="measurement-read-model"><div class="mr-controls"><button type="button" :disabled="measurementHistoryLocked" :aria-pressed="timelineView==='measurements'" @click="timelineView='measurements'">{{measurementText('trustedTimeline')}}</button><button type="button" :disabled="measurementHistoryLocked" :aria-pressed="timelineView==='records'" @click="timelineView='records'">{{measurementText('legacyTimeline')}}</button></div></div>
+          <MeasurementItemHistory v-if="tab==='timeline' && timelineView==='measurements'" :patient-id="patientId" :patient-name="currentPatientName" @locked="measurementHistoryLocked=$event" />
+          <template v-if="tab==='timeline' && timelineView==='records'">
+          <p v-if="timelineState==='loading'" role="status">{{measurementText('loading')}}</p><p v-else-if="['denied','unavailable'].includes(timelineState)" role="alert">{{measurementText(timelineState)}}</p>
+          <div class="toolbar"><el-button type="primary" @click="openEvent()">Add health event</el-button><el-date-picker v-model="eventRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="Start Date" end-placeholder="End Date" @change="refreshLegacyTimeline" /></div>
           <p>Measurements, dialysis sessions, and medication records are combined automatically. Up to 200 recent events are shown; edit source records in their original module.</p>
-          <el-timeline><el-timeline-item v-for="e in events" :key="`${e.sourceType || 'MANUAL'}-${e.sourceId ?? e.id}`" :timestamp="timelineTimestamp(e)" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><router-link v-if="safePlanLink(e)" :to="safePlanLink(e)" class="care-plan-event-link">Open plan and authorized history</router-link><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">Edit</el-button><el-popconfirm title="Delete this event?" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">Delete</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="reloadState==='ready' && !events.length" description="No health events" />
+          <el-timeline><el-timeline-item v-for="e in events" :key="`${e.sourceType || 'MANUAL'}-${e.sourceId ?? e.id}`" :timestamp="timelineTimestamp(e)" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><router-link v-if="safePlanLink(e)" :to="safePlanLink(e)" class="care-plan-event-link">Open plan and authorized history</router-link><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">Edit</el-button><el-popconfirm title="Delete this event?" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">Delete</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="timelineState==='ready' && !events.length" description="No health events" />
+        
+          </template>
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('schedule')" label="Dialysis Schedule" name="schedule">
           <el-alert v-if="scheduleState!=='ready'" :title="scheduleStateText(scheduleState)" type="warning" :closable="false" show-icon />
@@ -41,9 +50,9 @@
             <p>Hospital: {{summary.target?.hospitalName || 'Not provided'}}; Primary clinician: {{summary.target?.doctorName || 'Not provided'}}</p><p>Emergency contact: {{summary.target?.emergencyContact || summary.patient?.emergencyContact || 'Not provided'}} {{summary.target?.emergencyPhone || summary.patient?.emergencyPhone}}</p>
             <p>Blood pressure target: {{summary.target?.systolicMin || '—'}}–{{summary.target?.systolicMax || '—'}} / {{summary.target?.diastolicMin || '—'}}–{{summary.target?.diastolicMax || '—'}} mmHg</p>
             <h3>Current medications</h3><table><thead><tr><th>Medication</th><th>Dose instructions</th></tr></thead><tbody><tr v-for="m in summary.medications" :key="m.id"><td>{{m.drugName}}</td><td>{{m.defaultDosage || 'as prescribed'}}</td></tr></tbody></table><p v-if="!summary.medications?.length">No medication records</p>
-            <h3>Recent measurements (up to 30)</h3><table><thead><tr><th>Time</th><th>Blood pressure (mmHg)</th><th>Blood glucose</th></tr></thead><tbody><tr v-for="r in summary.recentMeasurements" :key="r.id"><td>{{r.recordDate}} {{r.recordTime}}</td><td>{{r.systolicBp ?? '—'}} / {{r.diastolicBp ?? '—'}}</td><td>{{r.bloodGlucose ?? '—'}} {{r.bgUnit}}</td></tr></tbody></table>
+            <h3>Recent measurements (up to 30)</h3><p>{{ot('reportScope')}} {{ot('unassessed')}} {{ot('localTime')}}</p><router-link to="/bp-self-monitor">{{ot('open')}}</router-link><table><thead><tr><th>Time</th><th>Blood pressure (mmHg)</th><th>Blood glucose</th></tr></thead><tbody><tr v-for="r in summary.recentMeasurements" :key="r.id"><td>{{selfTime(r)}} · #{{r.id}}</td><td>{{r.systolicBp ?? '—'}} / {{r.diastolicBp ?? '—'}}</td><td>{{selfGlucose(r)}}</td></tr></tbody></table>
             <h3>Unresolved alerts (up to 30)</h3><ul><li v-for="a in summary.unresolvedAlerts" :key="a.id">{{a.triggeredAt}} {{a.alertTitle}}: {{a.triggeredValue}} {{a.handlingNote}}</li></ul><p v-if="!summary.unresolvedAlerts?.length">No unresolved alerts</p>
-            <h3>Questions for the clinician</h3><ul><li v-for="q in summary.questions||[]" :key="q.id"><b>{{q.title}}</b><p>{{q.details?.description}}</p><p v-if="q.details?.answer">Recorded answer: {{q.details.answer}}</p><p v-if="q.details?.followUp">Follow-up: {{q.details.followUp}}</p></li></ul>
+            <h3>Questions for the clinician</h3><ul><li v-for="q in summary.questions||[]" :key="q.id"><b>{{q.title}}</b><p>{{q.details?.description}}</p><p v-if="q.details?.answer">Recorded answer: {{q.details.answer}}</p><p v-if="q.details?.followUp">Follow-up: {{q.details.followUp}}</p><p>{{questionText(q.questionProjection?.answerOrigin || 'LEGACY_UNVERIFIED')}}</p><p v-if="q.questionProjection?.projectionBasis==='PRESERVED_NATIVE_SNAPSHOT'">{{questionText('preserved')}}</p><p v-if="q.questionProjection?.answerRecorderId">{{questionText('recorder')}}: #{{q.questionProjection.answerRecorderId}} · {{q.questionProjection.answerRecordedAt}}</p><router-link v-if="q.questionProjection?.detailLink" :to="q.questionProjection.detailLink">{{questionText('view')}}</router-link></li></ul><p>{{questionText('preview')}}</p><router-link :to="`/care?patientId=${patientId}&tab=questions`">{{questionText('summaryMore')}}</router-link>
             <h3>Recent symptom tracking</h3><ul><li v-for="s in summary.careSymptoms||[]" :key="s.id">{{s.eventAt}} {{s.title}}, self-rated {{s.details?.severity}}/10, duration {{s.details?.duration || 'Not provided'}}; {{s.details?.response}}</li></ul>
             <h3>Recent health events (up to 30)</h3><ul><li v-for="e in summary.recentEvents" :key="`${e.sourceType}-${e.id}`">{{e.eventDate}} {{e.title}}: {{e.summary}}</li></ul><p>{{summary.disclaimer}}</p>
           </article><el-empty v-else description="Generate a summary to prepare recent records for the next appointment"/>
@@ -56,7 +65,12 @@
   </main>
 </template>
 <script setup>
+import AppointmentSchedulePreview from '@/components/visit-follow-up/AppointmentSchedulePreview.vue';
+import {questionText} from '@/utils/visitQuestionCopy'
 import {ref,reactive,computed,watch,onMounted,onUnmounted,inject,nextTick} from 'vue'
+const appointmentPreview=ref(null);
+import MeasurementItemHistory from '@/components/measurement-read-model/MeasurementItemHistory.vue'
+import {measurementText} from '@/utils/measurementReadModelCopy'
 import {ElMessage,ElMessageBox} from 'element-plus'
 import {useCurrentPatient} from '@/composables/useCurrentPatient'
 import {useRoute,useRouter} from 'vue-router'
@@ -64,9 +78,14 @@ import ExecutionReportPanel from '@/components/care-plan/ExecutionReportPanel.vu
 import {captureAuthSession,isAuthSessionCurrent,AUTH_STORAGE_KEYS,readPermissionCache} from '@/utils/authSession'
 import {canAccessWorkspace} from '@/utils/workspaceAccess'
 import * as api from '@/api/familyHealth'
+import {medicationText} from '@/utils/medicationExecutionCopy'
 import {localDateKey, replaceTarget} from '@/utils/familyHealth'
+import {selfTime,selfGlucose} from '@/utils/originalMeasurementPresentation'
+import {originalText as ot} from '@/utils/originalMeasurementCopy'
 import {formatPlanTime} from '@/utils/carePlanTime'
-const {currentPatientId:patientId}=useCurrentPatient()
+const {currentPatientId:patientId,currentPatientName}=useCurrentPatient()
+const timelineView=ref('measurements'),timelineState=ref('idle'),measurementHistoryLocked=ref(false)
+let timelineEpoch=0,timelineController=null
 const tab=ref('today'),intakes=ref([]),events=ref([]),schedules=ref([]),target=reactive({}),loading=ref(false),saving=ref(false)
 const eventVisible=ref(false),scheduleVisible=ref(false),eventForm=reactive({}),scheduleForm=reactive({}),eventRange=ref(null)
 const reportPanel=ref(null)
@@ -88,7 +107,7 @@ watch(tab,value=>{
   if(!availableTabs.value.includes(value) || route.query.tab===value)return
   router.push({path:route.path,query:{...route.query,tab:value}})
 })
-const activeIntakes=computed(()=>intakes.value.filter(x=>x.status!=='CANCELLED'))
+const activeIntakes=computed(()=>intakes.value.filter(x=>!x.nextAction && x.status!=='CANCELLED'))
 const takenCount=computed(()=>activeIntakes.value.filter(x=>x.status==='TAKEN').length),missedCount=computed(()=>activeIntakes.value.filter(x=>x.status==='MISSED').length)
 const todaySchedule=computed(()=>schedules.value.find(x=>x.scheduleDate===today.value))
 let requestVersion=0, taskVersion=0, summaryVersion=0, timer
@@ -96,6 +115,7 @@ let summaryController=null, printPopup=null
 let disposed=false, taskPending=null
 const reloadState=ref('idle'),scheduleState=ref('idle')
 function clearReload(){
+  clearLegacyTimeline()
   requestVersion++;taskVersion++;taskPending=null
   intakes.value=[];events.value=[];schedules.value=[];replaceTarget(target,null)
   reloadState.value='idle';scheduleState.value='idle';loading.value=false
@@ -124,17 +144,28 @@ async function reload(){
   const owns=()=>active&&!disposed&&id===patientId.value&&version===requestVersion&&isAuthSessionCurrent(auth)
   loading.value=true;reloadState.value='loading';scheduleState.value='loading'
   try {
-    const [a,b,c,d]=await Promise.all([api.getIntakes(id),api.getTimeline(id,eventRange.value?.[0],eventRange.value?.[1]),loadOptionalSchedules(id,owns),api.getHealthTarget(id)])
+    const [a,c,d]=await Promise.all([api.getIntakes(id),loadOptionalSchedules(id,owns),api.getHealthTarget(id)])
     if(!owns())return
     // Full reload and task-only refresh share ownership of the intake list.
     if(intakeVersion===taskVersion){intakes.value=a.data||[];today.value=localDateKey()}
-    events.value=b.data||[];schedules.value=c.data;scheduleState.value=c.state;replaceTarget(target,d.data)
+    schedules.value=c.data;scheduleState.value=c.state;replaceTarget(target,d.data)
     reloadState.value='ready'
+    refreshLegacyTimeline()
   }catch(error){
     if(owns()){intakes.value=[];events.value=[];schedules.value=[];replaceTarget(target,null);reloadState.value=readFailure(error);scheduleState.value='unavailable'}
   } finally {active=false;if(!disposed && version===requestVersion)loading.value=false}
 }
+function clearLegacyTimeline(){timelineEpoch++;timelineController?.abort();timelineController=null;events.value=[];timelineState.value='idle'}
+async function refreshLegacyTimeline(){
+  clearLegacyTimeline()
+  if(disposed || !patientId.value || tab.value!=='timeline' || timelineView.value!=='records')return
+  const id=patientId.value,version=timelineEpoch,auth=captureAuthSession(),actor=localStorage.getItem('userId'),controller=new AbortController()
+  timelineController=controller;timelineState.value='loading'
+  const owns=()=>!disposed&&version===timelineEpoch&&id===patientId.value&&tab.value==='timeline'&&timelineView.value==='records'&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId')
+  try{const result=await api.getTimeline(id,eventRange.value?.[0],eventRange.value?.[1],{signal:controller.signal,expectedAuth:{...auth,actorId:actor}});if(owns()){events.value=result.data||[];timelineState.value='ready'}}catch(error){if(owns()){events.value=[];timelineState.value=readFailure(error)}}finally{if(timelineController===controller)timelineController=null}
+}
 watch(patientId,()=>{invalidateContext();reload()},{immediate:true,flush:'sync'})
+watch([tab,timelineView],refreshLegacyTimeline,{flush:'sync'})
 async function refreshTasks(){
   const id=patientId.value
   // Skip redundant background reads before advancing result ownership.
@@ -148,7 +179,7 @@ async function refreshTasks(){
   finally{if(taskPending===pending)taskPending=null}
 }
 onMounted(()=>{timer=window.setInterval(refreshTasks,30000)})
-onUnmounted(()=>{disposed=true;taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateContext);window.removeEventListener('storage',summaryStorageChanged)})
+onUnmounted(()=>{disposed=true;clearLegacyTimeline();taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateContext);window.removeEventListener('storage',summaryStorageChanged)})
 async function save(operation){if(saving.value)return;const id=patientId.value;if(!id)return;saving.value=true;try{await operation(id);ElMessage.success('Saved successfully.');if(id===patientId.value){summaryVersion++;summary.value=null;summaryLoading.value=false;await reload()}}finally{saving.value=false}}
 async function doIntake(item,status){const id=patientId.value;let reason='';if(status==='SKIPPED'){const answer=await ElMessageBox.prompt('Briefly explain why this dose was skipped.','Skip this medication dose').catch(()=>null);if(!answer)return;reason=answer.value}if(id!==patientId.value)return;await save(()=>api.actionIntake(item.id,status,reason))}
 function openEvent(row){Object.keys(eventForm).forEach(k=>delete eventForm[k]);Object.assign(eventForm,{id:null,eventDate:localDateKey(),eventTime:'',eventType:'SYMPTOM',title:'',summary:''},row||{});eventVisible.value=true}
@@ -226,6 +257,8 @@ function safePlanLink(event){return event.sourceType==='CARE_PLAN_EVENT'&&Number
 const eventType=s=>({SYMPTOM:'Symptom',VISIT:'Visit',NOTE:'Note',MEASUREMENT:'Measurement',DIALYSIS:'Dialysis',INTAKE:'Medication intake',MEDICATION_LOG:'Medication record'}[s]||s)
 </script>
 <style scoped>
+.medication-typed-link{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:.5rem;overflow-wrap:anywhere}.medication-typed-link:focus-visible{outline:2px solid var(--el-color-primary);outline-offset:2px}
+
 .visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid var(--line);padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:var(--ink-500)}</style>
 <style scoped>
 .care-plan-event-link{display:inline-flex;align-items:center;min-height:44px;margin:8px;padding:0 10px;color:var(--care-700)}.care-plan-event-link:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
@@ -367,6 +400,13 @@ const eventType=s=>({SYMPTOM:'Symptom',VISIT:'Visit',NOTE:'Note',MEASUREMENT:'Me
   gap: 12px;
   border-bottom: 1px solid var(--line-soft, #edf2f1);
 }
+
+/* 仅跟踪随访使用整行文本与独立链接；普通旧剂量行保留原布局和动作。 */
+.task-row.task-row--workflow { grid-template-columns: minmax(0, 1fr); align-items: start; }
+.workflow-task-copy { min-width: 0; overflow-wrap: anywhere; }
+.workflow-task-copy b, .workflow-task-truth { display: block; }
+.workflow-task-truth { margin-top: 6px; line-height: 1.5; }
+.task-row--workflow .medication-typed-link { justify-self: start; max-width: 100%; white-space: normal; }
 
 .task-row:last-child {
   border-bottom: 0;

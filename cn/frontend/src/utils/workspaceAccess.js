@@ -1,9 +1,30 @@
+import { parseVisitNavigationRoute, isVisitNavigationAttempt } from './visitDispositionNavigation.js';
+import { parseGoalRoute } from './commonCareGoal.js';
+
 // These routes permit an authenticated attempt; the source/report API owns authorization.
 function positiveId(value) { return /^[1-9]\d*$/.test(value || '') && Number.isSafeInteger(Number(value)) ? Number(value) : null }
 function exactQuery(fullPath, path, required, optional = []) {
   if (typeof fullPath !== 'string' || fullPath.includes('#') || fullPath.split('?')[0] !== path || fullPath.split('?').length !== 2) return null
   const query = new URLSearchParams(fullPath.split('?')[1]), keys = [...query.keys()]
   return new Set(keys).size === keys.length && required.every(key => keys.includes(key)) && keys.every(key => [...required, ...optional].includes(key)) ? query : null
+}
+export function parseAssistanceRoute(fullPath) {
+ const query=exactQuery(fullPath,'/care',['patientId','assistanceId']);if(!query)return null;
+ const patientId=positiveId(query.get('patientId')),assistanceId=positiveId(query.get('assistanceId'));return patientId&&assistanceId?{patientId,assistanceId}:null;
+}
+export function parseStockRoute(fullPath) {
+  const query = exactQuery(fullPath, '/care', ['patientId', 'stockId']);
+  if (!query) return null;
+  const patientId = positiveId(query.get('patientId')), stockId = positiveId(query.get('stockId'));
+  return patientId && stockId ? { patientId, stockId } : null;
+}
+function isQuestionRoute(fullPath) {
+  const question = exactQuery(fullPath, '/care', ['patientId', 'questionId']);
+  if (question) return !!(positiveId(question.get('patientId')) && positiveId(question.get('questionId')));
+  const context = exactQuery(fullPath, '/care', ['patientId', 'contextType', 'contextId']);
+  if (context) return !!(positiveId(context.get('patientId')) && positiveId(context.get('contextId')) && ['LEGACY_APPOINTMENT', 'CARE_APPOINTMENT', 'VISIT_RECORD'].includes(context.get('contextType')));
+  const tab = exactQuery(fullPath, '/care', ['patientId', 'tab']);
+  return !!(tab && positiveId(tab.get('patientId')) && tab.get('tab') === 'questions');
 }
 export function parseReportRoute(fullPath) {
   const query = exactQuery(fullPath, '/care-plans/reports', ['patientId'], ['planId'])
@@ -20,8 +41,9 @@ export function parseEvidenceRoute(fullPath) {
   }
   return null
 }
-export function isNarrowCareRoute(fullPath) { return !!(parseReportRoute(fullPath) || parseEvidenceRoute(fullPath)) }
+export function isNarrowCareRoute(fullPath) { return !!(parseReportRoute(fullPath) || parseEvidenceRoute(fullPath) || parseVisitNavigationRoute(fullPath)) }
 export function isLocatorAttempt(fullPath) {
+  if (parseGoalRoute(fullPath) || isVisitNavigationAttempt(fullPath)) return true;
   const path = fullPath.split(/[?#]/, 1)[0], query = new URLSearchParams(fullPath.split('?')[1] || '')
   return path === '/care-plans/reports' || (['/care-journey', '/medical-record'].includes(path) && ['measurementId', 'recordId'].some(key => query.has(key)))
 }
@@ -35,6 +57,9 @@ export const DEFAULT_WORKSPACE_TABS = {
 
 /** navigation and routeguardtotaluse: emptyPermissiontableshowUnknown or Noneauthorize, not tableshowmanagementmember.  */
 export function canAccessWorkspace(fullPath, menuPaths = [], roleCodes = []) {
+  // 只放行格式正确的独立读取入口；领域权限仍由当前患者 API 判断。
+  const goal = parseGoalRoute(fullPath);
+  if (goal) return !goal.invalid;
   if (isLocatorAttempt(fullPath)) return isNarrowCareRoute(fullPath);
   const path = fullPath.split(/[?#]/, 1)[0];
   if (path === '/doctor-workspace' && !roleCodes.includes('doctor') && !roleCodes.includes('admin')) return false;
@@ -42,7 +67,7 @@ export function canAccessWorkspace(fullPath, menuPaths = [], roleCodes = []) {
   if (/^\/care-plans\/[1-9]\d*$/.test(path)) return fullPath === path;
   // The authenticated care entry hosts independently authorized plan tasks.
   // Patient/module access stays with the API; this does not grant another tab.
-  if (fullPath === '/care') return true;
+  if (fullPath === '/care' || parseStockRoute(fullPath) || parseAssistanceRoute(fullPath) || isQuestionRoute(fullPath)) return true;
   if (path === '/monitoring' || roleCodes.includes('admin')) return true;
   if (path === '/care-journey' && new URLSearchParams(fullPath.split('?')[1] || '').get('tab') === 'operations' && !roleCodes.includes('doctor')) return false;
   if (menuPaths.includes(fullPath)) return true;

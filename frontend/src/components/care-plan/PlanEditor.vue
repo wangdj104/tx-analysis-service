@@ -45,7 +45,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useCarePlan } from '@/composables/useCarePlan'
 import { getCarePlanCapabilities, listAssignees, getPlan } from '@/api/carePlan'
 import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession'
-import { formatPlanTime, getLocalTimeOffsets, toOffsetIso } from '@/utils/carePlanTime'
+import { formatPlanTime, parsePlanTimeMicros, getLocalTimeOffsets, toOffsetIso } from '@/utils/carePlanTime'
 const props=defineProps({patientId:{type:Number,required:true},planId:{type:Number,default:null},revisionId:{type:Number,default:null},legacySource:{type:Object,default:null}})
 const emit=defineEmits(['saved','closed'])
 const patient=computed(()=>props.patientId),client=useCarePlan(patient),{state}=client
@@ -57,7 +57,24 @@ const allowed=name=>enabled.value && !!state.editor && !!state.plan?.allowedActi
 const canSave=computed(()=>enabled.value && !!state.editor && (!state.plan || allowed('SAVE_DRAFT')))
 const busy=computed(()=>loading.value || state.loading || state.opening || state.commandPhase==='pending')
 const unresolved=computed(()=>state.commandPhase==='unknown')
-const dirty=computed(()=>!!state.draft && JSON.stringify(state.draft)!==savedSnapshot.value)
+const dirty=computed(()=>{
+  if(!state.draft)return false
+  const current=JSON.stringify(state.draft)
+  if(current===savedSnapshot.value)return false
+  try{
+    const input=JSON.parse(current),saved=JSON.parse(savedSnapshot.value)
+    if(Array.isArray(input?.actions) && Array.isArray(saved?.actions)){
+      input.actions.forEach((action,index)=>{
+        const baseline=saved.actions[index]
+        if(typeof action?.dueAt!=='string' || typeof baseline?.dueAt!=='string')return
+        try{
+          if(parsePlanTimeMicros(action.dueAt)===parsePlanTimeMicros(baseline.dueAt))action.dueAt=baseline.dueAt
+        }catch{ /* Invalid times keep their literal comparison. */ }
+      })
+    }
+    return JSON.stringify(input)!==savedSnapshot.value
+  }catch{return true}
+})
 function draftOf(view){return {patientId:props.patientId,title:view?.title||'',instructions:view?.instructions||'',planType:view?.planType||'FOLLOW_UP',...(view?.legacySourceId||props.legacySource?.id?{legacySourceId:view?.legacySourceId||props.legacySource.id}:{}),actions:view?.actions?.map((a,i)=>({ordinal:i+1,instruction:a.instruction,dueAt:a.dueAt,assignedUserId:a.assignedUserId,evidence:(a.evidence||[]).map(e=>({sourceType:e.sourceType,sourceId:e.sourceId}))}))||[{ordinal:1,instruction:'',dueAt:'',assignedUserId:null,evidence:[]}]}}
 function context(){return {generation,auth:captureAuthSession(),actor:localStorage.getItem('userId')}}
 function owns(c){return c.generation===generation && isAuthSessionCurrent(c.auth) && c.actor===localStorage.getItem('userId')}
@@ -103,4 +120,36 @@ defineExpose({requestClose,requestLeave})
 </script>
 <style scoped>
 .care-plan-editor{min-width:0;color:var(--ink-800)}header,.controls,.evidence-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}header{align-items:flex-start;justify-content:space-between}h2,h3{margin:0 0 10px}p{line-height:1.6;overflow-wrap:anywhere}fieldset{border:0;padding:0;min-width:0}label{display:grid;gap:6px;margin:12px 0;font-weight:600}input,select,textarea{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink-800);font:inherit}textarea{resize:vertical}button{min-height:44px;max-width:100%;padding:10px 14px;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800);font:inherit;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.action-editor,.notice{border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0;overflow-wrap:anywhere}.notice{background:var(--care-50)}.feedback{padding:12px;background:var(--surface-subtle)}details{margin:14px 0}summary{min-height:44px;cursor:pointer}.check{display:flex;align-items:center}.check input{width:24px;flex-shrink:0}.evidence-row>*{flex:1 1 160px}@media(max-width:600px){.controls button{width:100%}.action-editor,.notice{padding:12px}header>div{min-width:0;width:100%}}
+</style>
+
+<style scoped>
+.care-plan-editor .evidence-row {
+  --evidence-control-size: max(48px, calc(1.6em + 24px));
+  align-items: flex-end;
+  margin-block: 12px;
+}
+.evidence-row > label {
+  margin-block: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.evidence-row :is(input, select, button) {
+  box-sizing: border-box;
+  font: inherit;
+  line-height: 1.6;
+}
+.evidence-row :is(input, select) {
+  block-size: var(--evidence-control-size);
+}
+.evidence-row > button {
+  min-block-size: var(--evidence-control-size);
+}
+@media (max-width: 768px) {
+  .care-plan-editor .evidence-row {
+    font-size: max(1em, 16px);
+  }
+  body.care-senior .evidence-row :is(input, select) {
+    font-size: inherit !important;
+  }
+}
 </style>

@@ -33,6 +33,7 @@ import java.time.LocalDate;
  */
 @Service
 public class AiAnalysisServiceImpl implements AiAnalysisService {
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard medicationTracking;
 
     @Value("${deepseek.api.key}")
     private String apiKey;
@@ -124,12 +125,18 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         }
         if (items.contains("VITALS")) {
             List<BpSelfMonitorRecord> rows = bpSelfMonitorRecordMapper.selectList(new QueryWrapper<BpSelfMonitorRecord>().eq("patient_id", patientId).ge("record_date", from).orderByDesc("record_date").orderByDesc("record_time").last("limit 100"));
-            prompt.append("【Blood Pressure & Glucose】\n").append(JSON.toJSONString(rows)).append("\n");
+            prompt.append("【Blood Pressure & Glucose】\n").append(JSON.toJSONString(rows.stream().map(this::legacyVitalsFields).collect(Collectors.toList()))).append("\n");
         }
         if (items.contains("MEDICATION")) {
             List<Medication> meds = medicationService.listActiveMedications(patientId);
             List<MedicationIntake> intakes = medicationIntakeMapper.selectList(new QueryWrapper<MedicationIntake>().eq("patient_id", patientId).ge("scheduled_at", from.atStartOfDay()).orderByDesc("scheduled_at").last("limit 100"));
-            prompt.append("【currentmedication】\n").append(JSON.toJSONString(meds)).append("\n【medication intakerun】\n").append(JSON.toJSONString(intakes)).append("\n");
+            org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy=medicationTracking.legacyRead(patientId);
+            List<Map<String,Object>> medicationFields=new ArrayList<>(),intakeFields=new ArrayList<>();
+            // 白名单保留旧字段；新增实体属性永远不会自动进入外部模型请求。
+            for(Medication m:legacy.untrackedMedications(meds))medicationFields.add(legacyMedicationFields(m));
+            for(MedicationIntake i:legacy.untrackedIntakes(intakes))intakeFields.add(legacyIntakeFields(i));
+            prompt.append("【currentmedication】\n").append(JSON.toJSONString(medicationFields)).append("\n【medication intakerun】\n").append(JSON.toJSONString(intakeFields)).append("\n")
+                    .append(text("Collaborative medication execution and stock records are outside this analysis. Missing records do not establish adherence, completion or safety.\n", "协作用药执行及库存记录不在本分析范围内。缺少记录不代表依从、完成或安全。\n"));
         }
         if (items.contains("NUTRITION")) {
             List<NutritionDiary> rows = nutritionDiaryMapper.selectList(new QueryWrapper<NutritionDiary>().eq("patient_id", patientId).ge("record_date", from).orderByDesc("record_date").last("limit 60"));
@@ -142,6 +149,38 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         prompt.append(text("\nUse these sections in no more than 800 words: 1. Overall condition; 2. Changes needing attention, ordered by urgency; 3. Family-care tasks; 4. Measurements or follow-up to discuss. Identify urgent warning signs clearly. End by explaining that this summary supports record review and does not replace professional diagnosis.\n",
                 "\n请按以下结构作答，总字数不超过 800 字：1. 总体情况；2. 需要关注的变化，按紧急程度排序；3. 家庭照护事项；4. 需要讨论的复测或复诊安排。明确指出紧急警示信号，并在末尾说明本分析仅供记录复核，不能代替专业诊断。\n"));
         return callDeepSeek(prompt.toString(), false);
+    }
+
+    /** 只保留既有十七个字段，新增原始事实或未来实体字段不能自动进入外部模型。 */
+    private Map<String,Object> legacyVitalsFields(BpSelfMonitorRecord row) {
+        Map<String,Object> out = new LinkedHashMap<>();
+        out.put("id", row.getId());
+        out.put("patientId", row.getPatientId());
+        out.put("userId", row.getUserId());
+        out.put("recordDate", row.getRecordDate());
+        out.put("recordTime", row.getRecordTime());
+        out.put("measureType", row.getMeasureType());
+        out.put("systolicBp", row.getSystolicBp());
+        out.put("diastolicBp", row.getDiastolicBp());
+        out.put("bloodGlucose", row.getBloodGlucose());
+        out.put("bgUnit", row.getBgUnit());
+        out.put("measurePeriod", row.getMeasurePeriod());
+        out.put("sourceType", row.getSourceType());
+        out.put("sourceExternalId", row.getSourceExternalId());
+        out.put("verificationStatus", row.getVerificationStatus());
+        out.put("remark", row.getRemark());
+        // 保留原实体 JsonFormat 的秒精度编码，不能让 Map 序列化额外暴露纳秒。
+        out.put("createdAt", row.getCreatedAt() == null ? null : row.getCreatedAt().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        out.put("updatedAt", row.getUpdatedAt() == null ? null : row.getUpdatedAt().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        return out;
+    }
+
+    private Map<String,Object> legacyMedicationFields(Medication m) {
+        Map<String,Object> out=new LinkedHashMap<>();
+        out.put("drugName",m.getDrugName());out.put("genericName",m.getGenericName());out.put("specification",m.getSpecification());out.put("unit",m.getUnit());out.put("dosageForm",m.getDosageForm());out.put("manufacturer",m.getManufacturer());out.put("approvalNumber",m.getApprovalNumber());out.put("category",m.getCategory());out.put("defaultDosage",m.getDefaultDosage());out.put("remark",m.getRemark());out.put("isActive",m.getIsActive());return out;
+    }
+    private Map<String,Object> legacyIntakeFields(MedicationIntake i) {
+        Map<String,Object> out=new LinkedHashMap<>();out.put("scheduledAt",i.getScheduledAt());out.put("status",i.getStatus());out.put("actionAt",i.getActionAt());out.put("snoozeUntil",i.getSnoozeUntil());out.put("dosage",i.getDosage());out.put("reason",i.getReason());return out;
     }
 
     @Override

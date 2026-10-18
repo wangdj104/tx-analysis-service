@@ -27,3 +27,28 @@ care-plan:
 
 alert-workflow:
   enabled: ${ALERT_WORKFLOW_ENABLED:false}
+
+# 四个独立开关默认关闭。空白排程时区不被猜测或替换为服务器时区。
+medication-execution:
+  enabled: ${MEDICATION_EXECUTION_ENABLED:false}
+  schedule-zone: ${MEDICATION_EXECUTION_SCHEDULE_ZONE:}
+stock-workflow:
+  enabled: ${STOCK_WORKFLOW_ENABLED:false}
+family-assistance:
+  enabled: ${FAMILY_ASSISTANCE_ENABLED:false}
+emergency-assistance:
+  enabled: ${EMERGENCY_ASSISTANCE_ENABLED:false}
+
+# 就诊问题跟踪独立默认关闭；先核验结构与实际连接，再由使用者明确启用。
+visit-question:
+  enabled: ${VISIT_QUESTION_ENABLED:false}
+
+# 病历更正默认关闭；安装并核验独立 SQL 后才可明确启用。
+common-care-goals:
+  enabled: ${COMMON_CARE_GOALS_ENABLED:false}
+
+medical-record-correction:
+  enabled: ${MEDICAL_RECORD_CORRECTION_ENABLED:false}
+
+visit-followup:
+  enabled: ${VISIT_FOLLOWUP_ENABLED:false}

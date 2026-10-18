@@ -3,7 +3,7 @@
   <h2 id="follow-up-heading">{{t('title')}}</h2><p>{{t('privacy')}}</p>
   <p v-if="!patientId" role="status">{{t('selectPatient')}}</p>
   <template v-else>
-   <div class="aw-controls"><label>{{t('state')}}<select v-model="queue" :disabled="state.loading" @change="flow.load({queue})"><option v-for="key in queues" :key="key" :value="key">{{t(key)}}</option></select></label><button type="button" @click="refresh" :disabled="state.loading">{{t('refresh')}}</button></div>
+   <div class="aw-controls aw-follow-up-controls"><label>{{t('state')}}<select v-model="queue" :disabled="state.loading" @change="flow.load({queue})"><option v-for="key in queues" :key="key" :value="key">{{t(key)}}</option></select></label><button type="button" @click="refresh" :disabled="state.loading">{{t('refresh')}}</button></div>
    <p v-if="state.capabilityPhase==='loading'||state.loading" role="status">{{t('loading')}}</p>
    <p v-else-if="state.capabilityPhase==='disabled'" role="status">{{t('featureOff')}}</p>
    <p v-else-if="state.capabilityPhase==='denied'" role="alert">{{t('denied')}}</p>
@@ -32,3 +32,35 @@ const queues=['TODAY','ALL','WAITING_ACCEPTANCE','ASSIGNED_TO_ME','WAITING_FEEDB
 async function refresh(){const result=await flow.loadCapabilities();if(result.status==='enabled')await flow.load({queue:queue.value})}
 watch(()=>props.patientId,refresh,{immediate:true})
 </script>
+<style scoped>
+.aw .aw-follow-up-controls {
+  align-items: flex-end;
+}
+.aw-follow-up-controls > label {
+  margin-block: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.aw-follow-up-controls :is(select, button) {
+  min-height: max(48px, calc(1.6rem + 22px));
+  line-height: 1.6;
+}
+.aw-follow-up-controls > button {
+  flex: 0 1 auto;
+}
+body.care-senior .aw .aw-follow-up-controls {
+  --follow-up-control-size: max(48px, calc(1.6em + 22px));
+  font-size: 19px;
+}
+body.care-senior .aw-follow-up-controls :is(select, button) {
+  min-height: var(--follow-up-control-size);
+}
+body.care-senior .aw-follow-up-controls select {
+  block-size: var(--follow-up-control-size);
+}
+@media (max-width: 768px) {
+  body.care-senior .aw-follow-up-controls select {
+    font-size: inherit !important;
+  }
+}
+</style>

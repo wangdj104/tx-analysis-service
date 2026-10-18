@@ -99,18 +99,29 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, reactive, watch, onBeforeUnmount } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { User, Lock, ArrowRight } from '@element-plus/icons-vue';
 import { login, saveAuthSession, clearAuthSession } from '@/api/auth';
 import careMoments from '@/assets/illustrations/care-moments.webp';
 import careMomentsSmall from '@/assets/illustrations/care-moments-small.webp';
 import { platformBranding } from '@/utils/platformBranding';
+import { captureAuthSession } from '@/utils/authSession';
+import { assistanceAfterLogin, captureAssistanceLoginRedirect } from '@/utils/assistanceLogin';
 
 const router = useRouter();
+const route = useRoute();
 const loginFormRef = ref(null);
 const loading = ref(false);
+let attempt = 0, disposed = false;
+// 路由离开再回来也会退役旧登录，不让迟到结果覆盖新账号或新入口。
+watch(() => route.fullPath, () => { attempt++; loading.value = false; }, { flush: 'sync' });
+onBeforeUnmount(() => { disposed = true; attempt++; });
+function sameAuth(snapshot) {
+  const current = captureAuthSession();
+  return snapshot.token === current.token && snapshot.revision === current.revision;
+}
 
 const loginForm = reactive({
   username: '',
@@ -128,26 +139,35 @@ const loginRules = {
 };
 
 const handleLogin = async () => {
-  if (!loginFormRef.value || loading.value) return;
+  if (!loginFormRef.value || loading.value || disposed) return;
+  const id = ++attempt, fullPath = route.fullPath;
+  const navigation = captureAssistanceLoginRedirect(fullPath);
+  let auth = captureAuthSession();
+  const ownsView = () => !disposed && id === attempt && route.fullPath === fullPath &&
+    navigation.epoch === captureAssistanceLoginRedirect(route.fullPath).epoch;
+  const ownsAttempt = () => ownsView() && sameAuth(auth);
 
   await loginFormRef.value.validate(async (valid) => {
-    if (valid && !loading.value) {
+    if (valid && !loading.value && ownsAttempt()) {
       loading.value = true;
       try {
         clearAuthSession();
+        auth = captureAuthSession();
         const res = await login(loginForm);
+        if (!ownsAttempt()) return;
 
         if (res.code === 200) {
           saveAuthSession(res.data);
           ElMessage.success('登录成功');
-          router.replace('/monitoring');
+          router.replace(assistanceAfterLogin(fullPath) || '/monitoring');
         } else {
           ElMessage.error(res.msg || '登录失败');
         }
       } catch (error) {
+        if (!ownsAttempt()) return;
         ElMessage.error(error.message || '登录失败，请检查网络连接。');
       } finally {
-        loading.value = false;
+        if (!disposed && id === attempt) loading.value = false;
       }
     }
   });

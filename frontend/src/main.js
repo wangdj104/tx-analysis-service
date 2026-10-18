@@ -17,6 +17,7 @@ import { initializeAppearance } from '@/utils/healthAppearance';
 import { knownSpecialtyPath, specialtyPathAllowed } from '@/utils/patientSpecialtyNavigation';
 import { isNarrowCareRoute, isLocatorAttempt, canAccessWorkspace } from '@/utils/workspaceAccess';
 import { loadPatientSpecialtyScope } from '@/utils/patientSpecialtyScope';
+import { assistanceLoginRoute, noteAssistanceNavigation } from '@/utils/assistanceLogin';
 
 function applyFavicon(href) {
   if (!href) return;
@@ -78,6 +79,7 @@ const router = createRouter({
 
 // routeguard
 router.beforeEach(async (to, from, next) => {
+  noteAssistanceNavigation();
   const token = localStorage.getItem('token');
 
   if (to.path === '/login') {
@@ -86,7 +88,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (!token) {
-    next('/login');
+    next(assistanceLoginRoute(to.fullPath));
     return;
   }
 

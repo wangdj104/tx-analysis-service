@@ -1,0 +1,8 @@
+<template><section v-if="fact" class="intake-fact-review" :aria-label="t('savedFact')"><h4>{{t('savedFact')}}</h4><dl><template v-for="field in fields" :key="field.key"><dt>{{t(field.label)}}</dt><dd :data-fact-field="field.key">{{display(field.key)}}</dd></template></dl></section></template>
+<script setup>
+import {medicationText as t} from '@/utils/medicationExecutionCopy';
+const props=defineProps({fact:{type:Object,default:null}});
+const fields=[{key:'status',label:'actualStatus'},{key:'actualAt',label:'actualUtc'},{key:'quantity',label:'actualQuantity'},{key:'unit',label:'actualUnit'},{key:'amountBasis',label:'amountEvidence'},{key:'attribution',label:'savedAttribution'},{key:'actorId',label:'recordedById'}];
+function display(key){const value=props.fact?.[key];if(value===null||value===undefined)return t('unknownFactField');if(key==='attribution'&&['SELF','ASSISTED'].includes(value))return t('factAttribution'+value);if(key==='amountBasis'&&value==='CONFIRMED_PLAN')return t('factConfirmedPlan');if(['status','amountBasis','attribution'].includes(key))return t(value==='UNKNOWN'?'UNKNOWN_AMOUNT':value);return value;}
+</script>
+<style scoped>.intake-fact-review{padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink-950);min-width:0;overflow-wrap:anywhere}.intake-fact-review h4{margin:0 0 8px}.intake-fact-review dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0}.intake-fact-review dd{margin:0;white-space:pre-wrap}@media(max-width:480px){.intake-fact-review dl{grid-template-columns:minmax(0,1fr)}.intake-fact-review dd{margin-bottom:8px}}</style>

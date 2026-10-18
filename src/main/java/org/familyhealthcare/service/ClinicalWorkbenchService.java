@@ -18,6 +18,9 @@ import java.util.stream.Collectors;
 
 @Service
 public class ClinicalWorkbenchService {
+    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard medicationTracking;
+    @Autowired private org.familyhealthcare.service.familyassistance.FamilyAssistanceQueryService familyQueries;
     @Autowired private DataScopeHelper scope;
     @Autowired private PatientMapper patients;
     @Autowired private PatientClinicalMapper clinical;
@@ -36,16 +39,18 @@ public class ClinicalWorkbenchService {
     public Map<String, Object> overview(Long patientId) {
         scope.requirePatient(patientId);
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("attention", attention(patientId));
+        org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy=medicationTracking.legacyRead(patientId);List<Map<String,Object>> stockDisclosures=new ArrayList<>();
+        out.put("attention", attention(patientId,legacy,stockDisclosures));
         out.put("dataQuality", dataQuality(patientId));
-        out.put("medicationSafety", medicationSafety(patientId));
+        out.put("medicationSafety", medicationSafety(patientId,legacy));
         out.put("dialysisQuality", dialysisQuality(patientId, 90));
-        out.put("emergencyCard", emergencyCard(patientId));
+        out.put("emergencyCard", emergencyCard(patientId,legacy));
         out.put("generatedAt", LocalDateTime.now());
-        return out;
+        stockService.finishLegacyRead(patientId,stockDisclosures);legacy.finish(scope.requireUserId());return out;
     }
 
-    public Map<String, Object> attention(Long patientId) {
+    public Map<String, Object> attention(Long patientId) {return attention(patientId,medicationTracking.legacyRead(patientId),new ArrayList<>());}
+    private Map<String,Object> attention(Long patientId,org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy,List<Map<String,Object>> stockDisclosures){
         scope.requirePatient(patientId);
         List<Map<String, Object>> items = new ArrayList<>();
         List<AlertRecord> activeAlerts = alerts.selectList(new QueryWrapper<AlertRecord>().apply("(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')")
@@ -64,10 +69,15 @@ public class ClinicalWorkbenchService {
         List<MedicationIntake> medicationTasks = intakes.selectList(new QueryWrapper<MedicationIntake>()
                 .eq("patient_id", patientId).in("status", "PENDING", "MISSED", "SNOOZED")
                 .le("scheduled_at", now.plusHours(12)).orderByAsc("scheduled_at").last("limit 100"));
+        medicationTasks=legacy.intakes(scope.requireUserId(),medicationTasks);
         Map<Long, Medication> medicationById = medications.selectList(new QueryWrapper<Medication>().eq("patient_id", patientId))
                 .stream().collect(Collectors.toMap(Medication::getId, Function.identity(), (a, b) -> a));
         for (MedicationIntake task : medicationTasks) {
             Medication medication = medicationById.get(task.getMedicationId());
+            if(task.getNextAction()!=null){
+                Map<String,Object> typed=attentionItem("MEDICATION_WORKFLOW","INFO",medication==null?org.familyhealthcare.util.ExportLocalization.text("Medication follow-up","用药随访"):medication.getDrugName(),String.valueOf(task.getFollowUpState())+" / "+String.valueOf(task.getFollowUpKind()),null,org.familyhealthcare.util.ExportLocalization.text("Review recorded facts and current follow-up","核对已记录事实与当前随访"),"/medication?patientId="+patientId+(task.getExecutionId()==null?"":"&executionId="+task.getExecutionId()),task.getId());
+                typed.remove("slaMinutes");items.add(typed);continue;
+            }
             String severity = "MISSED".equals(task.getStatus()) ? "WARNING" : "INFO";
             items.add(attentionItem("MEDICATION", severity,
                     (medication == null ? "Medication" : medication.getDrugName()) + " · " + task.getStatus(),
@@ -75,14 +85,20 @@ public class ClinicalWorkbenchService {
                     "/family-health?tab=today", task.getId()));
         }
 
-        for (Map<String, Object> row : stockService.list(patientId)) {
+        List<Map<String,Object>> stockRows=stockService.list(patientId);stockDisclosures.addAll(stockRows);
+        for (Map<String, Object> row : stockRows) {
             if (!Boolean.TRUE.equals(row.get("low"))) continue;
+            if(row.get("nextAction")!=null){
+                // 库存证据核对不能借旧提示变成补药或改处方建议，也不推断执行时限。
+                Map<String,Object> typed=attentionItem("STOCK_WORKFLOW","WARNING",org.familyhealthcare.util.ExportLocalization.text("Stock evidence review · ","库存证据核对 · ")+row.get("drugName"),org.familyhealthcare.util.ExportLocalization.text("Recorded remaining ","记录余量 ")+row.get("quantity")+" "+row.get("unit"),null,org.familyhealthcare.util.ExportLocalization.text("Review the manual rule, current count and unresolved facts","核对人工规则、当前盘点与未核实事实"),"/care?patientId="+patientId+"&stockId="+row.get("id"),row.get("id"));
+                typed.remove("slaMinutes");items.add(typed);continue;
+            }
             items.add(attentionItem("STOCK", "WARNING", "Low medication stock · " + row.get("drugName"),
                     "Remaining " + row.get("quantity") + " " + row.get("unit"), null,
                     "Replenish stock or revise the active prescription", "/care", row.get("id")));
         }
 
-        for (CareItem care : careItems.selectList(new QueryWrapper<CareItem>().eq("patient_id", patientId).orderByAsc("event_at"))) {
+        for (CareItem care : legacy.untrackedOrders(familyQueries.legacyItems(scope.requireUserId(),patientId,careItems.selectList(new QueryWrapper<CareItem>().eq("patient_id", patientId).ne("kind","QUESTION").orderByAsc("event_at"))))) {
             if (Arrays.asList("DONE", "COMPLETED", "CANCELLED", "RESOLVED").contains(care.getStatus())) continue;
             LocalDateTime due = care.getEventAt() != null ? care.getEventAt() : care.getNotifyAt();
             if (due == null || due.isAfter(now)) continue;
@@ -97,14 +113,15 @@ public class ClinicalWorkbenchService {
         out.put("total", items.size());
         out.put("critical", items.stream().filter(x -> "CRITICAL".equals(x.get("severity"))).count());
         out.put("warning", items.stream().filter(x -> "WARNING".equals(x.get("severity"))).count());
-        return out;
+        stockService.finishLegacyRead(patientId,stockRows);legacy.finish(scope.requireUserId());return out;
     }
 
     public Map<String, Object> dataQuality(Long patientId) {
         scope.requirePatient(patientId);
         List<Map<String, Object>> issues = new ArrayList<>();
         List<MedicalRecord> records = medicalRecords.selectList(new QueryWrapper<MedicalRecord>()
-                .eq("patient_id", patientId).orderByDesc("record_date").last("limit 300"));
+                .eq("patient_id", patientId).apply(medicalValidity.open().activeSql("medical_record.")).orderByDesc("record_date").last("limit 300"));
+        medicalValidity.open().project(records);
         Map<String, List<MedicalRecord>> externalIds = records.stream()
                 .filter(r -> r.getSourceExternalId() != null && !r.getSourceExternalId().trim().isEmpty())
                 .collect(Collectors.groupingBy(r -> r.getSourceType() + ":" + r.getSourceExternalId()));
@@ -146,16 +163,20 @@ public class ClinicalWorkbenchService {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("issues", issues);
+        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();
+        out.put("invalidatedRecords",medical.ready()?medicalRecords.selectCount(new QueryWrapper<MedicalRecord>().eq("patient_id",patientId).apply("NOT ("+medical.activeSql("medical_record.")+")")):0L);
         out.put("pendingReview", issues.stream().filter(x -> Arrays.asList("REVIEW", "AI_DRAFT").contains(x.get("type"))).count());
         out.put("lowConfidence", issues.stream().filter(x -> "LOW_CONFIDENCE".equals(x.get("type"))).count());
         out.put("total", issues.size());
         return out;
     }
 
-    public Map<String, Object> medicationSafety(Long patientId) {
+    public Map<String, Object> medicationSafety(Long patientId) {return medicationSafety(patientId,medicationTracking.legacyRead(patientId));}
+    private Map<String,Object> medicationSafety(Long patientId,org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy){
         scope.requirePatient(patientId);
         List<Medication> active = medications.selectList(new QueryWrapper<Medication>()
                 .eq("patient_id", patientId).eq("is_active", 1).orderByAsc("drug_name"));
+        active=legacy.medications(scope.requireUserId(),active);
         PatientClinical profile = clinical.selectOne(new QueryWrapper<PatientClinical>().eq("patient_id", patientId).last("limit 1"));
         String allergies = profile == null || profile.getAllergyDrugs() == null ? "" : profile.getAllergyDrugs().toLowerCase(Locale.ROOT);
         List<Map<String, Object>> findings = new ArrayList<>();
@@ -194,6 +215,7 @@ public class ClinicalWorkbenchService {
         LocalDateTime since = LocalDateTime.now().minusDays(30);
         List<MedicationIntake> recent = intakes.selectList(new QueryWrapper<MedicationIntake>()
                 .eq("patient_id", patientId).ge("scheduled_at", since));
+        recent=legacy.untrackedIntakes(recent); // B 的未知/仅随访/真实结束不能参加旧依从率分母。
         long taken = recent.stream().filter(x -> "TAKEN".equals(x.getStatus())).count();
         long missed = recent.stream().filter(x -> Arrays.asList("MISSED", "SKIPPED").contains(x.getStatus())).count();
         BigDecimal adherence = taken + missed == 0 ? null : BigDecimal.valueOf(taken * 100.0 / (taken + missed)).setScale(1, RoundingMode.HALF_UP);
@@ -205,7 +227,7 @@ public class ClinicalWorkbenchService {
         out.put("taken", taken);
         out.put("missedOrSkipped", missed);
         out.put("disclaimer", "Screening is decision support only. A clinician or pharmacist must confirm every medication change.");
-        return out;
+        legacy.finish(scope.requireUserId());return out;
     }
 
     public Map<String, Object> dialysisQuality(Long patientId, int days) {
@@ -251,12 +273,14 @@ public class ClinicalWorkbenchService {
         return out;
     }
 
-    public Map<String, Object> emergencyCard(Long patientId) {
+    public Map<String, Object> emergencyCard(Long patientId) {return emergencyCard(patientId,medicationTracking.legacyRead(patientId));}
+    private Map<String,Object> emergencyCard(Long patientId,org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy){
         Patient patient = scope.requirePatient(patientId);
         PatientClinical profile = clinical.selectOne(new QueryWrapper<PatientClinical>().eq("patient_id", patientId).last("limit 1"));
         PatientHealthTarget target = targets.selectOne(new QueryWrapper<PatientHealthTarget>().eq("patient_id", patientId).last("limit 1"));
         DialysisRecord latest = dialysisRecords.selectOne(new QueryWrapper<DialysisRecord>().eq("patient_id", patientId).orderByDesc("record_date").last("limit 1"));
         List<Medication> active = medications.selectList(new QueryWrapper<Medication>().eq("patient_id", patientId).eq("is_active", 1).orderByAsc("drug_name"));
+        active=legacy.medications(scope.requireUserId(),active);
         List<AlertRecord> unresolved = alerts.selectList(new QueryWrapper<AlertRecord>().apply("(alert_type IS NULL OR alert_type<>'MEASUREMENT_FOLLOW_UP')").eq("patient_id", patientId)
                 .and(q -> q.isNull("status").or().ne("status", "RESOLVED")).orderByDesc("triggered_at").last("limit 10"));
         Map<String, Object> safePatient = new LinkedHashMap<>();
@@ -268,7 +292,7 @@ public class ClinicalWorkbenchService {
         out.put("patient", safePatient); out.put("clinical", profile); out.put("target", target); out.put("medications", active);
         out.put("latestDialysis", latest); out.put("unresolvedAlerts", unresolved); out.put("generatedAt", LocalDateTime.now());
         out.put("disclaimer", "For emergency communication only. Verify identity, medication list, and allergies with the patient or treating team.");
-        return out;
+        legacy.finish(scope.requireUserId());return out;
     }
 
     private Map<String, Object> attentionItem(String type, String severity, String title, Object evidence,

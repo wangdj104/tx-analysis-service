@@ -63,4 +63,12 @@ public class MedicationReminder {
     @TableField(exist = false)
     @ApiModelProperty("relatedMedicationinformation")
     private Medication medication;
+
+    // Read-only server projection, populated only when the additive schema is ready.
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false) @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY) private Integer workflowVersion;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false) @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY) private Long executionId;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false) @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY) private Long reconciliationId;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false) @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY) private java.math.BigDecimal plannedQuantity;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false) @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY) private String plannedUnit;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false) @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY) private String scheduleZone;
 }

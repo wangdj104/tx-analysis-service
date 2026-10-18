@@ -10,18 +10,18 @@
                 <p class="subtitle">Record daily blood pressure and glucose readings to track changes over time</p>
               </div>
             </div>
-            <div class="bp-summary" aria-label="Record overview">
+            <div v-if="rawOpen && raw.state.phase==='ready'" class="bp-summary" aria-label="Record overview">
               <div class="summary-item">
-                <span class="summary-label">Record count in list</span>
+                <span class="summary-label">{{ot('pageCount')}}</span>
                 <strong>{{ records.length }}</strong>
               </div>
               <div class="summary-item">
-                <span class="summary-label">Latest blood pressure</span>
+                <span class="summary-label">{{ot('pageLatestBp')}}</span>
                 <strong>{{ latestBpText }}</strong>
                 <small>{{ latestBpAt }}</small>
               </div>
               <div class="summary-item">
-                <span class="summary-label">Latest blood glucose</span>
+                <span class="summary-label">{{ot('pageLatestGlucose')}}</span>
                 <strong>{{ latestBgText }}</strong>
                 <small>{{ latestBgAt }}</small>
               </div>
@@ -29,33 +29,33 @@
           </div>
         </div>
 
-        <FollowUpList :patient-id="currentPatientId" />
+        <TrustedMeasurementTrend ref="trustedTrend" :patient-id="currentPatientId" :patient-name="currentPatientName" @changed="refreshRecords" />
+        <details class="measurement-legacy-entry" @toggle="legacyFollowUpsVisible=$event.target.open"><summary>{{measurementText('legacyFollowUps')}}</summary><FollowUpList v-if="legacyFollowUpsVisible" :patient-id="currentPatientId" /></details>
         <MeasurementWorkflowStatus :flow="measurementFlow" source-type="BP_SELF_MONITOR" @saved="measurementReplaySaved" />
         <SourceMeasurementPanel v-if="measurementFlow.state.source||measurementFlow.state.receipt||measurementFlow.state.sourceReadPhase!=='idle'" ref="sourcePanel" :flow="measurementFlow" @changed="refreshRecords" />
-        <p class="summary-context">Latest readings use all records for this patient, independent of the list filter.</p>
-        <p v-if="summaryLoading || (loading && !summarySuccessAt)" role="status" class="read-state">Loading latest readings…</p>
-        <div v-if="summaryError" class="read-state" role="alert"><p>{{ summaryError }}</p><p v-if="summarySuccessAt">Showing the last successful summary. Data may be stale. Last successful read: {{ summarySuccessAt }}</p><el-button @click="refreshRecords" :loading="summaryLoading">Retry latest readings</el-button></div>
+        <div class="measurement-read-model"><button type="button" data-action="toggle-original" :disabled="measurementLocked" :aria-expanded="rawOpen" @click="rawOpen=!rawOpen">{{ot(rawOpen?'close':'open')}}</button></div>
         <div class="content-panel entry-panel">
           <div class="panel-head">
             <div class="list-panel-title">
               <el-icon><Plus /></el-icon>
               <h2 ref="editorHeading" tabindex="-1" class="editor-heading">{{ editingId ? editRecordLabel : 'Add record' }}</h2>
             </div>
-            <el-radio-group v-model="form.measureType" :disabled="saving || accessDenied || measurementLocked" class="measure-switch">
+            <el-radio-group v-model="form.measureType" @update:model-value="markEditDirty('measureType')" :disabled="saving || accessDenied || measurementLocked || ['loading','unavailable'].includes(detailPhase)" class="measure-switch">
               <el-radio-button value="BP">Blood Pressure</el-radio-button>
               <el-radio-button value="BG">Blood Glucose</el-radio-button>
-              <el-radio-button value="BP_BG">Blood pressure + blood glucose</el-radio-button>
+              <el-radio-button :value="form.measureType==='BOTH'?'BOTH':'BP_BG'">Blood pressure + blood glucose</el-radio-button>
             </el-radio-group>
           </div>
 
-          <p class="submission-patient">Recording for {{ currentPatientName || 'selected patient' }} · Patient record #{{ currentPatientId || '—' }}</p>
-          <el-form :model="form" :disabled="saving || accessDenied || measurementLocked" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
+          <p class="submission-patient">Recording for {{ currentPatientName || (currentPatientId ? 'Current patient record' : 'Select a patient') }} · Patient record #{{ currentPatientId || '—' }}</p>
+          <el-form :model="form" :disabled="saving || accessDenied || measurementLocked || ['loading','unavailable'].includes(detailPhase)" label-position="top" ref="formRef" :rules="formRules" class="entry-form">
             <div class="form-grid form-grid--meta">
               <el-form-item label="Record date" prop="recordDate">
-                <el-date-picker v-model="form.recordDate" value-format="YYYY-MM-DD" :clearable="false" />
+                <el-date-picker v-model="form.recordDate" @update:model-value="markEditDirty('recordDate')" value-format="YYYY-MM-DD" :clearable="false" />
               </el-form-item>
               <el-form-item label="Record time" prop="recordTime">
-                <el-time-picker v-model="form.recordTime" format="HH:mm" value-format="HH:mm" :placeholder="measurementFlow.state.capabilityPhase==='enabled'?awText('requiredTime'):'Optional'" />
+                <el-input v-if="editingId" v-model="form.recordTime" @update:model-value="markEditDirty('recordTime')" :placeholder="awText('preservedUnknown')" />
+                <el-time-picker v-else v-model="form.recordTime" @update:model-value="markEditDirty('recordTime')" format="HH:mm" value-format="HH:mm" :placeholder="awText('requiredTime')" />
               </el-form-item>
             </div>
 
@@ -67,11 +67,11 @@
                 </div>
                 <div class="field-grid field-grid--two">
                   <el-form-item label="Systolic Pressure" prop="systolicBp">
-                    <el-input-number v-model="form.systolicBp" :min="50" :max="250" controls-position="right" />
+                    <el-input v-model="form.systolicBp" @update:model-value="markEditDirty('systolicBp')"  type="text" inputmode="decimal" />
                     <span class="unit-text">mmHg</span>
                   </el-form-item>
                   <el-form-item label="Diastolic Pressure" prop="diastolicBp">
-                    <el-input-number v-model="form.diastolicBp" :min="30" :max="150" controls-position="right" />
+                    <el-input v-model="form.diastolicBp" @update:model-value="markEditDirty('diastolicBp')"  type="text" inputmode="decimal" />
                     <span class="unit-text">mmHg</span>
                   </el-form-item>
                 </div>
@@ -84,16 +84,18 @@
                 </div>
                 <div class="field-grid field-grid--two">
                   <el-form-item label="Blood glucose value" prop="bloodGlucose">
-                    <el-input-number v-model="form.bloodGlucose" :min="0" :max="String(form.bgUnit).trim().toLowerCase() === 'mg/dl' ? 900 : 50" :precision="1" :step="0.1" controls-position="right" />
+                    <el-input v-model="form.bloodGlucose" @update:model-value="markEditDirty('bloodGlucose')"  type="text" inputmode="decimal" />
                   </el-form-item>
                   <el-form-item label="Unit">
-                    <el-select v-model="form.bgUnit">
+                    <el-select v-model="form.bgUnit" @update:model-value="markEditDirty('bgUnit')" :placeholder="awText(editingId ? 'preservedUnknown' : 'chooseUnit')">
+                      <el-option v-if="editingId && form.bgUnit != null && form.bgUnit !== '' && !['mmol/L','mg/dL'].includes(form.bgUnit)" :value="form.bgUnit" :label="form.bgUnit?.trim() ? form.bgUnit : awText('preservedUnknown')" />
                       <el-option label="mmol/L" value="mmol/L" />
                       <el-option label="mg/dL" value="mg/dL" />
                     </el-select>
                   </el-form-item>
                   <el-form-item label="Measurement period">
-                    <el-select v-model="form.measurePeriod">
+                    <el-select v-model="form.measurePeriod" @update:model-value="markEditDirty('measurePeriod')" :placeholder="awText(editingId ? 'preservedUnknown' : 'choosePeriod')">
+                      <el-option v-if="editingId && form.measurePeriod != null && form.measurePeriod !== '' && !['Fasting','After Meal2h','Random'].includes(form.measurePeriod)" :value="form.measurePeriod" :label="form.measurePeriod?.trim() ? form.measurePeriod : awText('preservedUnknown')" />
                       <el-option label="Fasting" value="Fasting" />
                       <el-option label="Two hours after a meal" value="After Meal2h" />
                       <el-option label="Random" value="Random" />
@@ -104,34 +106,29 @@
             </div>
 
             <el-form-item label="Notes" class="remark-field">
-              <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" placeholder="Record the measurement context, meal timing, symptoms, or other observations" />
+              <el-input v-model="form.remark" @update:model-value="markEditDirty('remark')" type="textarea" :rows="2" maxlength="500" placeholder="Record the measurement context, meal timing, symptoms, or other observations" />
             </el-form-item>
 
             <el-form-item v-if="measurementFlow.state.capabilityPhase==='enabled'" :label="awText('offset')"><el-input v-model="measurementOffset" placeholder="+08:00" /><p>{{awText('offsetHelp')}}</p></el-form-item>
             <div class="form-actions">
-              <el-button type="primary" @click="handleSave" :loading="saving" :disabled="accessDenied || measurementLocked || !['enabled','disabled'].includes(measurementFlow.state.capabilityPhase) || (measurementFlow.state.capabilityPhase==='enabled'&&!measurementFlow.state.capabilities?.canAdopt)">
+              <el-button type="primary" @click="handleSave" :loading="saving" :disabled="accessDenied || measurementLocked || ['loading','unavailable'].includes(detailPhase) || !['enabled','disabled'].includes(measurementFlow.state.capabilityPhase) || (measurementFlow.state.capabilityPhase==='enabled'&&!measurementFlow.state.capabilities?.canAdopt)">
                 <el-icon><Check /></el-icon>{{ editingId ? 'Update record' : 'Save record' }}
               </el-button>
-              <el-button v-if="editingId" @click="cancelEdit" :disabled="saving || accessDenied || measurementLocked">Cancel editing</el-button>
-              <el-button v-else @click="resetForm" :disabled="saving || accessDenied || measurementLocked">Reset</el-button>
+              <el-button v-if="editingId" @click="cancelEdit" :disabled="saving || accessDenied || measurementLocked || detailPhase==='loading'">Cancel editing</el-button>
+              <el-button v-else @click="resetForm" :disabled="saving || accessDenied || measurementLocked || detailPhase==='loading'">Reset</el-button>
             </div>
           </el-form>
         </div>
 
-        <div v-if="loadError" class="read-state" role="alert"><p>{{ loadError }}</p><p v-if="lastSuccessAt" data-testid="bp-stale">Showing the last successful list. Data may be stale. Last successful read: {{ lastSuccessAt }}</p><el-button data-testid="retry-bp-records" @click="refreshRecords" :loading="loading">Retry</el-button></div>
-        <p v-if="loading" class="read-state" role="status">Loading records…</p>
-        <template v-if="lastSuccessAt">
-        <p v-if="measurementFlow.state.capabilityPhase==='enabled'" class="aw aw-notice">{{awText('legacyTrend')}}</p><VitalsTrendPanel :records="records" />
-        <details class="trend-data" data-testid="bp-trend-data">
-          <summary>Read trend data</summary>
-          <p>Patient record #{{ currentPatientId }} · Same records as the chart and current list, retaining source values and units</p>
-          <div class="trend-data-wrap" tabindex="0" role="region" aria-label="Raw trend data">
-            <table><caption>Source blood pressure and glucose readings</caption><thead><tr><th scope="col">Date and time</th><th scope="col">Systolic (mmHg)</th><th scope="col">Diastolic (mmHg)</th><th scope="col">Glucose (source unit)</th><th scope="col">Existing marker</th></tr></thead>
-              <tbody><tr v-for="row in trendRecords" :key="row.id"><th scope="row">{{ row.recordDate }} {{ row.recordTime || '—' }}</th><td>{{ row.systolicBp ?? '—' }}</td><td>{{ row.diastolicBp ?? '—' }}</td><td>{{ row.bloodGlucose ?? '—' }} {{ row.bloodGlucose != null ? (row.bgUnit || 'mmol/L') : '' }}</td><td>{{ trendRecordAbnormal(row) ? 'Abnormal' : '—' }}</td></tr></tbody>
-            </table>
-          </div>
-        </details>
-        </template>
+        <section v-if="rawOpen" ref="rawHeading" tabindex="-1" class="measurement-read-model" data-testid="self-original-records">
+        <h2>{{ot('originalTitle')}}</h2><p>{{awText('legacyTrend')}}</p>
+        <OriginalMeasurementPageStatus :state="raw.state" :locked="measurementLocked" @refresh="refreshRecords" @retry="raw.refresh({keepPosition:true})" @next="raw.next()" @previous="raw.previous()" />
+        <div v-if="detailPhase!=='idle'">
+        <h3 v-if="!detailIntent?.edit" ref="notesHeading" tabindex="-1" class="editor-heading">{{ot('notes')}}</h3>
+        <p v-if="detailPhase==='loading'" role="status">{{ot('detailLoading')}}</p>
+        <div v-if="detailPhase==='unavailable'" role="alert"><p>{{ot('detailError')}}</p><button type="button" @click="retryDetail">{{ot('retry')}}</button></div>
+        <div v-if="originalDetail && detailPhase==='ready'" class="mr-notice" data-testid="original-detail"><OriginalImportFacts :original-import="originalDetail.originalImport" /><h3>Current record</h3><p>{{selfBp(originalDetail)}} · {{selfGlucose(originalDetail)}}</p><p>{{selfTime(originalDetail)}} · #{{originalDetail.id}}</p><p v-if="Object.hasOwn(originalDetail,'remark')" style="white-space:pre-wrap">{{originalDetail.remark ?? ot('noNotes')}}</p><p v-else>{{ot('detailUnloaded')}}</p><button v-if="!editingId" type="button" @click="closeNotesDetail">{{ot('sourceClose')}}</button></div>
+        </div>
         <div class="content-panel records-panel">
           <div class="toolbar records-toolbar">
             <div class="list-panel-title">
@@ -140,12 +137,12 @@
               <span v-if="records.length" class="list-count">{{ records.length }} items</span>
             </div>
             <div class="records-tools">
-              <el-radio-group v-model="filterType" class="filter-switch">
+              <el-radio-group v-model="filterType" :disabled="measurementLocked || saving" class="filter-switch">
                 <el-radio-button value="">All</el-radio-button>
                 <el-radio-button value="BP">Blood Pressure</el-radio-button>
                 <el-radio-button value="BG">Blood Glucose</el-radio-button>
               </el-radio-group>
-              <el-button @click="refreshRecords" :loading="loading">
+              <el-button @click="refreshRecords" :loading="loading" :disabled="measurementLocked || saving">
                 <el-icon><Refresh /></el-icon>Refresh
               </el-button>
             </div>
@@ -155,19 +152,18 @@
             <p v-if="!records.length" class="record-list-empty">No records</p>
             <article v-for="row in records" :key="row.id" class="mobile-record-card" :data-record-id="row.id">
               <div class="record-card-meta">
-                <time>{{ row.recordDate }} {{ row.recordTime || 'Time not recorded' }}</time>
+                <time>{{selfTime(row)}}</time><span>#{{row.id}}</span>
                 <abbr class="record-card-type" :title="measureLabel(row.measureType)" :aria-label="measureLabel(row.measureType)">{{ row.measureType === 'BP' ? 'BP' : row.measureType === 'BG' ? 'BG' : 'BP + BG' }}</abbr>
               </div>
               <div class="record-card-readings">
                 <span v-if="row.systolicBp != null || row.diastolicBp != null" class="record-card-bp">{{ row.systolicBp ?? '—' }}/{{ row.diastolicBp ?? '—' }} mmHg</span>
-                <span v-if="row.bloodGlucose != null" class="record-card-glucose">{{ row.bloodGlucose }} {{ row.bgUnit || 'mmol/L' }}</span>
+                <span v-if="row.bloodGlucose != null" class="record-card-glucose">{{selfGlucose(row)}}</span>
                 <span v-if="row.systolicBp == null && row.diastolicBp == null && row.bloodGlucose == null">—</span>
               </div>
-              <details v-if="row.measurePeriod || row.remark" class="record-card-details">
-                <summary>Measurement details</summary><p v-if="row.measurePeriod">{{ row.measurePeriod }}</p><p v-if="row.remark">{{ row.remark }}</p>
-              </details>
+              <p>{{row.measurePeriod || ot('periodUnknown')}}</p><p>{{ot('unassessed')}}</p><p v-if="originalIssues(row).length">{{originalIssues(row).join(' · ')}}</p>
+              <button type="button" :disabled="measurementLocked||saving" @click="openDetail(row,false,$event)">{{ot('notes')}}</button>
               <div class="record-card-actions">
-                <el-button link type="primary" :ref="node => setEditOpener(row.id, node, 'mobile')" @click="handleEdit(row, $event, 'mobile')" :disabled="saving || accessDenied || measurementLocked">{{measurementFlow.state.capabilityPhase==='enabled'?awText('sourceOpen'):'Edit'}}</el-button>
+                <el-button link type="primary" :ref="node => setEditOpener(row.id, node, 'mobile')" @click="handleEdit(row, $event, 'mobile')" :disabled="saving || accessDenied || measurementLocked || detailPhase==='loading'">{{measurementFlow.state.capabilityPhase==='enabled'?awText('sourceOpen'):'Edit'}}</el-button>
                 <el-button v-if="measurementFlow.state.capabilityPhase==='enabled'&&measurementFlow.state.capabilities?.canAdopt" link type="danger" :disabled="measurementLocked" @click="inspectSource(row,'invalidate')">{{awText('invalidate')}}</el-button><el-popconfirm v-if="measurementFlow.state.capabilityPhase==='disabled'" title="Delete this record?" @confirm="handleDelete(row)">
                   <template #reference><el-button link type="danger">Delete</el-button></template>
                 </el-popconfirm>
@@ -177,10 +173,7 @@
 
           <div v-if="lastSuccessAt" class="table-wrap records-desktop-table">
             <el-table :data="records" stripe class="app-data-table app-data-table--list" v-loading="loading" empty-text="No records">
-              <el-table-column prop="recordDate" label="Date" width="112" />
-              <el-table-column prop="recordTime" label="Time" width="86">
-                <template #default="{ row }">{{ row.recordTime || '-' }}</template>
-              </el-table-column>
+              <el-table-column :label="ot('originalTime')" min-width="210"><template #default="{row}">{{selfTime(row)}}</template></el-table-column>
               <el-table-column prop="measureType" label="type" width="96" align="center">
                 <template #default="{ row }">
                   <el-tag size="small" :type="measureTagType(row.measureType)">{{ measureLabel(row.measureType) }}</el-tag>
@@ -188,22 +181,23 @@
               </el-table-column>
               <el-table-column label="Blood Pressure" width="120">
                 <template #default="{ row }">
-                  <span class="value-text">{{ row.systolicBp && row.diastolicBp ? row.systolicBp + '/' + row.diastolicBp : '-' }}</span>
+                  <span class="value-text">{{selfBp(row)}}</span>
                 </template>
               </el-table-column>
               <el-table-column label="Blood Glucose" width="130">
                 <template #default="{ row }">
-                  <span class="value-text">{{ row.bloodGlucose ? row.bloodGlucose + ' ' + (row.bgUnit || 'mmol/L') : '-' }}</span>
+                  <span class="value-text">{{selfGlucose(row)}}</span>
                 </template>
               </el-table-column>
               <el-table-column prop="measurePeriod" label="period" width="100" align="center">
-                <template #default="{ row }">{{ row.measurePeriod || '-' }}</template>
+                <template #default="{ row }">{{ row.measurePeriod || ot('periodUnknown') }}</template>
               </el-table-column>
-              <el-table-column prop="remark" label="Notes" min-width="180" show-overflow-tooltip />
+              <el-table-column :label="ot('rawVerification')" min-width="210"><template #default="{row}">#{{row.id}} · {{row.verificationStatus || ot('unknown')}}<p>{{originalIssues(row).join(' · ')}}</p></template></el-table-column>
+              <el-table-column :label="ot('notes')" min-width="180"><template #default="{row}"><button type="button" :disabled="measurementLocked||saving" @click="openDetail(row,false,$event)">{{ot('notes')}}</button></template></el-table-column>
               <el-table-column label="Actions" width="120" align="center" fixed="right">
                 <template #default="{ row }">
                   <div class="table-actions">
-                    <el-button link type="primary" size="small" :ref="node => setEditOpener(row.id, node)" @click="handleEdit(row, $event)" :disabled="saving || accessDenied || measurementLocked">{{measurementFlow.state.capabilityPhase==='enabled'?awText('sourceOpen'):'Edit'}}</el-button>
+                    <el-button link type="primary" size="small" :ref="node => setEditOpener(row.id, node)" @click="handleEdit(row, $event)" :disabled="saving || accessDenied || measurementLocked || detailPhase==='loading'">{{measurementFlow.state.capabilityPhase==='enabled'?awText('sourceOpen'):'Edit'}}</el-button>
                     <el-button v-if="measurementFlow.state.capabilityPhase==='enabled'&&measurementFlow.state.capabilities?.canAdopt" link type="danger" :disabled="measurementLocked" @click="inspectSource(row,'invalidate')">{{awText('invalidate')}}</el-button><el-popconfirm v-if="measurementFlow.state.capabilityPhase==='disabled'" title="Delete this record?" @confirm="handleDelete(row)">
                       <template #reference>
                         <el-button link type="danger" size="small">Delete</el-button>
@@ -215,12 +209,16 @@
             </el-table>
           </div>
         </div>
+        </section>
       </div>
     </el-main>
   </el-container>
 </template>
 
 <script setup>
+import {measurementFits,sameMeasurementDecimal} from '@/utils/measurementNumbers';
+import TrustedMeasurementTrend from '@/components/measurement-read-model/TrustedMeasurementTrend.vue';
+import {measurementText} from '@/utils/measurementReadModelCopy';
 import {useAlertWorkflowNavigation} from '@/composables/useAlertWorkflowNavigation'
 import {nextTick} from 'vue';
 import FollowUpList from '@/components/alert-workflow/FollowUpList.vue';
@@ -233,48 +231,46 @@ import { localDateKey } from '@/utils/familyHealth';
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Check, Plus, Refresh, TrendCharts } from '@element-plus/icons-vue';
-import { listBpSelfMonitorRecords, saveBpSelfMonitorRecord, updateBpSelfMonitorRecord, deleteBpSelfMonitorRecord } from '@/api/bpSelfMonitor.js';
+import { updateBpSelfMonitorRecord, deleteBpSelfMonitorRecord } from '@/api/bpSelfMonitor.js';
 import { useCurrentPatient } from '@/composables/useCurrentPatient';
-import VitalsTrendPanel from '@/components/VitalsTrendPanel.vue';
+import OriginalMeasurementPageStatus from '@/components/measurement-read-model/OriginalMeasurementPageStatus.vue';
+import {useOriginalMeasurementPage} from '@/composables/useOriginalMeasurementPage';
+import {selfDetail} from '@/api/originalMeasurements';
+import OriginalImportFacts from '@/components/OriginalImportFacts.vue';
+import {originalText as ot} from '@/utils/originalMeasurementCopy';
+import {selfTime,selfBp,selfGlucose,originalIssues,originalEditPatch,originalEditableFields,validOriginalDetail} from '@/utils/originalMeasurementPresentation';
+import {captureAuthSession,isAuthSessionCurrent,readPermissionCache} from '@/utils/authSession';
 
 const { currentPatientId, currentPatientName } = useCurrentPatient();
+const trustedTrend=ref(null),legacyFollowUpsVisible=ref(false);
 const measurementFlow=useAlertWorkflow(currentPatientId),measurementOffset=ref(localOffset()),sourcePanel=ref(null);
 useAlertWorkflowNavigation(measurementFlow)
+// 已知来源写入成功后重新读取第一页，不沿用旧游标或自动重放写入。
+watch(()=>measurementFlow.state.sourcePhase,phase=>{if(phase==='succeeded')trustedTrend.value?.refresh()},{flush:'sync'});
 const measurementLocked=computed(()=>['submitting','uncertain'].includes(measurementFlow.state.sourcePhase));
 watch(currentPatientId,()=>{measurementOffset.value=localOffset();measurementFlow.loadCapabilities()},{immediate:true});
 async function measurementReplaySaved(){if(measurementFlow.state.sourceOperation==='save')resetForm();await refreshRecords()}
-async function inspectSource(row,operation){if(measurementLocked.value)return;const result=await measurementFlow.readSource('BP_SELF_MONITOR',row.id);if(result.status==='succeeded'){await nextTick();sourcePanel.value?.beginOperation(operation)}}
+async function inspectSource(row,operation){
+  if(measurementLocked.value)return;
+  const owner={patientId:currentPatientId.value,generation:raw.state.generation};originalSourceOwner=owner;
+  const result=await measurementFlow.readSource('BP_SELF_MONITOR',row.id);
+  if(result.status==='succeeded'){await nextTick();if(originalSourceOwner===owner && owner.patientId===currentPatientId.value && owner.generation===raw.state.generation)sourcePanel.value?.beginOperation(operation)}
+}
 
 const loading = ref(false);
 const saving = ref(false);
 const records = ref([]);
-const loadError = ref('');
 const accessDenied = ref(false);
 const lastSuccessAt = ref('');
-const summaryRecords = ref([]);
-const summaryError = ref('');
-const summaryLoading = ref(false);
-const summarySuccessAt = ref('');
-let summaryRequest = 0;
-const latestBpRecord = computed(() => newestSummaryRecord(item => item.systolicBp != null && item.diastolicBp != null));
+const latestBpRecord = computed(() => newestSummaryRecord(item => item.systolicBp != null || item.diastolicBp != null));
 const latestBgRecord = computed(() => newestSummaryRecord(item => item.bloodGlucose != null));
-function newestSummaryRecord(predicate) {
-  return [...summaryRecords.value].sort((a, b) => `${b.recordDate || ''} ${b.recordTime || ''}`.localeCompare(`${a.recordDate || ''} ${a.recordTime || ''}`)).find(predicate);
-}
-function readingTime(row) { return row ? `${row.recordDate} ${row.recordTime || 'time not recorded'}` : 'No reading'; }
+function newestSummaryRecord(predicate) { return records.value.find(predicate); }
+function readingTime(row) { return row ? selfTime(row) : ot('noReading'); }
 const latestBpAt = computed(() => readingTime(latestBpRecord.value));
 const latestBgAt = computed(() => readingTime(latestBgRecord.value));
-const trendRecords = computed(() => [...records.value].sort((a, b) => `${a.recordDate} ${a.recordTime || ''}`.localeCompare(`${b.recordDate} ${b.recordTime || ''}`)));
-// Mirror the existing VitalsTrendPanel markers exactly. No clinical rule is added or changed.
-function trendRecordAbnormal(x) {
-  const bp = x.systolicBp && (x.systolicBp > 140 || x.systolicBp < 90 || x.diastolicBp > 90 || x.diastolicBp < 60);
-  const raw = x.bloodGlucose, unit = String(x.bgUnit ?? '').trim().toLowerCase() || 'mmol/l';
-  const valid = ['number', 'string'].includes(typeof raw) && String(raw).trim() !== '' && Number.isFinite(Number(raw));
-  const glucose = valid && unit === 'mg/dl' ? Number((Number(raw) / 18).toFixed(8)) : valid && unit === 'mmol/l' ? Number(raw) : null;
-  const bg = glucose != null && (glucose < 3.9 || glucose > (String(x.measurePeriod || '').includes('After Meal') ? 7.8 : 6.1));
-  return !!(bp || bg);
-}
 const filterType = ref('');
+const rawOpen=ref(false),rawHeading=ref(null),notesHeading=ref(null),originalDetail=ref(null),detailPhase=ref('idle'),editDirty=reactive({});
+let detailEpoch=0,detailController=null,detailIntent=null,originalSourceOwner=null;
 const editingId = ref(null);
 const formRef = ref(null);
 const editorHeading = ref(null);
@@ -296,17 +292,21 @@ function focusEditor(context) {
     heading.focus?.({ preventScroll: true });
   });
 }
-async function restoreEditOrigin(origin, context) {
-  await Promise.resolve();
-  if (!origin || !isCurrentContext(context) || editingId.value) return;
-  const preferred = editOpeners.get(origin.key ?? origin.id);
-  const candidates = [preferred, origin.opener, editOpeners.get(origin.id), editOpeners.get(`mobile:${origin.id}`)];
-  const target = candidates.find(node => {
-    if (!node?.isConnected || node.matches?.(':disabled') || node.closest?.('[hidden],[inert]') || node.getClientRects?.().length === 0) return false;
-    const visibility = typeof window === 'undefined' ? '' : window.getComputedStyle?.(node).visibility;
-    return visibility !== 'hidden' && visibility !== 'collapse';
-  });
-  if (!target) return;
+function eligibleFocusTarget(node) {
+  if (!node?.isConnected || node.matches?.(':disabled') || node.closest?.('[hidden],[inert]') || node.getClientRects?.().length === 0) return false;
+  const visibility = typeof window === 'undefined' ? '' : window.getComputedStyle?.(node).visibility;
+  return visibility !== 'hidden' && visibility !== 'collapse';
+}
+async function restoreEditOrigin(origin, context, notes = null) {
+  await (notes ? nextTick() : Promise.resolve());
+  if (!origin || !isCurrentContext(context) || editingId.value || (notes && !notes.owns())) return;
+  const preferred = notes ? origin.opener : editOpeners.get(origin.key ?? origin.id);
+  const candidates = notes ? [origin.opener] : [preferred, origin.opener, editOpeners.get(origin.id), editOpeners.get(`mobile:${origin.id}`)];
+  const target = candidates.find(eligibleFocusTarget);
+  if (!target) {
+    if (!notes || eligibleFocusTarget(rawHeading.value)) rawHeading.value?.focus?.();
+    return;
+  }
   if (typeof window !== 'undefined') window.scrollTo?.({ top: origin.scrollY, behavior: 'auto' });
   // A responsive reflow can hide the original surface and move its same-record counterpart.
   if (target !== preferred && target !== origin.opener) {
@@ -331,26 +331,21 @@ async function cancelEdit() {
 }
 let patientEpoch = 0;
 let editorEpoch = 0;
-let listRequest = 0;
 let saveRequest = 0;
 let disposed = false;
 const pendingDeletes = new Map();
 
-function captureReaderSession() {
-  if (typeof localStorage === 'undefined') return null;
-  return JSON.stringify(['token', 'userId', 'username'].map(key => localStorage.getItem(key)));
-}
+function captureReaderSession() { return JSON.stringify({...captureAuthSession(),actor:localStorage.getItem('userId'),permissions:readPermissionCache()}); }
 let readerSession = captureReaderSession();
 let readerSessionEpoch = 0;
 function ownsReaderSession(session = readerSession, epoch = readerSessionEpoch) {
   return epoch === readerSessionEpoch && session === captureReaderSession();
 }
 function readerSessionChanged(event) {
-  if (disposed || (event?.key != null && !['token', 'userId', 'username', 'realName'].includes(event.key))) return;
+  if (disposed || (event?.key != null && !['token','userId','username','realName','permissionSession','userMenus','userRoleCodes'].includes(event.key))) return;
   readerSessionEpoch++;
+  rawOpen.value=false;raw.clear();clearDetail();
   clearProtectedRecords();
-  loadError.value = 'Your sign-in session changed. Sign in again and reselect the patient.';
-  summaryError.value = loadError.value;
 }
 function ensureReaderSession() {
   if (ownsReaderSession()) return true;
@@ -359,7 +354,7 @@ function ensureReaderSession() {
 }
 
 function captureContext() {
-  return { patientId: currentPatientId.value, patientEpoch, editorEpoch, session: readerSession, sessionEpoch: readerSessionEpoch };
+  return { patientId: currentPatientId.value, patientEpoch, editorEpoch, session: readerSession, sessionEpoch: readerSessionEpoch, detailPending: ['loading','unavailable'].includes(detailPhase.value) };
 }
 
 function isCurrentContext(context, includeEditor = true) {
@@ -380,20 +375,20 @@ const form = reactive({
   systolicBp: null,
   diastolicBp: null,
   bloodGlucose: null,
-  bgUnit: 'mmol/L',
-  measurePeriod: 'Fasting',
+  bgUnit: '',
+  measurePeriod: '',
   remark: ''
 });
 
-const showBpFields = computed(() => form.measureType === 'BP' || form.measureType === 'BP_BG');
-const showBgFields = computed(() => form.measureType === 'BG' || form.measureType === 'BP_BG');
+const showBpFields = computed(() => ['BP','BP_BG','BOTH'].includes(form.measureType));
+const showBgFields = computed(() => ['BG','BP_BG','BOTH'].includes(form.measureType));
 const latestBpText = computed(() => {
   const row = latestBpRecord.value;
-  return row ? `${row.systolicBp}/${row.diastolicBp} mmHg` : '-';
+  return row ? selfBp(row) : ot('noReading');
 });
 const latestBgText = computed(() => {
   const row = latestBgRecord.value;
-  return row ? `${row.bloodGlucose} ${row.bgUnit || 'mmol/L'}` : '-';
+  return row ? selfGlucose(row) : ot('noReading');
 });
 
 const formRules = {
@@ -406,11 +401,15 @@ const formRules = {
 function measurementValidator(kind, min, max, integer = false) {
   return (_rule, value, callback) => {
     if (kind === 'bp' ? !showBpFields.value : !showBgFields.value) return callback();
-    const number = Number(value);
+    const number = Number(value), editing = !!editingId.value, unit = String(form.bgUnit ?? '').trim().toLowerCase();
+    // 旧编辑沿原服务的有效输入范围，不按未知单位夹值，也不强制补单位。
+    const lower = editing && kind === 'bp' ? (min === 50 ? 40 : 20) : min;
+    const upper = editing && kind === 'bp' ? (max === 250 ? 300 : 200) : max;
     const invalid = value == null || String(value).trim() === '' || !Number.isFinite(number)
-      || (integer && !Number.isInteger(number))
-      || (kind === 'bp' ? number < min || number > max
-        : number <= 0 || !['mmol/l', 'mg/dl'].includes(String(form.bgUnit).trim().toLowerCase()) || number > (String(form.bgUnit).trim().toLowerCase() === 'mg/dl' ? 900 : 50));
+      || (integer && !measurementFits(value,10,0))
+      || (kind === 'bg' && (!editing || !sameMeasurementDecimal(value,originalDetail.value?.bloodGlucose)) && !measurementFits(value,5,2))
+      || (kind === 'bp' ? number < lower || number > upper
+        : number <= 0 || (editing ? !!unit && !['mmol/l', 'mg/dl'].includes(unit) : !['mmol/l', 'mg/dl'].includes(unit) || number > (unit === 'mg/dl' ? 900 : 50)));
     callback(invalid ? new Error('Enter a valid measurement for the selected type') : undefined);
   };
 }
@@ -424,8 +423,27 @@ function measureTagType(type) {
   return type === 'BP' ? 'primary' : type === 'BG' ? 'success' : 'warning';
 }
 
-function resetForm() {
-  if(measurementLocked.value)return;
+// 仅已知开关模式参与原值读所有权；可信接口暂不可用不等于原权限被拒绝。
+const originalMode=ref(['enabled','disabled'].includes(measurementFlow.state.capabilityPhase)?measurementFlow.state.capabilityPhase:null);
+const raw=useOriginalMeasurementPage(currentPatientId,computed(()=>({sourceType:'BP_SELF_MONITOR',filter:filterType.value||null})),rawOpen,{contextKey:originalMode});
+watch(()=>raw.state.generation,()=>{
+  originalSourceOwner=null;clearDetail();if(editingId.value)resetForm();
+  // 在途定位也属于旧页；尚未确认的写命令仍保留原重试包。
+  if(!measurementLocked.value && (measurementFlow.state.source || measurementFlow.state.receipt || measurementFlow.state.sourceLocator || measurementFlow.state.sourceReadPhase==='loading')){measurementFlow.reset();measurementFlow.loadCapabilities()}
+},{flush:'sync'});
+watch(()=>[raw.state.phase,raw.state.items],()=>{
+  records.value=raw.state.items;loading.value=raw.state.phase==='loading';lastSuccessAt.value=raw.state.phase==='ready'?new Date().toISOString():'';
+  if(raw.state.phase==='denied'){accessDenied.value=true;resetForm(true)}else if(raw.state.phase==='ready')accessDenied.value=false;
+},{flush:'sync'});
+watch(()=>measurementFlow.state.capabilityPhase,(phase,old)=>{
+  if(['enabled','disabled'].includes(phase))originalMode.value=phase;
+  if(phase!==old){clearDetail();if(editingId.value)resetForm()}
+  if(phase==='denied'&&originalSourceOwner?.patientId===currentPatientId.value&&originalSourceOwner.generation===raw.state.generation)raw.deny();
+},{flush:'sync'});
+
+function resetForm(force=false) {
+  if(measurementLocked.value && force!==true)return;
+  clearDetail();
   invalidateEditor();
   editingId.value = null;
   editRecordLabel.value = '';
@@ -436,8 +454,8 @@ function resetForm() {
   form.systolicBp = null;
   form.diastolicBp = null;
   form.bloodGlucose = null;
-  form.bgUnit = 'mmol/L';
-  form.measurePeriod = 'Fasting';
+  form.bgUnit = '';
+  form.measurePeriod = '';
   form.remark = '';
   // Defaults above own the new draft; resetFields can restore another patient's cached values.
   formRef.value?.clearValidate?.();
@@ -449,98 +467,35 @@ function isDeniedRead(error) {
 function clearProtectedRecords() {
   accessDenied.value = true;
   patientEpoch++;
-  listRequest++;
-  summaryRequest++;
   pendingDeletes.clear();
   records.value = [];
-  summaryRecords.value = [];
   lastSuccessAt.value = '';
-  summarySuccessAt.value = '';
   loading.value = false;
-  summaryLoading.value = false;
   editOpeners.clear();
-  resetForm();
-  loadError.value = 'Measurement record access is unavailable or has been revoked. Retry to recheck access.';
-  summaryError.value = loadError.value;
+  resetForm(true);
 }
-async function loadRecords() {
-  if (disposed || !ensureReaderSession()) return;
-  const request = ++listRequest;
-  const context = captureContext();
-  const type = filterType.value;
-  // An unfiltered read owns the summary independently of the list filter.
-  const summary = type ? null : ++summaryRequest;
-  const isCurrentList = () => request === listRequest && isCurrentContext(context, false) && type === filterType.value;
-  const isCurrentSummary = () => summary != null && summary === summaryRequest && isCurrentContext(context, false);
-  if (!context.patientId || disposed) { records.value = []; loading.value = false; return; }
-  loading.value = true;
-  if (summary != null) summaryLoading.value = true;
-  try {
-    const res = await listBpSelfMonitorRecords(context.patientId, type || undefined);
-    if (!isCurrentList() && !isCurrentSummary()) return;
-    if (res.code !== 200) throw Object.assign(new Error(res.msg || 'Failed to load records'), { code: res.code });
-    const stamp = new Date().toISOString();
-    accessDenied.value = false;
-    if (isCurrentList()) {
-      records.value = res.data || [];
-      lastSuccessAt.value = stamp;
-      loadError.value = '';
-    }
-    if (isCurrentSummary()) {
-      summaryRecords.value = res.data || [];
-      summarySuccessAt.value = stamp;
-      summaryError.value = '';
-    }
-  } catch (error) {
-    if (!isCurrentList() && !isCurrentSummary()) return;
-    if (isDeniedRead(error)) { clearProtectedRecords(); return; }
-    if (isCurrentList()) loadError.value = error.message || 'Failed to load records';
-    if (isCurrentSummary()) summaryError.value = error.message || 'Latest readings could not be loaded';
-  } finally {
-    if (isCurrentList()) loading.value = false;
-    if (isCurrentSummary()) summaryLoading.value = false;
-  }
-}
-
-async function loadLatestRecords() {
-  if (disposed || !ensureReaderSession()) return;
-  const context = captureContext(), request = ++summaryRequest;
-  if (!context.patientId || disposed) return;
-  summaryLoading.value = true;
-  try {
-    const res = await listBpSelfMonitorRecords(context.patientId);
-    if (request !== summaryRequest || !isCurrentContext(context, false)) return;
-    if (res.code !== 200) throw Object.assign(new Error(res.msg || 'Latest readings could not be loaded'), { code: res.code });
-    accessDenied.value = false;
-    summaryRecords.value = res.data || [];
-    summarySuccessAt.value = new Date().toISOString();
-    summaryError.value = '';
-  } catch (error) {
-    if (request !== summaryRequest || !isCurrentContext(context, false)) return;
-    if (isDeniedRead(error)) { clearProtectedRecords(); return; }
-    summaryError.value = error.message || 'Latest readings could not be loaded';
-  } finally { if (request === summaryRequest && isCurrentContext(context, false)) summaryLoading.value = false; }
-}
-async function refreshRecords() {
-  await Promise.all([loadRecords(), ...(filterType.value ? [loadLatestRecords()] : [])]);
-}
+async function loadRecords() { return raw.refresh(); }
+async function refreshRecords() { if(measurementLocked.value)return {status:'locked'};return raw.refresh(); }
 
 async function handleSave() {
   if (saving.value || measurementLocked.value || disposed || !ensureReaderSession() || accessDenied.value) return;
   if (!currentPatientId.value) { ElMessage.warning('Select a patient first.'); return; }
   if (!formRef.value) return;
   const context = captureContext();
+  if(context.detailPending)return;
   const request = ++saveRequest;
   const isEdit = !!editingId.value;
-  const data = { ...form, patientId: context.patientId, id: editingId.value || undefined };
+  if (isEdit && (detailPhase.value!=='ready' || originalDetail.value?.id!==editingId.value)) return;
+  const data = { ...(isEdit ? originalEditPatch(originalDetail.value,form,editDirty) : form), patientId: context.patientId, id: editingId.value || undefined };
   const isCurrentSave = () => request === saveRequest && isCurrentContext(context);
   saving.value = true;
   try {
     try { await formRef.value.validate(); } catch { return; }
     if (!isCurrentSave()) return;
+    for(const key of ['systolicBp','diastolicBp','bloodGlucose'])if(Object.hasOwn(data,key)&&data[key]!=null&&String(data[key]).trim()!==''){if(isEdit&&sameMeasurementDecimal(data[key],originalDetail.value[key]))delete data[key];else data[key]=Number(data[key]);}
     let res;
     if(isEdit){if(measurementFlow.state.capabilityPhase!=='disabled'){ElMessage.warning(awText('sourceOpen'));return}res=await updateBpSelfMonitorRecord(data)}
-    else {delete data.id;if(measurementFlow.state.capabilityPhase==='enabled'){Object.assign(data,selfMonitorInput(data));data.occurredAt=measurementInstant(`${data.recordDate}T${data.recordTime}`,measurementOffset.value)}const result=await measurementFlow.saveSource('BP_SELF_MONITOR',data);if(result.status!=='succeeded')return;res={code:200,data:result.data}}
+    else {delete data.id;Object.assign(data,selfMonitorInput(data,true));if(measurementFlow.state.capabilityPhase==='enabled'){data.occurredAt=measurementInstant(`${data.recordDate}T${data.recordTime}`,measurementOffset.value)}const result=await measurementFlow.saveSource('BP_SELF_MONITOR',data);if(result.status!=='succeeded')return;res={code:200,data:result.data}}
     if (!isCurrentSave()) return;
     if (res.code === 200) {
       ElMessage.success(isEdit ? 'Updated successfully' : 'Saved successfully');
@@ -557,27 +512,65 @@ async function handleSave() {
   } finally { if (isCurrentSave()) saving.value = false; }
 }
 
-async function handleEdit(row, event, surface = 'desktop') {
+async function handleEdit(row,event,surface='desktop') {
   if(measurementFlow.state.capabilityPhase==='enabled'){await inspectSource(row,null);return}
   if(measurementFlow.state.capabilityPhase!=='disabled'){ElMessage.warning(awText('capabilityUnknown'));return}
-  if (saving.value || disposed || !ensureReaderSession() || accessDenied.value || !currentPatientId.value || row.patientId !== currentPatientId.value) return;
-  invalidateEditor();
-  editingId.value = row.id;
-  const key = surface === 'mobile' ? `mobile:${row.id}` : row.id;
-  editOrigin = { id: row.id, key, opener: event?.currentTarget || editOpeners.get(key), scrollY: typeof window === 'undefined' ? 0 : window.scrollY };
-  editRecordLabel.value = 'Edit record from ' + row.recordDate + (row.recordTime ? ' ' + row.recordTime : '');
-  focusEditor(captureContext());
-  Object.assign(form, {
-    recordDate: row.recordDate,
-    recordTime: row.recordTime,
-    measureType: row.measureType,
-    systolicBp: row.systolicBp,
-    diastolicBp: row.diastolicBp,
-    bloodGlucose: row.bloodGlucose,
-    bgUnit: String(row.bgUnit ?? '').trim() ? row.bgUnit : 'mmol/L',
-    measurePeriod: row.measurePeriod || 'Fasting',
-    remark: row.remark || ''
-  });
+  await openDetail(row,true,event,surface);
+}
+function markEditDirty(key) { if(editingId.value && detailPhase.value==='ready') editDirty[key]=true; }
+function clearDetail() {
+  detailEpoch++;detailController?.abort();detailController=null;detailIntent=null;originalDetail.value=null;detailPhase.value='idle';
+  for(const key of Object.keys(editDirty))delete editDirty[key];
+}
+async function openDetail(row,edit=false,event,surface='desktop',notesOrigin=null) {
+  if(saving.value||measurementLocked.value||disposed||accessDenied.value||!ensureReaderSession()||Number(row.patientId)!==currentPatientId.value)return;
+  if(edit || editingId.value)resetForm();
+  clearDetail();
+  const key=surface==='mobile'?`mobile:${row.id}`:row.id;
+  // Native currentTarget may be cleared after this handler yields. Retry keeps this origin.
+  const origin=edit?null:(notesOrigin||{id:row.id,key,opener:event?.currentTarget,scrollY:window.scrollY});
+  detailIntent={row:{id:row.id,patientId:row.patientId},edit,event,surface,origin};
+  const intent=detailIntent,version=++detailEpoch,context=captureContext(),auth={...captureAuthSession(),actorId:localStorage.getItem('userId')},permission=JSON.stringify(readPermissionCache()),mode=measurementFlow.state.capabilityPhase;
+  const sourceOwner=originalSourceOwner,sourceLocator=measurementFlow.state.sourceLocator;
+  const owns=()=>version===detailEpoch&&detailIntent===intent&&(edit||(sourceOwner===originalSourceOwner&&sourceLocator===measurementFlow.state.sourceLocator))&&isCurrentContext(context)&&isAuthSessionCurrent(auth)&&auth.actorId===localStorage.getItem('userId')&&permission===JSON.stringify(readPermissionCache())&&mode===measurementFlow.state.capabilityPhase&&rawOpen.value;
+  intent.owns=owns;
+  detailController=new AbortController();detailPhase.value='loading';
+  try {
+    if(!edit){
+      await nextTick();
+      if(!owns())return;
+      const heading=notesHeading.value;
+      if(eligibleFocusTarget(heading)){
+        const toolbarBounds=document.querySelector?.('.workspace-topbar')?.getBoundingClientRect();
+        const clearance=toolbarBounds?Math.max(0,toolbarBounds.bottom)+16:88;
+        heading.style?.setProperty('scroll-margin-top',`${clearance}px`);
+        const behavior=typeof window!=='undefined'&&window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
+        heading.scrollIntoView?.({behavior,block:'start'});
+        heading.focus?.({preventScroll:true});
+      }
+    }
+    const response=await selfDetail({patientId:context.patientId,recordId:row.id},{expectedAuth:auth,signal:detailController.signal});
+    if(!owns())return;
+    const item=response?.data;
+    if(response?.code && response.code!==200)throw Object.assign(new Error('DETAIL_FAILED'),{code:response.code});
+    if(!validOriginalDetail(item,row.id,context.patientId))throw new Error('INVALID_DETAIL');
+    originalDetail.value={...item};detailPhase.value='ready';
+    if(edit){
+      for(const field of originalEditableFields)form[field]=item[field];
+      editingId.value=item.id;editOrigin={id:item.id,key,opener:event?.currentTarget||editOpeners.get(key),scrollY:window.scrollY};
+      editRecordLabel.value=ot('sourceOpen')+' · '+selfTime(item);focusEditor(captureContext());
+    }
+  }catch(error){if(!owns())return;if(isDeniedRead(error)){clearProtectedRecords();raw.deny()}else{originalDetail.value=null;detailPhase.value='unavailable';detailIntent=intent}}
+  finally{if(version===detailEpoch&&!owns())clearDetail()}
+}
+function retryDetail(){const intent=detailIntent;if(intent)return openDetail(intent.row,intent.edit,intent.event,intent.surface,intent.origin)}
+async function closeNotesDetail(){
+  const intent=detailIntent,canReturn=intent&&!intent.edit&&intent.owns();
+  const context=captureContext(),sourceOwner=originalSourceOwner,sourceLocator=measurementFlow.state.sourceLocator,mode=measurementFlow.state.capabilityPhase;
+  clearDetail();
+  if(!canReturn)return;
+  const version=detailEpoch;
+  await restoreEditOrigin(intent.origin,context,{owns:()=>version===detailEpoch&&!detailIntent&&rawOpen.value&&mode===measurementFlow.state.capabilityPhase&&sourceOwner===originalSourceOwner&&sourceLocator===measurementFlow.state.sourceLocator});
 }
 
 async function handleDelete(row) {
@@ -600,49 +593,32 @@ async function handleDelete(row) {
 }
 
 watch(currentPatientId, () => {
+  rawOpen.value=false;raw.clear();clearDetail();
   readerSession = captureReaderSession();
   readerSessionEpoch++;
   patientEpoch++;
-  listRequest++;
   pendingDeletes.clear();
-  summaryRequest++;
-  summaryRecords.value = [];
-  summarySuccessAt.value = '';
-  summaryError.value = '';
-  summaryLoading.value = false;
   accessDenied.value = false;
   lastSuccessAt.value = '';
-  loadError.value = '';
   records.value = [];
   editOpeners.clear();
   loading.value = false;
   resetForm();
   refreshRecords();
 }, { flush: 'sync' });
-watch(filterType, () => {
-  listRequest++;
-  loadError.value = '';
-  lastSuccessAt.value = '';
-  records.value = [];
-  loading.value = false;
-  loadRecords();
-}, { flush: 'sync' });
 
 onMounted(() => {
-  if (typeof window !== 'undefined') { window.addEventListener?.('storage', readerSessionChanged); window.addEventListener?.('auth-session-cleared', readerSessionChanged); }
+  if (typeof window !== 'undefined') { window.addEventListener?.('storage', readerSessionChanged); window.addEventListener?.('auth-session-cleared', readerSessionChanged); window.addEventListener?.('auth-session-changed',readerSessionChanged); }
   refreshRecords();
 });
 onUnmounted(() => {
-  if (typeof window !== 'undefined') { window.removeEventListener?.('storage', readerSessionChanged); window.removeEventListener?.('auth-session-cleared', readerSessionChanged); }
+  if (typeof window !== 'undefined') { window.removeEventListener?.('storage', readerSessionChanged); window.removeEventListener?.('auth-session-cleared', readerSessionChanged); window.removeEventListener?.('auth-session-changed',readerSessionChanged); clearDetail(); }
   disposed = true;
   editOpeners.clear();
   editOrigin = null;
   patientEpoch++;
-  listRequest++;
   pendingDeletes.clear();
-  summaryRequest++;
   loading.value = false;
-  summaryLoading.value = false;
   invalidateEditor();
 });
 </script>
@@ -905,4 +881,45 @@ onUnmounted(() => {
   .record-list-empty { color: var(--ink-700); text-align: center; }
 }
 
+</style>
+
+<style scoped>.measure-switch :deep(.el-radio-button__inner){min-height:44px;white-space:normal;line-height:1.4;overflow-wrap:anywhere}.entry-form :deep(.el-input__wrapper),.entry-form :deep(.el-select__wrapper),.entry-form :deep(.el-button){min-height:44px}.entry-form :deep(.el-input-number){max-width:100%;min-height:44px}.entry-form :deep(.el-form-item__label){height:auto;white-space:normal;overflow-wrap:anywhere}</style>
+
+<style scoped>
+.records-tools {
+  --control-row-size: 44px;
+  min-width: 0;
+}
+body.care-senior .records-tools {
+  --control-row-size: 48px;
+}
+.records-tools .filter-switch {
+  align-items: stretch;
+  max-width: 100%;
+  min-width: 0;
+}
+.records-tools .filter-switch :deep(.el-radio-button) {
+  display: inline-flex;
+  flex: 1 1 auto;
+  flex-direction: row;
+  gap: 0;
+}
+.records-tools .filter-switch :deep(.el-radio-button__inner) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control-row-size);
+  white-space: normal;
+  line-height: 1.4;
+}
+.records-tools > .el-button {
+  min-height: var(--control-row-size);
+  height: auto;
+  line-height: 1.2;
+}
+body.care-senior .records-tools .filter-switch :deep(.el-radio-button__inner) {
+  font-size: 18px;
+}
 </style>

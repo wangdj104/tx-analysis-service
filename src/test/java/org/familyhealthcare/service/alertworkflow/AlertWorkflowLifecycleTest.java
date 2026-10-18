@@ -191,18 +191,18 @@ class AlertWorkflowLifecycleTest {
         long ref=h.db.jdbc.queryForObject("SELECT id FROM alert_evidence",Long.class);h.denied(403,()->h.command(1,id,"RESOLVE_REFERENCE_CHANGE",map("reason","Plan instead","evidenceId",ref,"resolution","REPLACE","replacement",map("sourceType","CARE_PLAN_ACTION","sourceId",92))));
     }
     @Test void correctionOfMeasurementInsidePlanReceiptReopensDependentAlert() {
-        h.db.jdbc.update("INSERT INTO doctor_care_plan VALUES(90,10,91,'ACTIVE',1,'ACTIVE')");h.db.jdbc.update("INSERT INTO care_plan_action VALUES(92,90,10,91,'CONFIRMED',0)");h.db.jdbc.update("INSERT INTO care_plan_event VALUES(94,90,92,'RECEIPT_SUBMITTED')");h.db.jdbc.update("INSERT INTO care_plan_evidence VALUES(94,'MEASUREMENT',202)");
+        h.db.jdbc.update("INSERT INTO doctor_care_plan VALUES(90,10,91,'ACTIVE',1,'ACTIVE')");h.db.jdbc.update("INSERT INTO care_plan_action VALUES(92,90,10,91,'CONFIRMED',0)");h.db.jdbc.update("INSERT INTO care_plan_event(id,plan_id,action_id,event_type,patient_id) VALUES(94,90,92,'RECEIPT_SUBMITTED',10)");h.db.jdbc.update("INSERT INTO care_plan_evidence(event_id,source_type,source_id) VALUES(94,'MEASUREMENT',202)");
         long id=h.adopt();h.assign(id,1);h.accept(id,1);h.command(1,id,"SUBMIT",map("note","Plan receipt","occurredAt",h.time,"evidence",Arrays.asList(map("sourceType","CARE_PLAN_ACTION","sourceId",92))));h.feedback(id,1,"SELF");h.command(1,id,"CLOSE",map("reason","Recorded"));
         h.revise(202,false);assertEquals("OPEN",h.row(id).get("workflowState"));assertEquals(true,h.row(id).get("sourceReviewRequired"));assertEquals("REFERENCE_CHANGED",h.db.jdbc.queryForObject("SELECT dependency_state FROM alert_evidence",String.class));
     }
     @Test void changedPlanReceiptAcceptsGenuinelyFreshDoctorConfirmationOnSameActionOnly() {
-        h.db.jdbc.update("INSERT INTO doctor_care_plan VALUES(90,10,91,'ACTIVE',1,'ACTIVE')");h.db.jdbc.update("INSERT INTO care_plan_action VALUES(92,90,10,91,'SUBMITTED',0)");h.db.jdbc.update("INSERT INTO care_plan_event VALUES(94,90,92,'RECEIPT_SUBMITTED')");h.db.jdbc.update("INSERT INTO care_plan_evidence VALUES(94,'MEASUREMENT',202)");
+        h.db.jdbc.update("INSERT INTO doctor_care_plan VALUES(90,10,91,'ACTIVE',1,'ACTIVE')");h.db.jdbc.update("INSERT INTO care_plan_action VALUES(92,90,10,91,'SUBMITTED',0)");h.db.jdbc.update("INSERT INTO care_plan_event(id,plan_id,action_id,event_type,patient_id) VALUES(94,90,92,'RECEIPT_SUBMITTED',10)");h.db.jdbc.update("INSERT INTO care_plan_evidence(event_id,source_type,source_id) VALUES(94,'MEASUREMENT',202)");
         h.db.tx.execute(tx->{Map<String,Object> source=h.repo.lockSource("HEALTH_MEASUREMENT",202);new AlertWorkflowEvidenceService(h.db.jdbc,h.repo,h.auth,h.p).ensureTracked(1,source);return null;});
         long id=h.adopt();h.assign(id,1);h.accept(id,1);h.command(1,id,"SUBMIT",map("note","Plan receipt","occurredAt",h.time,"evidence",Arrays.asList(map("sourceType","CARE_PLAN_ACTION","sourceId",92))));h.revise(202,false);
         long ref=h.db.jdbc.queryForObject("SELECT id FROM alert_evidence",Long.class);Map<String,Object> resolve=map("reason","Newly reviewed receipt","evidenceId",ref,"resolution","REPLACE","replacement",map("sourceType","CARE_PLAN_ACTION","sourceId",92));
         h.denied(409,()->h.command(3,id,"RESOLVE_REFERENCE_CHANGE",resolve));
         h.db.jdbc.execute("ALTER TABLE care_plan_event ADD payload_json LONGTEXT");h.db.jdbc.execute("ALTER TABLE care_plan_event ADD actor_role VARCHAR(50)");
-        h.db.jdbc.update("UPDATE care_plan_action SET status='CONFIRMED',lock_version=1 WHERE id=92");h.db.jdbc.update("INSERT INTO care_plan_event(id,plan_id,action_id,event_type,payload_json,actor_role) VALUES(95,90,92,'RECEIPT_CONFIRMED',?,'DOCTOR')",json(map("actionVersion",1)));
+        h.db.jdbc.update("UPDATE care_plan_action SET status='CONFIRMED',lock_version=1 WHERE id=92");h.db.jdbc.update("INSERT INTO care_plan_event(id,plan_id,action_id,event_type,payload_json,actor_role,patient_id) VALUES(95,90,92,'RECEIPT_CONFIRMED',?,'DOCTOR',10)",json(map("actionVersion",1)));
         h.command(3,id,"RESOLVE_REFERENCE_CHANGE",resolve);assertEquals(1,h.db.jdbc.queryForObject("SELECT COUNT(*) FROM alert_evidence WHERE dependency_state='VALID' AND dependency_version=1",Integer.class));
     }
     @Test void referenceCapabilitiesDistinguishPersonalOwnerFromRequiredClinicalReviewer() {
@@ -275,12 +275,12 @@ class AlertWorkflowLifecycleTest {
         // Synthetic representation of the care-plan transaction's action update and actual doctor event.
         h.db.jdbc.execute("ALTER TABLE care_plan_event ADD payload_json LONGTEXT");h.db.jdbc.execute("ALTER TABLE care_plan_event ADD actor_role VARCHAR(50)");
         h.db.jdbc.update("UPDATE care_plan_action SET status='CONFIRMED',lock_version=? WHERE id=92",currentVersion);
-        h.db.jdbc.update("INSERT INTO care_plan_event(id,plan_id,action_id,event_type,payload_json,actor_role) VALUES(95,90,92,'RECEIPT_CONFIRMED',?,'DOCTOR')",json(map("actionVersion",confirmedVersion)));
+        h.db.jdbc.update("INSERT INTO care_plan_event(id,plan_id,action_id,event_type,payload_json,actor_role,patient_id) VALUES(95,90,92,'RECEIPT_CONFIRMED',?,'DOCTOR',10)",json(map("actionVersion",confirmedVersion)));
     }
     private long changedPlanWithConfirmedAlternative(){return changedPlanWithConfirmedAlternative("CONFIRMED");}
     private long changedPlanWithConfirmedAlternative(String initialStatus) {
         h.db.jdbc.update("INSERT INTO doctor_care_plan VALUES(90,10,91,'ACTIVE',1,'ACTIVE')");h.db.jdbc.update("INSERT INTO care_plan_action VALUES(92,90,10,91,?,0),(93,90,10,91,'CONFIRMED',0)",initialStatus);
-        h.db.jdbc.update("INSERT INTO care_plan_event VALUES(94,90,92,'RECEIPT_SUBMITTED')");h.db.jdbc.update("INSERT INTO care_plan_evidence VALUES(94,'MEASUREMENT',202)");
+        h.db.jdbc.update("INSERT INTO care_plan_event(id,plan_id,action_id,event_type,patient_id) VALUES(94,90,92,'RECEIPT_SUBMITTED',10)");h.db.jdbc.update("INSERT INTO care_plan_evidence(event_id,source_type,source_id) VALUES(94,'MEASUREMENT',202)");
         long alert=h.adopt();h.assign(alert,1);h.accept(alert,1);h.command(1,alert,"SUBMIT",map("note","Plan A receipt","occurredAt",h.time,"evidence",Arrays.asList(map("sourceType","CARE_PLAN_ACTION","sourceId",92))));h.revise(202,false);return alert;
     }
     private Map<String,Object> replacement(long evidence,long action){return map("reason","Change reference","evidenceId",evidence,"resolution","REPLACE","replacement",map("sourceType","CARE_PLAN_ACTION","sourceId",action));}
@@ -291,15 +291,22 @@ class AlertWorkflowLifecycleTest {
 /** Synthetic relational harness. Real services, transactions, sources and evidence are exercised. */
 class AlertWorkflowHarness {
     final AlertWorkflowTestDatabase db; final AlertWorkflowProperties p;final AlertWorkflowAuthorizationService auth;final AlertWorkflowRepository repo;
+    final org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
     final AlertWorkflowService service;final AlertWorkflowQueryService query;final AlertWorkflowNotificationQueue queue;long nextSource=101;final String time=AlertWorkflowTestDatabase.NOW.minusSeconds(60).toString();
     AlertWorkflowHarness() throws Exception {
         db=new AlertWorkflowTestDatabase();db.fixtures();db.sourceTables();db.workflowTables();
         db.jdbc.execute("CREATE TABLE notification_channel(id BIGINT PRIMARY KEY,user_id BIGINT,enabled INT,channel_type VARCHAR(40))");
         db.jdbc.update("INSERT INTO notification_channel VALUES(1,1,1,'WEBHOOK'),(2,3,1,'WEBHOOK')");
         db.jdbc.update("INSERT INTO health_measurement(id,patient_id,recorded_by,metric_type,value_primary,unit,measured_at) VALUES(101,10,1,'GLUCOSE',18,'mmol/L',?),(202,10,1,'GLUCOSE',8,'mmol/L',?),(303,20,6,'GLUCOSE',18,'mmol/L',?)",AlertWorkflowTestDatabase.NOW,AlertWorkflowTestDatabase.NOW,AlertWorkflowTestDatabase.NOW);
-        db.jdbc.update("INSERT INTO medical_record VALUES(77,10)");
+        db.jdbc.update("INSERT INTO medical_record(id,patient_id) VALUES(77,10)");
         p=new AlertWorkflowProperties(true,Clock.fixed(AlertWorkflowTestDatabase.NOW,ZoneOffset.UTC));auth=new AlertWorkflowAuthorizationService(db.jdbc,p,new CarePlanProperties(true,Clock.fixed(AlertWorkflowTestDatabase.NOW,ZoneOffset.UTC)));repo=new AlertWorkflowRepository(db.jdbc,p,auth);
         queue=new AlertWorkflowNotificationQueue(db.jdbc,auth,p);AlertWorkflowEventStore events=new AlertWorkflowEventStore(repo,auth);AlertWorkflowEvidenceService evidence=new AlertWorkflowEvidenceService(db.jdbc,repo,auth,p);
+        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection projection=new org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection(db.jdbc,new org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionSchema(),false);
+        medicalValidity=org.mockito.Mockito.spy(projection);
+        java.lang.reflect.Constructor<org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope> scope=org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope.class.getDeclaredConstructor(org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.class,org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionSchema.Status.class);scope.setAccessible(true);
+        org.mockito.Mockito.doReturn(scope.newInstance(projection,org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionSchema.Status.ABSENT)).when(medicalValidity).open();
+        org.springframework.test.util.ReflectionTestUtils.setField(evidence,"medicalValidity",medicalValidity);
+        org.springframework.test.util.ReflectionTestUtils.setField(evidence,"medicalReferences",new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions(db.jdbc,medicalValidity));
         service=new AlertWorkflowService(db.jdbc,repo,auth,p,events,queue,evidence,new MeasurementAssessmentService(db.jdbc));query=new AlertWorkflowQueryService(db.jdbc,repo,auth,p,evidence);
     }
 

@@ -9,21 +9,30 @@
         <article class="status-card"><span>透析排班</span><strong>{{ scheduleState==='ready' ? (todaySchedule ? statusText(todaySchedule.status) : '无日程') : scheduleStateText(scheduleState) }}</strong><small>{{ todaySchedule?.scheduleTime || '—' }}</small></article>
         <article class="status-card"><span>个人目标</span><strong>{{ target.id ? '已配置' : '未配置' }}</strong><small>个人目标可提高告警准确性</small></article>
       </section>
-      <el-tabs v-model="tab" class="workspace">
+      <p v-if="intakes.some(item=>item.nextAction)" role="status">协作随访不计入旧服药/漏服汇总；未知事实或随访结束不表示已执行或安全。</p>
+      <AppointmentSchedulePreview ref="appointmentPreview" :patient-id="patientId" />
+      <el-tabs v-model="tab" class="workspace" :before-leave="() => !measurementHistoryLocked && appointmentPreview?.protectNavigation()!==false">
         <el-tab-pane v-if="availableTabs.includes('today')" label="今日任务" name="today">
           <div class="toolbar"><el-button type="primary" @click="openEvent()">记录症状或事件</el-button><el-button @click="$router.push('/bp-self-monitor')">快速录入血压 / 血糖</el-button><el-button @click="$router.push('/medication?tab=remind')">用药提醒</el-button></div>
           <el-empty v-if="reloadState==='ready' && ['ready','disabled'].includes(scheduleState) && !intakes.length && !todaySchedule" description="今天没有需要关注的事项" />
           <div v-if="todaySchedule" class="task-row"><div><b>{{ todaySchedule.scheduleTime || '未设置时间' }} 透析</b><p>{{ todaySchedule.remark }}</p></div><el-tag>{{statusText(todaySchedule.status)}}</el-tag><div class="actions"><el-button @click="openSchedule(todaySchedule)">查看排班</el-button><el-button v-if="todaySchedule.status==='PLANNED'" :disabled="saving" @click="changeSchedule(todaySchedule,'COMPLETED')">标记完成</el-button></div></div>
-          <div v-for="item in intakes" :key="item.id" class="task-row">
-            <div><b>{{ item.scheduledAt?.slice(11,16) }} {{ item.drugName }}</b><p>{{ item.dosage || '遵医嘱服用' }}</p><small v-if="item.status==='SNOOZED'">已延后至 {{ item.snoozeUntil }}</small></div>
-            <el-tag :type="tagType(item.status)">{{ intakeText(item.status) }}</el-tag>
-            <div v-if="['PENDING','MISSED','SNOOZED'].includes(item.status)" class="actions"><el-button type="success" :disabled="saving" @click="doIntake(item,'TAKEN')">已服用</el-button><el-button :disabled="saving" @click="doIntake(item,'SNOOZED')">15 分钟后提醒</el-button><el-button type="danger" plain :disabled="saving" @click="doIntake(item,'SKIPPED')">跳过</el-button></div>
+          <div v-for="item in intakes" :key="item.id" class="task-row" :class="{ 'task-row--workflow': !!item.nextAction }">
+            <div :class="{ 'workflow-task-copy': !!item.nextAction }"><b>{{ item.scheduledAt?.slice(11,16) }} {{ item.drugName }}</b><p v-if="!item.nextAction">{{ item.dosage || '遵医嘱服用' }}</p><small v-if="!item.nextAction && item.status==='SNOOZED'">已延后至 {{ item.snoozeUntil }}</small><span v-if="item.nextAction" role="status" class="workflow-task-truth">{{medicationText(item.followUpState)}} · {{medicationText(item.followUpKind)}} · {{medicationText(item.status)}}</span></div>
+            <router-link v-if="item.nextAction" class="medication-typed-link" :to="`/medication?patientId=${patientId}${item.executionId ? '&executionId='+item.executionId : ''}`">{{medicationText('intakeTitle')}}</router-link>
+            <el-tag v-else :type="tagType(item.status)">{{ intakeText(item.status) }}</el-tag>
+            <div v-if="!item.nextAction && ['PENDING','MISSED','SNOOZED'].includes(item.status)" class="actions"><el-button type="success" :disabled="saving" @click="doIntake(item,'TAKEN')">已服用</el-button><el-button :disabled="saving" @click="doIntake(item,'SNOOZED')">15 分钟后提醒</el-button><el-button type="danger" plain :disabled="saving" @click="doIntake(item,'SKIPPED')">跳过</el-button></div>
           </div>
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('timeline')" label="健康时间线" name="timeline">
-          <div class="toolbar"><el-button type="primary" @click="openEvent()">新增健康事件</el-button><el-date-picker v-model="eventRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" @change="reload" /></div>
+          <div class="measurement-read-model"><div class="mr-controls"><button type="button" :disabled="measurementHistoryLocked" :aria-pressed="timelineView==='measurements'" @click="timelineView='measurements'">{{measurementText('trustedTimeline')}}</button><button type="button" :disabled="measurementHistoryLocked" :aria-pressed="timelineView==='records'" @click="timelineView='records'">{{measurementText('legacyTimeline')}}</button></div></div>
+          <MeasurementItemHistory v-if="tab==='timeline' && timelineView==='measurements'" :patient-id="patientId" :patient-name="currentPatientName" @locked="measurementHistoryLocked=$event" />
+          <template v-if="tab==='timeline' && timelineView==='records'">
+          <p v-if="timelineState==='loading'" role="status">{{measurementText('loading')}}</p><p v-else-if="['denied','unavailable'].includes(timelineState)" role="alert">{{measurementText(timelineState)}}</p>
+          <div class="toolbar"><el-button type="primary" @click="openEvent()">新增健康事件</el-button><el-date-picker v-model="eventRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" @change="refreshLegacyTimeline" /></div>
           <p>系统会自动汇总测量、透析和用药记录，最多展示最近 200 条事件；如需修改，请前往对应功能模块。</p>
-          <el-timeline><el-timeline-item v-for="e in localizedEvents" :key="`${e.sourceType || 'MANUAL'}-${e.sourceId ?? e.id}`" :timestamp="timelineTimestamp(e)" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><router-link v-if="safePlanLink(e)" :to="safePlanLink(e)" class="care-plan-event-link">查看计划和受控历史</router-link><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">编辑</el-button><el-popconfirm title="确认删除该事件吗？" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">删除</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="reloadState==='ready' && !events.length" description="暂无健康事件" />
+          <el-timeline><el-timeline-item v-for="e in localizedEvents" :key="`${e.sourceType || 'MANUAL'}-${e.sourceId ?? e.id}`" :timestamp="timelineTimestamp(e)" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><router-link v-if="safePlanLink(e)" :to="safePlanLink(e)" class="care-plan-event-link">查看计划和受控历史</router-link><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">编辑</el-button><el-popconfirm title="确认删除该事件吗？" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">删除</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="timelineState==='ready' && !events.length" description="暂无健康事件" />
+        
+          </template>
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('schedule')" label="透析排班" name="schedule">
           <el-alert v-if="scheduleState!=='ready'" :title="scheduleStateText(scheduleState)" type="warning" :closable="false" show-icon />
@@ -41,9 +50,9 @@
             <p>医院：{{summary.target?.hospitalName || '未填写'}}；主管医生：{{summary.target?.doctorName || '未填写'}}</p><p>紧急联系人：{{summary.target?.emergencyContact || summary.patient?.emergencyContact || '未填写'}} {{summary.target?.emergencyPhone || summary.patient?.emergencyPhone}}</p>
             <p>血压目标：{{summary.target?.systolicMin || '—'}}–{{summary.target?.systolicMax || '—'}} / {{summary.target?.diastolicMin || '—'}}–{{summary.target?.diastolicMax || '—'}} mmHg</p>
             <h3>当前用药</h3><table><thead><tr><th>药品</th><th>剂量说明</th></tr></thead><tbody><tr v-for="m in summary.medications" :key="m.id"><td>{{m.drugName}}</td><td>{{m.defaultDosage || '遵医嘱服用'}}</td></tr></tbody></table><p v-if="!summary.medications?.length">暂无用药记录</p>
-            <h3>近期测量（最多 30 条）</h3><table><thead><tr><th>时间</th><th>血压（mmHg）</th><th>血糖</th></tr></thead><tbody><tr v-for="r in summary.recentMeasurements" :key="r.id"><td>{{r.recordDate}} {{r.recordTime}}</td><td>{{r.systolicBp ?? '—'}} / {{r.diastolicBp ?? '—'}}</td><td>{{r.bloodGlucose ?? '—'}} {{r.bgUnit}}</td></tr></tbody></table>
+            <h3>近期测量（最多 30 条）</h3><p>{{ot('reportScope')}} {{ot('unassessed')}} {{ot('localTime')}}</p><router-link to="/bp-self-monitor">{{ot('open')}}</router-link><table><thead><tr><th>时间</th><th>血压（mmHg）</th><th>血糖</th></tr></thead><tbody><tr v-for="r in summary.recentMeasurements" :key="r.id"><td>{{selfTime(r)}} · #{{r.id}}</td><td>{{r.systolicBp ?? '—'}} / {{r.diastolicBp ?? '—'}}</td><td>{{selfGlucose(r)}}</td></tr></tbody></table>
             <h3>未解决告警（最多 30 条）</h3><ul><li v-for="a in summary.unresolvedAlerts" :key="a.id">{{a.triggeredAt}} {{a.alertTitle}}：{{a.triggeredValue}} {{a.handlingNote}}</li></ul><p v-if="!summary.unresolvedAlerts?.length">暂无未解决告警</p>
-            <h3>准备咨询医生的问题</h3><ul><li v-for="q in summary.questions||[]" :key="q.id"><b>{{q.title}}</b><p>{{q.details?.description}}</p><p v-if="q.details?.answer">记录的答复：{{q.details.answer}}</p><p v-if="q.details?.followUp">后续事项：{{q.details.followUp}}</p></li></ul>
+            <h3>准备咨询医生的问题</h3><ul><li v-for="q in summary.questions||[]" :key="q.id"><b>{{q.title}}</b><p>{{q.details?.description}}</p><p v-if="q.details?.answer">记录的答复：{{q.details.answer}}</p><p v-if="q.details?.followUp">后续事项：{{q.details.followUp}}</p><p>{{questionText(q.questionProjection?.answerOrigin || 'LEGACY_UNVERIFIED')}}</p><p v-if="q.questionProjection?.projectionBasis==='PRESERVED_NATIVE_SNAPSHOT'">{{questionText('preserved')}}</p><p v-if="q.questionProjection?.answerRecorderId">{{questionText('recorder')}}: #{{q.questionProjection.answerRecorderId}} · {{q.questionProjection.answerRecordedAt}}</p><router-link v-if="q.questionProjection?.detailLink" :to="q.questionProjection.detailLink">{{questionText('view')}}</router-link></li></ul><p>{{questionText('preview')}}</p><router-link :to="`/care?patientId=${patientId}&tab=questions`">{{questionText('summaryMore')}}</router-link>
             <h3>近期症状跟踪</h3><ul><li v-for="s in summary.careSymptoms||[]" :key="s.id">{{s.eventAt}} {{s.title}}，自评分 {{s.details?.severity}}/10，持续 {{s.details?.duration || '未填写'}}；{{s.details?.response}}</li></ul>
             <h3>近期健康事件（最多 30 条）</h3><ul><li v-for="e in localizedSummaryEvents" :key="`${e.sourceType}-${e.id}`">{{e.eventDate}} {{e.title}}：{{e.summary}}</li></ul><p>{{summary.disclaimer}}</p>
           </article><el-empty v-else description="生成摘要，为下次就诊准备近期记录"/>
@@ -56,7 +65,12 @@
   </main>
 </template>
 <script setup>
+import AppointmentSchedulePreview from '@/components/visit-follow-up/AppointmentSchedulePreview.vue';
+import {questionText} from '@/utils/visitQuestionCopy'
 import {ref,reactive,computed,watch,onMounted,onUnmounted,inject,nextTick} from 'vue'
+const appointmentPreview=ref(null);
+import MeasurementItemHistory from '@/components/measurement-read-model/MeasurementItemHistory.vue'
+import {measurementText} from '@/utils/measurementReadModelCopy'
 import {ElMessage,ElMessageBox} from 'element-plus'
 import {useCurrentPatient} from '@/composables/useCurrentPatient'
 import {useRoute,useRouter} from 'vue-router'
@@ -64,10 +78,15 @@ import ExecutionReportPanel from '@/components/care-plan/ExecutionReportPanel.vu
 import {captureAuthSession,isAuthSessionCurrent,AUTH_STORAGE_KEYS,readPermissionCache} from '@/utils/authSession'
 import {canAccessWorkspace} from '@/utils/workspaceAccess'
 import * as api from '@/api/familyHealth'
+import {medicationText} from '@/utils/medicationExecutionCopy'
 import {localDateKey, replaceTarget} from '@/utils/familyHealth'
+import {selfTime,selfGlucose} from '@/utils/originalMeasurementPresentation'
+import {originalText as ot} from '@/utils/originalMeasurementCopy'
 import {formatPlanTime} from '@/utils/carePlanTime'
 import {localizeHealthTimelineEntry} from '@/utils/timelineText'
-const {currentPatientId:patientId}=useCurrentPatient()
+const {currentPatientId:patientId,currentPatientName}=useCurrentPatient()
+const timelineView=ref('measurements'),timelineState=ref('idle'),measurementHistoryLocked=ref(false)
+let timelineEpoch=0,timelineController=null
 const tab=ref('today'),intakes=ref([]),events=ref([]),schedules=ref([]),target=reactive({}),loading=ref(false),saving=ref(false)
 const eventVisible=ref(false),scheduleVisible=ref(false),eventForm=reactive({}),scheduleForm=reactive({}),eventRange=ref(null)
 const reportPanel=ref(null)
@@ -89,7 +108,7 @@ watch(tab,value=>{
   if(!availableTabs.value.includes(value) || route.query.tab===value)return
   router.push({path:route.path,query:{...route.query,tab:value}})
 })
-const activeIntakes=computed(()=>intakes.value.filter(x=>x.status!=='CANCELLED'))
+const activeIntakes=computed(()=>intakes.value.filter(x=>!x.nextAction && x.status!=='CANCELLED'))
 const takenCount=computed(()=>activeIntakes.value.filter(x=>x.status==='TAKEN').length),missedCount=computed(()=>activeIntakes.value.filter(x=>x.status==='MISSED').length)
 const todaySchedule=computed(()=>schedules.value.find(x=>x.scheduleDate===today.value))
 const localizedEvents=computed(()=>events.value.map(localizeHealthTimelineEntry))
@@ -99,6 +118,7 @@ let summaryController=null, printPopup=null
 let disposed=false, taskPending=null
 const reloadState=ref('idle'),scheduleState=ref('idle')
 function clearReload(){
+  clearLegacyTimeline()
   requestVersion++;taskVersion++;taskPending=null
   intakes.value=[];events.value=[];schedules.value=[];replaceTarget(target,null)
   reloadState.value='idle';scheduleState.value='idle';loading.value=false
@@ -127,17 +147,28 @@ async function reload(){
   const owns=()=>active&&!disposed&&id===patientId.value&&version===requestVersion&&isAuthSessionCurrent(auth)
   loading.value=true;reloadState.value='loading';scheduleState.value='loading'
   try {
-    const [a,b,c,d]=await Promise.all([api.getIntakes(id),api.getTimeline(id,eventRange.value?.[0],eventRange.value?.[1]),loadOptionalSchedules(id,owns),api.getHealthTarget(id)])
+    const [a,c,d]=await Promise.all([api.getIntakes(id),loadOptionalSchedules(id,owns),api.getHealthTarget(id)])
     if(!owns())return
     // Full reload and task-only refresh share ownership of the intake list.
     if(intakeVersion===taskVersion){intakes.value=a.data||[];today.value=localDateKey()}
-    events.value=b.data||[];schedules.value=c.data;scheduleState.value=c.state;replaceTarget(target,d.data)
+    schedules.value=c.data;scheduleState.value=c.state;replaceTarget(target,d.data)
     reloadState.value='ready'
+    refreshLegacyTimeline()
   }catch(error){
     if(owns()){intakes.value=[];events.value=[];schedules.value=[];replaceTarget(target,null);reloadState.value=readFailure(error);scheduleState.value='unavailable'}
   } finally {active=false;if(!disposed && version===requestVersion)loading.value=false}
 }
+function clearLegacyTimeline(){timelineEpoch++;timelineController?.abort();timelineController=null;events.value=[];timelineState.value='idle'}
+async function refreshLegacyTimeline(){
+  clearLegacyTimeline()
+  if(disposed || !patientId.value || tab.value!=='timeline' || timelineView.value!=='records')return
+  const id=patientId.value,version=timelineEpoch,auth=captureAuthSession(),actor=localStorage.getItem('userId'),controller=new AbortController()
+  timelineController=controller;timelineState.value='loading'
+  const owns=()=>!disposed&&version===timelineEpoch&&id===patientId.value&&tab.value==='timeline'&&timelineView.value==='records'&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId')
+  try{const result=await api.getTimeline(id,eventRange.value?.[0],eventRange.value?.[1],{signal:controller.signal,expectedAuth:{...auth,actorId:actor}});if(owns()){events.value=result.data||[];timelineState.value='ready'}}catch(error){if(owns()){events.value=[];timelineState.value=readFailure(error)}}finally{if(timelineController===controller)timelineController=null}
+}
 watch(patientId,()=>{invalidateContext();reload()},{immediate:true,flush:'sync'})
+watch([tab,timelineView],refreshLegacyTimeline,{flush:'sync'})
 async function refreshTasks(){
   const id=patientId.value
   // Skip redundant background reads before advancing result ownership.
@@ -151,7 +182,7 @@ async function refreshTasks(){
   finally{if(taskPending===pending)taskPending=null}
 }
 onMounted(()=>{timer=window.setInterval(refreshTasks,30000)})
-onUnmounted(()=>{disposed=true;taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateContext);window.removeEventListener('storage',summaryStorageChanged)})
+onUnmounted(()=>{disposed=true;clearLegacyTimeline();taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateContext);window.removeEventListener('storage',summaryStorageChanged)})
 async function save(operation){if(saving.value)return;const id=patientId.value;if(!id)return;saving.value=true;try{await operation(id);ElMessage.success('保存成功。');if(id===patientId.value){summaryVersion++;summary.value=null;summaryLoading.value=false;await reload()}}finally{saving.value=false}}
 async function doIntake(item,status){const id=patientId.value;let reason='';if(status==='SKIPPED'){const answer=await ElMessageBox.prompt('请简要说明跳过本次服药的原因。','跳过本次服药').catch(()=>null);if(!answer)return;reason=answer.value}if(id!==patientId.value)return;await save(()=>api.actionIntake(item.id,status,reason))}
 function openEvent(row){Object.keys(eventForm).forEach(k=>delete eventForm[k]);Object.assign(eventForm,{id:null,eventDate:localDateKey(),eventTime:'',eventType:'SYMPTOM',title:'',summary:''},row||{});eventVisible.value=true}
@@ -229,6 +260,8 @@ function safePlanLink(event){return event.sourceType==='CARE_PLAN_EVENT'&&Number
 const eventType=s=>({SYMPTOM:'症状',VISIT:'就诊',NOTE:'备注',MEASUREMENT:'测量',DIALYSIS:'透析',INTAKE:'服药',MEDICATION_LOG:'用药记录'}[s]||s)
 </script>
 <style scoped>
+.medication-typed-link{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:.5rem;overflow-wrap:anywhere}.medication-typed-link:focus-visible{outline:2px solid var(--el-color-primary);outline-offset:2px}
+
 .visit-summary table{width:100%;border-collapse:collapse}.visit-summary th,.visit-summary td{border:1px solid var(--line);padding:8px;text-align:left}.visit-summary{overflow-x:auto}.task-row small{color:var(--ink-500)}</style>
 <style scoped>
 .care-plan-event-link{display:inline-flex;align-items:center;min-height:44px;margin:8px;padding:0 10px;color:var(--care-700)}.care-plan-event-link:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}
@@ -370,6 +403,13 @@ const eventType=s=>({SYMPTOM:'症状',VISIT:'就诊',NOTE:'备注',MEASUREMENT:'
   gap: 12px;
   border-bottom: 1px solid var(--line-soft, #edf2f1);
 }
+
+/* 仅跟踪随访使用整行文本与独立链接；普通旧剂量行保留原布局和动作。 */
+.task-row.task-row--workflow { grid-template-columns: minmax(0, 1fr); align-items: start; }
+.workflow-task-copy { min-width: 0; overflow-wrap: anywhere; }
+.workflow-task-copy b, .workflow-task-truth { display: block; }
+.workflow-task-truth { margin-top: 6px; line-height: 1.5; }
+.task-row--workflow .medication-typed-link { justify-self: start; max-width: 100%; white-space: normal; }
 
 .task-row:last-child {
   border-bottom: 0;

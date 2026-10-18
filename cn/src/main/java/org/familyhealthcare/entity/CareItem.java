@@ -11,6 +11,10 @@ import java.util.*;
 @Data @TableName("care_item")
 public class CareItem {
     @TableId(type=IdType.AUTO) private Long id;
+    @TableField(exist=false) private String reportSourceStatus;
+    @TableField(exist=false) private Boolean visitFollowUpManaged;
+    @TableField(exist=false) private String visitFollowUpAttendance;
+    @TableField(exist=false) private String visitFollowUpAttendanceOrigin;
     private Long patientId;
     private Long userId;
     private String kind;

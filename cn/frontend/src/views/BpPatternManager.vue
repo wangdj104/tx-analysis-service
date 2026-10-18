@@ -15,7 +15,7 @@
 
         <div class="content-panel">
           <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-            <div>
+            <div class="analysis-read-actions">
               <el-button type="primary" @click="handleAnalyze" :loading="analyzing">
                 <el-icon><DataAnalysis /></el-icon>运行分析
               </el-button>
@@ -312,6 +312,24 @@ onUnmounted(() => {
   }
   .analysis-overview :deep(.el-statistic__content) {
     font-size: 18px;
+  }
+}
+</style>
+
+<style scoped>
+.analysis-read-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+.analysis-read-actions > .el-button {
+  margin-left: 0;
+}
+@media (max-width: 768px) {
+  .analysis-read-actions {
+    width: 100%;
   }
 }
 </style>

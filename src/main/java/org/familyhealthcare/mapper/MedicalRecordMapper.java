@@ -7,6 +7,11 @@ import java.time.LocalDateTime;
 
 @Mapper
 public interface MedicalRecordMapper extends BaseMapper<MedicalRecord> {
+    // 不执行随后补写；原始事实和父记录共享同一次 INSERT。
+    @Insert("INSERT INTO medical_record(patient_name,patient_id,user_id,record_date,record_type,hospital_name,dept_name,doctor_name,source_type,source_external_id,verification_status,confidence_score,content_version,remark,import_facts_json) VALUES(#{row.patientName},#{row.patientId},#{row.userId},#{row.recordDate},#{row.recordType},#{row.hospitalName,jdbcType=VARCHAR},#{row.deptName,jdbcType=VARCHAR},#{row.doctorName,jdbcType=VARCHAR},#{row.sourceType},#{row.sourceExternalId},#{row.verificationStatus},#{row.confidenceScore,jdbcType=DECIMAL},#{row.contentVersion},#{row.remark,jdbcType=VARCHAR},#{factsJson,jdbcType=LONGVARCHAR})")
+    @Options(useGeneratedKeys=true,keyProperty="row.id",keyColumn="id")
+    int insertImported(@Param("row") MedicalRecord row,@Param("factsJson") String factsJson);
+
     @Select("SELECT * FROM medical_record WHERE id=#{id} FOR UPDATE")
     MedicalRecord selectForUpdate(@Param("id") Long id);
 

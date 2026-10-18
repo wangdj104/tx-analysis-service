@@ -6,6 +6,26 @@ import org.springframework.stereotype.Service;
 @Service
 public class NotificationMessageLocalizer {
     public Message localize(String eventType, String title, String content, String language) {
+        if(eventType!=null&&eventType.startsWith("EMERGENCY_ASSISTANCE_")) {
+            boolean chinese=language!=null&&language.toLowerCase(java.util.Locale.ROOT).startsWith("zh");
+            String path=content!=null&&content.matches("/care-journey\\?tab=emergency&patientId=[1-9][0-9]{0,15}&emergencyEventId=[1-9][0-9]{0,15}")?content:"/care-journey?tab=emergency";
+            return new Message(chinese?"紧急请求更新":"Emergency request update",(chinese?"请登录后查看紧急请求。此消息不保证有人响应。 ":"Sign in to review the emergency request. A response is not guaranteed. ")+path);
+        }
+        if(eventType!=null&&eventType.startsWith("FAMILY_ASSISTANCE_")) {
+            boolean chinese=language!=null&&language.toLowerCase(java.util.Locale.ROOT).startsWith("zh");
+            String path=content!=null&&content.matches("/care\\?patientId=[1-9][0-9]{0,15}&assistanceId=[1-9][0-9]{0,15}")?content:"/care";
+            return new Message(chinese?"家庭交接更新":"Family assistance update",(chinese?"请登录后查看家庭交接状态。 ":"Sign in to review the assistance request. ")+path);
+        }
+        if(eventType!=null&&eventType.startsWith("STOCK_WORKFLOW_")) {
+            boolean chinese=language!=null&&language.toLowerCase(java.util.Locale.ROOT).startsWith("zh");
+            String path=content!=null&&content.matches("/care\\?patientId=[1-9][0-9]{0,15}&stockId=[1-9][0-9]{0,15}")?content:"/care";
+            return new Message(chinese?"库存核对更新":"Stock review update",(chinese?"请登录后查看库存核对状态。 ":"Sign in to review the stock workflow. ")+path);
+        }
+        if(eventType!=null&&eventType.startsWith("MEDICATION_EXECUTION_")) {
+            boolean chinese=language!=null&&language.toLowerCase(java.util.Locale.ROOT).startsWith("zh");
+            String path=content!=null&&content.matches("/medication\\?patientId=[1-9][0-9]{0,15}&executionId=[1-9][0-9]{0,15}")?content:"/medication";
+            return new Message(chinese?"用药核对更新":"Medication review update",(chinese?"请登录后查看用药核对状态。 ":"Sign in to review the medication reconciliation. ")+path);
+        }
         if(eventType!=null&&eventType.startsWith("ALERT_WORKFLOW_")) {
             boolean chinese=language!=null&&language.toLowerCase(java.util.Locale.ROOT).startsWith("zh");
             String path=content!=null&&content.matches("/alert-workflows/[1-9][0-9]{0,18}(\\?patientId=[1-9][0-9]{0,18})?")?content:"/alert-workflows";

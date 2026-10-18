@@ -88,6 +88,15 @@ public class MedicalRecord {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updatedAt;
 
+    @TableField(exist = false)
+    private Boolean managed;
+
+    @TableField(exist = false)
+    private String validity;
+
+    @TableField(exist = false)
+    private String sourceStatus;
+
     // non-datadatabasefield
     @TableField(exist = false)
     @ApiModelProperty("Examination item detailslist")

@@ -17,6 +17,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 import { LineChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components';
 import VChart from '@/components/HealthChart.vue';
+import { localMeasurementTime } from '@/utils/measurementReadModelPresentation';
 use([CanvasRenderer,LineChart,GridComponent,LegendComponent,MarkLineComponent,TooltipComponent]);
 const props=defineProps({records:{type:Array,default:()=>[]}});const mode=ref('both');
 const sorted=computed(()=>[...props.records].sort((a,b)=>`${a.recordDate} ${a.recordTime||''}`.localeCompare(`${b.recordDate} ${b.recordTime||''}`)));
@@ -24,11 +25,15 @@ const sorted=computed(()=>[...props.records].sort((a,b)=>`${a.recordDate} ${a.re
 function positiveReading(value) {
   return ['number', 'string'].includes(typeof value) && String(value).trim() !== '' && Number.isFinite(Number(value)) && Number(value) > 0;
 }
-const hasBpData = computed(() => sorted.value.some(row => positiveReading(row.systolicBp) || positiveReading(row.diastolicBp)));
-const hasBgData = computed(() => sorted.value.some(row => positiveReading(glucoseInMmol(row.bloodGlucose, row.bgUnit))));
+// 原始图仅按原字段验证完整时间和成对血压，不引入可信投影的权限或修订状态。
+const validTime = row => localMeasurementTime(`${row.recordDate}T${row.recordTime}`);
+const bpValue = (row, key) => validTime(row) && positiveReading(row.systolicBp) && positiveReading(row.diastolicBp) ? row[key] : null;
+const bgValue = row => validTime(row) ? glucoseInMmol(row.bloodGlucose, row.bgUnit) : null;
+const hasBpData = computed(() => sorted.value.some(row => bpValue(row, 'systolicBp') != null));
+const hasBgData = computed(() => sorted.value.some(row => positiveReading(bgValue(row))));
 const hasData = computed(() => mode.value === 'bp' ? hasBpData.value : mode.value === 'bg' ? hasBgData.value : hasBpData.value || hasBgData.value);
 const emptyDescription = computed(() => ({ bp: '暂无可用于分析的血压记录', bg: '暂无可用于分析的血糖记录', both: '暂无可用于分析的生命体征记录' })[mode.value]);
-const labels=computed(()=>sorted.value.map(x=>`${x.recordDate.slice(5)}${x.recordTime?' '+x.recordTime:''}`));
+const labels=computed(()=>sorted.value.map(x=>`${String(x.recordDate || '').slice(5)}${x.recordTime?' '+x.recordTime:''}`));
 const base = {
   tooltip: { trigger: 'axis' },
   legend: { bottom: 0 },
@@ -45,13 +50,13 @@ const base = {
   },
   yAxis: { type: 'value', scale: true },
 };
-const bpOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmHg',min:40},series:[{name:'收缩压',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>x.systolicBp),itemStyle:{color:'#ef4444'},markLine:{symbol:'none',label:{show:false,formatter:'参考上限 140'},data:[{yAxis:140,lineStyle:{type:'dashed',color:'#f59e0b'}}]}},{name:'舒张压',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>x.diastolicBp),itemStyle:{color:'#2563eb'}}]}));
-const bgOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmol/L',min:0},series:[{name:'血糖',type:'line',smooth:true,connectNulls:true,data:sorted.value.map(x=>glucoseInMmol(x.bloodGlucose,x.bgUnit)),itemStyle:{color:'#059669'},markLine:{symbol:'none',label:{show:false},data:[{name:'空腹参考值',yAxis:6.1,lineStyle:{type:'dashed',color:'#f59e0b'}},{name:'餐后参考值',yAxis:7.8,lineStyle:{type:'dashed',color:'#ef4444'}}]}}]}));
+const bpOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmHg',min:40},series:[{name:'收缩压',type:'line',smooth:false,connectNulls:false,data:sorted.value.map(x=>bpValue(x,'systolicBp')),itemStyle:{color:'#ef4444'},markLine:{symbol:'none',label:{show:false,formatter:'参考上限 140'},data:[{yAxis:140,lineStyle:{type:'dashed',color:'#f59e0b'}}]}},{name:'舒张压',type:'line',smooth:false,connectNulls:false,data:sorted.value.map(x=>bpValue(x,'diastolicBp')),itemStyle:{color:'#2563eb'}}]}));
+const bgOption=computed(()=>({...base,xAxis:{...base.xAxis,data:labels.value},yAxis:{type:'value',name:'mmol/L',min:0},series:[{name:'血糖',type:'line',smooth:false,connectNulls:false,data:sorted.value.map(bgValue),itemStyle:{color:'#059669'},markLine:{symbol:'none',label:{show:false},data:[{name:'空腹参考值',yAxis:6.1,lineStyle:{type:'dashed',color:'#f59e0b'}},{name:'餐后参考值',yAxis:7.8,lineStyle:{type:'dashed',color:'#ef4444'}}]}}]}));
 function bpAbnormal(x){return x.systolicBp&&(x.systolicBp>140||x.systolicBp<90||x.diastolicBp>90||x.diastolicBp<60)}
 // Existing chart reference lines are in mmol/L. Keep source values and units unchanged.
 function glucoseInMmol(value, unit) {
   if (!['number', 'string'].includes(typeof value) || String(value).trim() === '' || !Number.isFinite(Number(value))) return null;
-  const normalizedUnit = String(unit ?? '').trim().toLowerCase() || 'mmol/l';
+  const normalizedUnit = String(unit ?? '').trim().toLowerCase();
   if (normalizedUnit === 'mg/dl') return Number((Number(value) / 18).toFixed(8));
   return normalizedUnit === 'mmol/l' ? Number(value) : null;
 }

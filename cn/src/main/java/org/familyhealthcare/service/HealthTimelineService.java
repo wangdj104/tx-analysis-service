@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 /** Combine source records when reading so edits and deletions are reflected without duplicate events. */
 @Service
 public class HealthTimelineService {
+    @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard medicationTracking;
     @Autowired private HealthEventMapper events;
     @Autowired(required=false) private CarePlanTimelineProjector carePlans;
     @Autowired private BpSelfMonitorRecordMapper measurements;
@@ -36,6 +37,7 @@ public class HealthTimelineService {
         // A legacy persisted copy cannot bypass the collaboration module's current grant.
         result.removeIf(e -> "CARE_PLAN_EVENT".equals(e.getSourceType()));
         Long actor=CurrentUserUtil.getCurrentUserId();
+        org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard.LegacyRead legacy=medicationTracking.legacyRead(patientId);
         if(carePlans!=null&&actor!=null)try{result.addAll(carePlans.list(actor,patientId,from,to,limit));}
         catch(CarePlanException denied){if(denied.getStatus()!=403)throw denied;}
         for (BpSelfMonitorRecord r : measurements.selectList(dated(patientId, "record_date", from, to, limit))) {
@@ -49,18 +51,18 @@ public class HealthTimelineService {
         }
         Map<Long, String> names = new HashMap<>();
         for (Medication r : medications.selectList(new QueryWrapper<Medication>().eq("patient_id", patientId))) names.put(r.getId(), r.getDrugName());
-        for (MedicationIntake r : intakes.selectList(this.<MedicationIntake>dated(patientId, "action_at", from, to, limit).eq("status", "TAKEN"))) {
-            if (r.getActionAt() == null) continue;
+        for (MedicationIntake r : legacy.intakes(actor==null?0:actor,intakes.selectList(this.<MedicationIntake>dated(patientId, "action_at", from, to, limit).eq("status", "TAKEN")))) {
+            if (r.getNextAction()!=null||r.getActionAt() == null) continue; // B 事实由 typed timeline 读取，不把旧本地时刻或剂量文本推断成已知事实。
             result.add(event(r.getId(), patientId, "INTAKE", org.familyhealthcare.util.ExportLocalization.text("Taken: ", "已服药：") + names.getOrDefault(r.getMedicationId(), org.familyhealthcare.util.ExportLocalization.text("Deleted medication", "已删除药品")), r.getActionAt().toLocalDate(), r.getActionAt().toLocalTime().toString(), text(r.getDosage())));
         }
-        for (MedicationLog r : logs.selectList(dated(patientId, "administration_time", from, to, limit))) {
+        for (MedicationLog r : legacy.logs(actor==null?0:actor,logs.selectList(dated(patientId, "administration_time", from, to, limit)))) {
             if (r.getAdministrationTime() == null) continue;
             result.add(event(r.getId(), patientId, "MEDICATION_LOG", org.familyhealthcare.util.ExportLocalization.text("Medication record: ", "用药记录：") + names.getOrDefault(r.getMedicationId(), org.familyhealthcare.util.ExportLocalization.text("Deleted medication", "已删除药品")), r.getAdministrationTime().toLocalDate(), r.getAdministrationTime().toLocalTime().toString(), text(r.getDosage())));
         }
         result.sort(Comparator.comparing(HealthEvent::getEventDate, Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(e -> text(e.getEventTime()), Comparator.reverseOrder())
                 .thenComparing(HealthEvent::getId, Comparator.nullsLast(Comparator.reverseOrder())));
-        return result.stream().limit(limit).collect(Collectors.toList());
+        legacy.finish(actor==null?0:actor);return result.stream().limit(limit).collect(Collectors.toList());
     }
 
     private HealthEvent event(Long id, Long patientId, String type, String title, LocalDate date, String time, String summary) {

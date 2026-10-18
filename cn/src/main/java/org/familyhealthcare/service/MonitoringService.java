@@ -4,4 +4,5 @@ import org.familyhealthcare.vo.MonitoringSnapshotVO;
 
 public interface MonitoringService {
     MonitoringSnapshotVO getSnapshot(Long patientId, Integer days);
+    MonitoringSnapshotVO getBoundedSnapshot(Long patientId, Integer days);
 }
