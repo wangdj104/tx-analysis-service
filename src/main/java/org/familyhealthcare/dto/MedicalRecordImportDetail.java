@@ -2,6 +2,9 @@ package org.familyhealthcare.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Getter;
+import com.alibaba.fastjson2.annotation.JSONField;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.familyhealthcare.entity.MedicalRecord;
 import org.familyhealthcare.entity.MedicalRecordAttachment;
 import org.familyhealthcare.entity.MedicalRecordItem;
@@ -33,6 +36,10 @@ public final class MedicalRecordImportDetail {
     private final Boolean managed;
     private final String validity;
     private final String sourceStatus;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @JSONField(deserialize = false)
+    private final MedicalRecordReviewSummary reviewSummary;
     private final BigDecimal confidenceScore;
     private final Long verifiedBy;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
@@ -65,6 +72,7 @@ public final class MedicalRecordImportDetail {
         this.managed = record.getManaged();
         this.validity = record.getValidity();
         this.sourceStatus = record.getSourceStatus();
+        this.reviewSummary = record.getReviewSummary();
         this.confidenceScore = record.getConfidenceScore();
         this.verifiedBy = record.getVerifiedBy();
         this.verifiedAt = record.getVerifiedAt();

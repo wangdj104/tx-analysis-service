@@ -30,6 +30,8 @@ public final class SensitiveResponseFilter extends OncePerRequestFilter implemen
                 ||path.equals("/alert-workflows")||path.startsWith("/alert-workflows/")
                 ||path.equals("/api/care-journey/measurements")||path.startsWith("/api/care-journey/measurements/")
                 ||path.equals("/care-journey/measurements")||path.startsWith("/care-journey/measurements/")
+                ||path.equals("/api/medical-record/reviews")||path.startsWith("/api/medical-record/reviews/")
+                ||path.equals("/medical-record/reviews")||path.startsWith("/medical-record/reviews/")
                 ||path.equals("/api/medical-record/corrections")||path.startsWith("/api/medical-record/corrections/")
                 ||path.equals("/medical-record/corrections")||path.startsWith("/medical-record/corrections/")
                 ||path.equals("/api/common-care-goals")||path.startsWith("/api/common-care-goals/")

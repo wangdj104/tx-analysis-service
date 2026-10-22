@@ -2,6 +2,12 @@ package org.familyhealthcare.service.careplan;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.CareEvidenceReadFrame;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.ReferenceSnapshot;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection;
+import org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader.Semantics;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.datasource.DataSourceUtils;
@@ -83,8 +89,7 @@ public class CareExecutionReportProjector {
         private final Set<EvidenceKey> manifest = new LinkedHashSet<>();
         private final Map<Long, Boolean> assignees = new HashMap<>();
         private Instant asOf;
-        private final Map<Long,String> medicalStatuses=new HashMap<>();
-        private final Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> unboundMedical=new HashMap<>();
+        private CareEvidenceReadFrame medicalFrame;
 
         Read(long actor, Request request, Access access, CareExecutionReportBudget budget, String dbNow) {
             this.actor=actor; this.request=request; this.access=access; this.budget=budget; this.dbNow=dbNow;
@@ -97,7 +102,10 @@ public class CareExecutionReportProjector {
             if (patients.size()!=1 || asOf==null) throw inconsistent();
             boolean current = request.getFormat()!=Format.EVENTS_CSV;
             boolean period = request.getFormat()!=Format.ACTIONS_CSV;
-            List<CurrentAction> actions = current ? currentActions() : Collections.emptyList();
+            CurrentSelection currentSelection = current ? selectCurrentActions() : new CurrentSelection();
+            PeriodSelection periodSelection = period ? selectPeriodEvents() : new PeriodSelection();
+            loadMedicalFrame(currentSelection,periodSelection);
+            List<CurrentAction> actions = currentActions(currentSelection);
             List<CurrentAction> attention = new ArrayList<>();
             long open=0,help=0,submitted=0,confirmed=0,overdue=0,supplement=0;
             for(CurrentAction action:actions) {
@@ -105,7 +113,7 @@ public class CareExecutionReportProjector {
                 if(action.isOverdue())overdue++; if(action.isNeedsSupplement())supplement++;
                 if(action.isOverdue()||action.isNeedsSupplement()||"NEEDS_HELP".equals(action.getStatus())||"SUBMITTED".equals(action.getStatus()))attention.add(action);
             }
-            List<PeriodEvent> events = period ? periodEvents() : Collections.emptyList();
+            List<PeriodEvent> events = periodEvents(periodSelection);
             Map<String,Long> counts=new LinkedHashMap<>(); for(String type:PUBLIC_EVENT_TYPES)counts.put(type,0L);
             Set<Long> eventActions=new HashSet<>();
             for(PeriodEvent event:events){counts.put(event.getEventType(),counts.get(event.getEventType())+1);if(event.getActionId()!=null)eventActions.add(event.getActionId());}
@@ -121,13 +129,13 @@ public class CareExecutionReportProjector {
 
         private String planScope() {return request.getPlanId()==null?"":" AND p.id=?";}
         private List<Object> planArgs() {List<Object> args=new ArrayList<>();args.add(request.getPatientId());if(request.getPlanId()!=null)args.add(request.getPlanId());return args;}
-        private List<CurrentAction> currentActions() {
+        private CurrentSelection selectCurrentActions() {
             // LEFT joins here are intentional: corrupt relations must fail, not disappear from N.
             String active=" FROM doctor_care_plan p LEFT JOIN care_plan_revision r ON r.id=p.current_revision_id WHERE p.patient_id=? AND p.workflow_version=1 AND p.lifecycle='ACTIVE'"+planScope();
             if(!query("SELECT p.id"+active+" AND (r.id IS NULL OR r.plan_id<>p.id OR r.status<>'PUBLISHED') LIMIT 1",(rs,n)->rs.getLong(1),planArgs()).isEmpty())throw inconsistent();
             String from=" FROM doctor_care_plan p JOIN care_plan_revision r ON r.id=p.current_revision_id AND r.plan_id=p.id AND r.status='PUBLISHED' JOIN care_plan_action a ON a.revision_id=r.id WHERE p.patient_id=? AND p.workflow_version=1 AND p.lifecycle='ACTIVE'"+planScope();
             List<Long> ids=query("SELECT a.id"+from+" ORDER BY p.id,a.ordinal,a.id LIMIT 1001",(rs,n)->rs.getLong(1),planArgs());
-            budget.requireRows("CURRENT_ACTIONS",ids.size(),MAX_CURRENT_ACTIONS); if(ids.isEmpty())return Collections.emptyList();
+            budget.requireRows("CURRENT_ACTIONS",ids.size(),MAX_CURRENT_ACTIONS); if(ids.isEmpty())return new CurrentSelection();
             String selected=" FROM care_plan_action a JOIN doctor_care_plan p ON p.current_revision_id=a.revision_id JOIN care_plan_revision r ON r.id=a.revision_id AND r.plan_id=p.id AND r.status='PUBLISHED' WHERE a.id IN ("+marks(ids.size())+")";
             List<ActionRow> rows=boundedQuery("SELECT a.id,a.plan_id,a.patient_id,a.revision_id,a.ordinal,a.instruction,a.status,a.due_at,a.assigned_user_id,a.review_waiting_since,p.id AS actual_plan,r.revision_no,r.title,r.instructions",selected," ORDER BY p.id,a.ordinal,a.id","a.id",ids,0,(rs,n)->{
                 ActionRow a=new ActionRow();a.id=rs.getLong("id");a.plan=rs.getLong("plan_id");a.revision=rs.getLong("revision_id");a.ordinal=rs.getInt("ordinal");
@@ -147,7 +155,14 @@ public class CareExecutionReportProjector {
                 latest.computeIfAbsent(a.id,k->new HashMap<>()).put(e.type,e);
             }
             Map<Long,List<Reference>> eventRefs=eventReferences(latestIds);
-            List<List<Reference>> currentGroups=new ArrayList<>(eventRefs.values());for(Map<Integer,List<Reference>> byOrdinal:revisionRefs.values())currentGroups.addAll(byOrdinal.values());loadMedicalStatuses(currentGroups);
+            return new CurrentSelection(rows,revisionRefs,latest,eventRefs);
+        }
+
+        private List<CurrentAction> currentActions(CurrentSelection selected) {
+            Map<Long,Map<Integer,List<Reference>>> revisionRefs=selected.revisionRefs;
+            Map<Long,Map<String,EventRow>> latest=selected.latest;
+            Map<Long,List<Reference>> eventRefs=selected.eventRefs;
+            List<ActionRow> rows=selected.rows;
             List<CurrentAction> result=new ArrayList<>();
             for(ActionRow a:rows) {
                 budget.checkTime();Map<String,EventRow> e=latest.getOrDefault(a.id,Collections.emptyMap());
@@ -183,15 +198,19 @@ public class CareExecutionReportProjector {
             },"r.draft_json");return result;
         }
 
-        private List<PeriodEvent> periodEvents() {
+        private PeriodSelection selectPeriodEvents() {
             String scope=" FROM care_plan_event e JOIN doctor_care_plan p ON p.id=e.plan_id LEFT JOIN care_plan_revision r ON r.id=e.revision_id LEFT JOIN care_plan_action a ON a.id=e.action_id WHERE e.patient_id=? AND p.workflow_version=1"+planScope()+
                     " AND e.recorded_at>=? AND e.recorded_at<? AND e.event_type IN ("+PUBLIC_SQL+")";
             List<Object> args=planArgs();args.add(request.getRangeStartAt());args.add(request.getRangeEndExclusiveAt());
             // Published-only content, but diagnose broken public relations before an INNER JOIN can hide them.
             if(!query("SELECT e.id"+scope+" AND (p.patient_id<>e.patient_id OR r.id IS NULL OR r.plan_id<>p.id OR (r.status='PUBLISHED' AND e.action_id IS NOT NULL AND (a.id IS NULL OR a.plan_id<>p.id OR a.revision_id<>r.id OR a.patient_id<>e.patient_id))) LIMIT 1",(rs,n)->rs.getLong(1),args).isEmpty())throw inconsistent();
             List<Long> ids=query("SELECT e.id"+scope+" AND r.status='PUBLISHED' ORDER BY e.recorded_at,e.id LIMIT 5001",(rs,n)->rs.getLong(1),args);
-            budget.requireRows("PERIOD_EVENTS",ids.size(),MAX_PERIOD_EVENTS); if(ids.isEmpty())return Collections.emptyList();
-            List<EventRow> rows=eventRows(ids,true);Map<Long,List<Reference>> refs=eventReferences(ids);loadMedicalStatuses(refs.values());
+            budget.requireRows("PERIOD_EVENTS",ids.size(),MAX_PERIOD_EVENTS); if(ids.isEmpty())return new PeriodSelection();
+            return new PeriodSelection(eventRows(ids,true),eventReferences(ids));
+        }
+
+        private List<PeriodEvent> periodEvents(PeriodSelection selected) {
+            List<EventRow> rows=selected.rows;Map<Long,List<Reference>> refs=selected.refs;
             List<PeriodEvent> result=new ArrayList<>();
             for(EventRow e:rows) {
                 String history=historicalStatus(e);
@@ -231,7 +250,7 @@ public class CareExecutionReportProjector {
             List<Object> args=new ArrayList<>(ids);args.add(ids.size()*5+1);
             query("SELECT id,event_id,source_type,source_id FROM care_plan_evidence WHERE event_id IN ("+marks(ids.size())+") ORDER BY event_id,id LIMIT ?",(rs,n)->{
                 List<Reference> refs=result.computeIfAbsent(rs.getLong("event_id"),k->new ArrayList<>());
-                if(refs.size()>=5)throw inconsistent();refs.add(new Reference(rs.getLong("id"),rs.getString("source_type"),rs.getLong("source_id")));return 0;
+                if(refs.size()>=5||rs.getLong("id")<=0)throw inconsistent();refs.add(new Reference(rs.getLong("id"),rs.getString("source_type"),rs.getLong("source_id")));return 0;
             },args);return result;
         }
 
@@ -240,21 +259,54 @@ public class CareExecutionReportProjector {
             return new EventSummary(e.id,e.actor,e.type,e.actorName,e.actorRole,e.actorRelation,e.mode,e.note,e.kind,e.recorded,e.occurred,evidence(refs.getOrDefault(e.id,Collections.emptyList())));
         }
 
-        /** 只在本次独立报告快照内复用已发现锚点；权限清单在输出前仍由原有边界重新核对。 */
-        private void loadMedicalStatuses(Collection<List<Reference>> groups) {
-            List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> anchors=new ArrayList<>();List<Long> unbound=new ArrayList<>();
-            for(List<Reference> refs:groups)for(Reference ref:refs)if("MEDICAL_RECORD".equals(ref.type)){
-                ref.readable=auth.canReadEvidence(actor,request.getPatientId(),ref.type,ref.id);
-                if(ref.readable){if(ref.anchor>0&&!medicalStatuses.containsKey(ref.anchor))anchors.add(new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor(ref.anchor,request.getPatientId(),ref.id,null));else if(ref.anchor==0&&!unboundMedical.containsKey(ref.id))unbound.add(ref.id);}
+        /** Qualify only the complete selected evidence inventory in this report's existing RR owner. */
+        private void loadMedicalFrame(CurrentSelection current,PeriodSelection period) {
+            Map<Long,Anchor> anchors=new LinkedHashMap<>();Set<Long> unbound=new LinkedHashSet<>();
+            for(ActionRow action:current.rows) {
+                inventory(current.revisionRefs.getOrDefault(action.revision,Collections.emptyMap()).getOrDefault(action.ordinal,Collections.emptyList()),anchors,unbound);
+                for(EventRow event:current.latest.getOrDefault(action.id,Collections.emptyMap()).values())
+                    inventory(current.eventRefs.getOrDefault(event.id,Collections.emptyList()),anchors,unbound);
             }
-            if(anchors.isEmpty()&&unbound.isEmpty())return;org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope scope=medicalValidity.open();
-            Set<Long> sourceIds=new LinkedHashSet<>(unbound);for(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor anchor:anchors)sourceIds.add(anchor.record);
-            List<Long> sources=new ArrayList<>(sourceIds);Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=new HashMap<>();
-            for(int i=0;i<sources.size();i+=100){budget.checkTime();states.putAll(scope.batch(sources.subList(i,Math.min(i+100,sources.size()))));}
-            for(int i=0;i<anchors.size();i+=100){budget.checkTime();medicalStatuses.putAll(medicalReferences.projectStatuses(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind.CARE_PLAN_EVIDENCE,anchors.subList(i,Math.min(i+100,anchors.size())),scope,states));}
-            for(long source:unbound)if(states.containsKey(source))unboundMedical.put(source,states.get(source));
+            for(EventRow event:period.rows)inventory(period.refs.getOrDefault(event.id,Collections.emptyList()),anchors,unbound);
+            budget.checkTime();if(anchors.isEmpty()&&unbound.isEmpty())return;
+            medicalValidity.requireDataSource(jdbc.getDataSource());
+            Set<Long> sources=new LinkedHashSet<>(unbound);for(Anchor anchor:anchors.values())sources.add(anchor.record);
+            CareEvidenceReadFrame frame=medicalReferences.readCareEvidenceFrame(new ArrayList<>(anchors.values()),unbound,medicalValidity.open());
+            budget.checkTime();
+            if(frame==null||frame.qualificationSemantics!=Semantics.CALLER_TRANSACTION_SNAPSHOT||frame.checkedAt==null
+                    ||!frame.sources.keySet().equals(sources)||!frame.snapshots.keySet().equals(anchors.keySet()))throw unavailable();
+            for(long source:sources) {
+                budget.checkTime();MedicalRecordValidityProjection.State state=frame.sources.get(source);
+                if(state==null||state.id!=source||!state.reviewObserved||state.signature==null
+                        ||state.qualificationSemantics!=Semantics.CALLER_TRANSACTION_SNAPSHOT)throw unavailable();
+            }
+            for(long anchor:anchors.keySet()) {
+                budget.checkTime();ReferenceSnapshot value=frame.snapshots.get(anchor);
+                if(value==null||value.status==null||value.signature==null||value.qualificationSemantics!=Semantics.CALLER_TRANSACTION_SNAPSHOT)throw unavailable();
+            }
+            medicalFrame=frame;
         }
-        private String medicalStatus(Reference ref){if(ref.anchor>0)return medicalStatuses.getOrDefault(ref.anchor,"SOURCE_UNAVAILABLE");org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state=unboundMedical.get(ref.id);return state==null||!Objects.equals(state.patientId,request.getPatientId())?"SOURCE_UNAVAILABLE":state.managed?(state.eligible()?"UNKNOWN_NEEDS_RECHECK":state.status()):"UNTRACKED";}
+
+        private void inventory(List<Reference> refs,Map<Long,Anchor> anchors,Set<Long> unbound) {
+            for(Reference ref:refs) {
+                budget.checkTime();if(!"MEDICAL_RECORD".equals(ref.type))continue;
+                ref.readable=auth.canReadEvidence(actor,request.getPatientId(),ref.type,ref.id);
+                if(!ref.readable)continue;
+                if(ref.id<=0||ref.anchor<0)throw inconsistent();
+                if(ref.anchor==0){unbound.add(ref.id);continue;}
+                Anchor anchor=new Anchor(ref.anchor,request.getPatientId(),ref.id,null),prior=anchors.putIfAbsent(ref.anchor,anchor);
+                if(prior!=null&&(prior.patient!=anchor.patient||prior.record!=anchor.record))throw inconsistent();
+            }
+        }
+
+        private String medicalStatus(Reference ref) {
+            if(medicalFrame==null)throw unavailable();
+            if(ref.anchor>0){ReferenceSnapshot value=medicalFrame.snapshots.get(ref.anchor);if(value==null)throw unavailable();return value.status;}
+            MedicalRecordValidityProjection.State state=medicalFrame.sources.get(ref.id);
+            if(state==null||!state.reviewObserved||state.version==null||!Objects.equals(state.patientId,request.getPatientId())||"SOURCE_UNAVAILABLE".equals(state.status()))return "SOURCE_UNAVAILABLE";
+            if(!state.eligible())return state.status();
+            return state.managed||state.reviewParticipating?"UNKNOWN_NEEDS_RECHECK":"UNTRACKED";
+        }
         private List<Evidence> evidence(List<Reference> refs) {
             List<Evidence> result=new ArrayList<>();
             for(Reference ref:refs) {
@@ -343,6 +395,18 @@ public class CareExecutionReportProjector {
     private static List<Reference> references(JsonNode values) {
         if(values==null||values.isNull())return Collections.emptyList();if(!values.isArray()||values.size()>5)throw inconsistent();List<Reference> result=new ArrayList<>();
         for(JsonNode value:values){String type=jsonText(value,"sourceType");JsonNode id=value.get("sourceId");if(type==null||id==null||!id.isIntegralNumber()||!id.canConvertToLong()||id.longValue()<=0)throw inconsistent();result.add(new Reference(0L,type,id.longValue()));}return result;
+    }
+    private static CareExecutionReportException unavailable(){return new CareExecutionReportException(CareExecutionReportException.Code.REPORT_RENDER_UNAVAILABLE);}
+    private static final class CurrentSelection {
+        final List<ActionRow> rows;final Map<Long,Map<Integer,List<Reference>>> revisionRefs;
+        final Map<Long,Map<String,EventRow>> latest;final Map<Long,List<Reference>> eventRefs;
+        CurrentSelection(){this(Collections.emptyList(),Collections.emptyMap(),Collections.emptyMap(),Collections.emptyMap());}
+        CurrentSelection(List<ActionRow> rows,Map<Long,Map<Integer,List<Reference>>> revisionRefs,Map<Long,Map<String,EventRow>> latest,Map<Long,List<Reference>> eventRefs){this.rows=rows;this.revisionRefs=revisionRefs;this.latest=latest;this.eventRefs=eventRefs;}
+    }
+    private static final class PeriodSelection {
+        final List<EventRow> rows;final Map<Long,List<Reference>> refs;
+        PeriodSelection(){this(Collections.emptyList(),Collections.emptyMap());}
+        PeriodSelection(List<EventRow> rows,Map<Long,List<Reference>> refs){this.rows=rows;this.refs=refs;}
     }
     private static CareExecutionReportException inconsistent(){return new CareExecutionReportException(CareExecutionReportException.Code.REPORT_DATA_INCONSISTENT);}
     private static final class CellSize {final long id,bytes;CellSize(long id,long bytes){this.id=id;this.bytes=bytes;}}

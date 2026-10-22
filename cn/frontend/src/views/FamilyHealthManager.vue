@@ -51,7 +51,7 @@
             <p>血压目标：{{summary.target?.systolicMin || '—'}}–{{summary.target?.systolicMax || '—'}} / {{summary.target?.diastolicMin || '—'}}–{{summary.target?.diastolicMax || '—'}} mmHg</p>
             <h3>当前用药</h3><table><thead><tr><th>药品</th><th>剂量说明</th></tr></thead><tbody><tr v-for="m in summary.medications" :key="m.id"><td>{{m.drugName}}</td><td>{{m.defaultDosage || '遵医嘱服用'}}</td></tr></tbody></table><p v-if="!summary.medications?.length">暂无用药记录</p>
             <h3>近期测量（最多 30 条）</h3><p>{{ot('reportScope')}} {{ot('unassessed')}} {{ot('localTime')}}</p><router-link to="/bp-self-monitor">{{ot('open')}}</router-link><table><thead><tr><th>时间</th><th>血压（mmHg）</th><th>血糖</th></tr></thead><tbody><tr v-for="r in summary.recentMeasurements" :key="r.id"><td>{{selfTime(r)}} · #{{r.id}}</td><td>{{r.systolicBp ?? '—'}} / {{r.diastolicBp ?? '—'}}</td><td>{{selfGlucose(r)}}</td></tr></tbody></table>
-            <h3>未解决告警（最多 30 条）</h3><ul><li v-for="a in summary.unresolvedAlerts" :key="a.id">{{a.triggeredAt}} {{a.alertTitle}}：{{a.triggeredValue}} {{a.handlingNote}}</li></ul><p v-if="!summary.unresolvedAlerts?.length">暂无未解决告警</p>
+            <h3>未解决告警（最多 30 条）</h3><ul><li v-for="a in summary.unresolvedAlerts" :key="a.id">{{a.triggeredAt}} {{a.alertTitle}}：{{a.triggeredValue}} {{a.handlingNote}}<span class="historical-source-status" data-testid="recorded-alert">已记录告警</span><span v-if="a.sourceType==='MEDICAL_RECORD_ITEM'" class="historical-source-status" data-testid="historical-alert-source">{{historicalAlertSource(a)}}</span></li></ul><p v-if="!summary.unresolvedAlerts?.length">暂无未解决告警</p>
             <h3>准备咨询医生的问题</h3><ul><li v-for="q in summary.questions||[]" :key="q.id"><b>{{q.title}}</b><p>{{q.details?.description}}</p><p v-if="q.details?.answer">记录的答复：{{q.details.answer}}</p><p v-if="q.details?.followUp">后续事项：{{q.details.followUp}}</p><p>{{questionText(q.questionProjection?.answerOrigin || 'LEGACY_UNVERIFIED')}}</p><p v-if="q.questionProjection?.projectionBasis==='PRESERVED_NATIVE_SNAPSHOT'">{{questionText('preserved')}}</p><p v-if="q.questionProjection?.answerRecorderId">{{questionText('recorder')}}: #{{q.questionProjection.answerRecorderId}} · {{q.questionProjection.answerRecordedAt}}</p><router-link v-if="q.questionProjection?.detailLink" :to="q.questionProjection.detailLink">{{questionText('view')}}</router-link></li></ul><p>{{questionText('preview')}}</p><router-link :to="`/care?patientId=${patientId}&tab=questions`">{{questionText('summaryMore')}}</router-link>
             <h3>近期症状跟踪</h3><ul><li v-for="s in summary.careSymptoms||[]" :key="s.id">{{s.eventAt}} {{s.title}}，自评分 {{s.details?.severity}}/10，持续 {{s.details?.duration || '未填写'}}；{{s.details?.response}}</li></ul>
             <h3>近期健康事件（最多 30 条）</h3><ul><li v-for="e in localizedSummaryEvents" :key="`${e.sourceType}-${e.id}`">{{e.eventDate}} {{e.title}}：{{e.summary}}</li></ul><p>{{summary.disclaimer}}</p>
@@ -182,7 +182,7 @@ async function refreshTasks(){
   finally{if(taskPending===pending)taskPending=null}
 }
 onMounted(()=>{timer=window.setInterval(refreshTasks,30000)})
-onUnmounted(()=>{disposed=true;clearLegacyTimeline();taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateContext);window.removeEventListener('storage',summaryStorageChanged)})
+onUnmounted(()=>{disposed=true;clearLegacyTimeline();taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateContext);window.removeEventListener('auth-session-changed',invalidateContext);window.removeEventListener('storage',summaryStorageChanged)})
 async function save(operation){if(saving.value)return;const id=patientId.value;if(!id)return;saving.value=true;try{await operation(id);ElMessage.success('保存成功。');if(id===patientId.value){summaryVersion++;summary.value=null;summaryLoading.value=false;await reload()}}finally{saving.value=false}}
 async function doIntake(item,status){const id=patientId.value;let reason='';if(status==='SKIPPED'){const answer=await ElMessageBox.prompt('请简要说明跳过本次服药的原因。','跳过本次服药').catch(()=>null);if(!answer)return;reason=answer.value}if(id!==patientId.value)return;await save(()=>api.actionIntake(item.id,status,reason))}
 function openEvent(row){Object.keys(eventForm).forEach(k=>delete eventForm[k]);Object.assign(eventForm,{id:null,eventDate:localDateKey(),eventTime:'',eventType:'SYMPTOM',title:'',summary:''},row||{});eventVisible.value=true}
@@ -204,6 +204,7 @@ watch(()=>reportPanel.value?.generation,closePrintPopup,{flush:'sync'})
 function summaryStorageChanged(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))invalidateContext()}
 watch(()=>JSON.stringify(reportPanel.value?.context),invalidateSummary,{flush:'sync'})
 window.addEventListener('auth-session-cleared',invalidateContext)
+window.addEventListener('auth-session-changed',invalidateContext)
 window.addEventListener('storage',summaryStorageChanged)
 async function refreshVisit(forPrint=false){
   if(summaryLoading.value||!patientId.value||!reportPanel.value)return false
@@ -248,6 +249,41 @@ async function refreshVisit(forPrint=false){
 }
 async function loadSummary(){return refreshVisit(false)}
 async function printSummary(){return refreshVisit(true)}
+// Scalar labels describe a historical row, never medical or navigation authority.
+const alertCurrentLabels = {"CURRENT": "当前来源资格：有效", "UNTRACKED": "当前来源：旧版处理", "SOURCE_REVIEW_REQUIRED": "当前来源待核对", "SOURCE_CHANGED": "当前来源已变更", "SOURCE_INVALIDATED": "当前来源已失效", "SOURCE_UNAVAILABLE": "当前来源资格不可用"}
+const alertBindingLabels = {"CURRENT_CONTENT": "历史链接匹配当前内容", "UNBOUND": "历史链接未绑定版本", "CONTENT_CHANGED": "历史链接指向较早的来源版本", "GENERATION_CHANGED": "历史链接指向较早的来源版本", "MISSING_ANCHOR": "无法核实历史来源链接", "SOURCE_MISSING": "无法核实历史来源链接", "STORE_CONFLICT": "无法核实历史来源链接"}
+const alertReferenceLabels = {"CURRENT": "当前", "UNTRACKED": "旧版来源，未跟踪", "UNKNOWN_NEEDS_RECHECK": "引用需重新核对", "SOURCE_REVIEW_REQUIRED": "来源需核对", "SOURCE_CHANGED": "来源已变化，需重新核对引用", "SOURCE_INVALIDATED": "来源已作废", "SOURCE_UNAVAILABLE": "来源状态不可用"}
+const ownLabel = (labels, value) => typeof value === 'string' && Object.hasOwn(labels, value) ? labels[value] : null
+function validQualificationInstant(value) {
+  if (typeof value !== 'string') return false
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d{1,9})?Z$/.exec(value)
+  if (!match) return false
+  const date = new Date(`${match[1]}Z`)
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 19) === match[1]
+}
+// Admit only scalar combinations emitted by the existing reference composer.
+function coherentAlertSource(row) {
+  const binding = row.sourceBindingStatus, current = row.currentSourceStatus, reference = row.sourceStatus
+  if (['MISSING_ANCHOR','SOURCE_MISSING'].includes(binding)) return current === 'SOURCE_UNAVAILABLE' && reference === 'SOURCE_UNAVAILABLE'
+  if (current === 'SOURCE_UNAVAILABLE') return false
+  if (binding === 'STORE_CONFLICT') return reference === 'SOURCE_UNAVAILABLE'
+  if (binding === 'GENERATION_CHANGED') return reference === 'SOURCE_CHANGED'
+  if (binding === 'UNBOUND') return reference === (current === 'CURRENT' ? 'UNKNOWN_NEEDS_RECHECK' : current)
+  if (binding === 'CURRENT_CONTENT') return reference === (['CURRENT','UNTRACKED'].includes(current) ? 'CURRENT' : current)
+  return binding === 'CONTENT_CHANGED' && (reference === 'SOURCE_CHANGED' || !['CURRENT','UNTRACKED'].includes(current) && reference === current)
+}
+function historicalAlertSource(row) {
+  const unavailable = alertCurrentLabels.SOURCE_UNAVAILABLE
+  if (!row || !['sourceStatus','sourceBindingStatus','currentSourceStatus','sourceQualificationSemantics','sourceQualificationAt'].every(key => Object.hasOwn(row, key))) return unavailable
+  if (row.sourceStatus === 'SOURCE_UNAVAILABLE' && row.sourceBindingStatus === null && row.currentSourceStatus === 'SOURCE_UNAVAILABLE' && row.sourceQualificationSemantics === null && row.sourceQualificationAt === null) return unavailable
+  const current = ownLabel(alertCurrentLabels, row.currentSourceStatus), binding = ownLabel(alertBindingLabels, row.sourceBindingStatus), reference = ownLabel(alertReferenceLabels, row.sourceStatus)
+  if (!current || !binding || !reference || row.sourceQualificationSemantics !== 'CURRENT_CHECK' || !validQualificationInstant(row.sourceQualificationAt) || !coherentAlertSource(row)) return unavailable
+  const labels = [binding, current]
+  if (row.sourceStatus === 'UNKNOWN_NEEDS_RECHECK') labels.push("历史链接需要重新核对")
+  else if (!['CURRENT','UNTRACKED'].includes(row.sourceStatus)) labels.push("历史链接：" + reference)
+  labels.push("当前来源核对时间：" + row.sourceQualificationAt + ' (UTC)')
+  return labels.join(' · ')
+}
 const intakeText=s=>({PENDING:'待服用',TAKEN:'已服用',SNOOZED:'已延后',SKIPPED:'已跳过',MISSED:'已漏服',CANCELLED:'已取消'}[s]||s)
 const tagType=s=>({TAKEN:'success',MISSED:'danger',SKIPPED:'info',SNOOZED:'warning',CANCELLED:'info'}[s]||'primary')
 const scheduleStateText=s=>({loading:'加载中',disabled:'透析护理未启用',denied:'透析日程无访问权限',unavailable:'透析日程暂不可用',idle:'尚未加载'}[s]||'')
@@ -589,4 +625,8 @@ const eventType=s=>({SYMPTOM:'症状',VISIT:'就诊',NOTE:'备注',MEASUREMENT:'
     grid-column: 1;
   }
 }
+</style>
+
+<style scoped>
+.historical-source-status{display:block;max-width:100%;overflow-wrap:anywhere;line-height:1.6}
 </style>

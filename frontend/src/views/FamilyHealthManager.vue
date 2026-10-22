@@ -51,7 +51,7 @@
             <p>Blood pressure target: {{summary.target?.systolicMin || '—'}}–{{summary.target?.systolicMax || '—'}} / {{summary.target?.diastolicMin || '—'}}–{{summary.target?.diastolicMax || '—'}} mmHg</p>
             <h3>Current medications</h3><table><thead><tr><th>Medication</th><th>Dose instructions</th></tr></thead><tbody><tr v-for="m in summary.medications" :key="m.id"><td>{{m.drugName}}</td><td>{{m.defaultDosage || 'as prescribed'}}</td></tr></tbody></table><p v-if="!summary.medications?.length">No medication records</p>
             <h3>Recent measurements (up to 30)</h3><p>{{ot('reportScope')}} {{ot('unassessed')}} {{ot('localTime')}}</p><router-link to="/bp-self-monitor">{{ot('open')}}</router-link><table><thead><tr><th>Time</th><th>Blood pressure (mmHg)</th><th>Blood glucose</th></tr></thead><tbody><tr v-for="r in summary.recentMeasurements" :key="r.id"><td>{{selfTime(r)}} · #{{r.id}}</td><td>{{r.systolicBp ?? '—'}} / {{r.diastolicBp ?? '—'}}</td><td>{{selfGlucose(r)}}</td></tr></tbody></table>
-            <h3>Unresolved alerts (up to 30)</h3><ul><li v-for="a in summary.unresolvedAlerts" :key="a.id">{{a.triggeredAt}} {{a.alertTitle}}: {{a.triggeredValue}} {{a.handlingNote}}</li></ul><p v-if="!summary.unresolvedAlerts?.length">No unresolved alerts</p>
+            <h3>Unresolved alerts (up to 30)</h3><ul><li v-for="a in summary.unresolvedAlerts" :key="a.id">{{a.triggeredAt}} {{a.alertTitle}}: {{a.triggeredValue}} {{a.handlingNote}}<span class="historical-source-status" data-testid="recorded-alert">Recorded alert</span><span v-if="a.sourceType==='MEDICAL_RECORD_ITEM'" class="historical-source-status" data-testid="historical-alert-source">{{historicalAlertSource(a)}}</span></li></ul><p v-if="!summary.unresolvedAlerts?.length">No unresolved alerts</p>
             <h3>Questions for the clinician</h3><ul><li v-for="q in summary.questions||[]" :key="q.id"><b>{{q.title}}</b><p>{{q.details?.description}}</p><p v-if="q.details?.answer">Recorded answer: {{q.details.answer}}</p><p v-if="q.details?.followUp">Follow-up: {{q.details.followUp}}</p><p>{{questionText(q.questionProjection?.answerOrigin || 'LEGACY_UNVERIFIED')}}</p><p v-if="q.questionProjection?.projectionBasis==='PRESERVED_NATIVE_SNAPSHOT'">{{questionText('preserved')}}</p><p v-if="q.questionProjection?.answerRecorderId">{{questionText('recorder')}}: #{{q.questionProjection.answerRecorderId}} · {{q.questionProjection.answerRecordedAt}}</p><router-link v-if="q.questionProjection?.detailLink" :to="q.questionProjection.detailLink">{{questionText('view')}}</router-link></li></ul><p>{{questionText('preview')}}</p><router-link :to="`/care?patientId=${patientId}&tab=questions`">{{questionText('summaryMore')}}</router-link>
             <h3>Recent symptom tracking</h3><ul><li v-for="s in summary.careSymptoms||[]" :key="s.id">{{s.eventAt}} {{s.title}}, self-rated {{s.details?.severity}}/10, duration {{s.details?.duration || 'Not provided'}}; {{s.details?.response}}</li></ul>
             <h3>Recent health events (up to 30)</h3><ul><li v-for="e in summary.recentEvents" :key="`${e.sourceType}-${e.id}`">{{e.eventDate}} {{e.title}}: {{e.summary}}</li></ul><p>{{summary.disclaimer}}</p>
@@ -179,7 +179,7 @@ async function refreshTasks(){
   finally{if(taskPending===pending)taskPending=null}
 }
 onMounted(()=>{timer=window.setInterval(refreshTasks,30000)})
-onUnmounted(()=>{disposed=true;clearLegacyTimeline();taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateContext);window.removeEventListener('storage',summaryStorageChanged)})
+onUnmounted(()=>{disposed=true;clearLegacyTimeline();taskPending=null;window.clearInterval(timer);requestVersion++;taskVersion++;invalidateSummary();window.removeEventListener('auth-session-cleared',invalidateContext);window.removeEventListener('auth-session-changed',invalidateContext);window.removeEventListener('storage',summaryStorageChanged)})
 async function save(operation){if(saving.value)return;const id=patientId.value;if(!id)return;saving.value=true;try{await operation(id);ElMessage.success('Saved successfully.');if(id===patientId.value){summaryVersion++;summary.value=null;summaryLoading.value=false;await reload()}}finally{saving.value=false}}
 async function doIntake(item,status){const id=patientId.value;let reason='';if(status==='SKIPPED'){const answer=await ElMessageBox.prompt('Briefly explain why this dose was skipped.','Skip this medication dose').catch(()=>null);if(!answer)return;reason=answer.value}if(id!==patientId.value)return;await save(()=>api.actionIntake(item.id,status,reason))}
 function openEvent(row){Object.keys(eventForm).forEach(k=>delete eventForm[k]);Object.assign(eventForm,{id:null,eventDate:localDateKey(),eventTime:'',eventType:'SYMPTOM',title:'',summary:''},row||{});eventVisible.value=true}
@@ -201,6 +201,7 @@ watch(()=>reportPanel.value?.generation,closePrintPopup,{flush:'sync'})
 function summaryStorageChanged(event){if(event.key==null||AUTH_STORAGE_KEYS.includes(event.key))invalidateContext()}
 watch(()=>JSON.stringify(reportPanel.value?.context),invalidateSummary,{flush:'sync'})
 window.addEventListener('auth-session-cleared',invalidateContext)
+window.addEventListener('auth-session-changed',invalidateContext)
 window.addEventListener('storage',summaryStorageChanged)
 async function refreshVisit(forPrint=false){
   if(summaryLoading.value||!patientId.value||!reportPanel.value)return false
@@ -245,6 +246,41 @@ async function refreshVisit(forPrint=false){
 }
 async function loadSummary(){return refreshVisit(false)}
 async function printSummary(){return refreshVisit(true)}
+// Scalar labels describe a historical row, never medical or navigation authority.
+const alertCurrentLabels = {"CURRENT": "Current source qualification: current", "UNTRACKED": "Current source: legacy handling", "SOURCE_REVIEW_REQUIRED": "Current source awaiting verification", "SOURCE_CHANGED": "Current source changed", "SOURCE_INVALIDATED": "Current source invalidated", "SOURCE_UNAVAILABLE": "Current source qualification unavailable"}
+const alertBindingLabels = {"CURRENT_CONTENT": "Historical link matches current content", "UNBOUND": "Historical link has no version binding", "CONTENT_CHANGED": "Historical link refers to an earlier source version", "GENERATION_CHANGED": "Historical link refers to an earlier source version", "MISSING_ANCHOR": "Historical source link could not be verified", "SOURCE_MISSING": "Historical source link could not be verified", "STORE_CONFLICT": "Historical source link could not be verified"}
+const alertReferenceLabels = {"CURRENT": "Current", "UNTRACKED": "Legacy source; untracked", "UNKNOWN_NEEDS_RECHECK": "Reference needs rechecking", "SOURCE_REVIEW_REQUIRED": "Source verification required", "SOURCE_CHANGED": "Source changed; recheck reference", "SOURCE_INVALIDATED": "Source invalidated", "SOURCE_UNAVAILABLE": "Source status unavailable"}
+const ownLabel = (labels, value) => typeof value === 'string' && Object.hasOwn(labels, value) ? labels[value] : null
+function validQualificationInstant(value) {
+  if (typeof value !== 'string') return false
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d{1,9})?Z$/.exec(value)
+  if (!match) return false
+  const date = new Date(`${match[1]}Z`)
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 19) === match[1]
+}
+// Admit only scalar combinations emitted by the existing reference composer.
+function coherentAlertSource(row) {
+  const binding = row.sourceBindingStatus, current = row.currentSourceStatus, reference = row.sourceStatus
+  if (['MISSING_ANCHOR','SOURCE_MISSING'].includes(binding)) return current === 'SOURCE_UNAVAILABLE' && reference === 'SOURCE_UNAVAILABLE'
+  if (current === 'SOURCE_UNAVAILABLE') return false
+  if (binding === 'STORE_CONFLICT') return reference === 'SOURCE_UNAVAILABLE'
+  if (binding === 'GENERATION_CHANGED') return reference === 'SOURCE_CHANGED'
+  if (binding === 'UNBOUND') return reference === (current === 'CURRENT' ? 'UNKNOWN_NEEDS_RECHECK' : current)
+  if (binding === 'CURRENT_CONTENT') return reference === (['CURRENT','UNTRACKED'].includes(current) ? 'CURRENT' : current)
+  return binding === 'CONTENT_CHANGED' && (reference === 'SOURCE_CHANGED' || !['CURRENT','UNTRACKED'].includes(current) && reference === current)
+}
+function historicalAlertSource(row) {
+  const unavailable = alertCurrentLabels.SOURCE_UNAVAILABLE
+  if (!row || !['sourceStatus','sourceBindingStatus','currentSourceStatus','sourceQualificationSemantics','sourceQualificationAt'].every(key => Object.hasOwn(row, key))) return unavailable
+  if (row.sourceStatus === 'SOURCE_UNAVAILABLE' && row.sourceBindingStatus === null && row.currentSourceStatus === 'SOURCE_UNAVAILABLE' && row.sourceQualificationSemantics === null && row.sourceQualificationAt === null) return unavailable
+  const current = ownLabel(alertCurrentLabels, row.currentSourceStatus), binding = ownLabel(alertBindingLabels, row.sourceBindingStatus), reference = ownLabel(alertReferenceLabels, row.sourceStatus)
+  if (!current || !binding || !reference || row.sourceQualificationSemantics !== 'CURRENT_CHECK' || !validQualificationInstant(row.sourceQualificationAt) || !coherentAlertSource(row)) return unavailable
+  const labels = [binding, current]
+  if (row.sourceStatus === 'UNKNOWN_NEEDS_RECHECK') labels.push("Historical link needs rechecking")
+  else if (!['CURRENT','UNTRACKED'].includes(row.sourceStatus)) labels.push("Historical link: " + reference)
+  labels.push("Current source checked at " + row.sourceQualificationAt + ' (UTC)')
+  return labels.join(' · ')
+}
 const intakeText=s=>({PENDING:'Due',TAKEN:'Taken',SNOOZED:'Snoozed',SKIPPED:'Skipped',MISSED:'Missed',CANCELLED:'Cancelled'}[s]||s)
 const tagType=s=>({TAKEN:'success',MISSED:'danger',SKIPPED:'info',SNOOZED:'warning',CANCELLED:'info'}[s]||'primary')
 const scheduleStateText=s=>({loading:'Loading',disabled:'Dialysis care is not enabled',denied:'Dialysis schedule access denied',unavailable:'Dialysis schedules unavailable',idle:'Not loaded'}[s]||'')
@@ -586,4 +622,8 @@ const eventType=s=>({SYMPTOM:'Symptom',VISIT:'Visit',NOTE:'Note',MEASUREMENT:'Me
     grid-column: 1;
   }
 }
+</style>
+
+<style scoped>
+.historical-source-status{display:block;max-width:100%;overflow-wrap:anywhere;line-height:1.6}
 </style>

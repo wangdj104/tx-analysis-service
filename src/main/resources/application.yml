@@ -50,5 +50,10 @@ common-care-goals:
 medical-record-correction:
   enabled: ${MEDICAL_RECORD_CORRECTION_ENABLED:false}
 
+# Independent medical review: migrate and verify before enabling either default-off switch.
+medical-review:
+  api-enabled: ${MEDICAL_REVIEW_API_ENABLED:false}
+  enabled: ${MEDICAL_REVIEW_ENABLED:false}
+
 visit-followup:
   enabled: ${VISIT_FOLLOWUP_ENABLED:false}

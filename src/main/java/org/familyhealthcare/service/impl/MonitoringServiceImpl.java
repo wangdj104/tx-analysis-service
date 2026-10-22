@@ -48,6 +48,7 @@ import java.util.Set;
 
 @Service
 public class MonitoringServiceImpl implements MonitoringService {
+    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordAlertProjection medicalAlerts;
     @Autowired private org.familyhealthcare.service.medicationexecution.MedicationTrackingGuard medicationTracking;
 
     private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("H:mm");
@@ -102,6 +103,7 @@ public class MonitoringServiceImpl implements MonitoringService {
             throw new IllegalArgumentException("Select a patient");
         }
         Patient patient = bounded ? originalMeasurementAuthorization.monitoring(actor,patientId) : dataScopeHelper.requirePatient(patientId);
+        long releaseActor = bounded ? actor : dataScopeHelper.requireUserId();
         int rangeDays = days == null ? 7 : Math.max(1, Math.min(days, 90));
         LocalDate today = LocalDate.now();
         LocalDate from = today.minusDays(rangeDays - 1L);
@@ -181,7 +183,6 @@ public class MonitoringServiceImpl implements MonitoringService {
                 "latestBloodPressure",rawBp,"latestGlucose",rawGlucose));
         result.setPatient(toPatientSummary(patient));
         result.setVitalTrend(buildTrend(monitorRows, target));
-        result.setActiveAlerts(buildAlerts(activeAlerts));
         result.setTodayTasks(buildTasks(intakes, schedules));
         result.setRecentEvents(buildEvents(events));
         result.setLatestVitals(buildLatestVitals(latestBp, latestGlucose, latestDialysis, latestDryWeight));
@@ -200,7 +201,14 @@ public class MonitoringServiceImpl implements MonitoringService {
         result.setCareSuggestions(buildSuggestions(result, latestBp, latestGlucose, legacyIntakes));
         legacy.finish(dataScopeHelper.requireUserId());
         if(bounded)originalMeasurementAuthorization.monitoring(actor,patientId);
+        requireAlertActor(releaseActor);
+        medicalAlerts.project(activeAlerts);
+        result.setActiveAlerts(buildAlerts(activeAlerts));
         return result;
+    }
+
+    private void requireAlertActor(long actor) {
+        if (!Long.valueOf(actor).equals(dataScopeHelper.requireUserId())) throw new IllegalStateException("Access denied to this data.");
     }
 
     private MonitoringSnapshotVO.PatientSummary toPatientSummary(Patient patient) {
@@ -246,6 +254,11 @@ public class MonitoringServiceImpl implements MonitoringService {
             item.setTriggeredAt(row.getTriggeredAt());
             item.setStatus(row.getStatus());
             item.setHandlingNote(row.getHandlingNote());
+            item.setSourceStatus(row.getSourceStatus());
+            item.setSourceBindingStatus(row.getSourceBindingStatus());
+            item.setCurrentSourceStatus(row.getCurrentSourceStatus());
+            item.setSourceQualificationSemantics(row.getSourceQualificationSemantics());
+            item.setSourceQualificationAt(row.getSourceQualificationAt());
             items.add(item);
         }
         return items;

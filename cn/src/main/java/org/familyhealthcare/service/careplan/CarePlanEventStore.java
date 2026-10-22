@@ -60,13 +60,19 @@ public class CarePlanEventStore {
             for(Map<String,Object>ref:CarePlanData.evidence(payload))if(!auth.canReadEvidence(actorId,patientId,(String)ref.get("sourceType"),CarePlanContracts.requireId(ref.get("sourceId"),"sourceId")))throw CarePlanException.denied();
         }catch(IllegalArgumentException invalid){throw CarePlanException.invalid(invalid.getMessage());}
         GeneratedKeyHolder key=new GeneratedKeyHolder();
-        jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement("INSERT INTO care_plan_event(patient_id,plan_id,revision_id,action_id,actor_id,actor_name,actor_role,actor_relation,entry_mode,event_type,note,occurred_at,recorded_at,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",new String[]{"id"});
+        int inserted=jdbc.update(connection->{PreparedStatement ps=connection.prepareStatement("INSERT INTO care_plan_event(patient_id,plan_id,revision_id,action_id,actor_id,actor_name,actor_role,actor_relation,entry_mode,event_type,note,occurred_at,recorded_at,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",new String[]{"id"});
             ps.setLong(1,patientId);ps.setLong(2,planId);nullable(ps,3,revisionId);nullable(ps,4,actionId);ps.setLong(5,actorId);ps.setString(6,(String)identity.get("actorName"));ps.setString(7,(String)identity.get("actorRole"));ps.setString(8,(String)identity.get("actorRelation"));ps.setString(9,mode);ps.setString(10,type);ps.setString(11,note);CarePlanData.time(ps,12,occurred);CarePlanData.time(ps,13,properties.now());ps.setString(14,CarePlanData.json(payload));return ps;},key);
-        long eventId=key.getKey().longValue();
-        for(Map<String,Object>ref:CarePlanData.evidence(payload)) {
-            String sourceType=(String)ref.get("sourceType");long source=CarePlanContracts.requireId(ref.get("sourceId"),"sourceId");
-            if("MEDICAL_RECORD".equals(sourceType))medicalReferences.insertCareEvidence(eventId,patientId,sourceType,source,medicalValidity.open());
-            else jdbc.update("INSERT INTO care_plan_evidence(event_id,source_type,source_id) VALUES(?,?,?)",eventId,sourceType,source);
+        if(inserted!=1||key.getKeyList().size()!=1||key.getKeyList().get(0).size()!=1)throw org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.changed();
+        long eventId=CarePlanContracts.requireId(key.getKeyList().get(0).values().iterator().next(),"eventId");
+        Set<Long> medical=new LinkedHashSet<>();
+        for(Map<String,Object> ref:CarePlanData.evidence(payload))if("MEDICAL_RECORD".equals(ref.get("sourceType")))medical.add(CarePlanContracts.requireId(ref.get("sourceId"),"sourceId"));
+        try(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.CareEvidenceFrame frame=medical.isEmpty()?null:medicalReferences.prepareCareEvidence(eventId,patientId,actorId,medical,medicalValidity.open())) {
+            for(Map<String,Object>ref:CarePlanData.evidence(payload)) {
+                String sourceType=(String)ref.get("sourceType");long source=CarePlanContracts.requireId(ref.get("sourceId"),"sourceId");
+                if("MEDICAL_RECORD".equals(sourceType))frame.insert(source);
+                else jdbc.update("INSERT INTO care_plan_evidence(event_id,source_type,source_id) VALUES(?,?,?)",eventId,sourceType,source);
+            }
+            if(frame!=null)frame.complete();
         }
         return eventId;
     }

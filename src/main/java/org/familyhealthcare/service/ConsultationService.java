@@ -1,5 +1,6 @@
 package org.familyhealthcare.service;
 
+import org.familyhealthcare.entity.MedicalRecord;
 import org.familyhealthcare.util.CurrentUserUtil;
 import org.familyhealthcare.util.DataScopeHelper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,8 @@ import java.util.*;
 @Service
 public class ConsultationService {
     @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
+    @Autowired private org.familyhealthcare.service.MedicalRecordReviewAccess medicalAccess;
+    @Autowired private org.springframework.jdbc.datasource.DataSourceTransactionManager humanTransactions;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private DataScopeHelper scope;
     @Autowired private CareJourneyService journey;
@@ -98,9 +101,9 @@ public class ConsultationService {
         requireAccess(session, false);
         addSessionMetadata(session);
         List<Map<String,Object>> messages = jdbc.queryForList("SELECT m.*,COALESCE(NULLIF(u.real_name,''),u.username) AS sender_name FROM consultation_message m LEFT JOIN sys_user u ON u.id=m.sender_user_id WHERE m.consultation_id=? ORDER BY m.sent_at,m.id", id);
-        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=new HashMap<>();List<Long> sourceIds=new ArrayList<>();for(Map<String,Object> message:messages)if(message.get("attachment_record_id")!=null)sourceIds.add(number(message.get("attachment_record_id")));
-        if(!sourceIds.isEmpty()&&canReadMedicalStatus(number(session.get("patient_id")))){org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();for(int start=0;start<sourceIds.size();start+=100)states.putAll(medical.batch(sourceIds.subList(start,Math.min(start+100,sourceIds.size()))));}
-        for (Map<String,Object> message : messages) addAttachmentMetadata(message, number(session.get("patient_id")),states);
+        List<Long> sourceIds=new ArrayList<>();for(Map<String,Object> message:messages){if(message.get("attachment_record_id")!=null)sourceIds.add(number(message.get("attachment_record_id")));loadAttachmentMetadata(message,number(session.get("patient_id")));}
+        SourceFrame frame=sourceObservations(number(session.get("patient_id")),sourceIds);
+        for(Map<String,Object> message:messages)projectAttachmentMetadata(message,frame);
         session.put("messages", messages);
         return session;
     }
@@ -135,7 +138,8 @@ public class ConsultationService {
         Long patientId = number(session.get("patient_id"));
         try { scope.requirePatientAccess(patientId,"MEDICAL",false); journey.requireRead(patientId, "MEDICAL"); } catch (IllegalStateException denied) { return Collections.emptyList(); }
         org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();
-        List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,record_date,record_type,hospital_name,content_version AS contentVersion,verification_status AS verificationStatus FROM medical_record WHERE patient_id=? AND "+medical.activeSql("medical_record.")+" ORDER BY record_date DESC,id DESC LIMIT 100",patientId);medical.projectRows(rows,"id");return rows;
+        List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,record_date,record_type,hospital_name,content_version AS contentVersion,verification_status AS verificationStatus FROM medical_record WHERE patient_id=? AND "+medical.activeSql("medical_record.")+" ORDER BY record_date DESC,id DESC LIMIT 100",patientId);List<Long> sourceIds=new ArrayList<>();for(Map<String,Object> row:rows)sourceIds.add(number(row.get("id")));SourceFrame frame=sourceObservations(patientId,sourceIds);
+        for(Map<String,Object> row:rows){org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation link=frame.links.get(number(row.get("id")));if(link!=null){if(!Objects.equals(number(row.get("contentVersion")),link.nativeState.version)||!Objects.equals(row.get("verificationStatus"),link.nativeState.review))throw sourceChanged();row.put("managed",link.nativeState.managed);row.put("validity",link.nativeState.validity);}row.put("sourceStatus",sourceStatus(frame,link,false));}return rows;
     }
 
     public Map<String,Object> attachment(Long id, Long attachmentId) {
@@ -221,15 +225,102 @@ public class ConsultationService {
 
     private boolean canReadMedicalStatus(Long patientId){try{scope.requirePatientAccess(patientId,"MEDICAL",false);journey.requireRead(patientId,"MEDICAL");return true;}catch(IllegalStateException denied){return false;}}
     private void addAttachmentMetadata(Map<String,Object> message, Long patientId) {
-        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=message.get("attachment_record_id")==null||!canReadMedicalStatus(patientId)?Collections.emptyMap():medicalValidity.open().batch(Collections.singleton(number(message.get("attachment_record_id"))));addAttachmentMetadata(message,patientId,states);
+        loadAttachmentMetadata(message,patientId);if(message.get("attachment_record_id")==null)return;
+        SourceFrame frame=sourceObservations(patientId,Collections.singleton(number(message.get("attachment_record_id"))));projectAttachmentMetadata(message,frame);
     }
-    private void addAttachmentMetadata(Map<String,Object> message,Long patientId,Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states) {
+    private void loadAttachmentMetadata(Map<String,Object> message,Long patientId) {
         if (message.get("attachment_record_id") == null) return;
         Map<String,Object> record = one("SELECT id,record_date,record_type,hospital_name FROM medical_record WHERE id=? AND patient_id=?", message.get("attachment_record_id"), patientId);
-        if(record!=null){record.put("referenceStatus","SOURCE_UNAVAILABLE");org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state=states.get(number(record.get("id")));if(state!=null){record.put("managed",state.managed);record.put("validity",state.validity);record.put("verificationStatus",state.review);record.put("contentVersion",state.version);record.put("referenceStatus",state.managed?(state.eligible()?"UNKNOWN_NEEDS_RECHECK":state.status()):"UNTRACKED");}}
+        if(record!=null)record.put("referenceStatus","SOURCE_UNAVAILABLE");
         if (record != null) record.put("attachments", jdbc.queryForList("SELECT id,file_name,file_type FROM medical_record_attachment WHERE record_id=?", record.get("id")));
         message.put("attachment_record", record);
     }
+    @SuppressWarnings("unchecked")
+    private void projectAttachmentMetadata(Map<String,Object> message,SourceFrame frame) {
+        Map<String,Object> record=(Map<String,Object>)message.get("attachment_record");if(record==null)return;
+        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation link=frame.links.get(number(record.get("id")));if(link!=null)sourceFields(record,link);record.put("referenceStatus",sourceStatus(frame,link,true));
+    }
+
+    private static final class SourceFrame {
+        final Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> links;final boolean released;
+        SourceFrame(Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> links,boolean released){this.links=links;this.released=released;}
+        static SourceFrame empty(){return new SourceFrame(Collections.emptyMap(),false);}
+    }
+    private static void sourceFields(Map<String,Object> row,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation link){row.put("managed",link.nativeState.managed);row.put("validity",link.nativeState.validity);row.put("verificationStatus",link.nativeState.review);row.put("contentVersion",link.nativeState.version);}
+    private static String sourceStatus(SourceFrame frame,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation link,boolean reference){if(!frame.released||link==null||!link.metadataAvailable)return "SOURCE_UNAVAILABLE";String status=link.sourceStatus;if(reference&&"CURRENT".equals(status)&&(link.nativeState.managed||link.sourceState!=null||link.doctorState!=null))status="UNKNOWN_NEEDS_RECHECK";return status;}
+    private void sourceGraph(){medicalValidity.requireDataSource(jdbc.getDataSource());medicalAccess.requireDataSource(jdbc.getDataSource());if(humanTransactions==null||humanTransactions.getDataSource()!=jdbc.getDataSource())throw sourceUnavailable();}
+    private SourceFrame sourceObservations(Long patient,Collection<Long> input) {
+        List<Long> ids=new ArrayList<>(new LinkedHashSet<>(input));if(ids.isEmpty()||!canReadMedicalStatus(patient))return SourceFrame.empty();for(long id:ids)org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.id(id);
+        sourceGraph();SourceOwner owner=new SourceOwner(false);medicalValidity.open();Map<Long,MedicalRecord> headers=sourceHeaders(patient,ids,owner);owner.verify();
+        if(headers.isEmpty()){if(!canReadMedicalStatus(patient)){owner.verify();return SourceFrame.empty();}owner.verify();return SourceFrame.empty();}
+        SourceFrame result;
+        if(owner.actual&&!owner.readOnly) {
+            result=new SourceFrame(sourceSweep(patient,ids,headers,owner),true);
+            if(!sameSourceHeaders(headers,sourceHeaders(patient,ids,owner)))throw sourceChanged();
+        } else {
+            if(!sourceAdmission(headers,owner.actor)){owner.verify();return SourceFrame.empty();}owner.verify();
+            if(owner.actual) {
+                org.springframework.transaction.support.TransactionTemplate current=new org.springframework.transaction.support.TransactionTemplate(humanTransactions);
+                current.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);current.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);current.setReadOnly(true);
+                try{result=current.execute(status->{SourceOwner inner=new SourceOwner(true);if(inner.holder==owner.holder||inner.connection==owner.connection)throw sourceUnavailable();return stableSources(patient,ids,headers,inner);});}
+                finally{owner.verify();}
+            }else result=stableSources(patient,ids,headers,owner);
+            if(!sourceAdmission(headers,owner.actor)){owner.verify();return SourceFrame.empty();}
+        }
+        if(!canReadMedicalStatus(patient)){owner.verify();return SourceFrame.empty();}owner.verify();
+        if(result==null)throw sourceUnavailable();
+        for(org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation link:result.links.values())if(link!=null&&!link.metadataAvailable)return new SourceFrame(result.links,false);
+        return result;
+    }
+    /** This E2 entrypoint exposes its exact permission-denial subtype as IllegalStateException; infrastructure failures are WorkflowException. */
+    private boolean sourceAdmission(Map<Long,MedicalRecord> headers,long actor){try{medicalAccess.requireReadAdmission(headers.values(),actor);return true;}catch(IllegalStateException denied){return false;}}
+    private Map<Long,MedicalRecord> sourceHeaders(Long patient,List<Long> ids,SourceOwner owner) {
+        Map<Long,MedicalRecord> result=new LinkedHashMap<>();
+        for(int start=0;start<ids.size();start+=100){List<Long> part=ids.subList(start,Math.min(start+100,ids.size()));List<Object> args=new ArrayList<>();args.add(patient);args.addAll(part);
+            List<MedicalRecord> selected=jdbc.query("SELECT id,patient_id,user_id,content_version,verification_status FROM medical_record WHERE patient_id=? AND id IN ("+String.join(",",Collections.nCopies(part.size(),"?"))+") ORDER BY id LIMIT "+(part.size()+1),statement->{owner.verify();statement.setQueryTimeout(owner.actual&&owner.holder.hasTimeout()?Math.min(5,owner.holder.getTimeToLiveInSeconds()):5);for(int n=0;n<args.size();n++)statement.setObject(n+1,args.get(n));},(r,n)->{MedicalRecord header=new MedicalRecord();header.setId(r.getLong("id"));header.setPatientId(org.familyhealthcare.service.workflow.WorkflowData.nullableId(r,"patient_id"));header.setUserId(org.familyhealthcare.service.workflow.WorkflowData.nullableId(r,"user_id"));header.setContentVersion(org.familyhealthcare.service.workflow.WorkflowData.nullableId(r,"content_version"));header.setVerificationStatus(r.getString("verification_status"));return header;});
+            for(MedicalRecord header:selected)if(!part.contains(header.getId())||!Objects.equals(patient,header.getPatientId())||result.put(header.getId(),header)!=null)throw sourceChanged();
+        }return result;
+    }
+    private static boolean sameSourceHeader(MedicalRecord a,MedicalRecord b){return a!=null&&b!=null&&Objects.equals(a.getId(),b.getId())&&Objects.equals(a.getPatientId(),b.getPatientId())&&Objects.equals(a.getUserId(),b.getUserId())&&Objects.equals(a.getContentVersion(),b.getContentVersion())&&Objects.equals(a.getVerificationStatus(),b.getVerificationStatus());}
+    private static boolean sameSourceHeaders(Map<Long,MedicalRecord> a,Map<Long,MedicalRecord> b){if(!a.keySet().equals(b.keySet()))return false;for(long id:a.keySet())if(!sameSourceHeader(a.get(id),b.get(id)))return false;return true;}
+    private Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> sourceSweep(Long patient,List<Long> inventory,Map<Long,MedicalRecord> headers,SourceOwner owner) {
+        owner.verify();Map<Long,MedicalRecord> current=sourceHeaders(patient,inventory,owner);owner.verify();
+        for(long id:current.keySet())if(!sameSourceHeader(headers.get(id),current.get(id)))throw sourceChanged();
+        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> result=new LinkedHashMap<>();for(long id:inventory)result.put(id,null);
+        List<Long> ids=new ArrayList<>(current.keySet());org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();
+        for(int start=0;start<ids.size();start+=100){List<Long> part=ids.subList(start,Math.min(start+100,ids.size()));Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> batch=medical.humanLinkBatch(part);owner.verify();
+            if(batch==null||!new HashSet<>(part).containsAll(batch.keySet()))throw sourceChanged();
+            for(Map.Entry<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> entry:batch.entrySet()){
+                long id=entry.getKey();org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation link=entry.getValue();MedicalRecord header=headers.get(id);
+                if(link==null||link.nativeState==null||link.nativeState.id!=id||!Objects.equals(header.getPatientId(),link.nativeState.patientId)||!Objects.equals(header.getUserId(),link.nativeState.ownerId)||!Objects.equals(header.getContentVersion(),link.nativeState.version)||!Objects.equals(header.getVerificationStatus(),link.nativeState.review))throw sourceChanged();
+                if(link.metadataAvailable&&(link.checkedAt==null||link.qualificationSemantics!=(owner.actual&&owner.isolation==java.sql.Connection.TRANSACTION_REPEATABLE_READ?org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader.Semantics.CALLER_TRANSACTION_SNAPSHOT:org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader.Semantics.CURRENT_CHECK)))throw sourceUnavailable();result.put(id,link);
+            }
+        }owner.verify();return result;
+    }
+    private SourceFrame stableSources(Long patient,List<Long> ids,Map<Long,MedicalRecord> headers,SourceOwner owner) {
+        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> previous=null;
+        for(int pass=0;pass<3;pass++){Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> current=sourceSweep(patient,ids,headers,owner);boolean equal=previous!=null&&previous.keySet().equals(current.keySet());if(equal)for(long id:current.keySet()){org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation a=previous.get(id),b=current.get(id);if(a==null?b!=null:!a.sameObservedFacts(b)){equal=false;break;}}if(equal)return new SourceFrame(current,true);previous=current;}return new SourceFrame(previous,false);
+    }
+    private final class SourceOwner {
+        final Thread thread=Thread.currentThread();final long actor=scope.requireUserId();
+        final boolean actual=org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive(),readOnly=org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        final org.springframework.jdbc.datasource.ConnectionHolder holder;final org.springframework.jdbc.datasource.SimpleConnectionHandle handle;final java.sql.Connection connection;final int isolation;
+        SourceOwner(boolean privateCurrent) {
+            sourceGraph();Object resource=org.springframework.transaction.support.TransactionSynchronizationManager.getResource(jdbc.getDataSource());
+            if(!actual){holder=null;handle=null;connection=null;isolation=0;verify();return;}
+            if(resource==null||resource.getClass()!=org.springframework.jdbc.datasource.ConnectionHolder.class)throw sourceUnavailable();holder=(org.springframework.jdbc.datasource.ConnectionHolder)resource;
+            if(holder.getConnectionHandle()==null||holder.getConnectionHandle().getClass()!=org.springframework.jdbc.datasource.SimpleConnectionHandle.class)throw sourceUnavailable();handle=(org.springframework.jdbc.datasource.SimpleConnectionHandle)holder.getConnectionHandle();connection=handle.getConnection();
+            try{isolation=connection.getTransactionIsolation();}catch(java.sql.SQLException|NullPointerException failure){throw sourceUnavailable();}
+            if(readOnly&&isolation!=java.sql.Connection.TRANSACTION_REPEATABLE_READ&&!(privateCurrent&&isolation==java.sql.Connection.TRANSACTION_READ_COMMITTED))throw sourceUnavailable();verify();
+        }
+        void verify(){sourceGraph();if(thread!=Thread.currentThread()||actor!=scope.requireUserId()||actual!=org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()||readOnly!=org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly())throw sourceUnavailable();Object resource=org.springframework.transaction.support.TransactionSynchronizationManager.getResource(jdbc.getDataSource());
+            if(!actual){if(resource!=null||org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive())throw sourceUnavailable();return;}
+            if(!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()||resource!=holder||!holder.isSynchronizedWithTransaction()||holder.isRollbackOnly()||holder.getConnectionHandle()!=handle||handle.getConnection()!=connection)throw sourceUnavailable();
+            try{if(connection==null||holder.getConnection()!=connection||connection.isClosed()||connection.getAutoCommit()||connection.getTransactionIsolation()!=isolation||isolation!=java.sql.Connection.TRANSACTION_READ_COMMITTED&&isolation!=java.sql.Connection.TRANSACTION_REPEATABLE_READ)throw sourceUnavailable();}catch(java.sql.SQLException|IllegalStateException failure){throw sourceUnavailable();}
+        }
+    }
+    private static org.familyhealthcare.service.workflow.WorkflowException sourceUnavailable(){return new org.familyhealthcare.service.workflow.WorkflowException(503,"CURRENT_RESULT_UNAVAILABLE","Current linked-source metadata could not be verified.");}
+    private static org.familyhealthcare.service.workflow.WorkflowException sourceChanged(){return new org.familyhealthcare.service.workflow.WorkflowException(409,"CURRENT_RESULT_UNAVAILABLE","Current linked-source metadata could not be verified.");}
 
     private boolean participant(Long id, Long uid) { return jdbc.queryForObject("SELECT COUNT(*) FROM consultation_participant WHERE consultation_id=? AND user_id=?", Integer.class, id, uid) > 0; }
     private void requireOpen(Map<String,Object> session) { if (!"OPEN".equals(session.get("status"))) throw new IllegalStateException("Consultation is closed."); }

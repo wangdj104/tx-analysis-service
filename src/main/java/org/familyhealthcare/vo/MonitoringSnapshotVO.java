@@ -91,6 +91,11 @@ public class MonitoringSnapshotVO {
         private LocalDateTime triggeredAt;
         private String status;
         private String handlingNote;
+        private String sourceStatus;
+        private String sourceBindingStatus;
+        private String currentSourceStatus;
+        private String sourceQualificationSemantics;
+        private String sourceQualificationAt;
     }
 
     @Data

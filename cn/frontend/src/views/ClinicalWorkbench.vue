@@ -10,24 +10,26 @@
     </header>
 
     <el-alert v-if="!patientId" title="请先在顶部选择家庭成员，再打开临床工作台。" type="warning" :closable="false" show-icon />
+    <p v-else-if="overviewState !== 'ready'" role="status" class="workbench-state">{{ overviewState === 'error' ? '工作台信息不可用，请刷新后重试。' : loading ? '正在加载工作台…' : '请刷新以加载工作台信息。' }}</p>
     <template v-else>
       <section class="metric-grid" aria-label="工作台概览">
-        <article><span>待关注事项</span><strong>{{ overview.attention?.total || 0 }}</strong><small>{{ overview.attention?.critical || 0 }} 项紧急</small></article>
-        <article><span>数据问题</span><strong>{{ overview.dataQuality?.total || 0 }}</strong><small>{{ overview.dataQuality?.pendingReview || 0 }} 项待审核</small></article>
+        <article><span>待关注事项</span><strong>{{ countValue(overview.attention?.total) }}</strong><small>{{ countValue(overview.attention?.critical) }} 项紧急</small></article>
+        <article><span>数据问题</span><strong>{{ countValue(overview.dataQuality?.total) }}</strong><small>已知待审核条目：{{ countValue(overview.dataQuality?.pendingReview) }}</small></article>
         <article><span>用药风险</span><strong>{{ overview.medicationSafety?.findings?.length || 0 }}</strong><small>{{ adherenceText }}</small></article>
-        <article><span>透析次数</span><strong>{{ overview.dialysisQuality?.sessionCount || 0 }}</strong><small>近 {{ overview.dialysisQuality?.rangeDays || 90 }} 天</small></article>
+        <article><span>透析次数</span><strong>{{ countValue(overview.dialysisQuality?.sessionCount) }}</strong><small>近 {{ overview.dialysisQuality?.rangeDays || 90 }} 天</small></article>
       </section>
 
-      <AutomationRunStatus :patient-id="patientId" :refresh-key="overview" @acknowledged="load" />
+      <AutomationRunStatus :patient-id="patientId" :refresh-key="overview" @acknowledged="overviewAcknowledged" />
 
       <section class="workbench-panel">
         <el-tabs v-model="activeTab" class="workbench-tabs">
           <el-tab-pane label="关注中心" name="attention">
             <div class="section-heading"><div><h2>关注中心</h2><p>按严重程度排序，并展示依据、负责人、响应时限和建议操作。</p></div></div>
+            <p class="qualification-note">已记录告警数量保留历史严重程度。仅在已提供信息时展示当前医疗来源资格。</p>
             <div v-if="overview.attention?.items?.length" class="issue-list">
-              <article v-for="item in overview.attention.items" :key="`${item.type}-${item.sourceId}`" class="issue-row">
+              <article v-for="(item, index) in overview.attention.items" :key="`${item.type}-${item.sourceId}-${index}`" class="issue-row">
                 <div class="issue-marker" :class="`is-${(item.severity || 'info').toLowerCase()}`"></div>
-                <div class="issue-copy"><div><el-tag size="small" :type="tagType(item.severity)">{{ severityText(item.severity) }}</el-tag><b>{{ item.title }}</b></div><p>{{ item.evidence || '相关依据可在源记录中查看' }}</p><small><span v-if="item.dueAt">到期 {{formatDate(item.dueAt)}}</span><span v-if="Number.isFinite(item.slaMinutes)"> · SLA {{formatSla(item.slaMinutes)}}</span><span v-if="item.ownerId"> · 负责人 #{{ item.ownerId }}</span></small></div>
+                <div class="issue-copy"><div><el-tag size="small" :type="tagType(item.severity)">{{ severityText(item.severity) }}</el-tag><b>{{ item.title }}</b></div><p>{{ item.evidence || '相关依据可在源记录中查看' }}</p><small><span v-if="item.dueAt">到期 {{formatDate(item.dueAt)}}</span><span v-if="Number.isFinite(item.slaMinutes)"> · SLA {{formatSla(item.slaMinutes)}}</span><span v-if="item.ownerId"> · 负责人 #{{ item.ownerId }}</span></small><section v-if="item.type === 'ALERT'" class="alert-source-facts"><b>已记录告警</b><p v-for="(line, lineIndex) in alertSourceLines(item)" :key="lineIndex">{{ line }}</p></section></div>
                 <div class="row-actions"><span>{{ item.recommendedAction }}</span><el-button type="primary" plain @click="openPath(item.path)">查看来源</el-button></div>
               </article>
             </div>
@@ -35,17 +37,23 @@
           </el-tab-pane>
 
           <el-tab-pane label="数据质量" name="quality">
-            <div class="section-heading"><div><h2>数据质量中心</h2><p>导入数据和 AI 生成数据在人工核验前均保持待确认状态。</p></div></div>
+            <div class="section-heading"><div><h2>数据质量中心</h2><p>来源资格、DOCTOR 复核和 AI 草稿审核是不同事实。待审核数量按条目统计，不代表不同记录数或医疗许可。</p></div></div>
+            <p v-if="reviewInformationIncomplete" role="status" class="qualification-note">当前审核信息不完整</p>
             <div v-if="overview.dataQuality?.issues?.length" class="issue-list">
-              <article v-for="item in overview.dataQuality.issues" :key="`${item.type}-${item.sourceId}`" class="issue-row">
+              <article v-for="(item, index) in overview.dataQuality.issues" :key="`${item.type}-${item.sourceId}-${index}`" class="issue-row">
                 <div class="issue-marker" :class="`is-${(item.severity || 'info').toLowerCase()}`"></div>
-                <div class="issue-copy"><div><el-tag size="small" :type="tagType(item.severity)">{{ qualityType(item.type) }}</el-tag><b>{{ item.title }}</b></div><p>{{ item.detail }}</p><small v-if="item.confidence != null">置信度 {{ Math.round(Number(item.confidence) * 100) }}%</small></div>
-                <div v-if="item.type === 'REVIEW'" class="button-cluster"><el-button type="success" plain @click="reviewRecord(item, true)">核验通过</el-button><el-button type="danger" plain @click="reviewRecord(item, false)">驳回</el-button></div>
+                <div class="issue-copy"><div><el-tag size="small" :type="tagType(item.severity)">{{ qualityType(item.type) }}</el-tag><b>{{ item.title }}</b></div><p>{{ item.detail }}</p><small v-if="item.confidence != null">置信度 {{ Math.round(Number(item.confidence) * 100) }}%</small><section v-if="isReviewIssue(item)" class="review-qualification" data-review-quality>
+                  <p>{{ reviewPresentation(item).sourceText }}</p><p v-if="reviewPresentation(item).doctorText">{{ reviewPresentation(item).doctorText }}</p>
+                  <p v-if="reviewPresentation(item).sourceActorText">{{ reviewPresentation(item).sourceActorText }}</p><p v-if="reviewPresentation(item).doctorActorText">{{ reviewPresentation(item).doctorActorText }}</p>
+                  <p :data-tone="reviewPresentation(item).automaticTone">{{ reviewPresentation(item).automaticText }}</p><p v-if="reviewPresentation(item).observationText">{{ reviewPresentation(item).observationText }}</p>
+                  <p v-if="item.reviewChannel === 'LEGACY' && reviewPresentation(item).mode === 'UNAVAILABLE'">审核信息不可用。仍可查看来源；只有重新加载的预览确认可提交后，才能进行旧版审核。</p>
+                </section></div>
+                <div v-if="item.type === 'REVIEW'" class="button-cluster"><template v-if="reviewPresentation(item).legacyEntry"><el-button type="success" plain @click="reviewRecord(item, true)">核验通过</el-button><el-button type="danger" plain @click="reviewRecord(item, false)">驳回</el-button></template><el-button v-else plain @click="reviewRecord(item)">查看来源</el-button></div>
                 <div v-else-if="item.type === 'AI_DRAFT'" class="button-cluster"><el-button type="success" plain @click="reviewDraft(item, true, false)">批准</el-button><el-button type="primary" plain @click="reviewDraft(item, true, true)">批准并通知</el-button><el-button type="danger" plain @click="reviewDraft(item, false, false)">驳回</el-button></div>
-                <el-button v-else plain @click="openQualitySource(item)">审核来源</el-button>
+                <el-button v-else-if="item.type !== 'REVIEW_AVAILABILITY' && safeId(item.sourceId)" plain @click="openQualitySource(item)">审核来源</el-button>
               </article>
             </div>
-            <el-empty v-else description="未发现数据质量问题。" />
+            <el-empty v-else description="本次视图未返回问题" />
           </el-tab-pane>
 
           <el-tab-pane label="用药安全" name="medication">
@@ -99,7 +107,7 @@
                 <section><h3>照护团队</h3><dl><dt>医院</dt><dd>{{ overview.emergencyCard?.target?.hospitalName || '—' }}</dd><dt>医生</dt><dd>{{ overview.emergencyCard?.target?.doctorName || '—' }}</dd></dl></section>
               </div>
               <section><h3>当前用药</h3><div class="medication-chips"><span v-for="med in overview.emergencyCard?.medications || []" :key="med.id">{{ med.drugName }} {{ med.defaultDosage || '' }}</span><i v-if="!overview.emergencyCard?.medications?.length">暂无记录</i></div></section>
-              <section><h3>未处理告警</h3><ul><li v-for="alert in overview.emergencyCard?.unresolvedAlerts || []" :key="alert.id">{{ severityText(alert.alertLevel) }} · {{ alert.alertTitle }} · {{ alert.triggeredValue }}</li><li v-if="!overview.emergencyCard?.unresolvedAlerts?.length">平台内没有未处理告警。</li></ul></section>
+              <section><h3>未处理告警</h3><ul><li v-for="(alert, index) in overview.emergencyCard?.unresolvedAlerts || []" :key="`${alert.id}-${index}`">{{ severityText(alert.alertLevel) }} · {{ alert.alertTitle }} · {{ alert.triggeredValue }}<div class="alert-source-facts"><b>已记录告警</b><p v-for="(line, lineIndex) in alertSourceLines(alert, true)" :key="lineIndex">{{ line }}</p></div></li><li v-if="!overview.emergencyCard?.unresolvedAlerts?.length">平台内没有未处理告警。</li></ul></section>
               <footer>{{ overview.emergencyCard?.disclaimer }}</footer>
             </article>
           </el-tab-pane>
@@ -133,7 +141,7 @@
         </el-tabs>
       </section>
     </template>
-    <MedicalRecordReviewDialog v-if="medicalReviewTarget" :record-id="medicalReviewTarget.recordId" :patient-id="medicalReviewTarget.patientId" @closed="medicalReviewTarget=null" @reviewed="reviewedMedicalRecord" />
+    <MedicalRecordReviewDialog v-if="medicalReviewTarget" :key="medicalReviewEpoch" :record-id="medicalReviewTarget.recordId" :patient-id="medicalReviewTarget.patientId" @closed="medicalReviewClosed" @reviewed="medicalReviewCompleted" />
   </main>
 </template>
 
@@ -141,16 +149,17 @@
 import MedicalRecordReviewDialog from '@/components/MedicalRecordReviewDialog.vue'
 import OriginalImportFacts from '@/components/OriginalImportFacts.vue'
 import { originalFactsText as importFactsText, importProblemText } from '@/utils/originalImportFacts'
-import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, inject, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCurrentPatient } from '@/composables/useCurrentPatient'
-import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession'
+import { captureAuthSession, isAuthSessionCurrent, readPermissionCache, AUTH_STORAGE_KEYS } from '@/utils/authSession'
+import { medicalReviewPresentation } from '@/utils/medicalReviewQualification'
 import { platformBranding } from '@/utils/platformBranding'
 import AutomationRunStatus from '@/components/AutomationRunStatus.vue'
 import { getClinicalWorkbenchOverview, getDialysisQuality, reviewAnalysisDraft, generateDialysisSchedule, previewClinicalImport, commitClinicalImport } from '@/api/clinicalWorkbench'
 
-const router = useRouter()
+const router = useRouter(), route = useRoute()
 const { currentPatientId: patientId, currentPatientName } = useCurrentPatient()
 const loading = ref(false), activeTab = ref('attention'), overview = ref({}), dialysisDays = ref(90)
 const schedulePreview = ref([]), importMode = ref('FHIR'), importText = ref(''), importPreview = ref(null), lastImportContext = ref(null)
@@ -164,7 +173,7 @@ const importWarnings = computed(() => {
 })
 watch(importPreview, preview => { expandedImportIndex.value = preview?.items?.length ? 0 : null }, { flush: 'sync' })
 let importAttempt = null, importDisposed = false
-const medicalReviewTarget = ref(null)
+const medicalReviewTarget = ref(null), medicalReviewEpoch = ref(0), medicalReviewClosed = ref(null), medicalReviewCompleted = ref(null)
 const submitting = ref(false)
 let loadEpoch = 0, importEpoch = 0, scheduleEpoch = 0
 let scheduleSnapshot = ''
@@ -181,13 +190,70 @@ const emergencyContact = computed(() => {
   return `${name}${phone ? ` · ${phone}` : ''}`
 })
 
+const overviewState = ref('idle'), overviewAcknowledged = ref(null), permissionMenus = inject('userMenus', ref([]))
+let overviewDisposed = false, overviewOwner = null
+const objectRow = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+const validRows = value => Array.isArray(value) && value.every(objectRow)
+const safeId = value => (typeof value === 'number' || typeof value === 'string' && /^[1-9]\d*$/.test(value)) && Number.isSafeInteger(Number(value)) && Number(value) > 0
+const permissionKey = () => JSON.stringify(readPermissionCache())
+const menuKey = () => JSON.stringify(permissionMenus.value)
+const captureOverviewOwner = () => ({ auth: captureAuthSession(), actorId: localStorage.getItem('userId'), permission: permissionKey(), menus: menuKey(), patientId: patientId.value, days: dialysisDays.value, route: route.fullPath })
+const ownsOverview = owner => !overviewDisposed && !!owner && isAuthSessionCurrent(owner.auth) && owner.actorId === localStorage.getItem('userId') && owner.permission === permissionKey() && owner.menus === menuKey() && owner.patientId === patientId.value && owner.days === dialysisDays.value && owner.route === route.fullPath
+function retireMedicalReview() { medicalReviewEpoch.value++; medicalReviewTarget.value=null; medicalReviewClosed.value=null; medicalReviewCompleted.value=null }
+function retireOverview() { overviewAcknowledged.value=null; loadEpoch++; overviewOwner=null; overview.value={}; overviewState.value='idle'; loading.value=false; retireMedicalReview() }
+function currentOverview() { if(!ownsOverview(overviewOwner)){retireOverview();return false}return overviewState.value==='ready' }
+function validOverview(data, dialysis) {
+  return objectRow(data) && objectRow(data.attention) && validRows(data.attention.items) && data.attention.items.every(row=>typeof row.type==='string') && objectRow(data.dataQuality) && validRows(data.dataQuality.issues) && data.dataQuality.issues.every(row=>typeof row.type==='string') && objectRow(data.medicationSafety) && validRows(data.medicationSafety.findings) && validRows(data.medicationSafety.medications) && objectRow(data.emergencyCard) && validRows(data.emergencyCard.medications) && validRows(data.emergencyCard.unresolvedAlerts) && objectRow(dialysis) && validRows(dialysis.sessions) && validRows(dialysis.flags)
+}
 async function load(){
-  const epoch=++loadEpoch, selectedPatient=patientId.value
-  if(!selectedPatient){ overview.value={}; loading.value=false; return }
-  loading.value=true
-  try { const [res,dialysis]=await Promise.all([getClinicalWorkbenchOverview(selectedPatient),getDialysisQuality(selectedPatient,dialysisDays.value)]); if(epoch!==loadEpoch || selectedPatient!==patientId.value)return; overview.value=res.data||{}; overview.value.dialysisQuality=dialysis.data||{}; hydrateSchedule() }
-  catch { if(epoch===loadEpoch)overview.value={} }
-  finally { if(epoch===loadEpoch)loading.value=false }
+  if(overviewDisposed)return
+  retireOverview()
+  const epoch=loadEpoch, owner=captureOverviewOwner()
+  if(!safeId(owner.patientId))return
+  overviewOwner=owner; overviewState.value='loading'; loading.value=true
+  if(!ownsOverview(owner)){retireOverview();return}
+  // Existing overview/dialysis wrappers do not forward auth/signal options.
+  // These guards retire local state; they cannot cancel transport or global toasts.
+  try {
+    const [res,dialysis]=await Promise.all([getClinicalWorkbenchOverview(owner.patientId),getDialysisQuality(owner.patientId,owner.days)])
+    if(epoch!==loadEpoch)return
+    if(!ownsOverview(owner)){retireOverview();return}
+    if(res?.code!==200 || dialysis?.code!==200 || !validOverview(res.data,dialysis.data))throw new Error('Invalid workbench response')
+    overview.value={...res.data,dialysisQuality:dialysis.data}; overviewState.value='ready'; hydrateSchedule()
+    overviewAcknowledged.value=()=>{if(owner===overviewOwner && ownsOverview(owner) && overviewState.value==='ready')return load()}
+  } catch { if(epoch===loadEpoch){if(!ownsOverview(owner))retireOverview();else{overview.value={};retireMedicalReview();overviewState.value='error'}} }
+  finally { if(epoch===loadEpoch){if(!ownsOverview(owner))retireOverview();else loading.value=false} }
+}
+function countValue(value){return Number.isSafeInteger(value) && value>=0 ? value : '—'}
+const reviewInformationIncomplete = computed(()=>overview.value.dataQuality?.issues?.some(row=>row.type==='REVIEW_AVAILABILITY')===true)
+function isReviewIssue(item){return item.sourceType==='medical-record' && ['REVIEW','SOURCE_REVIEW','DOCTOR_REVIEW','DOCTOR_REVIEW_OUTCOME'].includes(item.type)}
+function reviewPresentation(item){
+  const value=medicalReviewPresentation(item.reviewSummary, 'zh')
+  const summary=item.reviewSummary, known=['NONE','PARTICIPANT','UNAVAILABLE'].includes(value.mode)
+  const consistent=item.type==='REVIEW' ? item.reviewChannel==='LEGACY' && ['NONE','UNAVAILABLE'].includes(value.mode) : item.type==='SOURCE_REVIEW' ? item.reviewChannel==='SOURCE' && value.mode==='PARTICIPANT' && value.automaticInputEligible===false : item.reviewChannel==='DOCTOR' && value.mode==='PARTICIPANT' && ['DOCTOR_ONLY','BOTH'].includes(value.participation) && (item.type==='DOCTOR_REVIEW' ? summary?.doctor?.state==='PENDING' : ['APPROVED','REJECTED'].includes(summary?.doctor?.state))
+  if(known && (summary?.qualificationSemantics!=='CURRENT_CHECK' || !consistent))return {...value,sourceText:'当前审核信息与本工作视图不匹配。请重新加载来源以核实当前资格。',doctorText:'',sourceActorText:'',doctorActorText:'',automaticText:'无法核实自动分析输入资格',automaticTone:'info',legacyEntry:false}
+  return {...value,legacyEntry:item.type==='REVIEW' && item.reviewChannel==='LEGACY' && value.mode==='NONE'}
+}
+function validSourceInstant(value){
+  if(typeof value!=='string')return false
+  const m=value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/)
+  if(!m)return false
+  const [year,month,day,hour,minute,second]=m.slice(1).map(Number),leap=year%4===0 && (year%100!==0 || year%400===0),days=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31]
+  return month>=1 && month<=12 && day>=1 && day<=days[month-1] && hour<24 && minute<60 && second<60
+}
+function alertSourceLines(item, emergency=false){
+  const keys=['sourceStatus','sourceBindingStatus','currentSourceStatus','sourceQualificationSemantics','sourceQualificationAt']
+  const present=keys.some(key=>Object.hasOwn(item,key)),medical=emergency && item.sourceType==='MEDICAL_RECORD_ITEM' && item.alertType!=='MEASUREMENT_FOLLOW_UP'
+  if(emergency && !medical)return []
+  if(!present)return medical?['当前来源资格不可用']:[]
+  if(!keys.every(key=>Object.hasOwn(item,key)))return ['当前来源资格不可用']
+  const {sourceStatus:status,sourceBindingStatus:binding,currentSourceStatus:current,sourceQualificationSemantics:semantics,sourceQualificationAt:at}=item
+  if(status==='SOURCE_UNAVAILABLE' && binding===null && current==='SOURCE_UNAVAILABLE' && semantics===null && at===null)return ['当前来源资格不可用']
+  const currentCopy={'CURRENT': '当前来源资格：有效', 'UNTRACKED': '当前来源：旧版处理', 'SOURCE_REVIEW_REQUIRED': '当前来源待核对', 'SOURCE_CHANGED': '当前来源已变更', 'SOURCE_INVALIDATED': '当前来源已失效', 'SOURCE_UNAVAILABLE': '当前来源资格不可用'}, bindingCopy={'CURRENT_CONTENT': '历史链接匹配当前内容', 'UNBOUND': '历史链接未绑定版本', 'CONTENT_CHANGED': '历史链接指向较早的来源版本', 'GENERATION_CHANGED': '历史链接指向较早的来源版本', 'MISSING_ANCHOR': '无法核实历史来源链接', 'SOURCE_MISSING': '无法核实历史来源链接', 'STORE_CONFLICT': '无法核实历史来源链接'}
+  if(!Object.hasOwn(currentCopy,current) || !Object.hasOwn(bindingCopy,binding) || !['CURRENT','UNTRACKED','SOURCE_REVIEW_REQUIRED','SOURCE_CHANGED','SOURCE_INVALIDATED','SOURCE_UNAVAILABLE','UNKNOWN_NEEDS_RECHECK'].includes(status) || semantics!=='CURRENT_CHECK' || !validSourceInstant(at))return ['当前来源资格不可用']
+  const coherent=binding==='MISSING_ANCHOR' || binding==='SOURCE_MISSING' ? status==='SOURCE_UNAVAILABLE' && current==='SOURCE_UNAVAILABLE' : binding==='STORE_CONFLICT' ? status==='SOURCE_UNAVAILABLE' : binding==='UNBOUND' ? status===(current==='CURRENT'?'UNKNOWN_NEEDS_RECHECK':current) : binding==='GENERATION_CHANGED' ? status==='SOURCE_CHANGED' : binding==='CONTENT_CHANGED' ? status==='SOURCE_CHANGED' || status===current && !['CURRENT','UNTRACKED'].includes(current) : status===(['CURRENT','UNTRACKED'].includes(current)?'CURRENT':current)
+  if(!coherent)return ['当前来源资格不可用']
+  return [bindingCopy[binding],currentCopy[current],...(status==='UNKNOWN_NEEDS_RECHECK'?['历史链接需要重新核对']:[]),'当前来源核对时间：'+at]
 }
 function hydrateSchedule(){
   const quality=overview.value.dialysisQuality||{}
@@ -196,20 +262,28 @@ function hydrateSchedule(){
 }
 function tagType(severity){ return ({CRITICAL:'danger',WARNING:'warning',INFO:'info'}[severity]||'info') }
 function severityText(severity){ return ({CRITICAL:'紧急',WARNING:'警告',INFO:'提示',HIGH:'高',MEDIUM:'中',LOW:'低'}[severity]||severity) }
-function qualityType(type){ return ({REVIEW:'待审核',LOW_CONFIDENCE:'置信度较低',MISSING_CONTEXT:'缺少上下文',DUPLICATE:'可能重复',DIALYSIS_COMPLETENESS:'透析数据不完整',AI_DRAFT:'AI 草稿'}[type]||type) }
+function qualityType(type){ return ({REVIEW:'旧版审核',SOURCE_REVIEW:'来源核对',DOCTOR_REVIEW:'DOCTOR 通道待复核',DOCTOR_REVIEW_OUTCOME:'DOCTOR 通道复核结果',REVIEW_AVAILABILITY:'审核信息不可用',LOW_CONFIDENCE:'置信度较低',MISSING_CONTEXT:'缺少上下文',DUPLICATE:'可能重复',DIALYSIS_COMPLETENESS:'透析数据不完整',AI_DRAFT:'AI 草稿'}[type]||type) }
 function findingType(type){ return ({ALLERGY:'过敏风险',DUPLICATE:'重复用药',INTERACTION:'药物相互作用',RENAL:'肾功能用药提示',STOCK:'库存不足',ADHERENCE:'依从性提示'}[type]||type) }
 function formatDate(value){ if(!value)return '未设置'; const date=new Date(value); return Number.isNaN(date.getTime())?String(value):date.toLocaleString('zh-CN') }
 function formatSla(minutes){ return minutes<60?`${minutes} 分钟`:minutes<1440?`${minutes/60} 小时`:`${minutes/1440} 天` }
 function metric(value,suffix=''){ return value==null?'—':`${value}${suffix}` }
-function openPath(path){ if(path)router.push(path) }
-function openQualitySource(item){ router.push(item.sourceType==='dialysis'?'/dialysis':'/medical-record') }
-function reviewRecord(item){ medicalReviewTarget.value = { recordId: Number(item.sourceId), patientId: patientId.value } }
-async function reviewedMedicalRecord(){ medicalReviewTarget.value = null; await load() }
+function openPath(path){ if(currentOverview() && path && overview.value.attention.items.some(item=>item.path===path))router.push(path) }
+function openQualitySource(item){ if(!currentOverview() || !overview.value.dataQuality.issues.includes(item) || item.type==='REVIEW_AVAILABILITY' || !safeId(item.sourceId))return; router.push(item.sourceType==='dialysis'?'/dialysis':'/medical-record') }
+function reviewRecord(item){
+  retireMedicalReview()
+  if(!currentOverview() || !overview.value.dataQuality.issues.includes(item) || item.type!=='REVIEW' || item.sourceType!=='medical-record' || !safeId(item.sourceId) || !safeId(patientId.value))return
+  const epoch=medicalReviewEpoch.value, owner=overviewOwner
+  medicalReviewClosed.value=()=>{if(epoch===medicalReviewEpoch.value)retireMedicalReview()}
+  medicalReviewCompleted.value=()=>{if(epoch===medicalReviewEpoch.value && owner===overviewOwner && ownsOverview(owner))return reviewedMedicalRecord()}
+  medicalReviewTarget.value={recordId:Number(item.sourceId),patientId:patientId.value}
+}
+async function reviewedMedicalRecord(){ if(!medicalReviewTarget.value || !currentOverview())return; retireMedicalReview(); await load() }
 watch(patientId, () => { medicalReviewTarget.value = null }, { flush: 'sync' })
 async function reviewDraft(item,approved,notify){
+  const readOwner=overviewOwner
   const verb=approved?(notify?'批准并发送审核后的内容':'批准此草稿'):'驳回此草稿'
   await ElMessageBox.confirm(`确认要${verb}吗？`, 'AI 分析审核', {type:notify?'warning':'info'})
-  await reviewAnalysisDraft(item.sourceId,approved,notify); ElMessage.success(approved?'草稿已批准。':'草稿已驳回。'); await load()
+  await reviewAnalysisDraft(item.sourceId,approved,notify); if(readOwner!==overviewOwner || !ownsOverview(readOwner))return; ElMessage.success(approved?'草稿已批准。':'草稿已驳回。'); await load()
 }
 function scheduleBody(confirmed=false){ return {patientId:patientId.value,weekdays:schedule.weekdays.join(','),time:schedule.time||null,from:schedule.from,to:schedule.to,confirmed} }
 async function previewSchedule(){
@@ -223,16 +297,16 @@ async function previewSchedule(){
 }
 async function confirmSchedule(){
   if(submitting.value || !schedulePreview.value.length || scheduleSnapshot!==JSON.stringify(scheduleBody(false)))return
-  const snapshot=scheduleSnapshot, body={...scheduleBody(false),confirmed:true}
+  const snapshot=scheduleSnapshot, body={...scheduleBody(false),confirmed:true}, readOwner=overviewOwner
   submitting.value=true
   try {
   await ElMessageBox.confirm(`确认创建 ${schedulePreview.value.length} 个排班日期吗？已有日期将被跳过。`, '确认透析计划', {type:'warning'})
   if(snapshot!==scheduleSnapshot || snapshot!==JSON.stringify(scheduleBody(false)))return
-const res=await generateDialysisSchedule(body); ElMessage.success(`已创建 ${res.data?.created||0} 条，跳过 ${res.data?.skipped||0} 条。`); if(snapshot===scheduleSnapshot){schedulePreview.value=[]; scheduleSnapshot=''; await load()}
+const res=await generateDialysisSchedule(body); if(readOwner!==overviewOwner || !ownsOverview(readOwner))return; ElMessage.success(`已创建 ${res.data?.created||0} 条，跳过 ${res.data?.skipped||0} 条。`); if(snapshot===scheduleSnapshot){schedulePreview.value=[]; scheduleSnapshot=''; await load()}
   } catch(error) { if(error!=='cancel' && error!=='close')console.error(error) }
   finally { submitting.value=false }
 }
-function printCard(){ window.print() }
+function printCard(){ if(currentOverview())window.print() }
 function loadImportSample(){ importText.value=JSON.stringify(importMode.value==='FHIR'?fhirSample:deviceSample,null,2) }
 function buildImportRequest(selectedPatient, mode, rawText, confirmed=false) {
   if (!Number.isSafeInteger(selectedPatient) || selectedPatient <= 0 || !['FHIR', 'DEVICE'].includes(mode) || typeof rawText !== 'string') throw new Error('IMPORT_INPUT_INVALID')
@@ -306,6 +380,7 @@ async function previewImport() {
 async function commitImport() {
   const context = lastImportContext.value
   if (importBusy.value || submitting.value || !context || !importPreview.value?.itemCount || !isImportContextCurrent(context)) return
+  const readContext = captureOverviewOwner(), readEpoch = loadEpoch
   const valid = importPreview.value.itemCount, rejected = importPreview.value.rejectedCount || 0
   const attempt = beginImport(context)
   let dispatched = false
@@ -319,6 +394,7 @@ async function commitImport() {
     lastImportContext.value = null
     const res = await commitClinicalImport(body, { signal: attempt.controller.signal, expectedAuth: context.auth })
     if (!ownsImport(attempt)) return
+    if (readEpoch !== loadEpoch || !ownsOverview(readContext)) return
     importResult.value = res.data
     importPreview.value = null
     const summary = `已创建 ${res.data?.created || 0} 条，跳过 ${res.data?.skipped || 0} 条，失败 ${res.data?.errors || 0} 条。`
@@ -327,6 +403,7 @@ async function commitImport() {
     if (ownsImport(attempt)) await load()
   } catch (error) {
     if (!ownsImport(attempt) || error === 'cancel' || error === 'close') return
+    if (dispatched && (readEpoch !== loadEpoch || !ownsOverview(readContext))) return
     if (dispatched) importError.value = '尚未确认导入结果，部分数据可能已保存。再次导入前请先核验记录；中止请求不代表回滚。'
     else showImportInputError(error)
   } finally {
@@ -342,7 +419,21 @@ watch(patientId,()=>{ overview.value={}; schedulePreview.value=[];  schedule.wee
 window.addEventListener('auth-session-changed', invalidateImport)
 window.addEventListener('auth-session-cleared', invalidateImport)
 window.addEventListener('storage', importStorageChanged)
+watch(permissionMenus, retireOverview, { deep: true, flush: 'sync' })
+watch(dialysisDays, retireOverview, { flush: 'sync' })
+watch(()=>route.fullPath, retireOverview, { flush: 'sync' })
+function overviewStorageChanged(event){if(event.key===null || [...AUTH_STORAGE_KEYS,'permissionSession','userMenus','userMenuNames','userRoleCodes','currentPatientId'].includes(event.key))retireOverview()}
+window.addEventListener('auth-session-changed', retireOverview)
+window.addEventListener('auth-session-cleared', retireOverview)
+window.addEventListener('permissions-changed', retireOverview)
+window.addEventListener('storage', overviewStorageChanged)
 onBeforeUnmount(() => {
+  overviewDisposed = true
+  retireOverview()
+  window.removeEventListener('auth-session-changed', retireOverview)
+  window.removeEventListener('auth-session-cleared', retireOverview)
+  window.removeEventListener('permissions-changed', retireOverview)
+  window.removeEventListener('storage', overviewStorageChanged)
   importDisposed = true
   invalidateImport()
   window.removeEventListener('auth-session-changed', invalidateImport)
@@ -353,6 +444,8 @@ onMounted(()=>{ loadImportSample(); load() })
 </script>
 
 <style scoped>
+.review-qualification,.alert-source-facts{margin-top:10px;min-width:0;overflow-wrap:anywhere;line-height:1.6}.review-qualification{padding:10px;border:1px solid var(--line);border-radius:8px}.review-qualification p,.alert-source-facts p{margin:5px 0}.review-qualification [data-tone="success"]{color:var(--care-800)}.qualification-note,.workbench-state{line-height:1.6;overflow-wrap:anywhere}.button-cluster :deep(.el-button){min-height:44px;height:auto;white-space:normal}.alert-source-facts{color:var(--ink-700)}
+
 .import-facts-toggle{min-height:44px;max-width:100%;padding:8px 12px;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800);font:inherit;line-height:1.5;white-space:normal;overflow-wrap:anywhere;cursor:pointer}.import-facts-toggle:disabled{opacity:.55;cursor:not-allowed}.import-facts-toggle:focus-visible{outline:3px solid var(--care-600);outline-offset:3px}.import-facts-preview,.import-rejected-row{min-width:0;overflow-wrap:anywhere;line-height:1.6}.import-facts-preview>p{margin:16px 0 0}.import-rejected-row{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-subtle);color:var(--ink-800)}.import-rejected-row p{margin:0}.import-rejected-row ul{padding-inline-start:24px;margin:8px 0 0}
 
 .import-form :deep(.el-button),.import-form :deep(.el-radio-button__inner){min-height:44px}.import-form :deep(.el-radio-button__inner){display:inline-flex;align-items:center}.import-notice,.import-counts{line-height:1.6;overflow-wrap:anywhere}.import-notice{color:var(--ink-500);font-size:12px}

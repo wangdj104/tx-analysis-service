@@ -1,6 +1,7 @@
 package org.familyhealthcare.service.alertworkflow;
 
 import org.familyhealthcare.service.workflow.WorkflowData;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.*;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -145,17 +146,28 @@ public class AlertWorkflowEvidenceService {
 
     public void attach(long actor,long patient,long event,List<Map<String,Object>> references) {
         requireReadable(actor,patient,references);
+        Set<Long> medical=new LinkedHashSet<>();List<Map<String,Object>> actions=new ArrayList<>();
         for(Map<String,Object> ref:references) {
-            String type=(String)ref.get("sourceType");long source=id(ref.get("sourceId"));Long revision=null,version=null;
-            if(SOURCE_TYPES.contains(type)) {
-                Map<String,Object> row=repo.readSource(actor,patient,type,source);if(!"ACTIVE".equals(row.get("sourceStatus")))throw changed();
-                ensureTracked(actor,row);revision=id(row.get("sourceRevision"));
-            }else if("CARE_PLAN_ACTION".equals(type)) {
-                // All attachment paths (including replacement chains and fresh SUBMIT) retain the action's correction obligation.
-                requireFreshPlanConfirmation(actor,patient,ref);version=jdbc.queryForObject("SELECT lock_version FROM care_plan_action WHERE id=?",Long.class,source);
+            if("MEDICAL_RECORD".equals(ref.get("sourceType")))medical.add(id(ref.get("sourceId")));
+            else if("CARE_PLAN_ACTION".equals(ref.get("sourceType")))actions.add(ref);
+        }
+        Checks actionChecks=actions.isEmpty()?null:checks(actor,patient,actions);
+        if(actionChecks!=null&&!actionChecks.careAnchors.isEmpty())medicalReferences.requireCurrent(Kind.CARE_PLAN_EVIDENCE,actionChecks.careAnchors,medicalValidity.open());
+        try(AlertEvidenceFrame frame=medical.isEmpty()?null:medicalReferences.prepareAlertEvidence(event,patient,actor,medical,medicalValidity.open())) {
+            for(Map<String,Object> ref:references) {
+                String type=(String)ref.get("sourceType");long source=id(ref.get("sourceId"));Long revision=null,version=null;
+                if(SOURCE_TYPES.contains(type)) {
+                    Map<String,Object> row=repo.readSource(actor,patient,type,source);if(!"ACTIVE".equals(row.get("sourceStatus")))throw changed();
+                    ensureTracked(actor,row);revision=id(row.get("sourceRevision"));
+                }else if("CARE_PLAN_ACTION".equals(type)) {
+                    // All attachment paths retain the action's correction obligation, using this request's fixed medical set.
+                    if(!freshPlanConfirmation(actor,patient,source,actionChecks))throw changed();
+                    version=jdbc.queryForObject("SELECT lock_version FROM care_plan_action WHERE id=?",Long.class,source);
+                }
+                if("MEDICAL_RECORD".equals(type))frame.insert(source);
+                else repo.addEvidence(event,type,source,revision,version,"VALID");
             }
-            if("MEDICAL_RECORD".equals(type))medicalReferences.insertAlertEvidence(event,patient,type,source,revision,version,"VALID",medicalValidity.open());
-            else repo.addEvidence(event,type,source,revision,version,"VALID");
+            if(frame!=null)frame.complete();
         }
     }
     /** Source lock must already be held. New UTC occurrence is the workflow snapshot capture, never a rewritten legacy measurement time. */
@@ -171,26 +183,32 @@ public class AlertWorkflowEvidenceService {
     /** 只在当前调用内合批状态；权限仍逐次核对，不能把只读提示当成执行许可。 */
     static final class Checks {
         final List<Map<String,Object>> references;final Graph graph;Map<Long,String> medical,care;
+        List<Anchor> medicalAnchors=Collections.emptyList(),careAnchors=Collections.emptyList();
         Checks(List<Map<String,Object>> references,Graph graph){this.references=references;this.graph=graph;}
     }
     Checks checks(long actor,long patient,List<Map<String,Object>> references){return checksForGroups(actor,patient,Collections.singletonList(references)).get(0);}
     List<Checks> checksForGroups(long actor,long patient,List<List<Map<String,Object>>> groups) {
-        List<Checks> result=new ArrayList<>();
-        List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> direct=new ArrayList<>(),nestedMedical=new ArrayList<>();
-        Set<Long> seenDirect=new HashSet<>(),seenCare=new HashSet<>();
+        List<Checks> result=new ArrayList<>();List<Anchor> direct=new ArrayList<>(),nestedMedical=new ArrayList<>();
         List<Map<String,Object>> all=new ArrayList<>();for(List<Map<String,Object>> refs:groups)all.addAll(refs);
         Graph locked=(Graph)org.springframework.transaction.support.TransactionSynchronizationManager.getResource(graphKey);Graph graph=locked==null?discover(all):locked;
         for(List<Map<String,Object>> refs:groups){Checks check=new Checks(refs,graph);result.add(check);
             for(Map<String,Object> ref:refs)if(readable(actor,patient,ref,false,check.graph)){
-                if("MEDICAL_RECORD".equals(ref.get("sourceType"))&&seenDirect.add(id(ref.get("id"))))direct.add(new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor(id(ref.get("id")),patient,id(ref.get("sourceId")),null));
-                if("CARE_PLAN_ACTION".equals(ref.get("sourceType")))for(Map<String,Object> row:check.graph.nested.get(id(ref.get("sourceId"))))if("MEDICAL_RECORD".equals(row.get("sourceType"))&&seenCare.add(id(row.get("id"))))nestedMedical.add(new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor(id(row.get("id")),patient,id(row.get("sourceId")),null));
+                if("MEDICAL_RECORD".equals(ref.get("sourceType")))direct.add(new Anchor(id(ref.get("id")),patient,id(ref.get("sourceId")),null));
+                if("CARE_PLAN_ACTION".equals(ref.get("sourceType")))for(Map<String,Object> row:check.graph.nested.get(id(ref.get("sourceId"))))if("MEDICAL_RECORD".equals(row.get("sourceType")))nestedMedical.add(new Anchor(id(row.get("id")),patient,id(row.get("sourceId")),null));
             }
         }
-        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope scope=direct.isEmpty()&&nestedMedical.isEmpty()?null:medicalValidity.open();
-        Map<Long,String> medical=batchStatuses(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind.ALERT_EVIDENCE,direct,scope),care=batchStatuses(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind.CARE_PLAN_EVIDENCE,nestedMedical,scope);
-        for(Checks check:result){check.medical=medical;check.care=care;}return result;
+        Map<Kind,List<Anchor>> selected=new LinkedHashMap<>();if(!direct.isEmpty())selected.put(Kind.ALERT_EVIDENCE,direct);if(!nestedMedical.isEmpty())selected.put(Kind.CARE_PLAN_EVIDENCE,nestedMedical);
+        Map<Long,String> medical=new LinkedHashMap<>(),care=new LinkedHashMap<>();
+        if(!selected.isEmpty()) {
+            ReferenceFrame frame=medicalReferences.readSnapshots(selected,medicalValidity.open());
+            for(Map.Entry<Long,ReferenceSnapshot> row:frame.snapshots.getOrDefault(Kind.ALERT_EVIDENCE,Collections.emptyMap()).entrySet())medical.put(row.getKey(),row.getValue().status);
+            for(Map.Entry<Long,ReferenceSnapshot> row:frame.snapshots.getOrDefault(Kind.CARE_PLAN_EVIDENCE,Collections.emptyMap()).entrySet())care.put(row.getKey(),row.getValue().status);
+        }
+        // The common reader validates every duplicate expectation before work is deduplicated for strict proofs.
+        List<Anchor> medicalAnchors=distinctAnchors(direct),careAnchors=distinctAnchors(nestedMedical);
+        for(Checks check:result){check.medical=medical;check.care=care;check.medicalAnchors=medicalAnchors;check.careAnchors=careAnchors;}return result;
     }
-    private Map<Long,String> batchStatuses(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind kind,List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> anchors,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope scope){Map<Long,String> result=new HashMap<>();for(int from=0;from<anchors.size();from+=100)result.putAll(medicalReferences.statuses(kind,anchors.subList(from,Math.min(from+100,anchors.size())),scope));return result;}
+    private List<Anchor> distinctAnchors(List<Anchor> anchors){Map<Long,Anchor> unique=new LinkedHashMap<>();for(Anchor anchor:anchors)unique.put(anchor.id,anchor);return Collections.unmodifiableList(new ArrayList<>(unique.values()));}
     public boolean valid(long actor,long patient,Map<String,Object> ref){return valid(actor,patient,ref,checks(actor,patient,Collections.singletonList(ref)));}
     boolean valid(long actor,long patient,Map<String,Object> ref,Checks checks) {
         if(!"VALID".equals(ref.get("dependencyState"))||!readable(actor,patient,ref,false,checks.graph))return false;
@@ -205,7 +223,10 @@ public class AlertWorkflowEvidenceService {
     }
     public void requireComplete(long actor,Map<String,Object> alert) {
         if(!hasLockedGraph())throw AlertWorkflowException.conflict();
-        requireComplete(actor,alert,checks(actor,id(alert.get("patientId")),dependencies(id(alert.get("id")))));
+        Checks checks=checks(actor,id(alert.get("patientId")),dependencies(id(alert.get("id"))));
+        requireComplete(actor,alert,checks);
+        if(!checks.medicalAnchors.isEmpty())medicalReferences.requireCurrent(Kind.ALERT_EVIDENCE,checks.medicalAnchors,medicalValidity.open());
+        if(!checks.careAnchors.isEmpty())medicalReferences.requireCurrent(Kind.CARE_PLAN_EVIDENCE,checks.careAnchors,medicalValidity.open());
     }
     // 此内部重载供只读可用性提示；命令入口必须调用上方强制锁图的公开方法。
     void requireComplete(long actor,Map<String,Object> alert,Checks checks) {
@@ -227,7 +248,6 @@ public class AlertWorkflowEvidenceService {
         Long patient=jdbc.queryForObject("SELECT patient_id FROM care_plan_action WHERE id=?",Long.class,id(reference.get("sourceId")));
         if(patient==null||!freshPlanConfirmation(null,patient,id(reference.get("sourceId"))))throw changed();
     }
-    private void requireFreshPlanConfirmation(long actor,long patient,Map<String,Object> reference){if(!freshPlanConfirmation(actor,patient,id(reference.get("sourceId"))))throw changed();}
     private boolean freshPlanConfirmation(Long actor,long patient,long action) {return freshPlanConfirmation(actor,patient,action,null);}
     private boolean freshPlanConfirmation(Long actor,long patient,long action,Checks checks) {
         List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> medical=new ArrayList<>();

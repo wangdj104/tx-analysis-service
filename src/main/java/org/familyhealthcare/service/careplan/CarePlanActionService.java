@@ -149,7 +149,13 @@ public class CarePlanActionService {
         // READ_COMMITTED re-reads account, assignment, grant and source ownership after any wait.
         validateReceiptAuthority("SUBMIT_RECEIPT",actor,patient,body);
         List<Long> medical=new ArrayList<>();for(Map<String,Object> ref:sources.values())if("MEDICAL_RECORD".equals(ref.get("sourceType")))medical.add(id(ref.get("sourceId")));
-        if(!medical.isEmpty())for(org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state:medicalValidity.open().batch(medical).values())if(!state.eligible())throw org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.changed();
+        if(!medical.isEmpty()) {
+            Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=medicalValidity.open().qualifiedBatch(medical);
+            for(long source:medical) {
+                org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state=states.get(source);
+                if(state==null||state.id!=source||!state.reviewObserved||!state.eligible())throw org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.changed();
+            }
+        }
     }
 
     private List<Map<String,Object>> receiptAnchors(long action,long plan,long patient) {

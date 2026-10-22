@@ -14,7 +14,7 @@ export const uploadAndRecognize = async (files, patientId, recordType) => {
 export const recognizeBase64 = (base64Image, recordType) =>
   request({ url: '/medical-record/recognize-base64', method: 'post', data: { base64Image, recordType } });
 
-export const listRecords = (params) => request({ url: '/medical-record/list', method: 'get', params });
+export const listRecords = (params, options = {}) => request({ url: '/medical-record/list', method: 'get', params, ...(options.expectedAuth ? { expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {}) });
 
 // 新详情显式选择事实，并将取消信号和同一会话传到现有拦截器；旧编辑读取保持原合同。
 export const getRecord = (id, patientId, options = {}) => request({
@@ -37,15 +37,15 @@ export const updateRecord = (record, items, attachments, options = {}) =>
 
 export const deleteRecord = (id, options = {}) => request({ url: `/medical-record/delete/${id}`, method: 'delete', ...(options.expectedAuth ? { expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {}) });
 
-export const getItemTrend = (patientId, patientName, itemName) => {
+export const getItemTrend = (patientId, patientName, itemName, options = {}) => {
   const params = { itemName };
   if (patientId) params.patientId = patientId;
   if (patientName) params.patientName = patientName;
-  return request({ url: '/medical-record/trend', method: 'get', params });
+  return request({ url: '/medical-record/trend', method: 'get', params, ...(options.expectedAuth ? { expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {}) });
 };
 
-export const getAllItemNames = (patientId) => {
+export const getAllItemNames = (patientId, options = {}) => {
   const params = {};
   if (patientId) params.patientId = patientId;
-  return request({ url: '/medical-record/items', method: 'get', params });
+  return request({ url: '/medical-record/items', method: 'get', params, ...(options.expectedAuth ? { expectedAuth: options.expectedAuth, signal: options.signal, executionReport: true } : {}) });
 };

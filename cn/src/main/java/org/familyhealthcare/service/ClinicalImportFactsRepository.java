@@ -12,6 +12,10 @@ import static org.familyhealthcare.service.ClinicalImportFacts.*;
 @Repository
 public class ClinicalImportFactsRepository {
     @Autowired private JdbcTemplate jdbc;
+    /** Identity only; this never acquires a connection or changes the importer contract. */
+    public void requireDataSource(javax.sql.DataSource expected) {
+        if(expected==null||jdbc==null||jdbc.getDataSource()!=expected)throw Failure.unavailable();
+    }
     private static final String ENVIRONMENT = "SELECT DATABASE() AS schema_name, VERSION() AS server_version, @@character_set_client AS client_charset, @@character_set_connection AS connection_charset, @@character_set_results AS results_charset";
     private static final String TABLES = "SELECT TABLE_NAME AS table_name, ENGINE AS engine, TABLE_COLLATION AS table_collation FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('bp_self_monitor_record','medical_record') LIMIT 3";
     private static final String COLUMNS = "SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, DATA_TYPE AS data_type, COLUMN_TYPE AS column_type, IS_NULLABLE AS is_nullable, COLUMN_DEFAULT AS column_default, CHARACTER_MAXIMUM_LENGTH AS character_maximum_length, CHARACTER_SET_NAME AS character_set_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND ((TABLE_NAME='bp_self_monitor_record' AND COLUMN_NAME IN ('import_facts_json','record_time')) OR (TABLE_NAME='medical_record' AND COLUMN_NAME='import_facts_json')) LIMIT 4";

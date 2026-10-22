@@ -17,7 +17,12 @@ class AlertWorkflowLegacyContainmentTest {
         h=new AlertWorkflowHarness();legacy=new AlertServiceImpl();
         com.baomidou.mybatisplus.core.MybatisConfiguration config=new com.baomidou.mybatisplus.core.MybatisConfiguration();
         config.setEnvironment(new org.apache.ibatis.mapping.Environment("test",new org.mybatis.spring.transaction.SpringManagedTransactionFactory(),h.db.jdbc.getDataSource()));config.addMapper(AlertRecordMapper.class);
-        AlertRecordMapper mapper=new org.mybatis.spring.SqlSessionTemplate(new com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder().build(config)).getMapper(AlertRecordMapper.class);
+        org.apache.ibatis.session.SqlSessionFactory sessions=new com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder().build(config);
+        AlertRecordMapper mapper=new org.mybatis.spring.SqlSessionTemplate(sessions).getMapper(AlertRecordMapper.class);
+        ReflectionTestUtils.setField(legacy,"medicalAlerts",new org.familyhealthcare.service.medicalrecord.MedicalRecordAlertProjection(
+                h.db.jdbc,sessions,h.medicalValidity,
+                new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions(h.db.jdbc,h.medicalValidity,h.db.manager),
+                new org.familyhealthcare.service.MedicalRecordReviewAccess(h.db.jdbc)));
         ReflectionTestUtils.setField(legacy,"baseMapper",mapper);DataScopeHelper scope=mock(DataScopeHelper.class);when(scope.requireUserId()).thenReturn(5L);ReflectionTestUtils.setField(legacy,"dataScopeHelper",scope);
     }
     @Test void legacyListAndDirectReadOmitWorkflowRowsButRetainNullTypeRows() {

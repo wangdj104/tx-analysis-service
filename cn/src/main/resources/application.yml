@@ -50,5 +50,10 @@ common-care-goals:
 medical-record-correction:
   enabled: ${MEDICAL_RECORD_CORRECTION_ENABLED:false}
 
+# 独立病历核对：先完成独立 SQL 和验收，API 与新命令分别默认关闭。
+medical-review:
+  api-enabled: ${MEDICAL_REVIEW_API_ENABLED:false}
+  enabled: ${MEDICAL_REVIEW_ENABLED:false}
+
 visit-followup:
   enabled: ${VISIT_FOLLOWUP_ENABLED:false}

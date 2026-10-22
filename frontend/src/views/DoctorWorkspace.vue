@@ -1,5 +1,5 @@
 <template>
-  <main class="doctor-page">
+  <main ref="workflowFallback" class="doctor-page" tabindex="-1">
     <header class="doctor-hero">
       <div><span class="eyebrow">Clinical workspace</span><h1>Doctor Workspace</h1><p>Review risk, verify imported results, and coordinate care for assigned patients.</p></div>
       <el-button :loading="loading" @click="loadAll"><el-icon><Refresh /></el-icon>Refresh</el-button>
@@ -10,11 +10,16 @@
     <section class="consultation-entry"><div><h2>Appointments and availability</h2><p>See patients booked with you, cancel or complete visits, and manage availability. A long-term care-team assignment is not required.</p></div><router-link to="/care-journey?tab=operations" class="consultation-link">Manage appointments <span aria-hidden="true">→</span></router-link></section>
     </div>
 
+    <p v-if="summaryState === 'loading'" role="status">Loading workspace…</p>
+    <p v-else-if="summaryState === 'error'" role="alert">Workspace information is unavailable. Refresh to try again.</p>
+    <p v-else-if="summaryState === 'idle'" role="status">Refresh to load workspace information.</p>
+    <p v-if="contextState === 'loading'" role="status">Loading patient notes and plans…</p>
+    <p v-else-if="contextState === 'error'" role="alert">Patient notes and plans are unavailable. Select the patient again or refresh to retry.</p>
     <section class="metric-grid" aria-label="Clinical workload summary">
-      <article><span>Assigned patients</span><strong>{{ summary.assignedPatients || 0 }}</strong><small>Active care-team assignments</small></article>
-      <article><span>Pending reviews</span><strong>{{ summary.pendingReviews || 0 }}</strong><small>Imported records and AI analyses</small></article>
-      <article class="risk"><span>Critical patients</span><strong>{{ summary.criticalPatients || 0 }}</strong><small>Patients with an open critical alert</small></article>
-      <article><span>Active plans</span><strong>{{ summary.activePlans || 0 }}</strong><small>Clinician-authored care plans</small></article>
+      <article><span>Assigned patients</span><strong>{{ metricValue('assignedPatients') }}</strong><small>Active care-team assignments</small></article>
+      <article><span>Pending reviews</span><strong>{{ metricValue('pendingReviews') }}</strong><small>Imported records and AI analyses</small></article>
+      <article class="risk"><span>Critical patients</span><strong>{{ metricValue('criticalPatients') }}</strong><small>Patients with an open critical alert</small></article>
+      <article><span>Active plans</span><strong>{{ metricValue('activePlans') }}</strong><small>Clinician-authored care plans</small></article>
     </section>
 
     <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" :disabled="collaborationEditing" @change="loadPatientContext" /><FollowUpList :patient-id="selectedPatientId" /></section>
@@ -23,7 +28,7 @@
       <el-tab-pane label="Patient panel" name="patients">
         <section class="panel">
           <div class="panel-head"><div><h2>Assigned patients</h2><p>Only patients assigned to your care team are shown.</p></div></div>
-          <el-table :data="patients" v-loading="loading" stripe empty-text="No patients have been assigned">
+          <el-table :data="patients" v-loading="loading" stripe :empty-text="summaryState === 'ready' ? 'No patients have been assigned' : '—'">
             <el-table-column prop="name" label="Patient" min-width="140"><template #default="{row}"><button class="patient-link" @click="selectPatient(row)">{{ row.name }} · #{{ row.id }}</button></template></el-table-column>
             <el-table-column prop="careTeamRole" label="Care-team role" min-width="140" />
             <el-table-column prop="lastVitalAt" label="Latest vital sign" min-width="170"><template #default="{row}">{{row.lastVitalAt ? recordedTime(row.lastVitalAt) : 'No reading'}}</template></el-table-column>
@@ -32,25 +37,40 @@
           </el-table>
         </section>
       </el-tab-pane>
-      <el-tab-pane :label="`Review queue (${reviews.length})`" name="reviews">
+      <el-tab-pane :label="summaryState === 'ready' ? `Shown review tasks (${reviews.length})` : 'Shown review tasks'" name="reviews">
         <section class="panel review-list">
-          <article v-for="item in reviews" :key="item.sourceType+'-'+item.sourceId" class="review-card">
-            <div><span class="eyebrow">{{ sourceLabel(item.sourceType) }}</span><h3>{{ item.patientName }} · Record #{{ item.patientId }} · {{ item.title }}</h3><p>{{ item.occurredAt || 'Date unavailable' }}<template v-if="item.confidence"> · Confidence {{ Math.round(Number(item.confidence)*100) }}%</template></p></div>
-            <div class="review-actions"><el-button type="primary" plain @click="openReview(item)">View and review</el-button></div>
+          <p class="review-subset">Up to six review tasks are shown in the supplied order. Pending reviews is the full selected workload.</p>
+          <article v-for="(item,index) in reviews" :key="item.sourceType+'-'+item.sourceId+'-'+index" class="review-card">
+            <div class="review-body"><span class="eyebrow">{{ sourceLabel(item.sourceType) }}</span><h3>{{ item.patientName }} · Record #{{ item.patientId }} · {{ item.title }}</h3><p>{{ item.occurredAt || 'Date unavailable' }}<template v-if="item.confidence"> · Confidence {{ Math.round(Number(item.confidence)*100) }}%</template></p>
+              <section v-if="item.sourceType === 'MEDICAL_RECORD'" class="queue-qualification">
+                <strong>{{ reviewCategory(item) }}</strong>
+                <p>{{ reviewPresentation(item).sourceText }}</p>
+                <p v-if="reviewPresentation(item).sourceActorText">{{ reviewPresentation(item).sourceActorText }}</p>
+                <p v-if="reviewPresentation(item).doctorText">{{ reviewPresentation(item).doctorText }}</p>
+                <p v-if="reviewPresentation(item).doctorActorText">{{ reviewPresentation(item).doctorActorText }}</p>
+                <p class="queue-automatic" :data-tone="reviewPresentation(item).automaticTone">{{ reviewPresentation(item).automaticText }}</p>
+                <p v-if="reviewPresentation(item).observationText">{{ reviewPresentation(item).observationText }}</p>
+                <p v-if="item.verificationStatus != null">{{ reviewPresentation(item).legacyHeading }}: {{ verificationLabel(item.verificationStatus) }}</p>
+                <p>Source verification and a recorded DOCTOR review are not a diagnosis or a judgment of clinical fitness</p>
+                <p v-if="item.reviewChannel === 'DOCTOR' && reviewPresentation(item).mode === 'PARTICIPANT' && !reviewPresentation(item).mismatch">Separate review is read-only here</p>
+                <p v-if="item.reviewChannel === 'LEGACY' && reviewPresentation(item).mode === 'UNAVAILABLE'" role="status">Review information is unavailable. You can view the source; legacy submission remains disabled unless a fresh preview establishes eligibility.</p>
+              </section>
+            </div>
+            <div class="review-actions"><el-button type="primary" plain @click="openReview(item)">{{ reviewAction(item) }}</el-button><el-button v-if="item.sourceType === 'MEDICAL_RECORD'" data-testid="doctor-review-workflow-launch" plain @click="openReviewWorkflow(item)">{{ workflowCopy.doctorEntry }}</el-button></div>
           </article>
-          <el-empty v-if="!reviews.length" description="No clinical items are waiting for review" />
+          <el-empty v-if="summaryState === 'ready' && !reviews.length" description="No review tasks returned for this view" />
         </section>
       </el-tab-pane>
       <el-tab-pane label="Clinical notes" name="notes">
         <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" @change="loadPatientContext" /><div class="timeline">
           <article v-for="note in notes" :key="note.id"><span>{{ note.noteType }} · {{ note.createdAt }}</span><h3>{{ note.doctorName || 'Care-team clinician' }}</h3><p>{{ note.noteText }}</p><el-tag size="small">{{ note.visibility === 'PATIENT' ? 'Visible to patient' : 'Care team only' }}</el-tag></article>
-          <el-empty v-if="selectedPatientId && !notes.length" description="No clinical notes for this patient" />
+          <el-empty v-if="contextState === 'ready' && selectedPatientId && !notes.length" description="No clinical notes for this patient" />
         </div></section>
       </el-tab-pane>
       <el-tab-pane label="Care plans" name="plans">
         <section class="panel"><PatientSelect v-model="selectedPatientId" :patients="patients" :disabled="collaborationEditing" @change="loadPatientContext" /><router-link v-if="selectedPatientId" :to="`/care-plans/reports?patientId=${selectedPatientId}`" class="consultation-link" data-testid="doctor-execution-report">Visit preparation · all plans</router-link><CollaborationPlans :patient-id="selectedPatientId" :legacy-plans="plans" @editing="collaborationEditing=$event" /><h2>Historical internal plans</h2><p>These existing clinician records remain internal. Copying to a collaboration draft does not publish them.</p><div class="plan-grid">
           <article v-for="plan in plans" :key="plan.id"><el-tag>Historical internal plan · {{ plan.status }}</el-tag><h3>{{ plan.title }}</h3><p>{{ plan.instructions }}</p><small>{{ plan.planType }} · Target {{ plan.targetDate || 'ongoing' }}</small></article>
-          <el-empty v-if="selectedPatientId && !plans.length" description="No care plans for this patient" />
+          <el-empty v-if="contextState === 'ready' && selectedPatientId && !plans.length" description="No care plans for this patient" />
         </div></section>
       </el-tab-pane>
     </el-tabs>
@@ -63,8 +83,9 @@
       <el-form label-position="top"><el-form-item label="Patient"><b>{{ activePatient?.name }} · Record #{{ activePatient?.id }}</b></el-form-item><el-form-item label="Plan title"><el-input v-model="planForm.title" maxlength="160"/></el-form-item><el-form-item label="Plan type"><el-select v-model="planForm.planType"><el-option label="Follow-up" value="FOLLOW_UP"/><el-option label="Medication" value="MEDICATION"/><el-option label="Dialysis" value="DIALYSIS"/><el-option label="Nutrition" value="NUTRITION"/></el-select></el-form-item><el-form-item label="Target date"><el-date-picker v-model="planForm.targetDate" value-format="YYYY-MM-DD"/></el-form-item><el-form-item label="Instructions"><el-input v-model="planForm.instructions" type="textarea" :rows="5" maxlength="4000" show-word-limit/></el-form-item></el-form>
       <template #footer><el-button @click="planVisible=false">Cancel</el-button><el-button type="primary" :loading="saving" @click="submitPlan">Save internal plan</el-button></template>
     </el-dialog>
-    <AiAnalysisReviewDialog v-if="aiReviewTarget" :item="aiReviewTarget" @closed="aiReviewTarget=null" @reviewed="reviewedAiAnalysis" />
-    <MedicalRecordReviewDialog v-if="medicalReviewTarget" :record-id="medicalReviewTarget.recordId" :patient-id="medicalReviewTarget.patientId" workspace @closed="medicalReviewTarget=null" @reviewed="reviewedMedicalRecord" />
+    <MedicalReviewWorkflowDialog v-if="workflowTarget" :key="workflowTarget.epoch" :record-id="workflowTarget.recordId" :patient-id="workflowTarget.patientId" :patient-name="workflowTarget.patientName" initial-channel="DOCTOR" :current-patient-id="workflowGlobalPatient" :context-patient-id="selectedPatientId" :route-key="route.fullPath" :navigation-key="tab" :fallback-element="workflowFallback" @closed="workflowTarget.closed" @changed="workflowTarget.changed" @view-state="workflowTarget.viewState" />
+    <AiAnalysisReviewDialog v-if="aiReviewTarget" :key="reviewTargetEpoch" :item="aiReviewTarget" @closed="aiReviewTarget=null" @reviewed="reviewCompleted" />
+    <MedicalRecordReviewDialog v-if="medicalReviewTarget" :key="reviewTargetEpoch" :record-id="medicalReviewTarget.recordId" :patient-id="medicalReviewTarget.patientId" workspace @closed="medicalReviewTarget=null" @reviewed="reviewCompleted" />
   </main>
 </template>
 
@@ -73,14 +94,18 @@ import {recordedTime} from '@/utils/originalMeasurementPresentation';
 import ReconciliationPanel from '@/components/medication-execution/ReconciliationPanel.vue';
 import FollowUpList from '@/components/alert-workflow/FollowUpList.vue';
 import AiAnalysisReviewDialog from '@/components/care-plan/AiAnalysisReviewDialog.vue';
+import MedicalReviewWorkflowDialog from '@/components/medical-record/MedicalReviewWorkflowDialog.vue';
+import { medicalReviewWorkflowCopy as workflowCopy } from '@/components/medical-record/medicalReviewWorkflowCopy';
+import { useCurrentPatient } from '@/composables/useCurrentPatient';
 import MedicalRecordReviewDialog from '@/components/MedicalRecordReviewDialog.vue';
-import { defineComponent, h, onMounted, onUnmounted, reactive, ref, resolveComponent, watch } from 'vue';
-import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
+import { defineComponent, h, inject, onMounted, onUnmounted, reactive, ref, resolveComponent, watch } from 'vue';
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router';
 import PlanEditor from '@/components/care-plan/PlanEditor.vue';
 import PlanDetail from '@/components/care-plan/PlanDetail.vue';
 import PlanReviewQueue from '@/components/care-plan/PlanReviewQueue.vue';
 import { getCarePlanCapabilities } from '@/api/carePlan';
-import { captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession';
+import { captureAuthSession, isAuthSessionCurrent, readPermissionCache, AUTH_STORAGE_KEYS } from '@/utils/authSession';
+import { medicalReviewPresentation } from '@/utils/medicalReviewQualification';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { getDoctorSummary, getDoctorNotes, getDoctorPlans, saveDoctorNote, saveDoctorPlan, completeDoctorReview } from '@/api/doctorWorkspace';
 
@@ -119,24 +144,131 @@ const PatientSelect = defineComponent({ props:{ modelValue:[Number,String], disa
 const loading=ref(false),saving=ref(false),tab=ref('patients'),summary=ref({}),patients=ref([]),reviews=ref([]),notes=ref([]),plans=ref([]),selectedPatientId=ref(null),activePatient=ref(null),noteVisible=ref(false),planVisible=ref(false),collaborationEditing=ref(false);
 const noteForm=reactive({noteType:'FOLLOW_UP',visibility:'CARE_TEAM',noteText:''});
 const planForm=reactive({title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});
-const medicalReviewTarget=ref(null),aiReviewTarget=ref(null);
-let contextEpoch=0, summaryEpoch=0, dialogEpoch=0;
-async function loadAll(){const epoch=++summaryEpoch;loading.value=true;try{const res=await getDoctorSummary();if(epoch!==summaryEpoch)return;summary.value=res.data||{};patients.value=summary.value.patients||[];reviews.value=summary.value.reviewQueue||[];if(!patients.value.some(p=>p.id===selectedPatientId.value))selectedPatientId.value=patients.value[0]?.id||null;await loadPatientContext()}finally{if(epoch===summaryEpoch)loading.value=false}}
-async function loadPatientContext(){const epoch=++contextEpoch;const patientId=selectedPatientId.value;notes.value=[];plans.value=[];if(!patientId)return;const [n,p]=await Promise.all([getDoctorNotes(patientId),getDoctorPlans(patientId)]);if(epoch!==contextEpoch||patientId!==selectedPatientId.value)return;notes.value=n.data||[];plans.value=p.data||[]}
-function selectPatient(row){if(collaborationEditing.value){ElMessage.warning('Close the collaboration editor or plan detail before switching patients.');return}selectedPatientId.value=row.id;activePatient.value=row;tab.value='notes';loadPatientContext()}
-function openNote(row){if(collaborationEditing.value){ElMessage.warning('Close the collaboration editor or plan detail before switching patients.');return}dialogEpoch++;activePatient.value=row;selectedPatientId.value=row.id;loadPatientContext();Object.assign(noteForm,{noteType:'FOLLOW_UP',visibility:'CARE_TEAM',noteText:''});noteVisible.value=true}
-function openPlan(row){if(collaborationEditing.value){ElMessage.warning('Close the collaboration editor or plan detail before switching patients.');return}dialogEpoch++;activePatient.value=row;selectedPatientId.value=row.id;loadPatientContext();Object.assign(planForm,{title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});planVisible.value=true}
+const medicalReviewTarget=ref(null),aiReviewTarget=ref(null),reviewTargetEpoch=ref(0),reviewCompleted=ref(null);
+const summaryState = ref('idle'), contextState = ref('idle');
+const { currentPatientId: workflowGlobalPatient } = useCurrentPatient();
+const workflowTarget = ref(null), workflowFallback = ref(null), workflowViewState = reactive({ locked: false, dirty: false });
+let workflowEpoch = 0;
+function retireReviewWorkflow() { workflowEpoch++; workflowTarget.value = null; Object.assign(workflowViewState, { locked: false, dirty: false }); }
+function openReviewWorkflow(item) {
+  if (!owns(summaryOwner) || summaryState.value !== 'ready' || !reviews.value.includes(item) || item?.sourceType !== 'MEDICAL_RECORD' || !safeId(item.sourceId) || !safeId(item.patientId)
+      || workflowTarget.value || medicalReviewTarget.value || aiReviewTarget.value || noteVisible.value || planVisible.value || collaborationEditing.value) return;
+  const epoch = ++workflowEpoch, owner = summaryOwner, localPatient = selectedPatientId.value, globalPatient = workflowGlobalPatient.value, selectedTab = tab.value; let refreshNeeded = false;
+  const owned = () => epoch === workflowEpoch && workflowTarget.value?.epoch === epoch && owner === summaryOwner && owns(owner) && localPatient === selectedPatientId.value && globalPatient === workflowGlobalPatient.value && selectedTab === tab.value;
+  workflowTarget.value = { epoch, recordId: Number(item.sourceId), patientId: Number(item.patientId), patientName: typeof item.patientName === 'string' ? item.patientName : '',
+    changed: payload => { if (owned() && payload && Object.keys(payload).length === 3 && payload.recordId === Number(item.sourceId) && ['SOURCE', 'DOCTOR'].includes(payload.channel) && Number.isSafeInteger(payload.decisionVersion) && payload.decisionVersion > 0) refreshNeeded = true; },
+    viewState: payload => { if (owned() && payload && Object.keys(payload).length === 2 && typeof payload.locked === 'boolean' && typeof payload.dirty === 'boolean') Object.assign(workflowViewState, payload); },
+    closed: payload => { if (!owned() || !payload || Object.keys(payload).length !== 1 || typeof payload.retired !== 'boolean') return; const refresh = refreshNeeded && !payload.retired; refreshNeeded = false; retireReviewWorkflow(); if (refresh) void loadAll(); }
+  };
+}
+watch([tab, workflowGlobalPatient], retireReviewWorkflow, { flush: 'sync' });
+function workflowStorageChanged(event) { if (event.key === 'currentPatientId') retireReviewWorkflow(); }
+onMounted(() => { window.addEventListener('current-patient-change', retireReviewWorkflow); window.addEventListener('storage', workflowStorageChanged); });
+onUnmounted(() => { retireReviewWorkflow(); window.removeEventListener('current-patient-change', retireReviewWorkflow); window.removeEventListener('storage', workflowStorageChanged); });
+const permissionMenus = inject('userMenus', ref([])), route = useRoute();
+let contextEpoch=0, summaryEpoch=0, dialogEpoch=0, disposed=false, summaryOwner=null;
+const permissionKey = () => JSON.stringify(readPermissionCache());
+const menuKey = () => JSON.stringify(permissionMenus.value);
+const captureOwner = () => ({ auth: captureAuthSession(), actorId: localStorage.getItem('userId'), permission: permissionKey(), menus: menuKey(), route: route.fullPath });
+const owns = owner => !disposed && !!owner && isAuthSessionCurrent(owner.auth) && owner.actorId === localStorage.getItem('userId') && owner.permission === permissionKey() && owner.menus === menuKey() && owner.route === route.fullPath;
+const objectRow = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const safeId = value => (typeof value === 'number' || typeof value === 'string' && /^[1-9]\d*$/.test(value)) && Number.isSafeInteger(Number(value)) && Number(value) > 0;
+const validRows = rows => Array.isArray(rows) && rows.every(objectRow);
+function retirePatientContext() {
+  retireReviewWorkflow();
+  contextEpoch++; dialogEpoch++; reviewTargetEpoch.value++; reviewCompleted.value=null; notes.value=[]; plans.value=[]; contextState.value='idle';
+  medicalReviewTarget.value=null; aiReviewTarget.value=null; activePatient.value=null; noteVisible.value=false; planVisible.value=false;
+  Object.assign(noteForm,{noteType:'FOLLOW_UP',visibility:'CARE_TEAM',noteText:''});
+  Object.assign(planForm,{title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});
+}
+function retireWorkspace() {
+  summaryEpoch++; summaryOwner=null; summary.value={}; patients.value=[]; reviews.value=[]; summaryState.value='idle'; loading.value=false;
+  retirePatientContext(); selectedPatientId.value=null;
+}
+function metricValue(key) {
+  const value=summary.value[key];
+  return summaryState.value==='ready' && Number.isSafeInteger(value) && value>=0 ? value : summaryState.value==='loading' || summaryState.value==='idle' ? '—' : 'Unavailable';
+}
+async function loadAll() {
+  if(disposed)return;
+  const epoch=++summaryEpoch;
+  summary.value={}; patients.value=[]; reviews.value=[]; retirePatientContext();
+  const owner=captureOwner(); summaryOwner=owner; summaryState.value='loading'; loading.value=true;
+  if(!owns(owner)){retireWorkspace();return}
+  // These existing wrappers do not forward auth/signal options. Ownership below
+  // retires local state; it does not cancel transport or suppress global errors.
+  try {
+    const res=await getDoctorSummary();
+    if(epoch!==summaryEpoch)return;
+    if(!owns(owner)){retireWorkspace();return}
+    const data=res?.data;
+    if(res?.code!==200 || !objectRow(data) || !validRows(data.patients) || !data.patients.every(p=>safeId(p.id)) || !validRows(data.reviewQueue) || !data.reviewQueue.every(r=>['MEDICAL_RECORD','AI_ANALYSIS'].includes(r.sourceType) && safeId(r.sourceId) && safeId(r.patientId)))throw new Error('Invalid workspace response');
+    summary.value=data; patients.value=data.patients; reviews.value=data.reviewQueue; summaryState.value='ready';
+    if(!patients.value.some(p=>String(p.id)===String(selectedPatientId.value)))selectedPatientId.value=patients.value[0]?.id??null;
+    await loadPatientContext();
+  } catch {
+    if(epoch===summaryEpoch && owns(owner)){summary.value={};patients.value=[];reviews.value=[];retirePatientContext();selectedPatientId.value=null;summaryState.value='error'}
+  } finally {
+    if(epoch===summaryEpoch){if(!owns(owner))retireWorkspace();else loading.value=false}
+  }
+}
+async function loadPatientContext() {
+  retirePatientContext();
+  const epoch=contextEpoch, patientId=selectedPatientId.value, owner=captureOwner();
+  if(!owns(summaryOwner)){retireWorkspace();return}
+  if(!safeId(patientId) || summaryState.value!=='ready' || !patients.value.some(p=>String(p.id)===String(patientId)))return;
+  if(!owns(owner))return;
+  contextState.value='loading';
+  try {
+    const [n,p]=await Promise.all([getDoctorNotes(patientId),getDoctorPlans(patientId)]);
+    if(epoch!==contextEpoch || patientId!==selectedPatientId.value)return;
+    if(!owns(owner)){retireWorkspace();return}
+    if(n?.code!==200 || p?.code!==200 || !validRows(n.data) || !validRows(p.data))throw new Error('Invalid patient context');
+    notes.value=n.data; plans.value=p.data; contextState.value='ready';
+  } catch {
+    if(epoch===contextEpoch && patientId===selectedPatientId.value && owns(owner)){notes.value=[];plans.value=[];contextState.value='error'}
+  } finally { if(epoch===contextEpoch && !owns(owner))retireWorkspace() }
+}
+function ownsPatientRow(row) { if(!owns(summaryOwner)){retireWorkspace();return false}return summaryState.value==='ready' && patients.value.includes(row) && safeId(row?.id) }
+function reviewPresentation(item) {
+  const value=medicalReviewPresentation(item.reviewSummary, 'en');
+  const known=value.mode==='NONE' || value.mode==='PARTICIPANT' || value.mode==='UNAVAILABLE';
+  const consistent=item.reviewChannel==='LEGACY' ? value.mode==='NONE' || value.mode==='UNAVAILABLE' : item.reviewChannel==='DOCTOR' && value.mode==='PARTICIPANT' && ['DOCTOR_ONLY','BOTH'].includes(value.participation) && ['PENDING','APPROVED','REJECTED'].includes(item.reviewSummary?.doctor?.state);
+  const mismatch=known && (item.reviewSummary?.qualificationSemantics!=='CURRENT_CHECK' || !consistent);
+  if(mismatch)return {...value,sourceText:'Current review information does not match this workload view. Reload the source to check current eligibility.',doctorText:'',sourceActorText:'',doctorActorText:'',automaticText:'Automatic-analysis qualification could not be verified',automaticTone:'info',mismatch:true,legacyEntry:false};
+  return {...value,mismatch:false,legacyEntry:item.reviewChannel==='LEGACY' && value.mode==='NONE'};
+}
+function reviewCategory(item) { return item.reviewChannel==='LEGACY' ? 'Legacy review task' : item.reviewChannel==='DOCTOR' ? 'DOCTOR review task' : 'Current review information' }
+function reviewAction(item) { return item.sourceType!=='MEDICAL_RECORD' || reviewPresentation(item).legacyEntry ? 'View and review' : 'View source' }
+function verificationLabel(value) { return ({REVIEW_REQUIRED:'Review required',VERIFIED:'Verified',APPROVED:'Approved',REJECTED:'Rejected'})[value] || 'Unavailable' }
+function selectPatient(row){if(!ownsPatientRow(row))return;if(collaborationEditing.value){ElMessage.warning('Close the collaboration editor or plan detail before switching patients.');return}selectedPatientId.value=row.id;activePatient.value=row;tab.value='notes';loadPatientContext()}
+function openNote(row){if(!ownsPatientRow(row))return;if(collaborationEditing.value){ElMessage.warning('Close the collaboration editor or plan detail before switching patients.');return}selectedPatientId.value=row.id;loadPatientContext();dialogEpoch++;activePatient.value=row;Object.assign(noteForm,{noteType:'FOLLOW_UP',visibility:'CARE_TEAM',noteText:''});noteVisible.value=true}
+function openPlan(row){if(!ownsPatientRow(row))return;if(collaborationEditing.value){ElMessage.warning('Close the collaboration editor or plan detail before switching patients.');return}selectedPatientId.value=row.id;loadPatientContext();dialogEpoch++;activePatient.value=row;Object.assign(planForm,{title:'',planType:'FOLLOW_UP',targetDate:'',instructions:''});planVisible.value=true}
 async function submitNote(){if(saving.value)return;if(!noteForm.noteText.trim()){ElMessage.warning('Enter a clinical note.');return}const epoch=dialogEpoch,patientId=selectedPatientId.value;saving.value=true;try{await saveDoctorNote({patientId,...noteForm});if(epoch!==dialogEpoch||patientId!==selectedPatientId.value||!noteVisible.value)return;ElMessage.success('Clinical note saved.');noteVisible.value=false;await loadPatientContext()}finally{saving.value=false}}
 async function submitPlan(){if(saving.value)return;if(!planForm.title.trim()||!planForm.instructions.trim()){ElMessage.warning('Enter a title and instructions.');return}const epoch=dialogEpoch,patientId=selectedPatientId.value;saving.value=true;try{await saveDoctorPlan({patientId,status:'ACTIVE',...planForm});if(epoch!==dialogEpoch||patientId!==selectedPatientId.value||!planVisible.value)return;ElMessage.success('Internal care plan saved.');planVisible.value=false;await loadAll()}finally{saving.value=false}}
-function openReview(item){aiReviewTarget.value=null;medicalReviewTarget.value=null;if(item.sourceType==='MEDICAL_RECORD'){medicalReviewTarget.value={recordId:Number(item.sourceId),patientId:item.patientId};return}if(item.sourceType==='AI_ANALYSIS')aiReviewTarget.value={...item}}
-async function reviewedAiAnalysis(){aiReviewTarget.value=null;await loadAll()}
-async function reviewedMedicalRecord(){medicalReviewTarget.value=null;await loadAll()}
-watch(selectedPatientId,()=>{medicalReviewTarget.value=null;aiReviewTarget.value=null},{flush:'sync'});
+function openReview(item){
+  aiReviewTarget.value=null;medicalReviewTarget.value=null;
+  if(!owns(summaryOwner)){retireWorkspace();return}
+  if(summaryState.value!=='ready' || !reviews.value.includes(item) || !safeId(item?.sourceId) || !safeId(item?.patientId))return;
+  const epoch=++reviewTargetEpoch.value,owner=summaryOwner;
+  reviewCompleted.value=()=>{if(epoch!==reviewTargetEpoch.value || owner!==summaryOwner || !owns(owner))return;return item.sourceType==='MEDICAL_RECORD'?reviewedMedicalRecord():reviewedAiAnalysis()};
+  if(item.sourceType==='MEDICAL_RECORD'){medicalReviewTarget.value={recordId:Number(item.sourceId),patientId:item.patientId};return}
+  if(item.sourceType==='AI_ANALYSIS')aiReviewTarget.value={...item};
+}
+async function reviewedAiAnalysis(){if(!aiReviewTarget.value || summaryState.value!=='ready' || !owns(summaryOwner))return;aiReviewTarget.value=null;await loadAll()}
+async function reviewedMedicalRecord(){if(!medicalReviewTarget.value || summaryState.value!=='ready' || !owns(summaryOwner))return;medicalReviewTarget.value=null;await loadAll()}
+watch(selectedPatientId,retirePatientContext,{flush:'sync'});
 function sourceLabel(type){return type==='MEDICAL_RECORD'?'Imported medical record':'AI-assisted analysis'}
-onMounted(loadAll);
+watch(permissionMenus,retireWorkspace,{deep:true,flush:'sync'});
+watch(()=>route.fullPath,retireWorkspace,{flush:'sync'});
+function storageChanged(event){if(event.key==null || [...AUTH_STORAGE_KEYS,'permissionSession','userMenus','userMenuNames','userRoleCodes'].includes(event.key))retireWorkspace()}
+onMounted(()=>{window.addEventListener('auth-session-changed',retireWorkspace);window.addEventListener('auth-session-cleared',retireWorkspace);window.addEventListener('permissions-changed',retireWorkspace);window.addEventListener('storage',storageChanged);loadAll()});
+onUnmounted(()=>{disposed=true;retireWorkspace();window.removeEventListener('auth-session-changed',retireWorkspace);window.removeEventListener('auth-session-cleared',retireWorkspace);window.removeEventListener('permissions-changed',retireWorkspace);window.removeEventListener('storage',storageChanged)});
 </script>
 
 <style scoped>
+.review-body{min-width:0;flex:1;overflow-wrap:anywhere}.queue-qualification{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-subtle)}.queue-qualification p{margin:6px 0;line-height:1.6}.queue-automatic{font-weight:600}.queue-automatic[data-tone="success"]{color:var(--care-800)}.review-actions{flex-shrink:0;max-width:100%}.review-actions :deep(.el-button){min-height:44px;height:auto;white-space:normal}.review-actions :deep(.el-button:focus-visible){outline:3px solid var(--care-600);outline-offset:3px}.review-subset{line-height:1.6}
+
 .collaboration-plans{margin:20px 0;padding:16px 0;border-bottom:1px solid var(--line)}:deep(.collaboration-plans > button),:deep(.collaboration-plans > div > button){min-height:44px;max-width:100%;margin:8px 12px 8px 0;padding:10px 14px;border:1px solid var(--care-600);border-radius:8px;background:var(--paper);color:var(--care-800);font:inherit;cursor:pointer;overflow-wrap:anywhere}:deep(.collaboration-plans button:focus-visible){outline:3px solid var(--care-600);outline-offset:3px}
 
 .care-inboxes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.care-inboxes .consultation-entry{min-width:0;flex-direction:column;align-items:stretch}.care-inboxes .consultation-link{justify-content:center}@media(max-width:850px){.care-inboxes{grid-template-columns:1fr}}

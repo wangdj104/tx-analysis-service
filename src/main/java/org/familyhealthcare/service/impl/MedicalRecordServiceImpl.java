@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -50,6 +51,9 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
 
     @Autowired
     private MedicalRecordReviewAccess reviewAccess;
+
+    @Autowired
+    private org.familyhealthcare.service.medicalreview.MedicalReviewNativeLifecycle nativeLifecycle;
 
     @Autowired
     private org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionService corrections;
@@ -159,22 +163,32 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public boolean updateById(MedicalRecord record) {
         if (record == null || record.getId() == null) throw org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.invalid();
-        MedicalRecord source = corrections.guardLegacy(record.getId());
-        if (source == null) return false;
-        try {boolean updated = super.updateById(record); corrections.recheck(source,false); return updated;}
-        catch(RuntimeException error){throw ClinicalImportFacts.translateBinding(error);}
+        try (org.familyhealthcare.service.medicalreview.MedicalReviewNativeLifecycle.Scope scope=nativeLifecycle.openGenericUpdate()) {
+            try {
+                MedicalRecord source=corrections.guardLegacy(record.getId());
+                if(source==null)return false;
+                scope.preflight(source);scope.arm();
+                boolean updated;
+                try {updated=super.updateById(record);}catch(RuntimeException failure){throw ClinicalImportFacts.translateBinding(failure);}
+                scope.checkpoint();corrections.recheck(source,false);scope.complete();return updated;
+            } catch(Throwable failure){throw scope.failure(failure);}
+        }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public boolean updateRecordWithItems(MedicalRecord record, List<MedicalRecordItem> items) {
         if (record == null || record.getId() == null) throw org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.invalid();
+        try (org.familyhealthcare.service.medicalreview.MedicalReviewNativeLifecycle.Scope scope=nativeLifecycle.openFullEdit()) {
+            try {
         MedicalRecord admission = corrections.guardLegacy(record.getId());
         MedicalRecord existing = baseMapper.selectForUpdate(record.getId());
         if (existing == null) {
             return false;
         }
         dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
+        scope.preflight(admission);
+        if(scope.participating())return updateParticipating(record,items,existing,admission,scope);
         record.setUserId(existing.getUserId());
         record.setContentVersion(existing.getContentVersion());
         syncPatient(record);
@@ -186,6 +200,7 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
         record.setVerifiedAt(existing.getVerifiedAt());
         record.setVerificationNote(existing.getVerificationNote());
         boolean updated;
+        scope.arm();
         try { updated = super.updateById(record); }
         catch(RuntimeException failure) { throw ClinicalImportFacts.translateBinding(failure); }
         if (updated && baseMapper.invalidateReview(record.getId(), existing.getContentVersion()) != 1)
@@ -204,41 +219,43 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
             // updateAttachment: keepalready has  , Addnew , Deletebefore endnot transmit
             updateAttachments(record.getId(), record.getAttachments());
         }
-        corrections.recheck(admission,false);
-        return updated;
-    }
-
-    @Override
-    public MedicalRecord getRecordWithDetails(Long id) {
-        MedicalRecord record = this.getById(id);
-        if (record != null) {
-            dataScopeHelper.requirePatientOrOwner(record.getPatientId(), record.getUserId());
-            // queryExamination item details
-            List<MedicalRecordItem> items = itemMapper.selectList(
-                    new QueryWrapper<MedicalRecordItem>().eq("record_id", id));
-            record.setItems(items);
-
-            // queryAttachment (include file_content, providebefore enddisplayimage)
-            List<MedicalRecordAttachment> attachments = attachmentMapper.selectList(
-                    new QueryWrapper<MedicalRecordAttachment>().eq("record_id", id));
-            record.setAttachments(attachments);
+        scope.checkpoint();corrections.recheck(admission,false);
+        if(updated)scope.retire();
+        scope.complete();return updated;
+            } catch(Throwable failure){throw scope.failure(failure);}
         }
-        if(record!=null)validity.open().project(Collections.singletonList(record));
-        return record;
     }
 
     @Override
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
+    public MedicalRecord getRecordWithDetails(Long id) {
+        try(ReadContent read=new ReadContent(readActorId(),false)) {
+            MedicalRecord record=this.getById(id);
+            read.select(record==null?Collections.emptyList():Collections.singletonList(record));
+            if(record!=null)dataScopeHelper.requirePatientOrOwner(record.getPatientId(),record.getUserId());
+            read.prepare(null);
+            if(record!=null) {
+                record.setItems(itemMapper.selectList(new QueryWrapper<MedicalRecordItem>().eq("record_id",id)));
+                record.setAttachments(attachmentMapper.selectList(new QueryWrapper<MedicalRecordAttachment>().eq("record_id",id)));
+            }
+            read.project();read.finish();return record;
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
     public MedicalRecord getRecordWithDetails(Long id, Long patientId) {
-        if (patientId == null) return getRecordWithDetails(id);
-        if (patientId <= 0 || id == null || id <= 0) throw new IllegalArgumentException("Invalid source selector.");
-        requireRecordEvidence(patientId,id);
-        MedicalRecord record = baseMapper.selectOne(new QueryWrapper<MedicalRecord>().eq("id",id).eq("patient_id",patientId));
-        if (record == null) throw new IllegalStateException("Access denied to source record.");
-        record.setItems(itemMapper.selectList(new QueryWrapper<MedicalRecordItem>().eq("record_id",id)));
-        record.setAttachments(attachmentMapper.selectList(new QueryWrapper<MedicalRecordAttachment>().eq("record_id",id)));
-        requireRecordEvidence(patientId,id);
-        if(record!=null)validity.open().project(Collections.singletonList(record));
-        return record;
+        if(patientId==null)return getRecordWithDetails(id);
+        if(patientId<=0||id==null||id<=0)throw new IllegalArgumentException("Invalid source selector.");
+        try(ReadContent read=new ReadContent(readActorId(),false)) {
+            requireRecordEvidence(patientId,id);
+            MedicalRecord record=baseMapper.selectOne(new QueryWrapper<MedicalRecord>().eq("id",id).eq("patient_id",patientId));
+            if(record==null)throw new IllegalStateException("Access denied to source record.");
+            read.select(Collections.singletonList(record));read.prepare(patientId);
+            record.setItems(itemMapper.selectList(new QueryWrapper<MedicalRecordItem>().eq("record_id",id)));
+            record.setAttachments(attachmentMapper.selectList(new QueryWrapper<MedicalRecordAttachment>().eq("record_id",id)));
+            requireRecordEvidence(patientId,id);read.project();read.finish();return record;
+        }
     }
     private void requireRecordEvidence(long patientId,long id) {
         Long actor = CurrentUserUtil.getCurrentUserId();
@@ -267,43 +284,42 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
     }
 
     private MedicalRecordImportDetail readImportDetails(Long id, Long patient, boolean focused, boolean review) {
-        if (id == null || id <= 0) throw ReadFailure.selector();
-        Long actor = CurrentUserUtil.getCurrentUserId();
-        if (actor == null || actor <= 0) throw ReadFailure.authentication();
-        try {
-            // 首次原生父记录读取确立快照；随后子项、附件和原始事实全部属于同一版内容。
-            MedicalRecord record = baseMapper.selectById(id);
-            if (record == null || focused && !java.util.Objects.equals(patient, record.getPatientId())) throw ReadFailure.denied();
-            requireImportAccess(record, actor, patient, focused);
-            record.setItems(itemMapper.selectList(new QueryWrapper<MedicalRecordItem>().eq("record_id", id)));
-            record.setAttachments(review ? listAttachmentsMeta(id).stream().map(MedicalRecordReviewAttachment::new)
-                    .collect(java.util.stream.Collectors.toList())
-                    : attachmentMapper.selectList(new QueryWrapper<MedicalRecordAttachment>().eq("record_id", id)));
-            Map<String,Object> original = factsRepository.readMedicalOriginal(record.getPatientId(), id);
-            validity.open().project(Collections.singletonList(record));
-            MedicalRecordImportDetail detail = new MedicalRecordImportDetail(record, original);
-            // 独立 READ_COMMITTED 代理读取当前权限，不能复用刚才的内容快照或角色缓存。
-            requireImportAccess(record, actor, patient, focused);
-            return detail;
-        } catch (ReadFailure failure) { throw failure;
-        } catch (RuntimeException failure) { throw ClinicalImportFacts.Failure.unavailable(); }
+        if(id==null||id<=0)throw ReadFailure.selector();
+        Long actor=CurrentUserUtil.getCurrentUserId();
+        if(actor==null||actor<=0)throw ReadFailure.authentication();
+        try(ReadContent read=new ReadContent(actor,true)) {
+            MedicalRecord record=baseMapper.selectById(id);
+            if(record!=null)read.select(Collections.singletonList(record));
+            if(record==null||focused&&!java.util.Objects.equals(patient,record.getPatientId()))throw ReadFailure.denied();
+            read.prepare(focused?patient:null);
+            record.setItems(itemMapper.selectList(new QueryWrapper<MedicalRecordItem>().eq("record_id",id)));
+            record.setAttachments(review?listAttachmentsMeta(id).stream().map(MedicalRecordReviewAttachment::new)
+                    .collect(java.util.stream.Collectors.toList()):attachmentMapper.selectList(new QueryWrapper<MedicalRecordAttachment>().eq("record_id",id)));
+            Map<String,Object> original=factsRepository.readMedicalOriginal(record.getPatientId(),id);
+            read.project();MedicalRecordImportDetail detail=new MedicalRecordImportDetail(record,original);
+            read.finish();return detail;
+        }catch(ReadFailure failure){throw failure;
+        }catch(RuntimeException failure){throw ClinicalImportFacts.Failure.unavailable();}
     }
 
     private void requireImportAccess(MedicalRecord record, long actor, Long patient, boolean focused) {
         try {
             if (!Long.valueOf(actor).equals(CurrentUserUtil.getCurrentUserId())) throw ReadFailure.denied();
-            if (focused) reviewAccess.requireCurrentEvidence(record, actor, patient);
-            else reviewAccess.requireCurrent(record, false, false);
+            if (focused) reviewAccess.requireEvidenceAdmission(record, actor, patient);
+            else reviewAccess.requireReadAdmission(Collections.singletonList(record), actor);
         } catch (DataAccessException failure) { throw ClinicalImportFacts.Failure.unavailable();
         } catch (IllegalStateException denied) { throw ReadFailure.denied(); }
     }
 
     @Override
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
     public List<MedicalRecord> listRecords(Long patientId, String patientName, String recordType, String timeValue) {
         return listRecords(patientId,patientName,recordType,timeValue,false);
     }
     @Override
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
     public List<MedicalRecord> listRecords(Long patientId,String patientName,String recordType,String timeValue,boolean includeInvalidated) {
+        try(ReadContent read=new ReadContent(readActorId(),false)) {
         org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope view=validity.open();
         Long userId = dataScopeHelper.requireUserId();
         QueryWrapper<MedicalRecord> qw = new QueryWrapper<>();
@@ -335,44 +351,60 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
         }
 
         if(!includeInvalidated)qw.apply(view.activeSql("medical_record."));
-        List<MedicalRecord> records = super.list(qw);loadItems(records,null);view.project(records);
-        return records;
+        List<MedicalRecord> records=super.list(qw);read.select(records);read.prepare(null);
+        loadItems(records,null);read.project();read.finish();return records;
+        }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public boolean deleteRecord(Long id) {
-        MedicalRecord existing = corrections.guardLegacy(org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.id(id));
-        if (existing == null) {
-            return false;
+        long recordId=org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.id(id);
+        try (org.familyhealthcare.service.medicalreview.MedicalReviewNativeLifecycle.Scope scope=nativeLifecycle.openDelete()) {
+            try {
+                MedicalRecord existing=corrections.guardLegacy(recordId);if(existing==null)return false;
+                dataScopeHelper.requirePatientOrOwner(existing.getPatientId(),existing.getUserId());
+                scope.preflight(existing);scope.eraseReview();
+                scope.deletedAttachments(attachmentMapper.delete(new QueryWrapper<MedicalRecordAttachment>().eq("record_id",recordId)));
+                scope.deletedItems(itemMapper.delete(new QueryWrapper<MedicalRecordItem>().eq("record_id",recordId)));
+                corrections.recheck(existing,false);scope.checkpoint();
+                scope.deletedNative(baseMapper.deleteById(recordId));scope.complete();return true;
+            }catch(Throwable failure){throw scope.failure(failure);}
         }
-        dataScopeHelper.requirePatientOrOwner(existing.getPatientId(), existing.getUserId());
-        // firstDeleteAttachment
-        attachmentMapper.delete(new QueryWrapper<MedicalRecordAttachment>().eq("record_id", id));
-        // DeleteExaminationitem (outsidekeylevelconnect, butexplicitDeletemoresafeall)
-        itemMapper.delete(new QueryWrapper<MedicalRecordItem>().eq("record_id", id));
-        // Deletemainrecord
-        corrections.recheck(existing,false);
-        return super.removeById(id);
     }
 
     @Override
-    @Transactional(readOnly=true,propagation=Propagation.REQUIRES_NEW,isolation=Isolation.READ_COMMITTED)
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
     public List<Map<String,Object>> getItemTrend(Long patientId,String patientName,String itemName) {
-        dataScopeHelper.requireUserId();QueryWrapper<MedicalRecord> query=new QueryWrapper<>();
-        if(!CurrentUserUtil.isAdmin())dataScopeHelper.applyUserScope(query);
-        if(patientId!=null)query.eq("patient_id",patientId);else if(patientName!=null&&!patientName.isEmpty())query.eq("patient_name",patientName);else return new ArrayList<>();
-        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope view=validity.open();
-        query.apply(view.activeSql("r.")).like("i.item_name",itemName).orderByAsc("r.record_date","i.id");
-        List<Map<String,Object>> result=itemMapper.selectTrendRows(query);view.projectRows(result,"recordId");
-        java.util.Set<String> units=new java.util.HashSet<>();boolean unknownUnit=false;
-        for(Map<String,Object> row:result){String unit=(String)row.get("unit");if(unit==null||unit.trim().isEmpty())unknownUnit=true;else units.add(unit);row.put("isAbnormal",org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.sourceFlag((Integer)row.get("isAbnormal")));}
-        for(Map<String,Object> row:result)if(Boolean.TRUE.equals(row.get("managed"))) {
-            BigDecimal number=org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.plotNumber((String)row.get("resultValue"));
-            String reason=!"CURRENT".equals(row.get("sourceStatus"))?(String)row.get("sourceStatus"):unknownUnit?"UNIT_UNKNOWN":units.size()!=1?"UNIT_MIXED":number==null?"VALUE_NOT_PLOTTABLE":null;
-            row.put("plotEligible",reason==null);row.put("numericValue",reason==null?number:null);row.put("plotReason",reason);
+        try(ReadContent read=new ReadContent(readActorId(),false)) {
+            QueryWrapper<MedicalRecord> query=new QueryWrapper<>();
+            if(!CurrentUserUtil.isAdmin())dataScopeHelper.applyUserScope(query);
+            List<Map<String,Object>> result;
+            if(patientId==null&&(patientName==null||patientName.isEmpty()))result=new ArrayList<>();
+            else {
+                if(patientId!=null)query.eq("patient_id",patientId);else query.eq("patient_name",patientName);
+                org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope view=validity.open();
+                query.apply(view.activeSql("r.")).like("i.item_name",itemName).orderByAsc("r.record_date","i.id");
+                result=itemMapper.selectTrendRows(query);
+            }
+            read.trend=result;read.select(trendSources(result,read));read.prepare(null);
+            Map<Long,State> current=read.currentFrame();
+            java.util.Set<String> units=new java.util.HashSet<>();boolean unknownUnit=false;
+            for(Map<String,Object> row:result) {
+                String unit=(String)row.get("unit");if(unit==null||unit.trim().isEmpty())unknownUnit=true;else units.add(unit);
+                row.put("isAbnormal",org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.sourceFlag((Integer)row.get("isAbnormal")));
+            }
+            for(Map<String,Object> row:result) {
+                State state=current.get((Long)row.get("recordId"));
+                row.put("managed",state.managed);row.put("validity",state.validity);row.put("sourceStatus",state.status());
+                if(state.managed||state.reviewParticipating) {
+                    BigDecimal number=org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.plotNumber((String)row.get("resultValue"));
+                    String reason=!state.active()||!state.eligible()?state.status():unknownUnit?"UNIT_UNKNOWN":units.size()!=1?"UNIT_MIXED":number==null?"VALUE_NOT_PLOTTABLE":null;
+                    row.put("plotEligible",reason==null);row.put("numericValue",reason==null?number:null);row.put("plotReason",reason);
+                }
+            }
+            read.finish();return result;
         }
-        return result;
     }
 
     @Override public List<String> getAllItemNames(){return getAllItemNames(null);}
@@ -381,10 +413,185 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
         QueryWrapper<MedicalRecord> query=new QueryWrapper<>();if(!CurrentUserUtil.isAdmin())dataScopeHelper.applyUserScope(query);if(patientId!=null)query.eq("patient_id",patientId);
         query.apply(validity.open().activeSql("medical_record.")).isNotNull("i.item_name").ne("i.item_name","").orderByAsc("i.item_name");return itemMapper.selectActiveItemNames(query);
     }
-    @Override public List<MedicalRecord> list() {
-        dataScopeHelper.requireUserId();QueryWrapper<MedicalRecord> query=new QueryWrapper<>();if(!CurrentUserUtil.isAdmin())dataScopeHelper.applyUserScope(query);
-        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope view=validity.open();query.apply(view.activeSql("medical_record.")).orderByDesc("record_date");List<MedicalRecord> records=super.list(query);view.project(records);return records;
+    @Override
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
+    public List<MedicalRecord> list() {
+        try(ReadContent read=new ReadContent(readActorId(),false)) {
+            QueryWrapper<MedicalRecord> query=new QueryWrapper<>();if(!CurrentUserUtil.isAdmin())dataScopeHelper.applyUserScope(query);
+            org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope view=validity.open();
+            query.apply(view.activeSql("medical_record.")).orderByDesc("record_date");
+            List<MedicalRecord> records=super.list(query);read.select(records);read.prepare(null);read.project();read.finish();return records;
+        }
     }
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate readJdbc;
+    @Autowired private org.springframework.jdbc.datasource.DataSourceTransactionManager readTransactions;
+    @Autowired private org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader readQualification;
+    @Autowired private org.apache.ibatis.session.SqlSessionFactory readSqlSessions;
+
+    /** A single call owns all selected content, both complete current frames and failure cleanup. */
+    private final class ReadContent implements AutoCloseable {
+        final long actor;final boolean importing;final ContentResource resource;
+        List<MedicalRecord> records=Collections.emptyList(),sources=Collections.emptyList();
+        List<Map<String,Object>> trend=Collections.emptyList();
+        Map<Long,State> snapshot;Long patient;boolean released;
+        ReadContent(long actor,boolean importing) {
+            this.actor=actor;this.importing=importing;checkActor();resource=new ContentResource();
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){
+                @Override public void afterCompletion(int status){if(status!=STATUS_COMMITTED)clear();}
+            });
+        }
+        void select(List<MedicalRecord> selected) {
+            if(selected==null)throw currentChanged();
+            records=Collections.unmodifiableList(new ArrayList<>(selected));clear();
+            java.util.LinkedHashMap<Long,MedicalRecord> unique=new java.util.LinkedHashMap<>();
+            for(MedicalRecord record:records) {
+                if(record==null||!readSafeId(record.getId())||!readSafeId(record.getContentVersion())
+                        ||record.getPatientId()!=null&&!readSafeId(record.getPatientId())||record.getUserId()!=null&&!readSafeId(record.getUserId()))throw currentChanged();
+                MedicalRecord previous=unique.putIfAbsent(record.getId(),record);
+                if(previous!=null&&(!java.util.Objects.equals(previous.getPatientId(),record.getPatientId())
+                        ||!java.util.Objects.equals(previous.getUserId(),record.getUserId())
+                        ||!java.util.Objects.equals(previous.getContentVersion(),record.getContentVersion())
+                        ||!java.util.Objects.equals(previous.getVerificationStatus(),record.getVerificationStatus())))throw currentChanged();
+            }
+            sources=Collections.unmodifiableList(new ArrayList<>(unique.values()));check();
+        }
+        void prepare(Long focusedPatient) {
+            patient=focusedPatient;check();
+            if(patient!=null&&sources.size()!=1)throw currentChanged();
+            if(importing)requireImportAccess(sources.get(0),actor,patient,patient!=null);
+            else if(patient==null)reviewAccess.requireReadAdmission(sources,actor);
+            else reviewAccess.requireEvidenceAdmission(sources.get(0),actor,patient);
+            check();Map<Long,State> expected=new java.util.LinkedHashMap<>();
+            if(sources.isEmpty()) {
+                Map<Long,State> empty=observeSnapshot(Collections.emptyList());check();
+                if(empty==null||!empty.isEmpty())throw currentChanged();
+            }else for(int offset=0;offset<sources.size();offset+=100) {
+                check();List<MedicalRecord> part=sources.subList(offset,Math.min(offset+100,sources.size()));List<Long> ids=new ArrayList<>();
+                for(MedicalRecord record:part)ids.add(record.getId());
+                Map<Long,State> observed=observeSnapshot(ids);check();
+                if(observed==null||observed.size()!=part.size()||!observed.keySet().equals(new java.util.LinkedHashSet<>(ids)))throw currentChanged();
+                for(MedicalRecord record:part) {
+                    State state=observed.get(record.getId());
+                    if(state==null||!state.reviewObserved||state.signature==null||state.checkedAt==null
+                            ||state.qualificationSemantics!=org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader.Semantics.CALLER_TRANSACTION_SNAPSHOT
+                            ||state.id!=record.getId()||!java.util.Objects.equals(state.patientId,record.getPatientId())
+                            ||!java.util.Objects.equals(state.ownerId,record.getUserId())||!java.util.Objects.equals(state.version,record.getContentVersion())
+                            ||!java.util.Objects.equals(state.review,record.getVerificationStatus()))throw currentChanged();
+                    expected.put(record.getId(),state);
+                }
+            }
+            snapshot=Collections.unmodifiableMap(expected);check();
+        }
+        Map<Long,State> observeSnapshot(java.util.Collection<Long> ids) {
+            try {return validity.open().qualifiedSnapshot(ids);}
+            catch(org.familyhealthcare.service.workflow.WorkflowException failure) {
+                // Preserve genuine reader failures, but do not misdiagnose lost content resources as schema.
+                check();throw failure;
+            }
+        }
+        Map<Long,State> currentFrame() {
+            check();Map<Long,State> current;
+            try {
+                current=patient==null?reviewAccess.currentReadFrame(sources,snapshot,actor)
+                        :Collections.singletonMap(sources.get(0).getId(),reviewAccess.currentEvidenceFrame(sources.get(0),snapshot.get(sources.get(0).getId()),actor,patient));
+            }catch(IllegalStateException denied){if(importing)throw ReadFailure.denied();throw denied;}
+            check();return current;
+        }
+        void project() {
+            Map<Long,State> current=currentFrame();
+            for(MedicalRecord record:records) {
+                State state=current.get(record.getId());
+                record.setManaged(state.managed);record.setValidity(state.validity);record.setSourceStatus(state.status());
+                org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.projectReviewSummary(record,state);
+            }
+        }
+        void finish() {currentFrame();check();released=true;}
+        void check() {checkActor();resource.verify();}
+        void checkActor() {
+            if(!Long.valueOf(actor).equals(CurrentUserUtil.getCurrentUserId())) {
+                if(importing)throw ReadFailure.denied();throw new IllegalStateException("Access denied to source record.");
+            }
+        }
+        void clear() {
+            for(MedicalRecord record:records)if(record!=null)record.setReviewSummary(null);
+            for(Map<String,Object> row:trend)if(row!=null){row.remove("plotEligible");row.remove("numericValue");row.remove("plotReason");}
+        }
+        @Override public void close(){if(!released)clear();}
+    }
+
+    private final class ContentResource {
+        final Thread thread=Thread.currentThread();
+        final org.springframework.jdbc.datasource.ConnectionHolder holder;
+        final org.springframework.jdbc.datasource.SimpleConnectionHandle handle;final java.sql.Connection connection;
+        ContentResource() {
+            readGraph();Object value=org.springframework.transaction.support.TransactionSynchronizationManager.getResource(readJdbc.getDataSource());
+            if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                    ||!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()
+                    ||value==null||value.getClass()!=org.springframework.jdbc.datasource.ConnectionHolder.class)throw currentUnavailable();
+            holder=(org.springframework.jdbc.datasource.ConnectionHolder)value;
+            if(!holder.isSynchronizedWithTransaction()||holder.isRollbackOnly()||holder.getConnectionHandle()==null
+                    ||holder.getConnectionHandle().getClass()!=org.springframework.jdbc.datasource.SimpleConnectionHandle.class)throw currentUnavailable();
+            handle=(org.springframework.jdbc.datasource.SimpleConnectionHandle)holder.getConnectionHandle();connection=handle.getConnection();verify();
+        }
+        void verify() {
+            readGraph();
+            if(Thread.currentThread()!=thread||!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                    ||!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()
+                    ||!org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly()
+                    ||org.springframework.transaction.support.TransactionSynchronizationManager.getResource(readJdbc.getDataSource())!=holder
+                    ||!holder.isSynchronizedWithTransaction()||holder.isRollbackOnly()||holder.getConnectionHandle()!=handle||handle.getConnection()!=connection)throw currentUnavailable();
+            try {
+                if(connection==null||holder.getConnection()!=connection||connection.isClosed()||connection.getAutoCommit()
+                        ||connection.getTransactionIsolation()!=java.sql.Connection.TRANSACTION_REPEATABLE_READ)throw currentUnavailable();
+            }catch(java.sql.SQLException|IllegalStateException failure){throw currentUnavailable();}
+        }
+    }
+    private void readGraph() {
+        try {
+            if(readJdbc==null||readJdbc.getDataSource()==null||readTransactions==null||readTransactions.getDataSource()!=readJdbc.getDataSource()
+                    ||readQualification==null||reviewAccess==null||readSqlSessions==null
+                    ||readSqlSessions.getConfiguration().getEnvironment().getDataSource()!=readJdbc.getDataSource()
+                    ||!(readSqlSessions.getConfiguration().getEnvironment().getTransactionFactory() instanceof org.mybatis.spring.transaction.SpringManagedTransactionFactory))throw currentUnavailable();
+            reviewAccess.requireDataSource(readJdbc.getDataSource());readQualification.requireDataSource(readJdbc.getDataSource());
+        }catch(RuntimeException failure){throw currentUnavailable();}
+    }
+    private static boolean readSafeId(Long value){return value!=null&&value>0&&value<=9007199254740991L;}
+    private long readActorId() {
+        Long actor=dataScopeHelper.requireUserId();
+        if(!readSafeId(actor))throw new IllegalStateException("Access denied to source record.");return actor;
+    }
+    private static org.familyhealthcare.service.workflow.WorkflowException currentUnavailable(){return new org.familyhealthcare.service.workflow.WorkflowException(503,"CURRENT_RESULT_UNAVAILABLE","The current medical record result could not be verified.");}
+    private static org.familyhealthcare.service.workflow.WorkflowException currentChanged(){return new org.familyhealthcare.service.workflow.WorkflowException(409,"CURRENT_RESULT_UNAVAILABLE","The current medical record result could not be verified.");}
+
+    /** Native trend binding comes only from the same RR source headers, never the request selector. */
+    private List<MedicalRecord> trendSources(List<Map<String,Object>> rows,ReadContent read) {
+        java.util.LinkedHashSet<Long> unique=new java.util.LinkedHashSet<>();
+        for(Map<String,Object> row:rows) {
+            Object id=row.get("recordId");if(!(id instanceof Long)||!readSafeId((Long)id))throw currentChanged();unique.add((Long)id);
+        }
+        List<Long> ids=new ArrayList<>(unique);List<MedicalRecord> result=new ArrayList<>();Map<Long,MedicalRecord> headers=new java.util.LinkedHashMap<>();
+        try {
+            for(int offset=0;offset<ids.size();offset+=100) {
+                read.check();List<Long> part=ids.subList(offset,Math.min(offset+100,ids.size()));
+                List<MedicalRecord> loaded=baseMapper.selectList(new QueryWrapper<MedicalRecord>()
+                        .select("id","patient_id","user_id","content_version","verification_status").in("id",part));
+                for(MedicalRecord header:loaded)if(header!=null)header.setReviewSummary(null);
+                if(loaded.size()!=part.size())throw currentChanged();
+                for(MedicalRecord header:loaded) {
+                    if(header==null||!part.contains(header.getId())||headers.putIfAbsent(header.getId(),header)!=null)throw currentChanged();
+                    result.add(header);
+                }
+                read.check();
+            }
+        }catch(DataAccessException failure){throw currentUnavailable();}
+        for(Map<String,Object> row:rows) {
+            MedicalRecord header=headers.get((Long)row.get("recordId"));
+            if(header==null||!java.util.Objects.equals(header.getContentVersion(),row.get("contentVersion"))
+                    ||!java.util.Objects.equals(header.getVerificationStatus(),row.get("verificationStatus")))throw currentChanged();
+        }
+        return result;
+    }
+
     private void loadItems(List<MedicalRecord> records,String itemName) {
         for(int start=0;start<records.size();start+=100){List<MedicalRecord> part=records.subList(start,Math.min(start+100,records.size()));List<Long> ids=new ArrayList<>();Map<Long,MedicalRecord> parents=new HashMap<>();for(MedicalRecord row:part){ids.add(row.getId());parents.put(row.getId(),row);row.setItems(new ArrayList<>());}
             QueryWrapper<MedicalRecordItem> query=new QueryWrapper<MedicalRecordItem>().in("record_id",ids).orderByAsc("id");if(itemName!=null)query.like("item_name",itemName);
@@ -491,16 +698,15 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
     @Override
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
     public MedicalRecord getReviewPreview(Long id) {
-        MedicalRecord record = baseMapper.selectById(id);
-        if (record == null) throw new IllegalArgumentException("The record does not exist.");
-        reviewAccess.requireCurrent(record, false, false);
-        record.setItems(itemMapper.selectList(new QueryWrapper<MedicalRecordItem>().eq("record_id", id)));
-        record.setAttachments(listAttachmentsMeta(id).stream().map(MedicalRecordReviewAttachment::new)
-                .collect(java.util.stream.Collectors.toList()));
-        // Re-read the actual current source binding and authority outside this content snapshot.
-        reviewAccess.requireCurrent(record, false, false);
-        if(record!=null)validity.open().project(Collections.singletonList(record));
-        return record;
+        try(ReadContent read=new ReadContent(readActorId(),false)) {
+            MedicalRecord record=baseMapper.selectById(id);
+            if(record==null)throw new IllegalArgumentException("The record does not exist.");
+            read.select(Collections.singletonList(record));read.prepare(null);
+            record.setItems(itemMapper.selectList(new QueryWrapper<MedicalRecordItem>().eq("record_id",id)));
+            record.setAttachments(listAttachmentsMeta(id).stream().map(MedicalRecordReviewAttachment::new)
+                    .collect(java.util.stream.Collectors.toList()));
+            read.project();read.finish();return record;
+        }
     }
 
     @Override
@@ -519,15 +725,68 @@ public class MedicalRecordServiceImpl extends ServiceImpl<MedicalRecordMapper, M
 
     private MedicalRecord reviewLocked(Long id, boolean approved, String note, Long version, boolean workspace) {
         MedicalRecordReviewContract.requireVersion(version);
-        MedicalRecord record = corrections.guardReview(org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.id(id),workspace,approved);
-        if (record == null) return null;
-        if (baseMapper.reviewVersion(id, version, approved ? "VERIFIED" : "REJECTED",
-                dataScopeHelper.requireUserId(), LocalDateTime.now(), note) != 1)
-            throw new MedicalRecordReviewContract.Conflict();
-        corrections.recheck(record,workspace);
-        if(record!=null)validity.open().project(Collections.singletonList(record));
-        return record;
+        try (org.familyhealthcare.service.medicalreview.MedicalReviewNativeLifecycle.Scope scope=workspace?nativeLifecycle.openWorkspaceReview():nativeLifecycle.openLegacyReview()) {
+            try {
+                MedicalRecord record=corrections.guardReview(org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.id(id),workspace,approved);
+                if(record==null)return null;
+                if(!approved)MedicalRecordReviewContract.requireRejectionReason(note);
+                scope.preflight(record);scope.arm();
+                if(baseMapper.reviewVersion(id,version,approved?"VERIFIED":"REJECTED",dataScopeHelper.requireUserId(),LocalDateTime.now(),note)!=1)throw new MedicalRecordReviewContract.Conflict();
+                scope.checkpoint();corrections.recheck(record,workspace);
+                validity.open().project(Collections.singletonList(record));scope.complete();return record;
+            }catch(Throwable failure){throw scope.failure(failure);}
+        }
     }
+
+    /** Participating-only exact intent/count branch. The old unparticipating replacement path is unchanged. */
+    private boolean updateParticipating(MedicalRecord requested,List<MedicalRecordItem> requestedItems,MedicalRecord existing,MedicalRecord admission,
+            org.familyhealthcare.service.medicalreview.MedicalReviewNativeLifecycle.Scope scope) {
+        if(requested.getPatientId()!=null&&!java.util.Objects.equals(requested.getPatientId(),existing.getPatientId()))
+            throw org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionAuthorization.denied();
+        MedicalRecord record=new MedicalRecord();record.setId(existing.getId());record.setPatientId(existing.getPatientId());record.setUserId(existing.getUserId());
+        record.setPatientName(requested.getPatientName()!=null?requested.getPatientName():existing.getPatientName());
+        record.setRecordDate(requested.getRecordDate()!=null?requested.getRecordDate():existing.getRecordDate());
+        record.setRecordType(requested.getRecordType()!=null?requested.getRecordType():existing.getRecordType());
+        record.setHospitalName(requested.getHospitalName()!=null?requested.getHospitalName():existing.getHospitalName());
+        record.setDeptName(requested.getDeptName()!=null?requested.getDeptName():existing.getDeptName());
+        record.setDoctorName(requested.getDoctorName()!=null?requested.getDoctorName():existing.getDoctorName());
+        record.setRemark(requested.getRemark()!=null?requested.getRemark():existing.getRemark());
+        record.setAiRawResult(requested.getAiRawResult());
+        record.setSourceType(requested.getSourceType()!=null?requested.getSourceType():existing.getSourceType());
+        record.setSourceExternalId(requested.getSourceExternalId()!=null?requested.getSourceExternalId():existing.getSourceExternalId());
+        record.setConfidenceScore(requested.getConfidenceScore());record.setCreatedAt(existing.getCreatedAt());
+        record.setContentVersion(existing.getContentVersion());record.setVerificationStatus(existing.getVerificationStatus());record.setVerifiedBy(existing.getVerifiedBy());record.setVerifiedAt(existing.getVerifiedAt());record.setVerificationNote(existing.getVerificationNote());
+        List<MedicalRecordItem> items=new ArrayList<>();
+        if(requestedItems!=null){if(requestedItems.size()>100)throw reviewLimit();for(MedicalRecordItem input:requestedItems){
+            if(input==null)throw org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.invalid();
+            MedicalRecordItem item=new MedicalRecordItem();item.setId(input.getId());item.setRecordId(record.getId());item.setItemName(input.getItemName());item.setItemCode(input.getItemCode());item.setResultValue(input.getResultValue());item.setUnit(input.getUnit());item.setReferenceRange(input.getReferenceRange());item.setIsAbnormal(input.getIsAbnormal()==null?0:input.getIsAbnormal());item.setAiConfidence(input.getAiConfidence());sanitizeMedicalRecordItem(item);items.add(item);
+        }}
+        List<MedicalRecordAttachment> attachments=new ArrayList<>();List<Long> keepIds=new ArrayList<>();List<MedicalRecordAttachment> added=new ArrayList<>();
+        if(requested.getAttachments()!=null)for(MedicalRecordAttachment input:requested.getAttachments()){
+            if(input==null)throw org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.invalid();
+            MedicalRecordAttachment attachment=new MedicalRecordAttachment();attachment.setId(input.getId());attachment.setRecordId(record.getId());
+            if(input.getId()!=null){keepIds.add(input.getId());attachments.add(attachment);}
+            else if(input.getFileContent()!=null&&!input.getFileContent().isEmpty()){
+                attachment.setFilePath(input.getFilePath());attachment.setFileName(input.getFileName());attachment.setFileType(input.getFileType());attachment.setFileSize(input.getFileSize());attachment.setFileContent(input.getFileContent());fillAttachmentDefaults(attachment,record.getId());attachments.add(attachment);added.add(attachment);
+            }
+            if(attachments.size()>100)throw reviewLimit();
+        }
+        syncPatient(record);applySourceDefaults(record,items);
+        if(record.getAiRawResult()==null)record.setAiRawResult(existing.getAiRawResult());
+        for(MedicalRecordItem item:items)item.setAiConfidence(normalizedConfidence(item.getAiConfidence()));
+        if(record.getConfidenceScore()==null)record.setConfidenceScore(existing.getConfidenceScore());record.setConfidenceScore(normalizedConfidence(record.getConfidenceScore()));
+        scope.prepareEdit(record,items,attachments);scope.arm();
+        try {scope.requireHeaderCount(baseMapper.updateById(record));}catch(RuntimeException failure){throw ClinicalImportFacts.translateBinding(failure);}
+        if(baseMapper.invalidateReview(record.getId(),existing.getContentVersion())!=1)throw new MedicalRecordReviewContract.Conflict();scope.checkpoint();
+        scope.deletedItems(itemMapper.delete(new QueryWrapper<MedicalRecordItem>().eq("record_id",record.getId())));
+        for(int i=0;i<items.size();i++){MedicalRecordItem item=items.get(i);int count=itemMapper.insert(item);scope.insertedItem(i,item.getId(),count);}
+        QueryWrapper<MedicalRecordAttachment> removed=new QueryWrapper<MedicalRecordAttachment>().eq("record_id",record.getId());if(!keepIds.isEmpty())removed.notIn("id",keepIds);
+        scope.deletedAttachments(attachmentMapper.delete(removed));
+        for(int i=0;i<added.size();i++){MedicalRecordAttachment attachment=added.get(i);int count=attachmentMapper.insert(attachment);scope.insertedAttachment(i,attachment.getId(),count);}
+        corrections.recheck(admission,false);scope.retire();scope.complete();return true;
+    }
+    private static BigDecimal normalizedConfidence(BigDecimal value){return value==null?null:value.setScale(4,RoundingMode.HALF_UP);}
+    private static org.familyhealthcare.service.workflow.WorkflowException reviewLimit(){return new org.familyhealthcare.service.workflow.WorkflowException(413,"MEDICAL_REVIEW_LIMIT","The medical review source exceeds the supported size limit.");}
 
     private String truncateField(String value, int maxLen) {
         if (value == null) {

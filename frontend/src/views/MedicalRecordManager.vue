@@ -302,8 +302,9 @@
             <p v-else-if="trendStatus === 'idle'">Not queried yet. Select a patient and test item, then view the trend.</p>
             <p v-else-if="trendStatus === 'empty'">No historical records for this patient and test item.</p>
             <div v-else-if="trendStatus === 'error'" role="alert"><p>{{ trendError }}</p><el-button data-testid="retry-trend" :loading="trendLoading" @click="loadTrend">Retry query</el-button></div>
-            <p v-if="trendData.length && trendResultQuery">Displayed result: {{ patientIdentity(trendResultQuery.patientId, trendResultQuery.patientName) }} · {{ trendResultQuery.itemName }}<span v-if="trendStatus === 'error'"> (last successful result; refresh failed)</span></p>
+            <p v-if="trendData.length && trendResultQuery">Displayed result: {{ patientIdentity(trendResultQuery.patientId, trendResultQuery.patientName) }} · {{ trendResultQuery.itemName }}</p>
           </div>
+          <p v-if="trendData.length" class="current-review-notice">{{ reviewCopy.trendUnknown }}</p>
           <div v-if="trendData.length > 0" class="trend-chart-wrap">
             <v-chart class="trend-chart" :option="trendChartOption" autoresize />
           </div>
@@ -314,9 +315,10 @@
               <el-table-column prop="resultValue" label="Measured value" width="120" />
               <el-table-column prop="unit" label="Unit" width="88" />
               <el-table-column prop="referenceRange" label="Reference range" width="140" />
-              <el-table-column prop="isAbnormal" label="Status" width="88" align="center">
+              <el-table-column prop="isAbnormal" label="Status" min-width="180" align="center">
                 <template #default="{ row }">
-                  <el-tag :type="getTrendStatusType(row)" size="small">{{ getTrendStatusText(row) }}</el-tag>
+                  <el-tag class="trend-status-tag" :type="getTrendStatusType(row)" size="small">{{ getTrendStatusText(row) }}</el-tag>
+                  <small class="source-reported-flag">{{ reviewCopy.rawFlags }}: {{ getAbnormalText(row.isAbnormal) }}</small>
                 </template>
               </el-table-column>
               <el-table-column prop="hospitalName" label="Hospital" min-width="160" show-overflow-tooltip />
@@ -364,6 +366,8 @@
           </el-form>
         </div>
 
+        <p v-if="recordStatus === 'error'" role="alert">{{ reviewCopy.listError }}</p>
+        <p v-if="activeMenu === 'abnormal' && hasQualificationExclusions" class="current-review-notice">{{ reviewCopy.excluded }}</p>
         <div ref="correctionSection" class="list-panel" tabindex="-1" v-loading="loading">
           <div class="list-panel-head">
             <div class="list-panel-title">
@@ -396,9 +400,15 @@
                   <span v-else class="text-muted">-</span>
                 </template>
               </el-table-column>
+              <el-table-column :label="reviewCopy.heading" min-width="260">
+                <template #default="{ row }">
+                  <div class="current-review-summary"><p>{{ reviewPresentation(row).sourceText }}</p><p>{{ reviewPresentation(row).doctorText }}</p><el-tag :type="reviewPresentation(row).automaticTone">{{ reviewPresentation(row).automaticText }}</el-tag></div>
+                </template>
+              </el-table-column>
               <el-table-column v-if="listColVisible('abnormal')" label="Abnormal" min-width="72" align="center">
                 <template #default="{ row }">
                   <el-tag v-if="hasAbnormal(row)" type="danger" size="small">{{ countAbnormal(row) }}</el-tag>
+                  <span v-else-if="!recordAutomaticEligible(row)" class="text-muted">{{ reviewPresentation(row).automaticText }}</span>
                   <span v-else class="text-muted">-</span>
                 </template>
               </el-table-column>
@@ -410,6 +420,7 @@
                   <div class="table-actions">
                     <el-button class="medical-record-management-entry" link type="primary" size="small" @click="viewDetail(row)">View</el-button>
                     <el-button class="medical-record-management-entry" link type="primary" size="small" @click="openCorrection(row)">{{ correctionCopy.listAction }}</el-button>
+                    <el-button v-if="!focusedMode" class="medical-record-management-entry" data-testid="medical-review-workflow-launch" link type="primary" size="small" @click="openReviewWorkflow(row)">{{ workflowCopy.managerEntry }}</el-button>
                   </div>
                 </template>
               </el-table-column>
@@ -547,11 +558,19 @@
       </template>
     </el-dialog>
 
+    <MedicalReviewWorkflowDialog v-if="workflowTarget && !focusedMode" :key="workflowTarget.epoch" :record-id="workflowTarget.recordId" :patient-id="workflowTarget.patientId" :patient-name="knownPatientName(workflowTarget.patientId)" initial-channel="SOURCE" :current-patient-id="currentPatientId" :context-patient-id="filterForm.patientId" :route-key="route.fullPath" :navigation-key="workflowNavigation" :fallback-element="correctionSection" @closed="workflowTarget.closed" @changed="workflowTarget.changed" @view-state="workflowTarget.viewState" />
     <MedicalRecordCorrectionPanel v-if="correctionTarget && !focusedMode" :record-id="correctionTarget.recordId" :patient-id="correctionTarget.patientId" :patient-name="knownPatientName(correctionTarget.patientId)" :current-patient-id="currentPatientId" :route-key="route.fullPath" :fallback-element="correctionSection" @closed="correctionTarget = null" @view-state="Object.assign(correctionViewState, $event)" @changed="loadRecords" @legacy-edit="openLegacyEditor" @legacy-delete="deleteLegacyRecord" @original="openCorrectionOriginal" />
 
     <!-- Detailsdialog -->
-    <el-dialog v-model="detailDialogVisible" title="Medical record details" width="min(900px, 95vw)" destroy-on-close>
-      <section v-if="currentRecord"><p>{{ correctionCopy.version }} {{ currentRecord.contentVersion }} · {{ correctionCopy.validities[currentRecord.validity] || correctionCopy.validities.UNKNOWN }} · {{ correctionCopy.reviews[currentRecord.verificationStatus] || correctionCopy.null }}</p><p v-if="currentRecord.sourceStatus">{{ correctionCopy.sourceStatuses[currentRecord.sourceStatus] || correctionCopy.sourceStatuses.UNAVAILABLE }}</p><p>{{ correctionCopy.verifiedHelp }}</p><button v-if="!focusedMode" class="medical-record-management-entry" type="button" @click="openCorrection(currentRecord)">{{ correctionCopy.listAction }}</button></section>
+    <el-dialog v-model="detailDialogVisible" :before-close="closeMedicalDetail" @close="closeMedicalDetail" title="Medical record details" width="min(900px, 95vw)" destroy-on-close>
+      <section v-if="currentRecord" class="current-review-summary" aria-live="polite">
+        <h3>{{ reviewCopy.heading }}</h3>
+        <p>{{ currentReview.sourceText }}</p><p v-if="currentReview.sourceActorText">{{ currentReview.sourceActorText }}</p>
+        <p>{{ currentReview.doctorText }}</p><p v-if="currentReview.doctorActorText">{{ currentReview.doctorActorText }}</p>
+        <el-tag :type="currentReview.automaticTone">{{ currentReview.automaticText }}</el-tag>
+        <p v-if="currentReview.observationText">{{ currentReview.observationText }}</p><p>{{ reviewCopy.explanation }}</p>
+      </section>
+      <section v-if="currentRecord"><h4>{{ currentReview.legacyHeading }}</h4><p>{{ correctionCopy.version }} {{ currentRecord.contentVersion }} · {{ correctionCopy.validities[currentRecord.validity] || correctionCopy.validities.UNKNOWN }} · {{ correctionCopy.reviews[currentRecord.verificationStatus] || correctionCopy.null }}</p><p v-if="currentRecord.sourceStatus">{{ correctionCopy.sourceStatuses[currentRecord.sourceStatus] || correctionCopy.sourceStatuses.UNAVAILABLE }}</p><p>{{ correctionCopy.verifiedHelp }}</p><button v-if="!focusedMode" class="medical-record-management-entry" type="button" @click="openCorrection(currentRecord)">{{ correctionCopy.listAction }}</button></section>
       <OriginalImportFacts v-if="currentRecord" :original-import="currentRecord.originalImport" />
       <h3 v-if="currentRecord">Current record</h3>
       <el-descriptions :column="2" border v-if="currentRecord">
@@ -572,6 +591,7 @@
         <el-table-column prop="isAbnormal" label="Status" width="100">
           <template #default="{ row }">
             <el-tag :type="getRecordFlagType(currentRecord, row.isAbnormal)">{{ getRecordFlagText(currentRecord, row.isAbnormal) }}</el-tag>
+            <small class="source-reported-flag">{{ reviewCopy.rawFlags }}: {{ getAbnormalText(row.isAbnormal) }}</small>
           </template>
         </el-table-column>
       </el-table>
@@ -584,6 +604,7 @@
             <div><dt>Unit</dt><dd>{{ item.unit || '—' }}</dd></div>
             <div><dt>Reference range</dt><dd>{{ item.referenceRange || '—' }}</dd></div>
             <div><dt>Status</dt><dd><span class="medical-result-status" :class="'medical-result-status--' + getRecordFlagType(currentRecord, item.isAbnormal)">{{ getRecordFlagText(currentRecord, item.isAbnormal) }}</span></dd></div>
+            <div><dt>{{ reviewCopy.rawFlags }}</dt><dd>{{ getAbnormalText(item.isAbnormal) }}</dd></div>
           </dl>
         </article>
       </section>
@@ -763,6 +784,8 @@
 
 <script setup>
 import PatientSelect from '@/components/PatientSelect.vue';
+import MedicalReviewWorkflowDialog from '@/components/medical-record/MedicalReviewWorkflowDialog.vue';
+import { medicalReviewWorkflowCopy as workflowCopy } from '@/components/medical-record/medicalReviewWorkflowCopy';
 import MedicalRecordCorrectionPanel from '@/components/medical-record/MedicalRecordCorrectionPanel.vue';
 import { medicalRecordCopy as correctionCopy } from '@/components/medical-record/medicalRecordCorrectionCopy';
 import OriginalImportFacts from '@/components/OriginalImportFacts.vue';
@@ -770,6 +793,7 @@ import { formatPatientIdentity } from '@/utils/patientPresentation';
 import { useFocusedCareSource } from '@/composables/useFocusedCareSource';
 import { localDateKey } from '@/utils/familyHealth';
 import { dedupeRecognizedItems } from '@/utils/medicalRecordItems';
+import { medicalReviewPresentation } from '@/utils/medicalReviewQualification';
 import recordsCareSmall from '@/assets/illustrations/records-care-small.webp';
 import recordsCare from '@/assets/illustrations/records-care.webp';
 import { ref, reactive, computed, onMounted, onUnmounted, watch, inject, nextTick } from 'vue';
@@ -829,8 +853,8 @@ const canUpload = computed(() => {
 const menuTabs = ['list', 'upload', 'abnormal', 'trend'];
 const activeMenu = ref(menuTabs.includes(route.query.tab) ? route.query.tab : 'list');
 watch(() => route.query.tab, (tab) => {
-  handleMenuSelect(menuTabs.includes(tab) ? tab : 'list');
-});
+  activeMenu.value = menuTabs.includes(tab) ? tab : 'list';
+}, { flush: 'sync' });
 
 const { isMobile } = useMobile();
 const records = ref([]);
@@ -980,6 +1004,74 @@ const trendData = ref([]);
 const trendLoading = ref(false);
 const trendStatus = ref('idle'), trendError = ref(''), trendQuery = ref(null), trendResultQuery = ref(null);
 const allItemNames = ref([]);
+const recordStatus = ref('idle');
+const workflowTarget = ref(null), workflowViewState = reactive({ locked: false, dirty: false });
+const workflowNavigation = computed(() => JSON.stringify([filterForm, activeMenu.value]));
+let workflowEpoch = 0, workflowListOwner = null;
+function retireReviewWorkflow() { workflowEpoch++; workflowTarget.value = null; Object.assign(workflowViewState, { locked: false, dirty: false }); }
+function openReviewWorkflow(row) {
+  const owner = workflowListOwner;
+  if (!owner || !ownsMedicalRead(owner) || owner.menus !== JSON.stringify(permissionMenus.value) || focusedMode.value || recordStatus.value !== 'loaded' || !records.value.includes(row)
+      || !Number.isSafeInteger(row?.id) || row.id < 1 || !(row.patientId == null || Number.isSafeInteger(row.patientId) && row.patientId > 0)
+      || workflowTarget.value || uploadDialogVisible.value || editDialogVisible.value || detailDialogVisible.value || correctionTarget.value) return;
+  const epoch = ++workflowEpoch, navigation = workflowNavigation.value; let refreshNeeded = false;
+  const owned = () => epoch === workflowEpoch && workflowTarget.value?.epoch === epoch && ownsMedicalRead(owner) && owner.menus === JSON.stringify(permissionMenus.value) && workflowNavigation.value === navigation && !focusedMode.value;
+  workflowTarget.value = { epoch, recordId: row.id, patientId: row.patientId ?? null,
+    changed: payload => { if (owned() && payload && Object.keys(payload).length === 3 && payload.recordId === row.id && ['SOURCE', 'DOCTOR'].includes(payload.channel) && Number.isSafeInteger(payload.decisionVersion) && payload.decisionVersion > 0) refreshNeeded = true; },
+    viewState: payload => { if (owned() && payload && Object.keys(payload).length === 2 && typeof payload.locked === 'boolean' && typeof payload.dirty === 'boolean') Object.assign(workflowViewState, payload); },
+    closed: payload => { if (!owned() || !payload || Object.keys(payload).length !== 1 || typeof payload.retired !== 'boolean') return; const refresh = refreshNeeded && !payload.retired; refreshNeeded = false; retireReviewWorkflow(); if (refresh) void loadRecords(); }
+  };
+}
+watch(workflowNavigation, retireReviewWorkflow, { flush: 'sync' });
+const reviewCopy = {
+  "heading": "Current source and review",
+  "explanation": "Source verification and a recorded DOCTOR review are not a diagnosis or a judgment of clinical fitness",
+  "excluded": "Pending, changed, invalidated or unavailable records are excluded from current automatic abnormal indicators. An empty list does not establish clinical normality; authorized source-reported flags remain in Medical records.",
+  "rawFlags": "Source-reported flags",
+  "trendUnknown": "This trend response does not supply separate SOURCE/DOCTOR review details. Compatible display of raw historical values does not establish current review qualification.",
+  "notPlotted": "Not plotted; current qualification could not be verified",
+  "listError": "Current records could not be loaded. Query again.",
+  "trendError": "Query failed. Retry this patient and test item.",
+  "trendDenied": "Access changed. Previous trend results were cleared. Retry to check current access.",
+  "namesError": "The test item list could not be loaded; you can still enter an item manually"
+};
+const reviewPresentation = record => medicalReviewPresentation(record?.reviewSummary, 'en');
+const currentReview = computed(() => reviewPresentation(currentRecord.value));
+let recordListRequest = 0, trendRequest = 0, itemNamesRequest = 0, patientNamesRequest = 0;
+let listController = null, trendController = null, itemNamesController = null;
+let medicalReadDisposed = false, detailReadEpoch = 0, detailController = null;
+function captureMedicalReadOwner() {
+  return { auth: { ...captureAuthSession(), actorId: localStorage.getItem('userId') }, patient: currentPatientId.value,
+    path: route.fullPath, permission: JSON.stringify(readPermissionCache()) };
+}
+function ownsMedicalRead(owner) {
+  return !medicalReadDisposed && owner.patient === currentPatientId.value && owner.path === route.fullPath
+    && owner.permission === JSON.stringify(readPermissionCache()) && isAuthSessionCurrent(owner.auth)
+    && owner.auth.actorId === localStorage.getItem('userId');
+}
+function invalidateRecords() {
+  workflowListOwner = null; retireReviewWorkflow();
+  recordListRequest++; listController?.abort(); listController = null;
+  records.value = []; loading.value = false; recordStatus.value = 'idle';
+}
+function invalidateTrend() {
+  trendRequest++; trendController?.abort(); trendController = null;
+  trendData.value = []; trendLoading.value = false;
+  trendStatus.value = 'idle'; trendError.value = ''; trendQuery.value = null; trendResultQuery.value = null;
+}
+function invalidateItemNames() {
+  itemNamesRequest++; itemNamesController?.abort(); itemNamesController = null; allItemNames.value = [];
+}
+function invalidatePatientNames() { patientNamesRequest++; patientList.value = []; }
+function invalidateMedicalReads() { invalidateRecords(); invalidateTrend(); invalidateItemNames(); invalidatePatientNames(); }
+// Register context retirement before the focused-source watcher starts a replacement read.
+watch(currentPatientId, invalidateMedicalContext, { flush: 'sync' });
+watch(() => route.fullPath, invalidateMedicalContext, { flush: 'sync' });
+watch(permissionMenus, invalidateMedicalContext, { deep: true, flush: 'sync' });
+watch(() => [trendForm.patientId, trendForm.patientName, trendForm.itemName], invalidateTrend, { flush: 'sync' });
+watch(() => [filterForm.patientId, filterForm.patientName, filterForm.recordType, filterForm.timeValue, filterForm.itemName], () => {
+  invalidateRecords(); clearMedicalDetail();
+}, { flush: 'sync' });
 
 const recordTypeMap = {
   BLOOD: 'Blood test',
@@ -1103,17 +1195,28 @@ const detailOtherAttachments = computed(() => {
 
 
 
+function hasPlotContract(row) {
+  return row?.managed === true || ['plotEligible', 'numericValue', 'plotReason'].some(key => Object.prototype.hasOwnProperty.call(row || {}, key));
+}
+function legacyTrendShape(row) {
+  return row?.managed === false && row.validity === 'UNTRACKED' && row.sourceStatus === 'UNTRACKED';
+}
+function trendNumericValue(row) {
+  if (hasPlotContract(row)) {
+    if (!['plotEligible', 'numericValue', 'plotReason'].every(key => Object.prototype.hasOwnProperty.call(row, key))
+      || row.plotEligible !== true || row.plotReason !== null || row.sourceStatus !== 'CURRENT'
+      || !(row.managed === true && row.validity === 'ACTIVE' || row.managed === false && row.validity === 'UNTRACKED')
+      || typeof row.numericValue !== 'number' || !Number.isFinite(row.numericValue)) return null;
+    return row.numericValue;
+  }
+  if (!legacyTrendShape(row)) return null;
+  const value = parseFloat(String(row.resultValue).replace(/[^0-9.]/g, ''));
+  return isNaN(value) ? null : value;
+}
 const trendChartOption = computed(() => {
   const dates = trendData.value.map(d => d.recordDate);
-  const hasManaged = trendData.value.some(d => d.managed === true);
-  const values = trendData.value.map(d => {
-    if (d.managed === true) {
-      const value = d.plotEligible === true && d.numericValue != null ? Number(d.numericValue) : NaN;
-      return Number.isFinite(value) ? value : null;
-    }
-    const v = parseFloat(String(d.resultValue).replace(/[^0-9.]/g, ''));
-    return isNaN(v) ? null : v;
-  });
+  const hasManaged = trendData.value.some(hasPlotContract);
+  const values = trendData.value.map(trendNumericValue);
   const unit = trendData.value[0]?.unit || '';
   return {
     tooltip: { trigger: 'axis', confine: true },
@@ -1221,34 +1324,37 @@ function applyOcrResultToRecords(data) {
   }
 }
 
+function recordAutomaticEligible(record) {
+  const presentation = reviewPresentation(record);
+  if (presentation.mode === 'PARTICIPANT') return presentation.automaticInputEligible === true && presentation.sourceStatus === 'CURRENT';
+  if (presentation.mode !== 'NONE') return false;
+  return !(record.managed === true && (record.sourceStatus !== 'CURRENT' || record.validity !== 'ACTIVE' || record.verificationStatus !== 'VERIFIED'));
+}
 function hasAbnormal(record) {
-  return !(record.managed === true && (record.sourceStatus !== 'CURRENT' || record.validity !== 'ACTIVE' || record.verificationStatus !== 'VERIFIED')) && record.items?.some(i => i.isAbnormal === -1 || i.isAbnormal === 1);
+  return recordAutomaticEligible(record) && record.items?.some(i => i.isAbnormal === -1 || i.isAbnormal === 1);
 }
-
 function countAbnormal(record) {
-  if (record.managed === true && (record.sourceStatus !== 'CURRENT' || record.validity !== 'ACTIVE' || record.verificationStatus !== 'VERIFIED')) return 0;
-  return record.items?.filter(i => i.isAbnormal === -1 || i.isAbnormal === 1).length || 0;
+  return recordAutomaticEligible(record) ? record.items?.filter(i => i.isAbnormal === -1 || i.isAbnormal === 1).length || 0 : 0;
 }
-
+const hasQualificationExclusions = computed(() => records.value.some(record => !recordAutomaticEligible(record)));
 function getRecordFlagType(record, flag) {
-  return record?.managed === true && record.sourceStatus !== 'CURRENT' ? 'info' : getAbnormalType(flag);
+  return recordAutomaticEligible(record) ? getAbnormalType(flag) : 'info';
 }
-
 function getRecordFlagText(record, flag) {
-  if (record?.managed === true && record.sourceStatus !== 'CURRENT') return getTrendStatusText({ ...record, plotEligible: false });
-  return getAbnormalText(flag);
+  return recordAutomaticEligible(record) ? getAbnormalText(flag) : reviewPresentation(record).automaticText;
 }
-
 function getTrendStatusType(row) {
-  return row.managed === true && row.plotEligible !== true ? 'info' : getAbnormalType(row.isAbnormal);
+  return trendNumericValue(row) === null ? 'info' : getAbnormalType(row.isAbnormal);
 }
-
 function getTrendStatusText(row) {
-  if (row.managed === true && row.plotEligible !== true) {
-    const labels = { SOURCE_CHANGED: 'Source changed', SOURCE_INVALIDATED: 'Source invalidated', SOURCE_REVIEW_REQUIRED: 'Awaiting review', UNIT_UNKNOWN: 'Not plotted: unit unknown', UNIT_MIXED: 'Not plotted: units differ', VALUE_NOT_PLOTTABLE: 'Text only: not plottable' };
-    return labels[row.plotReason || row.sourceStatus] || 'Not plotted; source text retained';
+  if (trendNumericValue(row) !== null) return getAbnormalText(row.isAbnormal);
+  if (hasPlotContract(row)) {
+    const labels = {"SOURCE_CHANGED": "Source changed", "SOURCE_INVALIDATED": "Source invalidated", "SOURCE_REVIEW_REQUIRED": "Awaiting source review", "SOURCE_UNAVAILABLE": "Source qualification unavailable", "UNIT_UNKNOWN": "Not plotted: unit unknown", "UNIT_MIXED": "Not plotted: units differ", "VALUE_NOT_PLOTTABLE": "Text only: not plottable"};
+    if (row.plotEligible !== false || !['plotEligible', 'numericValue', 'plotReason'].every(key => Object.prototype.hasOwnProperty.call(row, key))) return reviewCopy.notPlotted;
+    const reason = row.sourceStatus !== 'CURRENT' ? row.sourceStatus : row.plotReason;
+    return labels[reason] || reviewCopy.notPlotted;
   }
-  return getAbnormalText(row.isAbnormal);
+  return legacyTrendShape(row) ? getAbnormalText(row.isAbnormal) : reviewCopy.notPlotted;
 }
 
 function getAbnormalType(status) {
@@ -1289,16 +1395,32 @@ function addRecognizedItem() {
 }
 
 // 聚焦证据只走原窄权限读取；患者冲突不切换档案，也不升级到普通详情、历史或写接口。
-function readFocusedMedicalSource(source, options) {
-  if (Number(source.patientId) !== Number(currentPatientId.value)) return Promise.reject(new Error('PATIENT_CONTEXT_CONFLICT'));
-  return api.getRecord(source.sourceId, source.patientId, { ...options, includeImportFacts: true });
+function validMedicalRecordBody(record) {
+  return !!record && typeof record === 'object' && !Array.isArray(record)
+    && ['items', 'attachments'].every(key => record[key] == null || Array.isArray(record[key])
+      && record[key].every(value => !!value && typeof value === 'object' && !Array.isArray(value)))
+    && (record.items == null || record.items.every(item => item.itemName == null || typeof item.itemName === 'string'))
+    && (record.attachments == null || record.attachments.every(file => file.fileName == null || typeof file.fileName === 'string'));
+}
+async function readFocusedMedicalSource(source, options) {
+  if (Number(source.patientId) !== Number(currentPatientId.value)) throw new Error('PATIENT_CONTEXT_CONFLICT');
+  const result = await api.getRecord(source.sourceId, source.patientId, { ...options, includeImportFacts: true });
+  if (result.code !== 200 || !validMedicalRecordBody(result.data)) throw new Error('INVALID_DETAIL');
+  return result;
 }
 const sourceFocus=useFocusedCareSource(route,currentPatientId,readFocusedMedicalSource,'MEDICAL_RECORD');
 const focusedMode=sourceFocus.attempted;
 const focusedPatientConflict = computed(() => !!sourceFocus.locator.value && Number(sourceFocus.locator.value.patientId) !== Number(currentPatientId.value));
 watch(()=>sourceFocus.state.record,record=>{currentRecord.value=record;detailDialogVisible.value=!!record;},{flush:'sync'});
-let detailReadEpoch=0, detailController=null
-watch(focusedMode,()=>{clearMedicalDetail();recordListRequest++;records.value=[];itemNamesRequest++;allItemNames.value=[];currentRecord.value=null;detailDialogVisible.value=false;uploadDialogVisible.value=false;editDialogVisible.value=false;if(!focusedMode.value&&route.fullPath?.split('?')[0]==='/medical-record'){loadRecords();loadItemNames();loadPatientList()}},{flush:'sync'});
+watch(focusedMode, () => {
+  clearMedicalDetail(); invalidateMedicalReads(); uploadDialogVisible.value = false; editDialogVisible.value = false;
+}, { flush: 'sync' });
+watch(() => route.fullPath, () => {
+  if (!focusedMode.value && route.fullPath?.split('?')[0] === '/medical-record') {
+    loadItemNames(); loadPatientList();
+    if (['list', 'abnormal'].includes(activeMenu.value)) loadRecords();
+  }
+});
 
 function dedupeRecognizedItemsLocal() {
   const rec = currentRecognizeRecord.value;
@@ -1312,125 +1434,69 @@ function dedupeRecognizedItemsLocal() {
   }
 }
 
-let recordListRequest = 0, recordListDisposed = false;
-onUnmounted(() => {
-  recordListDisposed = true;
-  recordListRequest++;
-  loading.value = false;
-});
-
+onUnmounted(() => { medicalReadDisposed = true; invalidateMedicalReads(); });
 async function loadRecords() {
-  if (focusedMode.value) return;
-  if (recordListDisposed) return;
-  const request = ++recordListRequest;
-  const params = { ...filterForm };
-  const isCurrent = () => !recordListDisposed && request === recordListRequest
-    && Object.keys(params).every(key => params[key] === filterForm[key]);
-  loading.value = true;
+  if (focusedMode.value || medicalReadDisposed) return;
+  invalidateRecords();
+  const request = recordListRequest, owner = captureMedicalReadOwner(), params = { ...filterForm };
+  const controller = new AbortController(); listController = controller;
+  const isCurrent = () => request === recordListRequest && listController === controller && !controller.signal.aborted
+    && ownsMedicalRead(owner) && !focusedMode.value && Object.keys(params).every(key => params[key] === filterForm[key]);
+  if (!owner.auth.token) return;
+  loading.value = true; recordStatus.value = 'loading';
   try {
-    const res = await api.listRecords(params);
+    const res = await api.listRecords(params, { expectedAuth: owner.auth, signal: controller.signal });
     if (!isCurrent()) return;
-    if (res.code === 200) {
-      records.value = res.data || [];
-    }
-  } catch (e) {
-    if (isCurrent()) ElMessage.error('Failed to load: ' + e.message);
-  } finally {
-    if (!recordListDisposed && request === recordListRequest) loading.value = false;
-  }
+    if (res.code !== 200 || !Array.isArray(res.data) || res.data.some(row => !validMedicalRecordBody(row)
+      || !Number.isSafeInteger(row.id) || row.id <= 0)) throw new Error('INVALID_RECORD_LIST');
+    records.value = res.data; recordStatus.value = 'loaded'; workflowListOwner = { ...owner, menus: JSON.stringify(permissionMenus.value) };
+  } catch {
+    if (isCurrent()) { records.value = []; recordStatus.value = 'error'; }
+  } finally { if (isCurrent()) loading.value = false; }
 }
-
-let trendRequest = 0, itemNamesRequest = 0, medicalReadDisposed = false, trendSession = null;
-function invalidateTrend() {
-  trendRequest++;
-  trendData.value = [];
-  trendLoading.value = false;
-  trendStatus.value = 'idle'; trendError.value = ''; trendQuery.value = null; trendResultQuery.value = null;
-}
-function trendSessionCurrent() {
-  return !!trendSession && isAuthSessionCurrent(trendSession) && trendSession.actorId === localStorage.getItem('userId');
-}
-function clearTrendAccount() { invalidateTrend(); trendSession = null; }
-function handleTrendAuthStorage(event) {
-  if ((event.key == null || ['token', 'userId'].includes(event.key)) && trendSession && !trendSessionCurrent()) clearTrendAccount();
-}
-onMounted(() => {
-  window.addEventListener('auth-session-cleared', clearTrendAccount);
-  window.addEventListener('storage', handleTrendAuthStorage);
-});
-onUnmounted(() => {
-  clearTrendAccount();
-  window.removeEventListener('auth-session-cleared', clearTrendAccount);
-  window.removeEventListener('storage', handleTrendAuthStorage);
-});
-watch(() => [trendForm.patientId, trendForm.itemName], invalidateTrend, { flush: 'sync' });
-onUnmounted(() => {
-  medicalReadDisposed = true;
-  invalidateTrend();
-  itemNamesRequest++;
-  allItemNames.value = [];
-});
-
 function failTrend(error) {
+  trendData.value = []; trendResultQuery.value = null;
   const denied = [401, 403].includes(Number(error?.response?.status || error?.code));
-  if (denied) { trendData.value = []; trendResultQuery.value = null; }
-  trendStatus.value = 'error';
-  trendError.value = denied ? 'Access changed. Previous trend results were cleared. Retry to check current access.' : 'Query failed. Retry this patient and test item.';
+  trendStatus.value = 'error'; trendError.value = denied ? reviewCopy.trendDenied : reviewCopy.trendError;
 }
-
 async function loadTrend() {
-  if (medicalReadDisposed) return;
-  if (trendSession && !trendSessionCurrent()) clearTrendAccount();
+  if (focusedMode.value || medicalReadDisposed) return;
+  invalidateTrend();
   const patient = patientList.value.find(p => p.id === trendForm.patientId);
   trendForm.patientName = patient?.patientName || '';
   if (!trendForm.patientId || !trendForm.itemName) {
-    ElMessage.warning('Select a patient and a test item');
-    return;
+    ElMessage.warning("Select a patient and a test item"); return;
   }
-  const request = ++trendRequest;
-  const auth = { ...captureAuthSession(), actorId: localStorage.getItem('userId') };
-  trendSession = auth;
-  if (!auth.token) { clearTrendAccount(); return; }
-  const params = { ...trendForm };
-  trendQuery.value = { ...params }; trendError.value = ''; trendStatus.value = 'loading';
-  const isCurrent = () => {
-    if (medicalReadDisposed || request !== trendRequest || params.patientId !== trendForm.patientId || params.itemName !== trendForm.itemName) return false;
-    if (!isAuthSessionCurrent(auth) || auth.actorId !== localStorage.getItem('userId')) { clearTrendAccount(); return false; }
-    return true;
-  };
-  trendLoading.value = true;
+  const request = trendRequest, owner = captureMedicalReadOwner(), params = { ...trendForm };
+  const controller = new AbortController(); trendController = controller;
+  const isCurrent = () => request === trendRequest && trendController === controller && !controller.signal.aborted
+    && ownsMedicalRead(owner) && !focusedMode.value && Object.keys(params).every(key => params[key] === trendForm[key]);
+  if (!owner.auth.token) return;
+  trendQuery.value = { ...params }; trendStatus.value = 'loading'; trendLoading.value = true;
   try {
-    const res = await api.getItemTrend(params.patientId, params.patientName, params.itemName);
+    const res = await api.getItemTrend(params.patientId, params.patientName, params.itemName, { expectedAuth: owner.auth, signal: controller.signal });
     if (!isCurrent()) return;
-    if (res.code === 200) {
-      trendData.value = res.data || [];
-      trendResultQuery.value = { ...params };
-      trendStatus.value = trendData.value.length ? 'loaded' : 'empty';
-      if (trendData.value.length === 0) {
-        ElMessage.info('No historical records found for this test item');
-      }
-    } else {
-      failTrend(res);
-      ElMessage.error(res.message || 'Query failed');
-    }
-  } catch (e) {
-    if (isCurrent()) { failTrend(e); ElMessage.error('Query failed: ' + e.message); }
-  } finally {
-    if (isCurrent()) trendLoading.value = false;
-  }
+    if (res.code !== 200 || !Array.isArray(res.data) || res.data.some(row => !row || typeof row !== 'object' || Array.isArray(row))) { failTrend(res); return; }
+    trendData.value = res.data; trendResultQuery.value = { ...params };
+    trendStatus.value = trendData.value.length ? 'loaded' : 'empty';
+  } catch (error) { if (isCurrent()) failTrend(error); }
+  finally { if (isCurrent()) trendLoading.value = false; }
 }
 
 async function loadItemNames() {
-  if (focusedMode.value) return;
-  if (medicalReadDisposed) return;
-  const request = ++itemNamesRequest, patientId = currentPatientId.value;
-  const isCurrent = () => !medicalReadDisposed && request === itemNamesRequest && patientId === currentPatientId.value;
-  allItemNames.value = [];
+  if (focusedMode.value || medicalReadDisposed) return;
+  invalidateItemNames();
+  const request = itemNamesRequest, owner = captureMedicalReadOwner(), patientId = currentPatientId.value;
+  const controller = new AbortController(); itemNamesController = controller;
+  const isCurrent = () => request === itemNamesRequest && itemNamesController === controller && !controller.signal.aborted
+    && ownsMedicalRead(owner) && !focusedMode.value && patientId === currentPatientId.value;
+  if (!owner.auth.token) return;
   try {
-    const res = await api.getAllItemNames(patientId);
+    const res = await api.getAllItemNames(patientId, { expectedAuth: owner.auth, signal: controller.signal });
     if (!isCurrent()) return;
-    if (res.code === 200) {
-      const dbNames = res.data || [];
+    if (res.code !== 200 || !Array.isArray(res.data) || res.data.some(name => typeof name !== 'string')) throw new Error('INVALID_ITEM_NAMES');
+    {
+      const dbNames = res.data;
       const defaults = [
         'White blood cells', 'Red blood cells', 'Hemoglobin', 'Platelets',
         'Creatinine', 'Blood urea nitrogen', 'Uric acid',
@@ -1443,23 +1509,21 @@ async function loadItemNames() {
       const merged = Array.from(new Set([...dbNames, ...defaults]));
       allItemNames.value = merged.sort((a, b) => a.localeCompare(b, 'en'));
     }
-  } catch (e) {
-    if (!isCurrent()) return;
-    console.error('Failed to load test items', e);
-    ElMessage.warning('The test item list could not be loaded; you can still enter an item manually');
+  } catch {
+    if (isCurrent()) { allItemNames.value = []; ElMessage.warning(reviewCopy.namesError); }
   }
 }
-
 async function loadPatientList() {
-  if (focusedMode.value) return;
+  if (focusedMode.value || medicalReadDisposed) return;
+  invalidatePatientNames();
+  const request = patientNamesRequest, owner = captureMedicalReadOwner();
+  const isCurrent = () => request === patientNamesRequest && ownsMedicalRead(owner) && !focusedMode.value;
+  if (!owner.auth.token) return;
   try {
     const res = await getPatientNames();
-    if (res.code === 200) {
-      patientList.value = res.data || [];
-    }
-  } catch (e) {
-    console.error('Failed to load patients', e);
-  }
+    if (!isCurrent()) return;
+    if (res.code === 200 && Array.isArray(res.data) && res.data.every(row => row && typeof row === 'object' && !Array.isArray(row))) patientList.value = res.data;
+  } catch { if (isCurrent()) patientList.value = []; }
 }
 
 function showUploadDialog() {
@@ -1837,13 +1901,12 @@ function clearCorrectionContext() {
   correctionTarget.value = null;
   clearLegacyEditor();
 }
-function invalidateMedicalContext() { clearMedicalDetail(); clearCorrectionContext(); sourceFocus.invalidate() }
-function detailStorageChanged(event) { if (event.key == null || [...AUTH_STORAGE_KEYS, 'permissionSession', 'userMenus', 'userRoleCodes'].includes(event.key)) invalidateMedicalContext() }
-watch(currentPatientId, () => { clearMedicalDetail(); clearCorrectionContext() }, { flush: 'sync' });
-watch(() => route.fullPath, () => { clearMedicalDetail(); clearCorrectionContext() }, { flush: 'sync' });
-watch(detailDialogVisible, (visible, previous) => { if (!visible && previous) clearMedicalDetail() }, { flush: 'sync' });
-onMounted(() => { window.addEventListener('auth-session-cleared', invalidateMedicalContext); window.addEventListener('auth-session-changed', invalidateMedicalContext); window.addEventListener('storage', detailStorageChanged) });
-onUnmounted(() => { clearMedicalDetail(); window.removeEventListener('auth-session-cleared', invalidateMedicalContext); window.removeEventListener('auth-session-changed', invalidateMedicalContext); window.removeEventListener('storage', detailStorageChanged) });
+function invalidateMedicalContext() { invalidateMedicalReads(); clearMedicalDetail(); clearCorrectionContext(); sourceFocus.invalidate(); }
+function closeMedicalDetail(done) { clearMedicalDetail(); if (focusedMode.value) sourceFocus.invalidate(); if (typeof done === 'function') done(); }
+function detailStorageChanged(event) { if (event.key == null || [...AUTH_STORAGE_KEYS, 'permissionSession', 'userMenus', 'userMenuNames', 'userRoleCodes'].includes(event.key)) invalidateMedicalContext() }
+watch(detailDialogVisible, (visible, previous) => { if (!visible && previous) closeMedicalDetail() }, { flush: 'sync' });
+onMounted(() => { window.addEventListener('auth-session-cleared', invalidateMedicalContext); window.addEventListener('auth-session-changed', invalidateMedicalContext); window.addEventListener('permissions-changed', invalidateMedicalContext); window.addEventListener('storage', detailStorageChanged) });
+onUnmounted(() => { clearMedicalDetail(); window.removeEventListener('auth-session-cleared', invalidateMedicalContext); window.removeEventListener('auth-session-changed', invalidateMedicalContext); window.removeEventListener('permissions-changed', invalidateMedicalContext); window.removeEventListener('storage', detailStorageChanged) });
 async function viewDetail(row) {
   if(focusedMode.value)return;
   clearMedicalDetail();
@@ -1853,7 +1916,7 @@ async function viewDetail(row) {
   try {
     const res=await api.getRecord(row.id,undefined,{includeImportFacts:true,expectedAuth:auth,signal:detailController.signal});
     if(!owns())return;
-    if(res.code!==200||String(res.data?.id)!==String(row.id)||String(res.data?.patientId??'')!==String(row.patientId??''))throw new Error('INVALID_DETAIL');
+    if(res.code!==200||!validMedicalRecordBody(res.data)||String(res.data?.id)!==String(row.id)||String(res.data?.patientId??'')!==String(row.patientId??''))throw new Error('INVALID_DETAIL');
     currentRecord.value=res.data; detailDialogVisible.value=true;
   } catch { if(owns()){currentRecord.value=null;ElMessage.error('Unable to load record details')} }
   finally { if(epoch===detailReadEpoch&&!owns())clearMedicalDetail() }
@@ -2060,12 +2123,18 @@ watch(currentPatientId, (newVal, oldVal) => {
     uploadDialogVisible.value = false;
     resetUploadState(newVal);
     loadItemNames();
+    loadPatientList();
   }
 }, { flush: 'sync' });
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>
 <style scoped>
+.current-review-summary, .current-review-notice { overflow-wrap: anywhere; white-space: normal; }
+.current-review-summary p { margin: 6px 0; }
+.current-review-summary :deep(.el-tag) { height: auto; white-space: normal; line-height: 1.5; }
+.current-review-notice { color: var(--ink-600); }
+.source-reported-flag { display: block; margin-top: 6px; color: var(--ink-600); }
 .medical-record-manager .top-bar.record-heading {
   align-items: center;
   flex-wrap: nowrap;
@@ -2325,4 +2394,19 @@ watch(currentPatientId, (newVal, oldVal) => {
 .medical-record-management-entry { min-height: 44px; max-width: 100%; padding: 8px 10px; font: inherit; white-space: normal; overflow-wrap: anywhere; }
 .medical-record-management-entry:focus-visible { outline: 3px solid var(--care-600); outline-offset: 2px; }
 :global(body.care-senior) .medical-record-management-entry { min-height: 48px; }
+</style>
+
+<style scoped>
+.trend-status-tag {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.5;
+}
+
+.trend-status-tag :deep(.el-tag__content) {
+  min-width: 0;
+}
 </style>

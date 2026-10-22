@@ -75,11 +75,13 @@
           <p>{{ item.content }}</p>
           <div v-if="item.attachment_record" class="consultation-attachment">
             <b>{{ copy.sharedRecord }} · {{ recordLabel(item.attachment_record) }}</b>
+            <span class="consultation-source-status" data-testid="consultation-reference-status">{{ copy.referenceStatus }} {{ humanSourceStatus(item.attachment_record.referenceStatus) }}</span>
             <div v-if="item.attachment_record.attachments?.length" class="consultation-attachment-files">
               <el-button v-for="file in item.attachment_record.attachments" :key="file.id" link type="primary" :loading="downloadingId === file.id" @click="downloadAttachment(file)">{{ copy.download }} {{ file.file_name || copy.attachment }}</el-button>
             </div>
             <span v-else class="consultation-help">{{ copy.noFile }}</span>
           </div>
+          <span v-else-if="item.attachment_record_id != null" class="consultation-source-status" data-testid="consultation-reference-status">{{ copy.referenceStatus }} {{ humanSourceStatus(null) }}</span>
         </article>
       </div>
       <div v-if="canMessage" class="consultation-compose">
@@ -91,8 +93,8 @@
           </el-radio-group>
           <span class="consultation-help">{{ copy.keyboardHint }}</span>
         </div>
-        <el-select v-if="draft.messageType !== 'TEXT'" v-model="draft.attachmentRecordId" filterable :placeholder="copy.chooseRecord" :disabled="sending" :loading="recordsLoading" class="consultation-record-select">
-          <el-option v-for="record in recordOptions" :key="record.id" :value="record.id" :label="recordLabel(record)" />
+        <el-select v-if="draft.messageType !== 'TEXT'" v-model="draft.attachmentRecordId" filterable :placeholder="copy.chooseRecord" :disabled="sending" :loading="recordsLoading" class="consultation-record-select" fit-input-width>
+          <el-option class="consultation-record-option" v-for="record in recordOptions" :key="record.id" :value="record.id" :label="recordLabel(record)"><span>{{ recordLabel(record) }}</span><span class="consultation-source-status" data-testid="consultation-choice-status">{{ copy.sourceStatus }} {{ humanSourceStatus(record.sourceStatus) }}</span></el-option>
         </el-select>
         <el-input v-model="draft.content" class="consultation-editor" type="textarea" :autosize="{ minRows: 4, maxRows: 10 }" maxlength="4000" show-word-limit :disabled="sending" :placeholder="draft.messageType === 'TEXT' ? copy.messageHint : copy.attachmentHint" :aria-label="copy.messageHint" @keydown="onComposerKeydown" />
         <div class="consultation-compose-footer"><span class="consultation-help">{{ copy.messageHintShort }}</span><el-button type="primary" :loading="sending" :disabled="!canSend" @click="sendMessage">{{ copy.send }}</el-button></div>
@@ -108,7 +110,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as api from '@/api/careJourney'
-import { AUTH_STORAGE_KEYS } from '@/utils/authSession'
+import { AUTH_STORAGE_KEYS, captureAuthSession, isAuthSessionCurrent } from '@/utils/authSession'
 
 const props = defineProps({ patientId: { type: [Number, String], default: null }, isDoctor: Boolean, enabled: Boolean, locale: { type: String, default: 'en' } })
 const route = useRoute(), router = useRouter()
@@ -129,6 +131,7 @@ const english = {
   leaveCall: 'Leave call', joinVideo: 'Join video call', joinVoice: 'Join voice call', archive: 'Close and archive',
   httpsRequired: 'Voice and video require a secure HTTPS connection and camera/microphone access. Text messaging is available on this page.',
   waiting: 'Waiting for other participants to join…', messages: 'Consultation messages', firstMessage: 'The conversation is ready. Send the first message below.',
+  referenceStatus: 'Reference status at last server read:', sourceStatus: 'Source status at last server read:',
   participant: 'Participant', sharedRecord: 'Shared medical record', download: 'Download', attachment: 'attachment', noFile: 'Record reference shared; this record has no attached file.',
   messageType: 'Message type', text: 'Text', image: 'Image / lab report', file: 'Medical file', keyboardHint: 'Enter for a new line · Ctrl/⌘ + Enter to send',
   chooseRecord: 'Choose a medical record to share', messageHint: 'Type your message here…', attachmentHint: 'Add a description of the record you are sharing…',
@@ -158,6 +161,7 @@ const chinese = {
   leaveCall: '退出通话', joinVideo: '加入视频通话', joinVoice: '加入语音通话', archive: '结束并归档',
   httpsRequired: '语音和视频需要通过 HTTPS 安全连接访问，并允许摄像头或麦克风权限。当前页面可以正常使用文字聊天。',
   waiting: '等待其他参与者加入通话…', messages: '问诊消息', firstMessage: '会话已建立，请在下方输入并发送第一条消息。',
+  referenceStatus: '引用状态（上次服务器读取）：', sourceStatus: '来源状态（上次服务器读取）：',
   participant: '参与者', sharedRecord: '共享医疗记录', download: '下载', attachment: '附件', noFile: '已共享该记录信息，这条记录暂无文件附件。',
   messageType: '消息类型', text: '文字', image: '图片／化验单', file: '医疗文件', keyboardHint: '回车换行 · Ctrl／⌘ + 回车发送',
   chooseRecord: '请选择要共享的医疗记录', messageHint: '在这里输入消息…', attachmentHint: '请补充要共享的医疗记录说明…',
@@ -180,7 +184,14 @@ const recordLabel = record => {
   const type = record.record_type || record.recordType
   return [record.record_date || record.recordDate, record.hospital_name || record.hospitalName, recordTypes[type]?.[props.locale === 'zh' ? 1 : 0] || type].filter(Boolean).join(' · ') || copy.value.sharedRecord
 }
-const currentUserId = Number(localStorage.getItem('userId'))
+const currentUserId = ref(Number(localStorage.getItem('userId')))
+const humanSourceLabels = {"CURRENT": ["Current", "当前"], "UNTRACKED": ["Legacy source; untracked", "旧版来源，未跟踪"], "UNKNOWN_NEEDS_RECHECK": ["Reference needs rechecking", "引用需重新核对"], "SOURCE_REVIEW_REQUIRED": ["Source verification required", "来源需核对"], "SOURCE_CHANGED": ["Source changed; recheck reference", "来源已变化，需重新核对引用"], "SOURCE_INVALIDATED": ["Source invalidated", "来源已作废"], "SOURCE_UNAVAILABLE": ["Source status unavailable", "来源状态不可用"]}
+function humanSourceStatus(value) {
+  const key = !syncError.value && typeof value === 'string' && Object.hasOwn(humanSourceLabels, value) ? value : 'SOURCE_UNAVAILABLE'
+  return humanSourceLabels[key][props.locale === 'zh' ? 1 : 0]
+}
+let contextOwner = null
+function currentAuthorization() { return !!contextOwner && isAuthSessionCurrent(contextOwner.auth) && contextOwner.actor === localStorage.getItem('userId') }
 const clinicians = ref([]), invitees = ref([]), participantUserIds = ref([]), doctorsLoading = ref(false), consultations = ref([]), listLoading = ref(false), listError = ref(false)
 const activeConsultation = ref(null), openingId = ref(null), starting = ref(false), sending = ref(false), closing = ref(false)
 const chatSyncing = ref(false), syncError = ref(false), recordOptions = ref([]), recordsLoading = ref(false), downloadingId = ref(null)
@@ -194,10 +205,11 @@ const canMessage = computed(() => activeConsultation.value?.status === 'OPEN' &&
 const canClose = computed(() => activeConsultation.value?.status === 'OPEN' && activeConsultation.value?.can_close === true)
 const canSend = computed(() => canMessage.value && !openingId.value && !sending.value && !closing.value && Boolean(draft.content.trim()) && (draft.messageType === 'TEXT' || recordOptions.value.some(record => Number(record.id) === Number(draft.attachmentRecordId))))
 let disposed = false, contextVersion = 0, roomVersion = 0, navigationVersion = 0, listRequest = 0, listTimer = null, messageTimer = null, signalTimer = null
+let callOwner = null
 let localStream = null, callVersion = 0, lastSignalId = 0, signalBusy = false
 const peers = new Map(), pendingIce = new Map()
-function currentContext(version) { return !disposed && props.enabled && version === contextVersion }
-function currentRoom(version, id) { return !disposed && props.enabled && version === roomVersion && Number(activeConsultation.value?.id) === Number(id) }
+function currentContext(version) { return !disposed && props.enabled && currentAuthorization() && version === contextVersion }
+function currentRoom(version, id) { return !disposed && props.enabled && currentAuthorization() && version === roomVersion && Number(activeConsultation.value?.id) === Number(id) }
 function consultationRowClass({ row }) { return Number(row.id) === Number(activeConsultation.value?.id) ? 'consultation-selected-row' : '' }
 let discardPrompt = null, routeWrite = null, removeRouteGuard = null, draftRevision = 0
 watch(draft, () => { draftRevision++ }, { deep: true, flush: 'sync' })
@@ -251,7 +263,7 @@ function stopMessageSync() { clearTimeout(messageTimer); messageTimer = null }
 function scheduleListSync() { stopListSync(); if (props.enabled && !disposed && !listError.value) listTimer = window.setTimeout(() => loadConsultations(), 6000) }
 function scheduleMessageSync() { stopMessageSync(); if (props.enabled && !disposed && activeConsultation.value?.status === 'OPEN' && !syncError.value) messageTimer = window.setTimeout(refreshActiveConsultation, 1800) }
 async function loadConsultations() {
-  if (!props.enabled || disposed) return
+  if (!props.enabled || disposed || !currentAuthorization()) return
   if (!props.isDoctor && !props.patientId) { consultations.value = []; return }
   const context = contextVersion, requestId = ++listRequest, patientId = props.patientId
   listLoading.value = true
@@ -267,17 +279,18 @@ async function loadConsultations() {
   }
 }
 async function loadClinicians() {
-  if (props.isDoctor) return
+  if (props.isDoctor || !currentAuthorization()) return
   const context = contextVersion
   doctorsLoading.value = true
   try { const response = await api.listClinicians(); if (currentContext(context)) clinicians.value = response.data || [] } catch {} finally { if (currentContext(context)) doctorsLoading.value = false }
 }
 async function loadRecordOptions(version, id) {
+  if (!currentRoom(version, id)) return
   recordsLoading.value = true
   try { const response = await api.listConsultationRecordOptions(id); if (currentRoom(version, id)) recordOptions.value = response.data || [] } catch {} finally { if (currentRoom(version, id)) recordsLoading.value = false }
 }
 async function loadInvitees() {
-  if (props.isDoctor || !props.patientId) return
+  if (props.isDoctor || !props.patientId || !currentAuthorization()) return
   const context = contextVersion
   try { const response = await api.listConsultationInvitees(props.patientId); if (currentContext(context)) invitees.value = response.data || [] } catch {}
 }
@@ -300,7 +313,7 @@ async function activateConsultation(detail) {
   void loadRecordOptions(version, detail.id)
 }
 async function openConsultation(id, updateRoute = true) {
-  if (!id || disposed || !props.enabled || Number(id) === Number(activeConsultation.value?.id)) return
+  if (!id || disposed || !props.enabled || !currentAuthorization() || Number(id) === Number(activeConsultation.value?.id)) return
   const context = contextVersion, navigation = ++navigationVersion
   if (messageDraftDirty() && !(await confirmDiscard())) {
     if (currentContext(context) && navigation === navigationVersion) { openingId.value = null; scheduleMessageSync() }
@@ -323,9 +336,9 @@ async function openConsultation(id, updateRoute = true) {
   } finally { if (currentContext(context) && navigation === navigationVersion) { openingId.value = null; if (sourceRoom === roomVersion) scheduleMessageSync() } }
 }
 async function beginConsultation() {
-  if (!canStart.value) return
+  if (!canStart.value || !currentAuthorization()) return
   if (messageDraftDirty() && !(await confirmDiscard())) return
-  if (!canStart.value) return
+  if (!canStart.value || !currentAuthorization()) return
   const context = contextVersion, navigation = ++navigationVersion, patientId = props.patientId
   starting.value = true; openingId.value = null
   try {
@@ -342,7 +355,7 @@ async function beginConsultation() {
   } catch {} finally { if (currentContext(context)) starting.value = false }
 }
 async function refreshActiveConsultation() {
-  if (!activeConsultation.value || chatSyncing.value || !props.enabled || disposed) return
+  if (!activeConsultation.value || chatSyncing.value || !props.enabled || disposed || !currentAuthorization()) return
   const version = roomVersion, id = activeConsultation.value.id, previous = (activeConsultation.value.messages || []).at(-1)?.id
   chatSyncing.value = true
   try {
@@ -351,17 +364,19 @@ async function refreshActiveConsultation() {
     activeConsultation.value = response.data
     syncError.value = false
     if ((response.data.messages || []).at(-1)?.id !== previous) await scrollMessages()
+    if (!currentRoom(version, id)) return
     if (response.data.status !== 'OPEN' || response.data.can_message !== true) { stopCall(); clearDraft() }
-  } catch (error) { if (currentRoom(version, id)) { if (Number(error?.response?.status || error?.code) === 403) resetContext(); else syncError.value = true } } finally {
+  } catch (error) { if (currentRoom(version, id)) { if ([401, 403].includes(Number(error?.response?.status || error?.code))) resetContext(); else syncError.value = true } } finally {
     if (currentRoom(version, id)) { chatSyncing.value = false; scheduleMessageSync() }
   }
 }
 async function retrySync() {
-  listError.value = false; syncError.value = false
+  if (!currentAuthorization()) { resetContext(); await initialize(false); return }
+  listError.value = false
   await Promise.all([loadConsultations(), activeConsultation.value ? refreshActiveConsultation() : Promise.resolve()])
 }
 async function sendMessage() {
-  if (!canSend.value) return
+  if (!canSend.value || !currentAuthorization()) return
   const version = roomVersion, id = activeConsultation.value.id
   const payload = { ...draft, content: draft.content.trim(), attachmentRecordId: draft.messageType === 'TEXT' ? null : draft.attachmentRecordId }
   sending.value = true
@@ -370,15 +385,17 @@ async function sendMessage() {
     if (!currentRoom(version, id)) return
     clearDraft()
     await refreshActiveConsultation()
+    if (!currentRoom(version, id)) return
     await scrollMessages(true)
+    if (!currentRoom(version, id)) return
     void loadConsultations()
-  } catch (error) { if (currentRoom(version, id) && Number(error?.response?.status || error?.code) === 403) resetContext() } finally { if (currentRoom(version, id)) sending.value = false }
+  } catch (error) { if (currentRoom(version, id) && [401, 403].includes(Number(error?.response?.status || error?.code))) resetContext() } finally { if (currentRoom(version, id)) sending.value = false }
 }
 function onComposerKeydown(event) {
   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) { event.preventDefault(); void sendMessage() }
 }
 async function finishConsultation() {
-  if (!canClose.value || closing.value) return
+  if (!canClose.value || closing.value || !currentAuthorization()) return
   const version = roomVersion, id = activeConsultation.value.id
   closing.value = true
   try {
@@ -391,14 +408,14 @@ async function finishConsultation() {
     const response = await api.closeConsultation(id, value)
     if (!currentRoom(version, id)) return
     stopMessageSync(); stopCall(); roomVersion++; chatSyncing.value = false; closing.value = false
-    activeConsultation.value = response.data; clearDraft()
+    activeConsultation.value = response.data; recordOptions.value = []; recordsLoading.value = false; clearDraft()
     ElMessage.success(copy.value.archived)
     await loadConsultations()
   } catch {} finally { if (currentRoom(version, id)) closing.value = false }
 }
 async function downloadAttachment(file) {
   const version = roomVersion, id = activeConsultation.value?.id
-  if (!id || downloadingId.value) return
+  if (!id || downloadingId.value || !currentRoom(version, id)) return
   downloadingId.value = file.id
   try {
     const response = await api.getConsultationAttachment(id, file.id)
@@ -426,8 +443,9 @@ function peerFor(target, consultationId) {
   return pc
 }
 async function startCall() {
-  if (!canMessage.value || !mediaSupported.value || callStarting.value || callActive.value) return
+  if (!canMessage.value || !mediaSupported.value || callStarting.value || callActive.value || !currentAuthorization()) return
   const version = roomVersion, id = activeConsultation.value.id, call = ++callVersion
+  callOwner = { auth: { ...contextOwner.auth }, actor: contextOwner.actor, roomId: id }
   callStarting.value = true
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: activeConsultation.value.mode === 'VIDEO' })
@@ -435,10 +453,10 @@ async function startCall() {
     localStream = stream; callActive.value = true
     await nextTick()
     if (localVideo.value) localVideo.value.srcObject = localStream
-    const others = (activeConsultation.value.participants || []).map(item => Number(item.user_id)).filter(userId => userId !== currentUserId)
+    const others = (activeConsultation.value.participants || []).map(item => Number(item.user_id)).filter(userId => userId !== currentUserId.value)
     for (const target of others) {
       // One offerer per pair prevents simultaneous offers when both participants join.
-      if (currentUserId > target) continue
+      if (currentUserId.value > target) continue
       const pc = peerFor(target, id), offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
       await api.sendConsultationSignal(id, { targetUserId: target, signalType: 'OFFER', payload: offer })
@@ -480,23 +498,27 @@ async function pollSignals() {
 function stopCall() {
   callVersion++
   clearInterval(signalTimer); signalTimer = null
-  const id = activeConsultation.value?.id
-  if (id && callActive.value) for (const target of peers.keys()) api.sendConsultationSignal(id, { targetUserId: target, signalType: 'HANGUP', payload: {} }).catch(() => {})
+  const owner = callOwner, id = activeConsultation.value?.id
+  if (id && callActive.value && owner && Number(owner.roomId) === Number(id) && isAuthSessionCurrent(owner.auth) && owner.actor === localStorage.getItem('userId')) for (const target of peers.keys()) api.sendConsultationSignal(owner.roomId, { targetUserId: target, signalType: 'HANGUP', payload: {} }).catch(() => {})
+  callOwner = null
   peers.forEach(pc => pc.close()); peers.clear(); pendingIce.clear()
   localStream?.getTracks().forEach(track => track.stop())
   localStream = null; remoteStreams.value = {}; callActive.value = false; callStarting.value = false; lastSignalId = 0
 }
 function resetContext() {
   contextVersion++; roomVersion++; navigationVersion++; listRequest++
-  stopListSync(); stopMessageSync(); stopCall()
+  stopListSync(); stopMessageSync(); stopCall(); contextOwner = null
   activeConsultation.value = null; consultations.value = []; recordOptions.value = []; openingId.value = null
-  chatSyncing.value = false; listLoading.value = false; starting.value = false; sending.value = false; closing.value = false; downloadingId.value = null
+  chatSyncing.value = false; listLoading.value = false; recordsLoading.value = false; starting.value = false; sending.value = false; closing.value = false; downloadingId.value = null
   listError.value = false; syncError.value = false; clearDraft()
   Object.assign(form, { mode: 'TEXT', doctorUserId: null, symptom: '', durationText: '', medicalHistory: '' })
   visibleToFamily.value = true; invitees.value = []; participantUserIds.value = []; startBaseline = startSnapshot()
 }
 async function initialize(allowLinkedConsultation = true) {
-  if (!props.enabled) return
+  if (!props.enabled || disposed) return
+  contextOwner = { auth: captureAuthSession(), actor: localStorage.getItem('userId') }
+  currentUserId.value = Number(contextOwner.actor)
+  if (!currentAuthorization()) return
   const context = contextVersion
   await Promise.all([loadConsultations(), loadClinicians(), loadInvitees()])
   if (allowLinkedConsultation && currentContext(context) && route.query.consultationId) await openConsultation(route.query.consultationId, false)
@@ -513,16 +535,22 @@ onMounted(() => {
   window.addEventListener('care-plan-before-context-change', protectPatientChange)
   window.addEventListener('beforeunload', protectPageUnload)
   window.addEventListener('auth-session-cleared', sessionCleared)
+  window.addEventListener('auth-session-changed', sessionCleared)
   window.addEventListener('storage', sessionStorageChanged)
   void initialize()
 })
 onBeforeUnmount(() => {
   removeRouteGuard?.(); window.removeEventListener('care-plan-before-context-change', protectPatientChange)
-  window.removeEventListener('beforeunload', protectPageUnload); window.removeEventListener('auth-session-cleared', sessionCleared); window.removeEventListener('storage', sessionStorageChanged)
+  window.removeEventListener('beforeunload', protectPageUnload); window.removeEventListener('auth-session-cleared', sessionCleared); window.removeEventListener('auth-session-changed', sessionCleared); window.removeEventListener('storage', sessionStorageChanged)
   disposed = true; resetContext()
 })
 </script>
 
 <style scoped>
 .consultation-workspace{min-width:0}.consultation-notice{margin-bottom:18px}.consultation-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}.consultation-grid--single{grid-template-columns:minmax(0,1fr)}.consultation-grid>*{min-width:0}.consultation-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}.form-wide{grid-column:1/-1}.consultation-form-grid .el-select{width:100%}.consultation-card-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}.consultation-card-head h3{font-size:18px;margin:0 0 6px}.consultation-help{color:var(--ink-500);font-size:12px;line-height:1.6;margin:6px 0 12px}.consultation-card-head .consultation-help{margin:4px 0 0}.consultation-room{margin-top:22px;min-width:0}.consultation-room-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.consultation-room-actions .el-button+.el-button{margin-left:0}.consultation-sync{display:inline-flex;align-items:center;gap:7px;margin-top:8px;color:var(--care-700);font-size:12px}.consultation-sync i{width:7px;height:7px;background:var(--success);border-radius:50%;box-shadow:0 0 0 3px #2ca88018}.consultation-sync--error{color:var(--warning)}.consultation-sync--error i{background:var(--warning)}.consultation-context{padding:14px 16px;background:var(--surface-subtle);border-radius:12px;margin-bottom:18px;line-height:1.7;overflow-wrap:anywhere}.consultation-context p{margin:6px 0 0}.consultation-messages{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-height:180px;max-height:460px;overflow-y:auto;padding:4px 8px 18px 0;scrollbar-gutter:stable}.consultation-message{max-width:88%;min-width:min(260px,100%);padding:14px 16px;border:1px solid var(--line);border-radius:4px 16px 16px;background:var(--paper);overflow-wrap:anywhere}.consultation-message--own{align-self:flex-end;background:var(--care-50);border-color:var(--care-100);border-radius:16px 4px 16px 16px}.consultation-message header{display:flex;gap:20px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}.consultation-message time{color:var(--ink-500);font-size:11px}.consultation-message p{margin:8px 0 0;white-space:pre-wrap;line-height:1.75}.consultation-attachment{display:grid;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:13px}.consultation-attachment-files{display:flex;flex-direction:column;align-items:flex-start;gap:6px}.consultation-attachment-files .el-button{max-width:100%;height:auto;white-space:normal;text-align:left;margin-left:0}.consultation-compose{display:grid;gap:12px;padding-top:18px;border-top:1px solid var(--line)}.consultation-compose-toolbar,.consultation-compose-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.consultation-compose .consultation-help{margin:0}.consultation-record-select,.consultation-editor{width:100%;min-width:0}.consultation-editor :deep(.el-textarea__inner){min-height:130px!important;line-height:1.8;padding:14px 16px 26px;resize:vertical}.consultation-compose-footer .el-button{min-width:114px}.consultation-media{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:18px;padding:12px;border-radius:14px;background:#173a36}.consultation-media video{width:100%;min-height:160px;max-height:320px;object-fit:cover;border-radius:10px;background:#173a36}.consultation-media p{color:#cbd5e1;padding:20px}:deep(.consultation-selected-row){--el-table-tr-bg-color:var(--care-50)}@media(max-width:1100px){.consultation-grid{grid-template-columns:minmax(0,1fr)}}@media(max-width:650px){.consultation-form-grid{grid-template-columns:1fr}.consultation-message{max-width:96%;min-width:0}.consultation-message header{gap:5px}.consultation-room-actions{width:100%}.consultation-compose-toolbar{align-items:flex-start;flex-direction:column}.consultation-compose-toolbar :deep(.el-radio-button__inner){padding:9px}.consultation-compose-footer{align-items:flex-start}.consultation-compose-footer .consultation-help{max-width:65%}.consultation-media{grid-template-columns:1fr}}
+</style>
+
+<style scoped>
+.consultation-source-status{display:block;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.6}
+.consultation-record-option{height:auto;min-height:34px;line-height:1.5;white-space:normal;overflow-wrap:anywhere;padding-top:8px;padding-bottom:8px}
 </style>

@@ -63,6 +63,12 @@ public final class HouseholdAuthorityLocks {
     }
     public MedicationNotificationAuthority lockMedicationNotification(long patient,long execution,long event,long notification,Collection<Long> subjects,long deadline){positive(execution);positive(event);positive(notification);return new MedicationNotificationAuthority(lockPatientAndSubjects(patient,subjects),execution,event,notification,Math.min(deadline,System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5)));}
     private final JdbcTemplate jdbc;
+    /** Identity only: never acquire or bind another datasource. */
+    public void requireDataSource(javax.sql.DataSource expected) {
+        if (expected == null || jdbc.getDataSource() != expected)
+            throw new IllegalStateException("The configured datasource does not match.");
+    }
+
     public HouseholdAuthorityLocks(JdbcTemplate jdbc){this.jdbc=Objects.requireNonNull(jdbc);}
     public void requireMutationTransaction(){WorkflowData.mutationTransaction(jdbc);}
     public LockedAuthority lockPatientAndSubjects(long patientId,Collection<Long> subjectIds){

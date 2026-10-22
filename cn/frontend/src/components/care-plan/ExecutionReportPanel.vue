@@ -48,11 +48,11 @@
           <p v-if="action.reviewWaitingSince">{{ t('Waiting for doctor review since','等待医生复核起点') }} {{ instant(action.reviewWaitingSince) }} · {{ t('Review waiting is not patient delay','等待复核不是患者延迟') }}</p>
           <p v-if="action.reviewWaitingSince">{{ t('Review wait duration (seconds)','本次待复核时长（秒）') }}: {{ reportReviewWaitSeconds(action.reviewWaitingSince,report.metadata.currentAsOf) ?? t('Not available','不可用') }}</p>
           <p>CARE_PLAN · {{ t('Plan / revision / action','计划 / 修订 / 事项') }} {{ action.planId }} / {{ action.revisionId }} / {{ action.actionId }}</p>
-          <ul><li v-for="(e,index) in action.evidence" :key="index"><router-link v-if="evidencePath(e)" :to="evidencePath(e)">{{ e.title }} · {{ label('sourceType',e.sourceType) }} ({{ e.sourceType }}) #{{ e.sourceId }}</router-link><span v-else>{{ t('A restricted or unavailable linked record exists','存在受限或不可用的关联记录') }}</span></li></ul>
+          <ul><li v-for="(e,index) in action.evidence" :key="index"><router-link v-if="evidencePath(e)" :to="evidencePath(e)">{{ e.title }} · {{ label('sourceType',e.sourceType) }} ({{ e.sourceType }}) #{{ e.sourceId }}</router-link><span v-else>{{ t('A restricted or unavailable linked record exists','存在受限或不可用的关联记录') }}</span><span v-if="evidenceSourceStatus(e)" data-testid="evidence-source-status"> · {{ evidenceSourceStatus(e) }}</span></li></ul>
           <section v-for="event in [action.latestReceipt,action.latestReturn,action.latestReview,action.latestHelp,action.latestFollowUp].filter(Boolean)" :key="event.eventId" class="report-event">
             <h5>{{ label('eventType',event.eventType) }} · #{{ event.eventId }}</h5><p>{{ event.actorName }} #{{ event.actorId }} · {{ label('actorRole',event.actorRole) }} ({{ event.actorRole }}) · {{ t('Relation','关系') }}: {{ label('actorRelation',event.actorRelation) }} ({{ event.actorRelation }}) · {{ event.entryMode ? label('entryMode',event.entryMode) : t('Entry mode: not applicable','记录方式：不适用') }}</p>
             <p v-if="event.followUpKind">{{ label('followUpKind',event.followUpKind) }}</p><p class="original">{{ event.note }}</p><p>{{ t('Recorded','记录时间') }} {{ instant(event.recordedAt) }}<template v-if="event.occurredAt"><br/>{{ t('Occurred','实际执行时间') }} {{ instant(event.occurredAt) }}</template></p>
-            <ul><li v-for="(e,index) in event.evidence" :key="index"><router-link v-if="evidencePath(e)" :to="evidencePath(e)">{{ e.title }} · {{ label('sourceType',e.sourceType) }} ({{ e.sourceType }}) #{{ e.sourceId }}</router-link><span v-else>{{ t('A restricted or unavailable linked record exists','存在受限或不可用的关联记录') }}</span></li></ul>
+            <ul><li v-for="(e,index) in event.evidence" :key="index"><router-link v-if="evidencePath(e)" :to="evidencePath(e)">{{ e.title }} · {{ label('sourceType',e.sourceType) }} ({{ e.sourceType }}) #{{ e.sourceId }}</router-link><span v-else>{{ t('A restricted or unavailable linked record exists','存在受限或不可用的关联记录') }}</span><span v-if="evidenceSourceStatus(e)" data-testid="evidence-source-status"> · {{ evidenceSourceStatus(e) }}</span></li></ul>
           </section>
           <router-link :to="`/care-plans/${action.planId}`">{{ t('Open authorized plan details','打开已授权计划详情') }}</router-link>
         </article>
@@ -67,7 +67,7 @@
           <p>{{ t('Plan lifecycle at generation','生成时计划生命周期') }}: {{ label('lifecycle',event.planLifecycleAtGeneration) }} ({{ event.planLifecycleAtGeneration }}) · {{ t('Current version at generation','生成时是否当前版本') }}: {{ event.revisionIsCurrentAtGeneration ? t('Yes','是') : t('No','否') }}</p>
           <p>{{ event.actorName }} #{{ event.actorId }} · {{ label('actorRole',event.actorRole) }} ({{ event.actorRole }}) · {{ t('Relation','关系') }}: {{ label('actorRelation',event.actorRelation) }} ({{ event.actorRelation }}) · {{ event.entryMode ? label('entryMode',event.entryMode) : t('Entry mode: not applicable','记录方式：不适用') }}</p><p v-if="event.followUpKind">{{ label('followUpKind',event.followUpKind) }}</p>
           <p>{{ t('Recorded','记录时间') }} {{ instant(event.recordedAt) }}<template v-if="event.occurredAt"><br/>{{ t('Occurred','实际执行时间') }} {{ instant(event.occurredAt) }}</template></p>
-          <ul><li v-for="(e,index) in event.evidence" :key="index"><router-link v-if="evidencePath(e)" :to="evidencePath(e)">{{ e.title }} · {{ label('sourceType',e.sourceType) }} ({{ e.sourceType }}) #{{ e.sourceId }}</router-link><span v-else>{{ t('A restricted or unavailable linked record exists','存在受限或不可用的关联记录') }}</span></li></ul>
+          <ul><li v-for="(e,index) in event.evidence" :key="index"><router-link v-if="evidencePath(e)" :to="evidencePath(e)">{{ e.title }} · {{ label('sourceType',e.sourceType) }} ({{ e.sourceType }}) #{{ e.sourceId }}</router-link><span v-else>{{ t('A restricted or unavailable linked record exists','存在受限或不可用的关联记录') }}</span><span v-if="evidenceSourceStatus(e)" data-testid="evidence-source-status"> · {{ evidenceSourceStatus(e) }}</span></li></ul>
         </article>
       </section>
       <section><h3>{{ t('Current visit questions','当前就诊问题') }}</h3><p>{{ label('questionsAvailability',report.questionsAvailability) }}</p>
@@ -114,6 +114,17 @@ if(typeof window !== 'undefined') {
 function instant(value, zone = state.report?.metadata.timeZone || form.timeZone) { try { return formatReportInstant(value, zone, form.language) } catch { return t('Time unavailable','时间不可用') } }
 const legacy = value => formatLegacyQuestionTime(value,form.language)
 const evidencePath = evidence => safeEvidencePath(evidence,state.report?.patient.id)
+const evidenceSourceLabels = {"CURRENT": ["Current", "当前"], "UNTRACKED": ["Legacy source; untracked", "旧版来源，未跟踪"], "UNKNOWN_NEEDS_RECHECK": ["Reference needs rechecking", "引用需重新核对"], "SOURCE_REVIEW_REQUIRED": ["Source verification required", "来源需核对"], "SOURCE_CHANGED": ["Source changed; recheck reference", "来源已变化，需重新核对引用"], "SOURCE_INVALIDATED": ["Source invalidated", "来源已作废"], "SOURCE_UNAVAILABLE": ["Source status unavailable", "来源状态不可用"]}
+function evidenceSourceStatus(e) {
+  if (e?.sourceType !== 'MEDICAL_RECORD' || !evidencePath(e)) return null
+  const metadata = report.value?.metadata, unavailable = t('Snapshot source status unavailable','快照来源状态不可用')
+  if (typeof metadata?.currentAsOf !== 'string' || !metadata.currentAsOf.trim() || typeof metadata.timeZone !== 'string' || !metadata.timeZone.trim()) return unavailable
+  let asOf
+  try { asOf = formatReportInstant(metadata.currentAsOf, metadata.timeZone, form.language) } catch { return unavailable }
+  const values = typeof e.sourceStatus === 'string' && Object.hasOwn(evidenceSourceLabels, e.sourceStatus) ? evidenceSourceLabels[e.sourceStatus] : evidenceSourceLabels.SOURCE_UNAVAILABLE
+  const label = t(...values)
+  return t(`Linked source status as of ${asOf}: ${label}`, `关联来源状态（截至${asOf}）：${label}`)
+}
 async function generate() { if (!valid.value || busy.value) return {status:'stale'}; generation.value++; const result = await client.preview(); if(result.status==='succeeded')stale.value=false; return result }
 async function download(format) { if (valid.value && !busy.value) { generation.value++; return client.download(format) } }
 defineExpose({ refresh: generate, state, context, generation, clear })

@@ -13,6 +13,8 @@ import java.util.*;
 
 @Service
 public class FamilyCareService {
+    @Autowired private MedicalRecordReviewAccess medicalAccess;
+    @Autowired private org.springframework.jdbc.datasource.DataSourceTransactionManager humanTransactions;
     @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
     @Autowired private org.familyhealthcare.service.visitquestion.VisitQuestionProjection questionProjection;
     @Autowired private org.familyhealthcare.service.visitquestion.VisitQuestionLegacyAdapter questions;
@@ -77,12 +79,90 @@ public class FamilyCareService {
         activity(v,"Create or Edit: "+v.getTitle());return v;
     }
     private List<CareItem> projectReports(Long patient,List<CareItem> rows) {
-        List<Long> ids=new ArrayList<>();for(CareItem row:rows){Object report=row.getDetails().get("reportId");if(report!=null)try{ids.add(Long.valueOf(report.toString()));row.setReportSourceStatus("SOURCE_UNAVAILABLE");}catch(NumberFormatException ignored){row.setReportSourceStatus("SOURCE_UNAVAILABLE");}}
-        if(ids.isEmpty())return rows;try{scope.requirePatientAccess(patient,"MEDICAL",false);}catch(IllegalStateException denied){return rows;}
-        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=new HashMap<>();for(int start=0;start<ids.size();start+=100)states.putAll(medical.batch(ids.subList(start,Math.min(start+100,ids.size()))));
-        for(CareItem row:rows){Object report=row.getDetails().get("reportId");if(report!=null)try{org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state=states.get(Long.valueOf(report.toString()));if(state!=null&&Objects.equals(state.patientId,patient))row.setReportSourceStatus(state.managed?(state.eligible()?"UNKNOWN_NEEDS_RECHECK":state.status()):"UNTRACKED");}catch(NumberFormatException ignored){}}
+        LinkedHashSet<Long> ids=new LinkedHashSet<>();
+        for(CareItem row:rows){Object report=row.getDetails().get("reportId");if(report!=null){row.setReportSourceStatus("SOURCE_UNAVAILABLE");try{long id=Long.parseLong(report.toString());ids.add(id);}catch(NumberFormatException ignored){}}}
+        if(ids.isEmpty()||!reportMedicalAccess(patient))return rows;
+        for(long id:ids)org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionContracts.id(id);
+        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> observed=reportObservations(patient,new ArrayList<>(ids));
+        for(CareItem row:rows){Object report=row.getDetails().get("reportId");if(report!=null)try{
+            org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation link=observed.get(Long.valueOf(report.toString()));
+            if(link!=null&&link.metadataAvailable){String status=link.sourceStatus;if("CURRENT".equals(status)&&(link.nativeState.managed||link.sourceState!=null||link.doctorState!=null))status="UNKNOWN_NEEDS_RECHECK";row.setReportSourceStatus(status);}
+        }catch(NumberFormatException ignored){}}
         return rows;
     }
+    private boolean reportMedicalAccess(Long patient){try{scope.requirePatientAccess(patient,"MEDICAL",false);return true;}catch(IllegalStateException denied){return false;}}
+    private void reportGraph(){medicalValidity.requireDataSource(jdbc.getDataSource());medicalAccess.requireDataSource(jdbc.getDataSource());if(humanTransactions==null||humanTransactions.getDataSource()!=jdbc.getDataSource())throw reportUnavailable();}
+    private Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> reportObservations(Long patient,List<Long> ids) {
+        reportGraph();ReportOwner owner=new ReportOwner(false);medicalValidity.open();Map<Long,MedicalRecord> headers=reportHeaders(patient,ids,owner);owner.verify();
+        if(headers.isEmpty()){if(!reportMedicalAccess(patient)){owner.verify();return Collections.emptyMap();}owner.verify();return Collections.emptyMap();}
+        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> result;
+        if(owner.actual&&!owner.readOnly) {
+            result=reportSweep(patient,ids,headers,owner);
+            if(!sameReportHeaders(headers,reportHeaders(patient,ids,owner)))throw reportChanged();
+        } else {
+            if(!reportAdmission(headers,owner.actor)){owner.verify();return Collections.emptyMap();}owner.verify();
+            if(owner.actual) {
+                org.springframework.transaction.support.TransactionTemplate current=new org.springframework.transaction.support.TransactionTemplate(humanTransactions);
+                current.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);current.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);current.setReadOnly(true);
+                try{result=current.execute(status->{ReportOwner inner=new ReportOwner(true);if(inner.holder==owner.holder||inner.connection==owner.connection)throw reportUnavailable();return stableReports(patient,ids,headers,inner);});}
+                finally{owner.verify();}
+            }else result=stableReports(patient,ids,headers,owner);
+            if(!reportAdmission(headers,owner.actor)){owner.verify();return Collections.emptyMap();}
+        }
+        if(!reportMedicalAccess(patient)){owner.verify();return Collections.emptyMap();}owner.verify();
+        if(result==null)throw reportUnavailable();
+        for(org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation link:result.values())if(link!=null&&!link.metadataAvailable)return Collections.emptyMap();
+        return result;
+    }
+    /** This E2 entrypoint exposes its exact permission-denial subtype as IllegalStateException; infrastructure failures are WorkflowException. */
+    private boolean reportAdmission(Map<Long,MedicalRecord> headers,long actor){try{medicalAccess.requireReadAdmission(headers.values(),actor);return true;}catch(IllegalStateException denied){return false;}}
+    private Map<Long,MedicalRecord> reportHeaders(Long patient,List<Long> ids,ReportOwner owner) {
+        Map<Long,MedicalRecord> result=new LinkedHashMap<>();
+        for(int start=0;start<ids.size();start+=100){List<Long> part=ids.subList(start,Math.min(start+100,ids.size()));List<Object> args=new ArrayList<>();args.add(patient);args.addAll(part);
+            List<MedicalRecord> selected=jdbc.query("SELECT id,patient_id,user_id,content_version,verification_status FROM medical_record WHERE patient_id=? AND id IN ("+String.join(",",Collections.nCopies(part.size(),"?"))+") ORDER BY id LIMIT "+(part.size()+1),statement->{owner.verify();statement.setQueryTimeout(owner.actual&&owner.holder.hasTimeout()?Math.min(5,owner.holder.getTimeToLiveInSeconds()):5);for(int n=0;n<args.size();n++)statement.setObject(n+1,args.get(n));},(r,n)->{MedicalRecord header=new MedicalRecord();header.setId(r.getLong("id"));header.setPatientId(org.familyhealthcare.service.workflow.WorkflowData.nullableId(r,"patient_id"));header.setUserId(org.familyhealthcare.service.workflow.WorkflowData.nullableId(r,"user_id"));header.setContentVersion(org.familyhealthcare.service.workflow.WorkflowData.nullableId(r,"content_version"));header.setVerificationStatus(r.getString("verification_status"));return header;});
+            for(MedicalRecord header:selected)if(!part.contains(header.getId())||!Objects.equals(patient,header.getPatientId())||result.put(header.getId(),header)!=null)throw reportChanged();
+        }return result;
+    }
+    private static boolean sameReportHeader(MedicalRecord a,MedicalRecord b){return a!=null&&b!=null&&Objects.equals(a.getId(),b.getId())&&Objects.equals(a.getPatientId(),b.getPatientId())&&Objects.equals(a.getUserId(),b.getUserId())&&Objects.equals(a.getContentVersion(),b.getContentVersion())&&Objects.equals(a.getVerificationStatus(),b.getVerificationStatus());}
+    private static boolean sameReportHeaders(Map<Long,MedicalRecord> a,Map<Long,MedicalRecord> b){if(!a.keySet().equals(b.keySet()))return false;for(long id:a.keySet())if(!sameReportHeader(a.get(id),b.get(id)))return false;return true;}
+    private Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> reportSweep(Long patient,List<Long> inventory,Map<Long,MedicalRecord> headers,ReportOwner owner) {
+        owner.verify();Map<Long,MedicalRecord> current=reportHeaders(patient,inventory,owner);owner.verify();
+        for(long id:current.keySet())if(!sameReportHeader(headers.get(id),current.get(id)))throw reportChanged();
+        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> result=new LinkedHashMap<>();for(long id:inventory)result.put(id,null);
+        List<Long> ids=new ArrayList<>(current.keySet());org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();
+        for(int start=0;start<ids.size();start+=100){List<Long> part=ids.subList(start,Math.min(start+100,ids.size()));Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> batch=medical.humanLinkBatch(part);owner.verify();
+            if(batch==null||!new HashSet<>(part).containsAll(batch.keySet()))throw reportChanged();
+            for(Map.Entry<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> entry:batch.entrySet()){
+                long id=entry.getKey();org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation link=entry.getValue();MedicalRecord header=headers.get(id);
+                if(link==null||link.nativeState==null||link.nativeState.id!=id||!Objects.equals(header.getPatientId(),link.nativeState.patientId)||!Objects.equals(header.getUserId(),link.nativeState.ownerId)||!Objects.equals(header.getContentVersion(),link.nativeState.version)||!Objects.equals(header.getVerificationStatus(),link.nativeState.review))throw reportChanged();
+                if(link.metadataAvailable&&(link.checkedAt==null||link.qualificationSemantics!=(owner.actual&&owner.isolation==java.sql.Connection.TRANSACTION_REPEATABLE_READ?org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader.Semantics.CALLER_TRANSACTION_SNAPSHOT:org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader.Semantics.CURRENT_CHECK)))throw reportUnavailable();result.put(id,link);
+            }
+        }owner.verify();return result;
+    }
+    private Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> stableReports(Long patient,List<Long> ids,Map<Long,MedicalRecord> headers,ReportOwner owner) {
+        Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> previous=null;
+        for(int pass=0;pass<3;pass++){Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation> current=reportSweep(patient,ids,headers,owner);boolean equal=previous!=null&&previous.keySet().equals(current.keySet());if(equal)for(long id:current.keySet()){org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation a=previous.get(id),b=current.get(id);if(a==null?b!=null:!a.sameObservedFacts(b)){equal=false;break;}}if(equal)return current;previous=current;}return Collections.emptyMap();
+    }
+    private final class ReportOwner {
+        final Thread thread=Thread.currentThread();final long actor=scope.requireUserId();
+        final boolean actual=org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive(),readOnly=org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        final org.springframework.jdbc.datasource.ConnectionHolder holder;final org.springframework.jdbc.datasource.SimpleConnectionHandle handle;final java.sql.Connection connection;final int isolation;
+        ReportOwner(boolean privateCurrent) {
+            reportGraph();Object resource=org.springframework.transaction.support.TransactionSynchronizationManager.getResource(jdbc.getDataSource());
+            if(!actual){holder=null;handle=null;connection=null;isolation=0;verify();return;}
+            if(resource==null||resource.getClass()!=org.springframework.jdbc.datasource.ConnectionHolder.class)throw reportUnavailable();holder=(org.springframework.jdbc.datasource.ConnectionHolder)resource;
+            if(holder.getConnectionHandle()==null||holder.getConnectionHandle().getClass()!=org.springframework.jdbc.datasource.SimpleConnectionHandle.class)throw reportUnavailable();handle=(org.springframework.jdbc.datasource.SimpleConnectionHandle)holder.getConnectionHandle();connection=handle.getConnection();
+            try{isolation=connection.getTransactionIsolation();}catch(java.sql.SQLException|NullPointerException failure){throw reportUnavailable();}
+            if(readOnly&&isolation!=java.sql.Connection.TRANSACTION_REPEATABLE_READ&&!(privateCurrent&&isolation==java.sql.Connection.TRANSACTION_READ_COMMITTED))throw reportUnavailable();verify();
+        }
+        void verify(){reportGraph();if(thread!=Thread.currentThread()||actor!=scope.requireUserId()||actual!=org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()||readOnly!=org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly())throw reportUnavailable();Object resource=org.springframework.transaction.support.TransactionSynchronizationManager.getResource(jdbc.getDataSource());
+            if(!actual){if(resource!=null||org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive())throw reportUnavailable();return;}
+            if(!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()||resource!=holder||!holder.isSynchronizedWithTransaction()||holder.isRollbackOnly()||holder.getConnectionHandle()!=handle||handle.getConnection()!=connection)throw reportUnavailable();
+            try{if(connection==null||holder.getConnection()!=connection||connection.isClosed()||connection.getAutoCommit()||connection.getTransactionIsolation()!=isolation||isolation!=java.sql.Connection.TRANSACTION_READ_COMMITTED&&isolation!=java.sql.Connection.TRANSACTION_REPEATABLE_READ)throw reportUnavailable();}catch(java.sql.SQLException|IllegalStateException failure){throw reportUnavailable();}
+        }
+    }
+    private static org.familyhealthcare.service.workflow.WorkflowException reportUnavailable(){return new org.familyhealthcare.service.workflow.WorkflowException(503,"CURRENT_RESULT_UNAVAILABLE","Current linked-source metadata could not be verified.");}
+    private static org.familyhealthcare.service.workflow.WorkflowException reportChanged(){return new org.familyhealthcare.service.workflow.WorkflowException(409,"CURRENT_RESULT_UNAVAILABLE","Current linked-source metadata could not be verified.");}
     private void validateOrder(CareItem v){Map<String,Object>d=v.getDetails();
         if(!Boolean.TRUE.equals(d.get("confirmed")))throw new IllegalArgumentException("Please Confirmalready based onClinicianprescriptionverifysolution");
         Medication m=medications.selectById(Long.valueOf(String.valueOf(d.get("medicationId"))));if(m==null||!Objects.equals(m.getPatientId(),v.getPatientId()))throw new IllegalArgumentException("SelectcurrentFamily Member Medication");

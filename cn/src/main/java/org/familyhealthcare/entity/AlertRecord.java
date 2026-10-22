@@ -28,6 +28,19 @@ public class AlertRecord {
     @com.baomidou.mybatisplus.annotation.TableField(exist=false)
     private String sourceStatus;
 
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String sourceBindingStatus;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String currentSourceStatus;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String sourceQualificationSemantics;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String sourceQualificationAt;
+
+
     @ApiModelProperty("PatientID")
     private Long patientId;
 

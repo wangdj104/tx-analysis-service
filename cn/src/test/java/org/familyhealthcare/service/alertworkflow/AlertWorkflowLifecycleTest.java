@@ -294,24 +294,24 @@ class AlertWorkflowHarness {
     final org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
     final AlertWorkflowService service;final AlertWorkflowQueryService query;final AlertWorkflowNotificationQueue queue;long nextSource=101;final String time=AlertWorkflowTestDatabase.NOW.minusSeconds(60).toString();
     AlertWorkflowHarness() throws Exception {
-        db=new AlertWorkflowTestDatabase();db.fixtures();db.sourceTables();db.workflowTables();
+        db=new AlertWorkflowTestDatabase(true);db.fixtures();db.sourceTables();db.workflowTables();
         db.jdbc.execute("CREATE TABLE notification_channel(id BIGINT PRIMARY KEY,user_id BIGINT,enabled INT,channel_type VARCHAR(40))");
         db.jdbc.update("INSERT INTO notification_channel VALUES(1,1,1,'WEBHOOK'),(2,3,1,'WEBHOOK')");
         db.jdbc.update("INSERT INTO health_measurement(id,patient_id,recorded_by,metric_type,value_primary,unit,measured_at) VALUES(101,10,1,'GLUCOSE',18,'mmol/L',?),(202,10,1,'GLUCOSE',8,'mmol/L',?),(303,20,6,'GLUCOSE',18,'mmol/L',?)",AlertWorkflowTestDatabase.NOW,AlertWorkflowTestDatabase.NOW,AlertWorkflowTestDatabase.NOW);
         db.jdbc.update("INSERT INTO medical_record(id,patient_id) VALUES(77,10)");
         p=new AlertWorkflowProperties(true,Clock.fixed(AlertWorkflowTestDatabase.NOW,ZoneOffset.UTC));auth=new AlertWorkflowAuthorizationService(db.jdbc,p,new CarePlanProperties(true,Clock.fixed(AlertWorkflowTestDatabase.NOW,ZoneOffset.UTC)));repo=new AlertWorkflowRepository(db.jdbc,p,auth);
         queue=new AlertWorkflowNotificationQueue(db.jdbc,auth,p);AlertWorkflowEventStore events=new AlertWorkflowEventStore(repo,auth);AlertWorkflowEvidenceService evidence=new AlertWorkflowEvidenceService(db.jdbc,repo,auth,p);
-        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection projection=new org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection(db.jdbc,new org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionSchema(),false);
-        medicalValidity=org.mockito.Mockito.spy(projection);
-        java.lang.reflect.Constructor<org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope> scope=org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope.class.getDeclaredConstructor(org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.class,org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionSchema.Status.class);scope.setAccessible(true);
-        org.mockito.Mockito.doReturn(scope.newInstance(projection,org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionSchema.Status.ABSENT)).when(medicalValidity).open();
+        org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader reader=new org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader(db.jdbc,db.manager,new org.familyhealthcare.service.medicalreview.MedicalReviewSchema(),new org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionSchema(),false);
+        medicalValidity=new org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection(db.jdbc,new org.familyhealthcare.service.medicalrecord.MedicalRecordCorrectionSchema(),false,reader);
+        org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions references=new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions(db.jdbc,medicalValidity,db.manager);
+        org.springframework.test.util.ReflectionTestUtils.setField(references,"alertAuthorization",auth);
         org.springframework.test.util.ReflectionTestUtils.setField(evidence,"medicalValidity",medicalValidity);
-        org.springframework.test.util.ReflectionTestUtils.setField(evidence,"medicalReferences",new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions(db.jdbc,medicalValidity));
+        org.springframework.test.util.ReflectionTestUtils.setField(evidence,"medicalReferences",references);
         service=new AlertWorkflowService(db.jdbc,repo,auth,p,events,queue,evidence,new MeasurementAssessmentService(db.jdbc));query=new AlertWorkflowQueryService(db.jdbc,repo,auth,p,evidence);
     }
 
     Map<String,Object> command(long actor,long id,String op,Map<String,Object>b){return command(actor,id,op,b,UUID.randomUUID().toString(),version(id));}
-    Map<String,Object> command(long actor,long id,String op,Map<String,Object>b,String key,long version){return db.tx.execute(s->service.command(actor,id,op,b,key,version));}
+    Map<String,Object> command(long actor,long id,String op,Map<String,Object>b,String key,long version){return org.familyhealthcare.util.CurrentUserUtil.runAsUser(actor,()->db.tx.execute(s->service.command(actor,id,op,b,key,version)));}
     long adopt(){return adopt(nextSource,false);}long adopt(long source,boolean manual){return id(db.tx.execute(s->service.adopt(1L,"HEALTH_MEASUREMENT",source,"GLUCOSE",map("patientId",10,"manualFollowUp",manual,"reason","Follow up this reading"),UUID.randomUUID().toString())).get("alertId"));}
     Map<String,Object> row(long id){return repo.readAlert(1,id);}long version(long id){return id(row(id).get("lockVersion"));}
     void assign(long id,long actor){command(1,id,"ASSIGN",map("reason","Route work","assigneeId",actor));}void accept(long id,long actor){command(actor,id,"ACCEPT",map("assigneeId",actor,"dueAt",null));}

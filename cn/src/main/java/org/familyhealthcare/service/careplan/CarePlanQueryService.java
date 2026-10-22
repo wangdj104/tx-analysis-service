@@ -1,5 +1,24 @@
 package org.familyhealthcare.service.careplan;
 
+import org.familyhealthcare.entity.MedicalRecord;
+import org.familyhealthcare.service.MedicalRecordReviewAccess;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.HumanLinkObservation;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.CareEvidenceReadFrame;
+import org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.ReferenceSnapshot;
+import org.familyhealthcare.service.medicalreview.MedicalReviewQualificationReader.Semantics;
+import org.familyhealthcare.service.workflow.WorkflowException;
+import org.familyhealthcare.util.CurrentUserUtil;
+import org.springframework.jdbc.datasource.ConnectionHolder;
+import org.springframework.jdbc.datasource.SimpleConnectionHandle;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -19,14 +38,19 @@ public class CarePlanQueryService {
     @org.springframework.beans.factory.annotation.Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
     @org.springframework.beans.factory.annotation.Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions medicalReferences;
 
+    @org.springframework.beans.factory.annotation.Autowired private MedicalRecordReviewAccess medicalAccess;
+    @org.springframework.beans.factory.annotation.Autowired private DataSourceTransactionManager medicalTransactions;
+
     private final JdbcTemplate jdbc;private final CarePlanAuthorizationService auth;private final CarePlanProperties properties;
     private static final Set<String> QUEUES=new HashSet<>(Arrays.asList("TODAY","REVIEW","HELP","OVERDUE","HISTORY"));
     public CarePlanQueryService(JdbcTemplate jdbc,CarePlanAuthorizationService auth,CarePlanProperties properties){this.jdbc=jdbc;this.auth=auth;this.properties=properties;}
 
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> list(long actorId,Long patientId,String queue,String cursor,int limit){return list(actorId,patientId,queue,cursor,limit,null);}
     /** TODAY accepts the browser's next local midnight as an exclusive UTC cutoff. */
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> list(long actorId,Long patientId,String queue,String cursor,int limit,String dueBefore){
-        properties.requireEnabled();limit(limit);if(!QUEUES.contains(queue))throw CarePlanException.invalid("不支持此照护计划队列。");
+        EvidenceSelection selection=new EvidenceSelection();properties.requireEnabled();limit(limit);if(!QUEUES.contains(queue))throw CarePlanException.invalid("不支持此照护计划队列。");
 
         if(dueBefore!=null&&!"TODAY".equals(queue))throw CarePlanException.invalid("dueBefore is only valid for TODAY.");
         Instant cutoff=null;
@@ -54,22 +78,24 @@ public class CarePlanQueryService {
             List<Map<String,Object>>rows=query(sql,(rs,i)->map("id",rs.getLong("id"),"patientId",rs.getLong("patient_id"),"sortAt",time(rs,"sort_at")),args);
             if(rows.isEmpty())break;exhausted=rows.size()<limit+1;
             for(Map<String,Object>row:rows){last=new String[]{(String)row.get("sortAt"),row.get("id").toString()};
-                try {Map<String,Object>view=detail(actorId,id(row.get("id")),false);view.put("_cursor",last);items.add(view);}
+                try {Map<String,Object>view=detail(actorId,id(row.get("id")),false,selection);view.put("_cursor",last);items.add(view);}
                 catch(CarePlanException ex){if(ex.getStatus()!=403)throw ex;}
                 if(items.size()>limit)break;
             }
         }
         String next=null;if(items.size()>limit){items.remove(items.size()-1);String[] key=(String[])items.get(items.size()-1).get("_cursor");next=encode("PLAN",actorId,scope,cursorQueue,key[0],key[1]);}
-        for(Map<String,Object>item:items)item.remove("_cursor");projectMedicalEvidence(items);return map("items",items,"nextCursor",next);
+        for(Map<String,Object>item:items)item.remove("_cursor");projectMedicalEvidence(actorId,items,selection);return map("items",items,"nextCursor",next);
     }
-    public Map<String,Object> detail(long actorId,long planId){return detail(actorId,planId,true);}
-    private Map<String,Object> detail(long actorId,long planId,boolean project){
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Map<String,Object> detail(long actorId,long planId){return detail(actorId,planId,true,new EvidenceSelection());}
+    private Map<String,Object> detail(long actorId,long planId,boolean project,EvidenceSelection selection){
         Map<String,Object>plan=plan(actorId,planId);boolean clinical=clinical(actorId,id(plan.get("patientId")));
         Long selected=(Long)plan.get("currentRevisionId");
         if(selected==null){if(!clinical)throw CarePlanException.denied();selected=(Long)plan.get("draftRevisionId");}
-        if(selected==null)throw CarePlanException.denied();Map<String,Object> result=snapshot(actorId,plan,selected,clinical);if(project)projectMedicalEvidence(Collections.singletonList(result));return result;
+        if(selected==null)throw CarePlanException.denied();Map<String,Object> result=snapshot(actorId,plan,selected,clinical,selection);if(project)projectMedicalEvidence(actorId,Collections.singletonList(result),selection);return result;
     }
-    public Map<String,Object> revision(long actorId,long planId,long revisionId){Map<String,Object>plan=plan(actorId,planId);Map<String,Object> result=snapshot(actorId,plan,revisionId,clinical(actorId,id(plan.get("patientId"))));projectMedicalEvidence(Collections.singletonList(result));return result;}
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Map<String,Object> revision(long actorId,long planId,long revisionId){EvidenceSelection selection=new EvidenceSelection();Map<String,Object>plan=plan(actorId,planId);Map<String,Object> result=snapshot(actorId,plan,revisionId,clinical(actorId,id(plan.get("patientId"))),selection);projectMedicalEvidence(actorId,Collections.singletonList(result),selection);return result;}
     public Map<String,Object> listRevisions(long actorId,long planId,String cursor,int limit){
         limit(limit);Map<String,Object>plan=plan(actorId,planId);boolean clinical=clinical(actorId,id(plan.get("patientId")));
         String[]after=cursor(cursor,"REVISION",actorId,Long.toString(planId),"HISTORY");
@@ -102,7 +128,7 @@ public class CarePlanQueryService {
         if(row.get("currentRevisionId")==null)auth.requireClinical(actor,patient);return row;
     }
     private boolean clinical(long actor,long patient){try{auth.requireClinical(actor,patient);return true;}catch(CarePlanException ex){if(ex.getStatus()!=403)throw ex;return false;}}
-    private Map<String,Object>snapshot(long actor,Map<String,Object>aggregate,long revisionId,boolean clinical){
+    private Map<String,Object>snapshot(long actor,Map<String,Object>aggregate,long revisionId,boolean clinical,EvidenceSelection selection){
         long plan=id(aggregate.get("id")),patient=id(aggregate.get("patientId"));
         List<Map<String,Object>>rows=jdbc.query("SELECT id,revision_no,status,title,instructions,plan_type,draft_json FROM care_plan_revision WHERE id=? AND plan_id=?",(rs,i)->map("revisionId",rs.getLong("id"),"revisionNo",rs.getInt("revision_no"),"revisionStatus",rs.getString("status"),"title",rs.getString("title"),"instructions",rs.getString("instructions"),"planType",rs.getString("plan_type"),"draftJson",rs.getString("draft_json")),revisionId,plan);
         if(rows.isEmpty())throw CarePlanException.denied();Map<String,Object>revision=rows.get(0);boolean draft="DRAFT".equals(revision.get("revisionStatus"));
@@ -113,7 +139,7 @@ public class CarePlanQueryService {
 
         if(!clinical)view.put("draftRevisionId",null);
         else if(view.get("currentRevisionId")!=null)view.put("revisionImpact",revisionImpact(plan,(Long)view.get("currentRevisionId")));
-        return view;
+        selection.clinicalViews.put(view,clinical);return view;
     }
     /** UI hints use the same current gates; command services independently enforce every action. */
     @SuppressWarnings("unchecked")private void applyCapabilities(long actor,long patient,Map<String,Object>view,boolean clinical){
@@ -172,14 +198,14 @@ public class CarePlanQueryService {
     }
     /** Replays keep their original version/body, but evidence permissions are never cached. */
     @SuppressWarnings("unchecked")Map<String,Object>refreshEvidence(long actor,Map<String,Object>original){
-        Map<String,Object>view=object(json(original));Map<String,Object>current=plan(actor,id(view.get("id")));long patient=id(current.get("patientId"));auth.requireClinical(actor,patient);
+        EvidenceSelection selection=new EvidenceSelection();Map<String,Object>view=object(json(original));Map<String,Object>current=plan(actor,id(view.get("id")));long patient=id(current.get("patientId"));auth.requireClinical(actor,patient);
         if(patient!=id(view.get("patientId")))throw CarePlanException.denied();
         for(Map<String,Object>action:(List<Map<String,Object>>)view.get("actions")){
             action.put("evidence",evidenceViews(actor,patient,evidence(action)));
             for(Map<String,Object>event:(List<Map<String,Object>>)action.get("events"))event.put("evidence",evidenceViews(actor,patient,evidence(event)));
         }
-        projectMedicalEvidence(Collections.singletonList(view));
         refreshCapabilities(actor,patient,view,current);
+        selection.clinicalViews.put(view,true);projectMedicalEvidence(actor,Collections.singletonList(view),selection);
         return view;
     }
     /** Retain original snapshot data/version, but intersect its controls with current authority/state. */
@@ -202,20 +228,143 @@ public class CarePlanQueryService {
     private static List<String>retainedControls(Object original,Object current){
         List<String>result=new ArrayList<>();if(original instanceof List&&current instanceof List)for(Object value:(List<?>)original)if(((List<?>)current).contains(value))result.add((String)value);return result;
     }
-    /** 先按既有来源权限生成视图，再在整个返回范围内批量附加状态；不逐事件查询状态。 */
-    @SuppressWarnings("unchecked") private void projectMedicalEvidence(List<Map<String,Object>> views) {
-        List<Map<String,Object>> refs=new ArrayList<>();Map<Map<String,Object>,Long> patients=new IdentityHashMap<>();
-        for(Map<String,Object> view:views){long patient=id(view.get("patientId"));for(Map<String,Object> action:(List<Map<String,Object>>)view.get("actions")){
-            List<Map<String,Object>> grouped=new ArrayList<>(evidence(action));for(Map<String,Object> event:(List<Map<String,Object>>)action.get("events"))grouped.addAll(evidence(event));
-            for(Map<String,Object> ref:grouped)if("MEDICAL_RECORD".equals(ref.get("sourceType"))&&!Boolean.TRUE.equals(ref.get("restricted"))){refs.add(ref);patients.put(ref,patient);}
-        }}
-        if(refs.isEmpty())return;org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope scope=medicalValidity.open();
-        List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> anchors=new ArrayList<>();Set<Long> sourceIds=new LinkedHashSet<>();
-        for(Map<String,Object> ref:refs){sourceIds.add(id(ref.get("sourceId")));if(ref.get("anchorId")!=null)anchors.add(new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor(id(ref.get("anchorId")),patients.get(ref),id(ref.get("sourceId")),null));}
-        List<Long> sources=new ArrayList<>(sourceIds);Map<Long,org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State> states=new HashMap<>();for(int i=0;i<sources.size();i+=100)states.putAll(scope.batch(sources.subList(i,Math.min(i+100,sources.size()))));
-        Map<Long,String> statuses=new HashMap<>();for(int i=0;i<anchors.size();i+=100)statuses.putAll(medicalReferences.projectStatuses(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind.CARE_PLAN_EVIDENCE,anchors.subList(i,Math.min(i+100,anchors.size())),scope,states));
-        for(Map<String,Object> ref:refs){String status=statuses.get(ref.get("anchorId"));if(ref.get("anchorId")==null){org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State state=states.get(id(ref.get("sourceId")));status=state==null||!Objects.equals(state.patientId,patients.get(ref))?"SOURCE_UNAVAILABLE":state.managed?(state.eligible()?"UNKNOWN_NEEDS_RECHECK":state.status()):"UNTRACKED";}ref.put("sourceStatus",status==null?"SOURCE_UNAVAILABLE":status);}
+    /** A fixed selected inventory; qualification is published only after the complete release checks. */
+    @SuppressWarnings("unchecked") private void projectMedicalEvidence(long actor,List<Map<String,Object>> views,EvidenceSelection selected) {
+        for(Map<String,Object> view:views) {
+            long patient=id(view.get("patientId"));boolean clinical=Boolean.TRUE.equals(selected.clinicalViews.get(view));
+            selected.patients.put(patient,Boolean.TRUE.equals(selected.patients.get(patient))||clinical);
+            for(Map<String,Object> action:(List<Map<String,Object>>)view.get("actions")) {
+                List<Map<String,Object>> grouped=new ArrayList<>(evidence(action));for(Map<String,Object> event:(List<Map<String,Object>>)action.get("events"))grouped.addAll(evidence(event));
+                for(Map<String,Object> ref:grouped)if("MEDICAL_RECORD".equals(ref.get("sourceType"))&&!Boolean.TRUE.equals(ref.get("restricted")))selected.add(ref,patient);
+            }
+        }
+        try {
+            EvidenceResource owner=new EvidenceResource(actor,selected);boolean writable=!owner.readOnly;
+            if(!writable&&owner.isolation!=Connection.TRANSACTION_REPEATABLE_READ)throw evidenceUnavailable();
+            if(selected.refs.isEmpty()){if(writable)evidenceAuthority(actor,selected,false);else currentEvidenceFrame(actor,selected,owner,false);owner.verify();return;}
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){
+                @Override public void afterCompletion(int status){if(status!=STATUS_COMMITTED)selected.clear();}
+            });
+            Map<Long,String> unbound=new LinkedHashMap<>();CareEvidenceReadFrame snapshot;
+            if(writable) {
+                evidenceAuthority(actor,selected,true);owner.verify();
+                MedicalRecordValidityProjection.Scope scope=medicalValidity.open();
+                snapshot=medicalReferences.readCareEvidenceFrame(new ArrayList<>(selected.anchors.values()),Collections.emptyList(),scope);
+                validateEvidenceFrame(selected,snapshot,selected.boundSources,owner.isolation==Connection.TRANSACTION_REPEATABLE_READ?Semantics.CALLER_TRANSACTION_SNAPSHOT:Semantics.CURRENT_CHECK);
+                List<Long> human=new ArrayList<>(selected.sources.keySet());human.removeAll(selected.boundSources);
+                for(int offset=0;offset<human.size();offset+=100) {
+                    List<Long> chunk=human.subList(offset,Math.min(offset+100,human.size()));Map<Long,HumanLinkObservation> observed=scope.humanLinkBatch(chunk);owner.verify();
+                    if(observed==null||!observed.keySet().equals(new LinkedHashSet<>(chunk)))throw evidenceChanged();
+                    for(long source:chunk) {
+                        HumanLinkObservation link=observed.get(source);if(link==null)throw evidenceChanged();State nativeState=link.nativeState;
+                        if(nativeState==null||nativeState.id!=source||nativeState.version==null||!Objects.equals(nativeState.patientId,selected.sources.get(source)))throw evidenceChanged();
+                        String status=link.sourceStatus;
+                        if(!link.metadataAvailable)status="SOURCE_UNAVAILABLE";
+                        else if("CURRENT".equals(status)&&(nativeState.managed||link.sourceState!=null||link.doctorState!=null))status="UNKNOWN_NEEDS_RECHECK";
+                        unbound.put(source,status);
+                    }
+                }
+            } else {
+                snapshot=medicalReferences.readCareEvidenceFrame(new ArrayList<>(selected.anchors.values()),selected.sources.keySet(),medicalValidity.open());
+                validateEvidenceFrame(selected,snapshot,selected.sources.keySet(),Semantics.CALLER_TRANSACTION_SNAPSHOT);owner.verify();
+                evidenceAdmission(actor,selected,snapshot,owner);
+                CareEvidenceReadFrame first=currentEvidenceFrame(actor,selected,owner,true);sameEvidenceFrame(snapshot,first);
+                CareEvidenceReadFrame second=currentEvidenceFrame(actor,selected,owner,true);sameEvidenceFrame(snapshot,second);sameEvidenceFrame(first,second);
+            }
+            Map<Map<String,Object>,String> staged=new IdentityHashMap<>();
+            for(Map<String,Object> ref:selected.refs) {
+                long source=id(ref.get("sourceId"));String status;
+                if(ref.get("anchorId")!=null)status=snapshot.snapshots.get(id(ref.get("anchorId"))).status;
+                else if(unbound.containsKey(source))status=unbound.get(source);
+                else {State state=snapshot.sources.get(source);status=!state.eligible()?state.status():state.managed||state.reviewParticipating?"UNKNOWN_NEEDS_RECHECK":"UNTRACKED";}
+                staged.put(ref,status==null?"SOURCE_UNAVAILABLE":status);
+            }
+            if(writable)evidenceAuthority(actor,selected,true);else {evidenceAdmission(actor,selected,snapshot,owner);currentEvidenceFrame(actor,selected,owner,false);}
+            owner.verify();for(Map<String,Object> ref:selected.refs)ref.put("sourceStatus",staged.get(ref));
+        } catch(WorkflowException failure) {selected.clear();throw new CarePlanException(failure.getStatus(),failure.getErrorCode(),"无法验证当前照护计划依据，请刷新后重试。");}
+        catch(CarePlanException failure){selected.clear();throw failure;}
+        catch(RuntimeException failure){selected.clear();throw evidenceUnavailable();}
+        catch(Error failure){selected.clear();throw failure;}
     }
+    private static final class EvidenceSelection {
+        final Long requestActor=CurrentUserUtil.getCurrentUserId();
+        final Map<Map<String,Object>,Boolean> clinicalViews=new IdentityHashMap<>();
+        final List<Map<String,Object>> refs=new ArrayList<>();final SortedMap<Long,Long> sources=new TreeMap<>();
+        final SortedMap<Long,Boolean> patients=new TreeMap<>();final SortedMap<Long,Anchor> anchors=new TreeMap<>();final Set<Long> boundSources=new TreeSet<>();
+        void add(Map<String,Object> ref,long patient) {
+            long source=id(ref.get("sourceId"));Long prior=sources.putIfAbsent(source,patient);if(prior!=null&&prior!=patient)throw evidenceChanged();refs.add(ref);
+            if(ref.get("anchorId")!=null) {
+                long anchorId=id(ref.get("anchorId"));Anchor anchor=new Anchor(anchorId,patient,source,null),old=anchors.putIfAbsent(anchorId,anchor);
+                if(old!=null&&(old.patient!=patient||old.record!=source))throw evidenceChanged();boundSources.add(source);
+            }
+        }
+        void clear(){for(Map<String,Object> ref:refs)ref.put("sourceStatus","SOURCE_UNAVAILABLE");}
+    }
+    private void validateEvidenceFrame(EvidenceSelection selected,CareEvidenceReadFrame frame,Collection<Long> sources,Semantics semantics) {
+        if(frame==null||frame.qualificationSemantics!=semantics||frame.checkedAt==null||!frame.sources.keySet().equals(new LinkedHashSet<>(sources))||!frame.snapshots.keySet().equals(selected.anchors.keySet()))throw evidenceChanged();
+        for(long source:sources) {
+            State state=frame.sources.get(source);
+            if(state==null||state.id!=source||!state.reviewObserved||state.signature==null||state.version==null||state.version<=0||!Objects.equals(state.patientId,selected.sources.get(source))||state.qualificationSemantics!=semantics||"SOURCE_UNAVAILABLE".equals(state.status()))throw evidenceChanged();
+        }
+        for(ReferenceSnapshot snapshot:frame.snapshots.values())if(snapshot==null||snapshot.signature==null||snapshot.qualificationSemantics!=semantics)throw evidenceChanged();
+    }
+    private static void sameEvidenceFrame(CareEvidenceReadFrame expected,CareEvidenceReadFrame current) {
+        if(!expected.sources.keySet().equals(current.sources.keySet())||!expected.snapshots.keySet().equals(current.snapshots.keySet()))throw evidenceChanged();
+        for(long source:expected.sources.keySet())if(!Objects.equals(expected.sources.get(source).signature,current.sources.get(source).signature))throw evidenceChanged();
+        for(long anchor:expected.snapshots.keySet())if(!Objects.equals(expected.snapshots.get(anchor).signature,current.snapshots.get(anchor).signature))throw evidenceChanged();
+    }
+    private CareEvidenceReadFrame currentEvidenceFrame(long actor,EvidenceSelection selected,EvidenceResource outer,boolean collect) {
+        outer.verify();if(medicalTransactions==null)throw evidenceUnavailable();TransactionTemplate current=new TransactionTemplate(medicalTransactions);current.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        current.setReadOnly(true);current.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        try {
+            return current.execute(status->{
+                EvidenceResource owner=new EvidenceResource(actor,selected);
+                if(!owner.readOnly||owner.isolation!=Connection.TRANSACTION_READ_COMMITTED||owner.holder==outer.holder||owner.connection==outer.connection)throw evidenceUnavailable();
+                evidenceAuthority(actor,selected,false);owner.verify();if(!collect)return null;
+                CareEvidenceReadFrame frame=medicalReferences.readCareEvidenceFrame(new ArrayList<>(selected.anchors.values()),selected.sources.keySet(),medicalValidity.open());
+                validateEvidenceFrame(selected,frame,selected.sources.keySet(),Semantics.CURRENT_CHECK);evidenceAuthority(actor,selected,false);owner.verify();return frame;
+            });
+        } finally {outer.verify();}
+    }
+    private void evidenceAdmission(long actor,EvidenceSelection selected,CareEvidenceReadFrame frame,EvidenceResource owner) {
+        owner.verify();
+        for(long source:selected.sources.keySet()) {
+            State state=frame.sources.get(source);MedicalRecord nativeRecord=new MedicalRecord();nativeRecord.setId(state.id);nativeRecord.setPatientId(state.patientId);nativeRecord.setUserId(state.ownerId);nativeRecord.setContentVersion(state.version);nativeRecord.setVerificationStatus(state.review);
+            // E2's focused singleton denial is the only IllegalStateException escaping this exact call.
+            try{medicalAccess.requireEvidenceAdmission(nativeRecord,actor,selected.sources.get(source));}
+            catch(IllegalStateException denied){throw CarePlanException.denied();}
+            owner.verify();
+        }
+    }
+    private void evidenceAuthority(long actor,EvidenceSelection selected,boolean sources) {
+        requireEvidenceActor(actor,selected);if(selected.patients.isEmpty())auth.requireActiveActor(actor);
+        for(Map.Entry<Long,Boolean> patient:selected.patients.entrySet()){auth.requireRead(actor,patient.getKey());if(patient.getValue())auth.requireClinical(actor,patient.getKey());}
+        if(sources)for(Map.Entry<Long,Long> source:selected.sources.entrySet())if(!auth.canReadEvidence(actor,source.getValue(),"MEDICAL_RECORD",source.getKey()))throw CarePlanException.denied();
+        requireEvidenceActor(actor,selected);
+    }
+    private void evidenceGraph(boolean medical) {
+        if(jdbc.getDataSource()==null||medicalTransactions!=null&&medicalTransactions.getDataSource()!=jdbc.getDataSource())throw evidenceUnavailable();
+        if(medical){if(medicalTransactions==null||medicalValidity==null||medicalReferences==null||medicalAccess==null)throw evidenceUnavailable();medicalValidity.requireDataSource(jdbc.getDataSource());medicalAccess.requireDataSource(jdbc.getDataSource());}
+    }
+    private static void requireEvidenceActor(long actor,EvidenceSelection selected){if(actor<=0||actor>9007199254740991L||!Objects.equals(selected.requestActor,CurrentUserUtil.getCurrentUserId())||(selected.requestActor!=null||!selected.refs.isEmpty())&&!Long.valueOf(actor).equals(selected.requestActor))throw CarePlanException.denied();}
+    private final class EvidenceResource {
+        final Thread thread=Thread.currentThread();final long actor;final EvidenceSelection selected;final ConnectionHolder holder;final SimpleConnectionHandle handle;final Connection connection;final int isolation;final boolean readOnly;
+        EvidenceResource(long actor,EvidenceSelection selected) {
+            this.actor=actor;this.selected=selected;requireEvidenceActor(actor,selected);evidenceGraph(!selected.refs.isEmpty());Object value=TransactionSynchronizationManager.getResource(jdbc.getDataSource());
+            if(!TransactionSynchronizationManager.isActualTransactionActive()||!TransactionSynchronizationManager.isSynchronizationActive()||value==null||value.getClass()!=ConnectionHolder.class)throw evidenceUnavailable();
+            holder=(ConnectionHolder)value;
+            if(!holder.isSynchronizedWithTransaction()||holder.isRollbackOnly()||holder.getConnectionHandle()==null||holder.getConnectionHandle().getClass()!=SimpleConnectionHandle.class)throw evidenceUnavailable();
+            handle=(SimpleConnectionHandle)holder.getConnectionHandle();connection=handle.getConnection();readOnly=TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+            try{if(connection==null)throw evidenceUnavailable();isolation=connection.getTransactionIsolation();}catch(SQLException failure){throw evidenceUnavailable();}verify();
+        }
+        void verify() {
+            requireEvidenceActor(actor,selected);evidenceGraph(!selected.refs.isEmpty());
+            if(thread!=Thread.currentThread()||!TransactionSynchronizationManager.isActualTransactionActive()||!TransactionSynchronizationManager.isSynchronizationActive()||readOnly!=TransactionSynchronizationManager.isCurrentTransactionReadOnly()||TransactionSynchronizationManager.getResource(jdbc.getDataSource())!=holder||!holder.isSynchronizedWithTransaction()||holder.isRollbackOnly()||holder.getConnectionHandle()!=handle||handle.getConnection()!=connection)throw evidenceUnavailable();
+            try{if(holder.getConnection()!=connection||connection.isClosed()||connection.getAutoCommit()||connection.getTransactionIsolation()!=isolation||isolation!=Connection.TRANSACTION_READ_COMMITTED&&isolation!=Connection.TRANSACTION_REPEATABLE_READ)throw evidenceUnavailable();}catch(SQLException|IllegalStateException failure){throw evidenceUnavailable();}
+        }
+    }
+    private static CarePlanException evidenceUnavailable(){return new CarePlanException(503,"CURRENT_RESULT_UNAVAILABLE","无法验证当前照护计划依据，请刷新后重试。");}
+    private static CarePlanException evidenceChanged(){return new CarePlanException(409,"CURRENT_RESULT_UNAVAILABLE","无法验证当前照护计划依据，请刷新后重试。");}
     private List<Map<String,Object>>evidenceViews(long actor,long patient,List<Map<String,Object>>refs){
         List<Map<String,Object>>result=new ArrayList<>();for(Map<String,Object>ref:refs){String type=(String)ref.get("sourceType");long source=id(ref.get("sourceId"));boolean readable=auth.canReadEvidence(actor,patient,type,source);Map<String,Object>view=map("sourceType",type,"sourceId",source,"restricted",!readable);if(readable&&ref.get("anchorId")!=null)view.put("anchorId",ref.get("anchorId"));if("MEDICAL_RECORD".equals(type))view.put("sourceStatus",readable?"UNKNOWN_NEEDS_RECHECK":"SOURCE_UNAVAILABLE");
             if(readable){String table="MEASUREMENT".equals(type)?"health_measurement":"medical_record",column="MEASUREMENT".equals(type)?"metric_type":"record_type";

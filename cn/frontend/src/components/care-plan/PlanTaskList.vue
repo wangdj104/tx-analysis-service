@@ -15,7 +15,7 @@
     <article v-for="plan in state.loading ? [] : taskItems" :key="plan.id" class="plan-card"><header><h3>{{plan.title}}</h3><router-link :to="`/care-plans/${plan.id}`" :data-testid="`open-plan-${plan.id}`">查看计划和版本历史</router-link></header><p>已发布版本 {{plan.revisionNo}} · {{plan.instructions}}</p>
       <router-link :to="`/care-plans/reports?patientId=${plan.patientId || patientId}&planId=${plan.id}`" :data-testid="`plan-execution-report-${plan.id}`">此计划执行报告</router-link>
       <details v-for="action in orderedActions(plan)" :key="action.id" :open="!isHistoryAction(action)" class="action-group" :data-testid="`plan-action-${action.id}`"><summary><span class="action-summary__title"><span v-if="isHistoryAction(action)">已复核及已结束历史 · </span>{{ action.ordinal }}. {{ action.instruction }}</span><span class="action-summary__status">{{ statusLabel(action.status) }}<strong v-if="action.overdue"> · 当前逾期</strong></span></summary><div class="action-card"><p>负责账号 #{{action.assignedUserId}} · 截止时间 {{displayTime(action.dueAt)}}</p><p v-if="action.firstSubmittedAt">原始提交 {{displayTime(action.firstSubmittedAt)}} · {{originalTiming(action)}}</p><p v-if="action.latestSubmittedAt">最近提交 {{displayTime(action.latestSubmittedAt)}}</p><p v-if="action.reviewWaitingSince">自此时间等待医生复核：{{displayTime(action.reviewWaitingSince)}}. 等待医生复核不计作患者延误。</p>
-        <ul v-if="action.evidence?.length"><li v-for="(e,index) in action.evidence || []" :key="index"><span v-if="e.restricted">存在受限的关联记录</span><a v-else-if="safeLink(e.detailLink)" :href="e.detailLink">{{e.title || '既有记录'}}</a><span v-else>{{e.title || '既有记录'}} #{{e.sourceId}}</span></li></ul>
+        <ul v-if="action.evidence?.length"><li v-for="(e,index) in action.evidence || []" :key="index"><span v-if="e.restricted">存在受限的关联记录</span><a v-else-if="safeLink(e.detailLink)" :href="e.detailLink">{{e.title || '既有记录'}}</a><span v-else>{{e.title || '既有记录'}} #{{e.sourceId}}</span><span v-if="evidenceSourceStatus(e)" data-testid="evidence-source-status"> · {{ evidenceSourceStatus(e) }}</span></li></ul>
         <details v-if="action.events?.length" class="action-event-history"><summary>查看活动历史（{{ action.events.length }} 条）</summary>
         <div v-for="event in action.events || []" :key="event.id" class="event"><p>{{eventLabel(event.eventType)}} · {{event.actorName}} · {{roleLabel(event.actorRole)}}<template v-if="event.entryMode"> · {{event.entryMode==='ASSISTED'?'代为录入':'账号所有者自行录入声明'}}</template></p><p v-if="event.note">{{event.note}}</p><p>{{displayTime(event.recordedAt)}}</p></div>
         </details>
@@ -99,6 +99,12 @@ function displayTime(value){if(!value)return '时间不可用';try{return format
 function instantMicros(value){const fraction=value.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1]||'';return BigInt(Date.parse(value))*1000n+BigInt(fraction.padEnd(6,'0').slice(3,6))}
 function originalTiming(action){try{return instantMicros(action.firstSubmittedAt)<=instantMicros(action.dueAt)?'原始提交按时':'原始提交晚于截止时间'}catch{return '原始提交时效不可用'}}
 function safeLink(link){return typeof link==='string'&&link.startsWith('/')&&!link.startsWith('//')&&!/[\u0000-\u0020\u007f\\]/.test(link)}
+const evidenceSourceLabels = {"CURRENT": "当前", "UNTRACKED": "旧版来源，未跟踪", "UNKNOWN_NEEDS_RECHECK": "引用需重新核对", "SOURCE_REVIEW_REQUIRED": "来源需核对", "SOURCE_CHANGED": "来源已变化，需重新核对引用", "SOURCE_INVALIDATED": "来源已作废", "SOURCE_UNAVAILABLE": "来源状态不可用"}
+function evidenceSourceStatus(e) {
+  if (e?.restricted !== false || e.sourceType !== 'MEDICAL_RECORD' || !Number.isSafeInteger(e.sourceId) || e.sourceId <= 0) return null
+  const label = typeof e.sourceStatus === 'string' && Object.hasOwn(evidenceSourceLabels, e.sourceStatus) ? evidenceSourceLabels[e.sourceStatus] : evidenceSourceLabels.SOURCE_UNAVAILABLE
+  return `关联来源状态（上次服务器核对）：${label}`
+}
 function statusLabel(status){return ({OPEN:'待执行或补充信息',NEEDS_HELP:'已请求协助',SUBMITTED:'已提交，等待医生复核',CONFIRMED:'记录已复核',SUPERSEDED:'已被新版本替代',CANCELLED:'已取消'})[status]||'状态不可用'}
 function roleLabel(role){return ({doctor:'医生',nurse:'护理人员',admin:'管理员',patient:'患者账号',owner:'记录所有者',family:'家庭照护者',guardian:'监护人'})[String(role||'').toLowerCase()]||'录入账号'}
 function eventLabel(type){return ({RECEIPT_SUBMITTED:'执行记录已提交',HELP_REQUESTED:'已请求协助',FOLLOW_UP_RECORDED:'照护团队跟进',RECEIPT_CONFIRMED:'医生已复核记录',RECEIPT_RETURNED:'需要补充信息'})[type]||type}

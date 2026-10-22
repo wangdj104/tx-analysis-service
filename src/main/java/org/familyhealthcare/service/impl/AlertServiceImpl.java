@@ -65,8 +65,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
     @Autowired
     private org.familyhealthcare.service.medicalrecord.MedicalRecordThresholdWriter thresholdWriter;
     @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection medicalValidity;
-    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions medicalReferences;
-    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired private org.familyhealthcare.service.medicalrecord.MedicalRecordAlertProjection medicalAlerts;
 
     // ---- rulemanagement ----
 
@@ -137,7 +136,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
         qw.eq("patient_id", patientId);
         if (status != null && !status.isEmpty()) qw.eq("status", status);
         qw.orderByDesc("triggered_at");
-        List<AlertRecord> rows=baseMapper.selectList(qw);projectSourceStatus(rows);return rows;
+        List<AlertRecord> rows=baseMapper.selectList(qw);medicalAlerts.project(rows);return rows;
     }
 
     @Override
@@ -267,15 +266,6 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
         }
     }
 
-    private void projectSourceStatus(List<AlertRecord> rows) {
-        List<AlertRecord> medical=new java.util.ArrayList<>();for(AlertRecord row:rows)if("MEDICAL_RECORD_ITEM".equals(row.getSourceType()))medical.add(row);if(medical.isEmpty())return;
-        org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope view=medicalValidity.open();
-        for(int start=0;start<medical.size();start+=100){List<AlertRecord> part=medical.subList(start,Math.min(start+100,medical.size()));List<Long> ids=new java.util.ArrayList<>();for(AlertRecord row:part)ids.add(row.getSourceId());java.util.Map<Long,Long> parents=new java.util.HashMap<>();jdbc.query("SELECT id,record_id FROM medical_record_item WHERE id IN ("+String.join(",",java.util.Collections.nCopies(ids.size(),"?"))+")",rs->{parents.put(rs.getLong("id"),rs.getLong("record_id"));},ids.toArray());
-            List<org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor> anchors=new java.util.ArrayList<>();for(AlertRecord row:part){row.setSourceStatus("SOURCE_UNAVAILABLE");Long parent=parents.get(row.getSourceId());if(parent!=null&&row.getPatientId()!=null)anchors.add(new org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Anchor(row.getId(),row.getPatientId(),parent,row.getSourceId()));}
-            java.util.Map<Long,String> statuses=medicalReferences.statuses(org.familyhealthcare.service.medicalrecord.MedicalRecordReferenceVersions.Kind.LEGACY_ALERT,anchors,view);for(AlertRecord row:part)if(statuses.containsKey(row.getId()))row.setSourceStatus(statuses.get(row.getId()));
-        }
-    }
-
     // ---- statistics ----
 
     @Override
@@ -305,7 +295,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertRecordMapper, AlertRecord
 
         QueryWrapper<AlertRecord> recentQw = new QueryWrapper<AlertRecord>().apply(LEGACY_ONLY);
         recentQw.eq("patient_id", patientId).orderByDesc("triggered_at").last("limit 5");
-        List<AlertRecord> recent=baseMapper.selectList(recentQw);projectSourceStatus(recent);stats.setRecentAlerts(recent);
+        List<AlertRecord> recent=baseMapper.selectList(recentQw);medicalAlerts.project(recent);stats.setRecentAlerts(recent);
 
         return stats;
     }

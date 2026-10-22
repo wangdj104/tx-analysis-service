@@ -60,12 +60,21 @@ public class VisitActionProjection {
             else statuses.put(anchor,"SOURCE_UNAVAILABLE");
         }
         // 累计所有历史提交的证据，与现CARE_PLAN复核合同一致；51st哨兵不能被截掉称有效。
-        for(int offset=0;offset<medicalAnchors.size();offset+=100) {
-            List<MedicalRecordReferenceVersions.Anchor> part=medicalAnchors.subList(offset,Math.min(offset+100,medicalAnchors.size()));Set<Long> sources=new LinkedHashSet<>();for(MedicalRecordReferenceVersions.Anchor anchor:part)sources.add(anchor.record);
-            MedicalRecordValidityProjection.Scope scope=session.medical();Map<Long,MedicalRecordValidityProjection.State> states=scope.batchSnapshot(sources);
-            for(long source:sources)signatures.put("medical:"+source,states.get(source)==null?null:states.get(source).signature);
-            Map<Long,MedicalRecordReferenceVersions.ReferenceSnapshot> projected=references.projectSnapshot(MedicalRecordReferenceVersions.Kind.CARE_PLAN_EVIDENCE,part,scope,states);
-            for(MedicalRecordReferenceVersions.Anchor anchor:part){MedicalRecordReferenceVersions.ReferenceSnapshot projection=projected.get(anchor.id);statuses.put(anchor.id,projection==null?"SOURCE_UNAVAILABLE":projection.status);signatures.put("reference:"+anchor.id,projection==null?null:projection.signature);}
+        if(!medicalAnchors.isEmpty()) {
+            medical.requireDataSource(repo.jdbcTemplate().getDataSource());
+            MedicalRecordReferenceVersions.CareEvidenceReadFrame frame=references.readCareEvidenceFrame(medicalAnchors,Collections.emptyList(),session.medical());
+            Set<Long> sources=new LinkedHashSet<>(),anchors=new LinkedHashSet<>();for(MedicalRecordReferenceVersions.Anchor anchor:medicalAnchors){sources.add(anchor.record);anchors.add(anchor.id);}
+            if(frame==null||!frame.sources.keySet().equals(sources)||!frame.snapshots.keySet().equals(anchors))throw changed();
+            for(long source:sources) {
+                MedicalRecordValidityProjection.State observed=frame.sources.get(source);
+                if(observed==null||observed.id!=source||!observed.reviewObserved||observed.signature==null)throw changed();
+                signatures.put("medical:"+source,observed.signature);
+            }
+            for(MedicalRecordReferenceVersions.Anchor anchor:medicalAnchors) {
+                MedicalRecordReferenceVersions.ReferenceSnapshot projection=frame.snapshots.get(anchor.id);
+                if(projection==null||projection.status==null||projection.signature==null)throw changed();
+                statuses.put(anchor.id,projection.status);signatures.put("reference:"+anchor.id,projection.signature);
+            }
         }
         for(int offset=0;offset<measurements.size();offset+=100) {
             List<Map<String,Object>> part=measurements.subList(offset,Math.min(offset+100,measurements.size()));Set<Long> sources=new TreeSet<>();for(Map<String,Object> row:part)sources.add(id(row.get("source_id")));

@@ -17,10 +17,11 @@
       <div class="health-hero__main">
         <span class="health-hero__eyebrow">This month’s health status</span>
         <div class="health-hero__title-row">
-          <h2>{{ summary.healthRiskLabel || 'Awaiting data' }}</h2>
+          <h2>{{ healthRiskTitle }}</h2>
           <span class="health-hero__badge">{{ healthRiskText }}</span>
         </div>
         <p class="health-hero__sub">{{ primaryHealthHint }}</p>
+        <p v-if="medicalPresentation.observation" class="health-hero__observation">{{ medicalPresentation.observation }}</p>
         <div class="health-hero__chips">
           <span v-for="item in healthHighlights" :key="item" class="health-chip">{{ item }}</span>
         </div>
@@ -93,7 +94,8 @@
             <router-link to="/medical-record" class="dash-card__link">Medical Records →</router-link>
           </header>
           <el-table
-            :data="summary.recentAbnormalItems || []"
+            v-if="medicalPresentation.available"
+            :data="summary.recentAbnormalItems"
             size="small"
             class="app-data-table dash-table"
             :max-height="tableMaxHeight"
@@ -108,6 +110,7 @@
               </template>
             </el-table-column>
           </el-table>
+          <p v-else class="medical-qualification-message">{{ medicalPresentation.message }}</p>
         </article>
 
         <article v-if="hasMenu('/dialysis')" class="dash-card dash-card--table">
@@ -179,7 +182,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, inject, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { captureAuthSession, isAuthSessionCurrent, readPermissionCache, AUTH_STORAGE_KEYS } from '@/utils/authSession';
 import { ElMessage } from 'element-plus';
 import {
   User, Document, FirstAidKit, WarningFilled, Box, ScaleToOriginal, Refresh, TrendCharts
@@ -199,6 +204,10 @@ use([
 
 const loading = ref(false);
 const summary = ref({});
+const loadState = ref('idle');
+const route = useRoute();
+let summaryEpoch = 0;
+let summaryDisposed = false;
 const userMenuPaths = ref([]);
 const injectedMenus = inject('userMenus', null);
 
@@ -218,7 +227,7 @@ function syncMenus() {
 }
 
 if (injectedMenus) {
-  watch(injectedMenus, syncMenus, { immediate: true });
+  watch(injectedMenus, () => { invalidateSummary(); syncMenus(); }, { immediate: true, deep: true, flush: 'sync' });
 }
 
 function hasMenu(path) {
@@ -296,7 +305,7 @@ const visibleMetrics = computed(() => {
     list.push({
       key: 'abnormal',
       label: 'Abnormal results',
-      display: s.abnormalItemCount ?? 0,
+      display: medicalPresentation.value.countDisplay,
       icon: WarningFilled,
       tone: 'amber'
     });
@@ -364,21 +373,70 @@ const dryWeightHasData = computed(() => {
   return trend.some(t => t.weight != null);
 });
 
-const healthRiskTone = computed(() => {
-  const level = summary.value.healthRiskLevel || 'LOW';
-  if (level === 'HIGH') return 'high';
-  if (level === 'MEDIUM') return 'medium';
-  return 'low';
+const incompleteMedicalHint = 'Medical input is unavailable; the overall assessment is incomplete.';
+const incompleteRiskLabel = 'Assessment incomplete: medical qualification unavailable';
+
+// Validate the producer's UTC observation format without rounding or borrowing a local clock.
+function validSnapshotTime(value) {
+  if (typeof value !== 'string') return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(?:\d{3}|\d{6}|\d{9}))?Z$/.exec(value);
+  if (!match) return false;
+  const [, year, month, day, hour, minute, second] = match.map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return year > 0 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1]
+    && hour <= 23 && minute <= 59 && second <= 59;
+}
+
+const medicalPresentation = computed(() => {
+  const s = summary.value;
+  const waiting = loadState.value === 'idle' || loadState.value === 'loading';
+  // The aggregate counts all results; the recent list contains only the latest top items.
+  const validResults = Number.isSafeInteger(s.abnormalItemCount) && s.abnormalItemCount >= 0
+    && Array.isArray(s.recentAbnormalItems) && s.recentAbnormalItems.length <= s.abnormalItemCount
+    && (s.abnormalItemCount === 0 ? s.recentAbnormalItems.length === 0 : s.recentAbnormalItems.length > 0);
+  const available = loadState.value === 'loaded' && s.medicalQualificationStatus === 'AVAILABLE'
+    && s.medicalQualificationSemantics === 'CALLER_TRANSACTION_SNAPSHOT'
+    && validSnapshotTime(s.medicalQualificationAsOf) && validResults;
+  return {
+    available,
+    countDisplay: available ? s.abnormalItemCount : waiting ? 'Awaiting data' : 'Unavailable',
+    message: waiting ? 'Awaiting data' : s.medicalQualificationStatus === 'UNAVAILABLE' || loadState.value === 'failed'
+      ? 'Medical qualification unavailable' : 'Medical qualification could not be verified',
+    observation: available ? `Source qualification from this transaction snapshot; checked at ${s.medicalQualificationAsOf}` : ''
+  };
 });
+
+const healthRiskTone = computed(() => medicalPresentation.value.available
+  && ['HIGH', 'MEDIUM', 'LOW'].includes(summary.value.healthRiskLevel)
+  ? summary.value.healthRiskLevel.toLowerCase() : 'unavailable');
 
 const healthRiskText = computed(() => {
   const map = { HIGH: 'High attention needed', MEDIUM: 'Needs monitoring', LOW: 'stable' };
-  return map[summary.value.healthRiskLevel] || 'stable';
+  return healthRiskTone.value === 'unavailable' ? 'Assessment incomplete' : map[summary.value.healthRiskLevel];
+});
+
+const healthRiskTitle = computed(() => {
+  if (loadState.value === 'idle' || loadState.value === 'loading') return 'Awaiting data';
+  if (loadState.value === 'failed') return 'Health overview unavailable';
+  return healthRiskTone.value === 'unavailable' ? incompleteRiskLabel : summary.value.healthRiskLabel || 'Awaiting data';
 });
 
 const healthHighlights = computed(() => {
-  const list = summary.value.healthHighlights || [];
-  return list.length ? list.slice(0, 4) : ['Not enough data yet. Keep recording regularly.'];
+  if (loadState.value === 'idle' || loadState.value === 'loading') return ['Awaiting data'];
+  const s = summary.value;
+  if (medicalPresentation.value.available) {
+    const list = s.healthHighlights || [];
+    return list.length ? list.slice(0, 4) : ['Not enough data yet. Keep recording regularly.'];
+  }
+  const expectedUnavailable = loadState.value === 'loaded' && s.medicalQualificationStatus === 'UNAVAILABLE'
+    && s.abnormalItemCount === null && s.recentAbnormalItems === null
+    && s.medicalQualificationAsOf === null && s.medicalQualificationSemantics === null
+    && s.healthRiskLevel === null && s.healthRiskLabel === incompleteRiskLabel
+    && Array.isArray(s.healthHighlights) && s.healthHighlights.every(item => typeof item === 'string');
+  return expectedUnavailable
+    ? [...s.healthHighlights.filter(item => item !== incompleteMedicalHint).slice(0, 3), incompleteMedicalHint]
+    : [incompleteMedicalHint];
 });
 
 const healthStatCards = computed(() => {
@@ -393,7 +451,7 @@ const healthStatCards = computed(() => {
   const cards = [];
   if (hasMenu('/medical-record')) {
     cards.push(
-      { label: 'Abnormal test results', value: s.abnormalItemCount ?? 0 },
+      { label: 'Abnormal test results', value: medicalPresentation.value.countDisplay },
       { label: 'Tests this month', value: s.medicalRecordCountMonth ?? 0 }
     );
   }
@@ -407,6 +465,8 @@ const healthStatCards = computed(() => {
 });
 
 const primaryHealthHint = computed(() => {
+  if (loadState.value === 'idle' || loadState.value === 'loading') return 'Awaiting data';
+  if (!medicalPresentation.value.available) return incompleteMedicalHint;
   if (!hasMenu('/dialysis')) {
     if (hasMenu('/medical-record') && (summary.value.abnormalItemCount || 0) > 0) {
       return 'Dialysis management is not enabled for this account. This overview prioritizes abnormal test results and medication records. ';
@@ -587,25 +647,80 @@ function dehydrationTagType(status) {
   return map[status] || 'info';
 }
 
+function invalidateSummary() {
+  summaryEpoch++;
+  summary.value = {};
+  loading.value = false;
+  loadState.value = 'idle';
+}
+
+function permissionSnapshot() {
+  return JSON.stringify({ permissions: readPermissionCache(), menus: userMenuPaths.value, injectedMenus: injectedMenus?.value });
+}
+
+function ownsSummary(owner) {
+  return !summaryDisposed && owner.epoch === summaryEpoch && owner.patient === currentPatientId.value
+    && owner.path === route.fullPath && owner.permissions === permissionSnapshot()
+    && isAuthSessionCurrent(owner.auth) && owner.actorId === localStorage.getItem('userId');
+}
+
 async function loadSummary() {
+  if (summaryDisposed) return;
+  invalidateSummary();
+  const owner = { epoch: summaryEpoch, patient: currentPatientId.value, path: route.fullPath,
+    auth: captureAuthSession(), actorId: localStorage.getItem('userId'), permissions: permissionSnapshot() };
   loading.value = true;
+  loadState.value = 'loading';
   try {
-    const res = await getDashboardSummary(currentPatientId.value);
-    if (res.code === 200) {
-      summary.value = res.data || {};
-    } else {
-      ElMessage.error(res.msg || 'Failed to load');
+    // This API takes only patientId. The local owner retires responses; it does not cancel transport.
+    const res = await getDashboardSummary(owner.patient);
+    if (!ownsSummary(owner)) return;
+    const data = res?.data;
+    if (res?.code !== 200 || !data || typeof data !== 'object' || Array.isArray(data)
+      || ![Object.prototype, null].includes(Object.getPrototypeOf(data))) {
+      throw new Error('DASHBOARD_LOAD_FAILED');
     }
-  } catch (e) {
-    ElMessage.error('Failed to load: ' + e.message);
+    summary.value = data;
+    loadState.value = 'loaded';
+  } catch {
+    if (!ownsSummary(owner)) return;
+    summary.value = {};
+    loadState.value = 'failed';
+    ElMessage.error('Failed to load');
   } finally {
-    loading.value = false;
+    if (ownsSummary(owner)) loading.value = false;
   }
 }
 
+function summaryContextChanged() {
+  invalidateSummary();
+  syncMenus();
+}
+
+function summaryStorageChanged(event) {
+  if (event.key == null || [...AUTH_STORAGE_KEYS, 'permissionSession', 'userMenus', 'userMenuNames',
+    'userRoleCodes', 'currentPatientId'].includes(event.key)) summaryContextChanged();
+}
+
+watch(currentPatientId, invalidateSummary, { flush: 'sync' });
+watch(() => route.fullPath, invalidateSummary, { flush: 'sync' });
+
 onMounted(() => {
+  window.addEventListener('auth-session-cleared', summaryContextChanged);
+  window.addEventListener('auth-session-changed', summaryContextChanged);
+  window.addEventListener('permissions-changed', summaryContextChanged);
+  window.addEventListener('storage', summaryStorageChanged);
   syncMenus();
   loadSummary();
+});
+
+onUnmounted(() => {
+  summaryDisposed = true;
+  invalidateSummary();
+  window.removeEventListener('auth-session-cleared', summaryContextChanged);
+  window.removeEventListener('auth-session-changed', summaryContextChanged);
+  window.removeEventListener('permissions-changed', summaryContextChanged);
+  window.removeEventListener('storage', summaryStorageChanged);
 });
 </script>
 
@@ -768,6 +883,7 @@ onMounted(() => {
 }
 
 .health-stat__value {
+  overflow-wrap: anywhere;
   font-size: 22px;
   font-weight: 800;
   color: var(--ink-950);
@@ -1121,5 +1237,26 @@ onMounted(() => {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+.health-hero--unavailable::before {
+  background: var(--ink-500);
+}
+
+.health-hero--unavailable .health-hero__badge {
+  color: var(--ink-700);
+  background: var(--surface-subtle);
+}
+
+.health-hero__observation,
+.medical-qualification-message {
+  margin: 8px 0 0;
+  color: var(--ink-500);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.medical-qualification-message {
+  padding: 16px;
 }
 </style>

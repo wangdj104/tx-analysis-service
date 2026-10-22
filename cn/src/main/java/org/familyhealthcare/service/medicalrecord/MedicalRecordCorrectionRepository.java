@@ -12,6 +12,12 @@ import java.util.Objects;
 @org.springframework.stereotype.Repository
 public class MedicalRecordCorrectionRepository {
     private final JdbcTemplate jdbc;
+    /** Identity only: never acquire or bind another datasource. */
+    public void requireDataSource(javax.sql.DataSource expected) {
+        if (expected == null || jdbc.getDataSource() != expected)
+            throw new IllegalStateException("The configured datasource does not match.");
+    }
+
     private final MedicalRecordCorrectionSchema schema;
     public MedicalRecordCorrectionRepository(JdbcTemplate jdbc, MedicalRecordCorrectionSchema schema) { this.jdbc = jdbc; this.schema = schema; }
 

@@ -8,6 +8,12 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import com.alibaba.fastjson2.annotation.JSONField;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.familyhealthcare.dto.MedicalRecordReviewSummary;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -96,6 +102,23 @@ public class MedicalRecord {
 
     @TableField(exist = false)
     private String sourceStatus;
+
+    @TableField(exist = false)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @JSONField(deserialize = false)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private MedicalRecordReviewSummary reviewSummary;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @JSONField(deserialize = false)
+    public MedicalRecordReviewSummary getReviewSummary() { return reviewSummary; }
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @JSONField(deserialize = false)
+    public void setReviewSummary(MedicalRecordReviewSummary reviewSummary) { this.reviewSummary = reviewSummary; }
 
     // non-datadatabasefield
     @TableField(exist = false)

@@ -32,10 +32,10 @@
     <el-alert v-if="!patientId" title="Select a patient from the header to view monitoring data." type="warning" :closable="false" show-icon />
 
     <!-- 更正入口不依赖概览读取成功，患者权限由原记录及更正接口分别核验。 -->
-    <MeasurementCorrectionEntry :patient-id="patientId" :patient-name="currentPatientName" @changed="loadSnapshot()" />
+    <MeasurementCorrectionEntry :patient-id="patientId" :patient-name="currentPatientName" :key="route.fullPath" :onChanged="bindSnapshotChanged()" />
 
     <template v-if="patientId">
-      <TrustedMeasurementTrend :patient-id="patientId" :patient-name="currentPatientName" @changed="loadSnapshot()" />
+      <TrustedMeasurementTrend :patient-id="patientId" :patient-name="currentPatientName" :key="route.fullPath" :onChanged="bindSnapshotChanged()" />
       <div v-if="loadError" role="alert" class="read-state read-state--error">
         <p>{{ loadError }}</p>
         <p v-if="hasSnapshot" data-testid="monitoring-stale">Showing the last successful results. Data may be stale. Last successful read: {{ formatDateTime(lastSuccessAt) }}</p>
@@ -147,10 +147,11 @@
             <el-button text type="primary" :loading="checking" @click="runCheck">Run checks</el-button>
           </header>
           <div class="alert-list-summary"><span data-testid="alert-count">Showing {{ shownAlerts.length }} / {{ activeAlerts.length }} loaded alerts</span><router-link v-if="canViewAllAlerts" :to="allAlertsRoute" data-testid="view-all-alerts">View all alerts</router-link></div>
+          <p class="alert-source-note">Current medical-source information is shown where supplied; recorded alert counts are unchanged</p>
           <div v-if="activeAlerts.length" class="alert-list">
             <article v-for="alert in shownAlerts" :key="alert.id" class="alert-row" :class="`alert-row--${(alert.level || 'INFO').toLowerCase()}`">
               <span class="alert-level">{{ alertLevel(alert.level) }}</span>
-              <div class="alert-row__body"><strong>{{ alert.title || 'Abnormal health indicator' }}</strong><p>{{ alert.value || 'Review the detailed record' }}</p><small>{{ formatDateTime(alert.triggeredAt) }}</small></div>
+              <div class="alert-row__body"><strong>{{ alert.title || 'Abnormal health indicator' }}</strong><p>{{ alert.value || 'Review the detailed record' }}</p><small>{{ formatDateTime(alert.triggeredAt) }}</small><section class="alert-source-facts"><b>Recorded alert</b><p v-for="(line, lineIndex) in alertSourceLines(alert)" :key="lineIndex">{{ line }}</p></section></div>
               <div class="alert-actions">
                 <el-button v-if="alert.status === 'PENDING'" size="small" @click="acknowledgeAlert(alert)">Confirm</el-button>
                 <el-button size="small" type="primary" plain @click="resolveAlert(alert)">Resolve</el-button>
@@ -171,7 +172,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import TrustedMeasurementTrend from '@/components/measurement-read-model/TrustedMeasurementTrend.vue'
 import MeasurementCorrectionEntry from '@/components/measurement-read-model/MeasurementCorrectionEntry.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -198,6 +200,8 @@ import dialysisCareSmall from '@/assets/illustrations/dialysis-care-small.webp'
 import recordsCareSmall from '@/assets/illustrations/records-care-small.webp'
 
 
+const route = useRoute()
+const userMenus = inject('userMenus', ref([]))
 const { currentPatientId, currentPatientName } = useCurrentPatient()
 const patientId = computed(() => currentPatientId.value)
 const snapshot = ref({ signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {} })
@@ -293,6 +297,46 @@ function ensureReaderSession() {
   return false
 }
 
+function validSourceInstant(value){
+  if(typeof value!=='string')return false
+  const m=value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/)
+  if(!m)return false
+  const [year,month,day,hour,minute,second]=m.slice(1).map(Number),leap=year%4===0 && (year%100!==0 || year%400===0),days=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31]
+  return month>=1 && month<=12 && day>=1 && day<=days[month-1] && hour<24 && minute<60 && second<60
+}
+function alertSourceLines(item){
+  const keys=['sourceStatus','sourceBindingStatus','currentSourceStatus','sourceQualificationSemantics','sourceQualificationAt']
+  if(!item || typeof item!=='object' || Array.isArray(item))return ['Current source qualification unavailable']
+  if(!keys.some(key=>Object.hasOwn(item,key)))return []
+  if(!keys.every(key=>Object.hasOwn(item,key)))return ['Current source qualification unavailable']
+  if(keys.every(key=>item[key]===null))return []
+  const {sourceStatus:status,sourceBindingStatus:binding,currentSourceStatus:current,sourceQualificationSemantics:semantics,sourceQualificationAt:at}=item
+  if(status==='SOURCE_UNAVAILABLE' && binding===null && current==='SOURCE_UNAVAILABLE' && semantics===null && at===null)return ['Current source qualification unavailable']
+  const currentCopy={'CURRENT': 'Current source qualification: current', 'UNTRACKED': 'Current source: legacy handling', 'SOURCE_REVIEW_REQUIRED': 'Current source awaiting verification', 'SOURCE_CHANGED': 'Current source changed', 'SOURCE_INVALIDATED': 'Current source invalidated', 'SOURCE_UNAVAILABLE': 'Current source qualification unavailable'}, bindingCopy={'CURRENT_CONTENT': 'Historical link matches current content', 'UNBOUND': 'Historical link has no version binding', 'CONTENT_CHANGED': 'Historical link refers to an earlier source version', 'GENERATION_CHANGED': 'Historical link refers to an earlier source version', 'MISSING_ANCHOR': 'Historical source link could not be verified', 'SOURCE_MISSING': 'Historical source link could not be verified', 'STORE_CONFLICT': 'Historical source link could not be verified'}
+  if(![status,binding,current].every(value=>typeof value==='string') || !Object.hasOwn(currentCopy,current) || !Object.hasOwn(bindingCopy,binding) || !['CURRENT','UNTRACKED','SOURCE_REVIEW_REQUIRED','SOURCE_CHANGED','SOURCE_INVALIDATED','SOURCE_UNAVAILABLE','UNKNOWN_NEEDS_RECHECK'].includes(status) || semantics!=='CURRENT_CHECK' || !validSourceInstant(at))return ['Current source qualification unavailable']
+  if(current==='SOURCE_UNAVAILABLE' && !['MISSING_ANCHOR','SOURCE_MISSING'].includes(binding))return ['Current source qualification unavailable']
+  const coherent=binding==='MISSING_ANCHOR' || binding==='SOURCE_MISSING' ? status==='SOURCE_UNAVAILABLE' && current==='SOURCE_UNAVAILABLE' : binding==='STORE_CONFLICT' ? status==='SOURCE_UNAVAILABLE' : binding==='UNBOUND' ? status===(current==='CURRENT'?'UNKNOWN_NEEDS_RECHECK':current) : binding==='GENERATION_CHANGED' ? status==='SOURCE_CHANGED' : binding==='CONTENT_CHANGED' ? status==='SOURCE_CHANGED' || status===current && !['CURRENT','UNTRACKED'].includes(current) : status===(['CURRENT','UNTRACKED'].includes(current)?'CURRENT':current)
+  if(!coherent)return ['Current source qualification unavailable']
+  return [bindingCopy[binding],currentCopy[current],...(status==='UNKNOWN_NEEDS_RECHECK'?['Historical link needs rechecking']:[]),'Current source checked at '+at]
+}
+// Completion ownership is independent of whether the list has loaded successfully.
+function captureSnapshotOwner() {
+  return { patientId: patientId.value, session: readerSession, sessionEpoch: readerSessionEpoch,
+    accessEpoch: snapshotAccessEpoch, route: route.fullPath, available: !accessDenied.value }
+}
+function ownsSnapshotContext(owner) {
+  return !snapshotDisposed && owner.patientId === patientId.value
+    && owner.accessEpoch === snapshotAccessEpoch && owner.route === route.fullPath
+    && ownsReaderSession(owner.session, owner.sessionEpoch)
+}
+function ownsSnapshotOwner(owner) {
+  return owner.available && !accessDenied.value && ownsSnapshotContext(owner)
+}
+function bindSnapshotChanged() {
+  const owner = captureSnapshotOwner()
+  return () => { if (ownsSnapshotContext(owner)) return loadSnapshot() }
+}
+
 const metrics = computed(() => snapshot.value.metrics || {})
 const activeAlerts = computed(() => snapshot.value.activeAlerts || [])
 const todayTasks = computed(() => snapshot.value.todayTasks || [])
@@ -363,19 +407,32 @@ function resetTimer() {
 
 async function runCheck() {
   if (snapshotDisposed || !ensureReaderSession() || accessDenied.value || !patientId.value) return
+  const owner = captureSnapshotOwner()
   checking.value = true
   try {
     await checkThresholds(patientId.value)
+    if (!ownsSnapshotOwner(owner)) return
     await loadSnapshot(true)
+    if (!ownsSnapshotOwner(owner)) return
     ElMessage.success('Alert checks completed')
+  } catch (error) {
+    if (!ownsSnapshotOwner(owner)) return
+    throw error
   } finally {
-    checking.value = false
+    if (ownsSnapshotOwner(owner)) checking.value = false
   }
 }
 
 async function acknowledgeAlert(alert) {
   if (snapshotDisposed || !ensureReaderSession() || accessDenied.value || !patientId.value) return
-  await acknowledge(alert.id)
+  const owner = captureSnapshotOwner()
+  try {
+    await acknowledge(alert.id)
+  } catch (error) {
+    if (!ownsSnapshotOwner(owner)) return
+    throw error
+  }
+  if (!ownsSnapshotOwner(owner)) return
   ElMessage.success('Alert confirmed')
   await loadSnapshot(true)
 }
@@ -406,7 +463,14 @@ async function resolveAlert(alert) {
 
 async function completeMedication(task) {
   if (snapshotDisposed || !ensureReaderSession() || accessDenied.value || !patientId.value) return
-  await actionIntake(task.id, 'TAKEN', '')
+  const owner = captureSnapshotOwner()
+  try {
+    await actionIntake(task.id, 'TAKEN', '')
+  } catch (error) {
+    if (!ownsSnapshotOwner(owner)) return
+    throw error
+  }
+  if (!ownsSnapshotOwner(owner)) return
   ElMessage.success('Medication intake recorded')
   await loadSnapshot(true)
 }
@@ -456,6 +520,8 @@ function localizeSnapshot(data) {
   return { ...data, statusLabel: statusLabels[data.overallStatus] || data.statusLabel, signals, careSuggestions: suggestions }
 }
 
+watch(userMenus, readerSessionChanged, { deep: true, flush: 'sync' })
+watch(() => route.fullPath, () => clearProtectedSnapshot(''), { flush: 'sync' })
 watch(days,()=>{clearProtectedSnapshot('');accessDenied.value=false},{flush:'sync'})
 watch(patientId, () => {
   rawOpen.value=false;raw.clear();snapshotController?.abort();
@@ -465,6 +531,7 @@ watch(patientId, () => {
   snapshotRequestEpoch++
   snapshotPending = null
   loading.value = false
+  checking.value = false
   snapshot.value = { signals: [], activeAlerts: [], todayTasks: [], recentEvents: [], careSuggestions: [], metrics: {} }
   loadError.value = ''
   lastSuccessAt.value = ''
@@ -472,7 +539,7 @@ watch(patientId, () => {
   loadSnapshot()
   resetTimer()
 }, { immediate: true, flush: 'sync' })
-onMounted(() => { resetTimer(); document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('storage', readerSessionChanged); window.addEventListener('auth-session-cleared', readerSessionChanged);window.addEventListener('auth-session-changed',readerSessionChanged) })
+onMounted(() => { resetTimer(); document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('storage', readerSessionChanged); window.addEventListener('auth-session-cleared', readerSessionChanged);window.addEventListener('auth-session-changed',readerSessionChanged);window.addEventListener('permissions-changed',readerSessionChanged) })
 onUnmounted(() => {
   snapshotDisposed = true
   snapshotRequestEpoch++
@@ -480,12 +547,15 @@ onUnmounted(() => {
   if (timer) window.clearInterval(timer)
   document.removeEventListener('visibilitychange', handleVisibility)
   window.removeEventListener('storage', readerSessionChanged)
-  window.removeEventListener('auth-session-cleared', readerSessionChanged);window.removeEventListener('auth-session-changed',readerSessionChanged);snapshotController?.abort()
+  window.removeEventListener('auth-session-cleared', readerSessionChanged);window.removeEventListener('auth-session-changed',readerSessionChanged);window.removeEventListener('permissions-changed',readerSessionChanged);snapshotController?.abort()
 })
 function handleVisibility() { return refreshSnapshotInBackground() }
 </script>
 
 <style scoped>
+.alert-source-facts, .alert-source-note { color: var(--ink-700); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.alert-source-facts { margin-top: 8px; }
+.alert-source-facts p { margin: 3px 0; }
 .workflow-task-link{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:.5rem;overflow-wrap:anywhere}.workflow-task-link:focus-visible{outline:2px solid var(--el-color-primary);outline-offset:2px}.workflow-task-truth,.workflow-metric-limit{overflow-wrap:anywhere}
 
 .read-state { padding: 14px 18px; margin-bottom: 16px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-subtle); color: var(--ink-800); overflow-wrap: anywhere; }
