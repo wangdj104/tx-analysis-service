@@ -93,7 +93,11 @@ class AlertWorkflowLegacyContainmentTest {
         org.familyhealthcare.controller.FamilyHealthController family=new org.familyhealthcare.controller.FamilyHealthController();mockFields(family);ReflectionTestUtils.setField(family,"alertMapper",mapper);when(((DataScopeHelper)ReflectionTestUtils.getField(family,"scope")).requirePatient(10L)).thenReturn(patient);
         assertEquals(1,family.alerts(10L).getData().size());assertEquals(1,((List<?>)family.visitSummary(10L).getData().get("unresolvedAlerts")).size());
         org.familyhealthcare.service.ClinicalWorkbenchService clinical=new org.familyhealthcare.service.ClinicalWorkbenchService();mockFields(clinical);ReflectionTestUtils.setField(clinical,"alerts",mapper);when(((DataScopeHelper)ReflectionTestUtils.getField(clinical,"scope")).requirePatient(10L)).thenReturn(patient);
-        assertEquals(1,((List<?>)clinical.attention(10L).get("items")).size());assertEquals(1,((List<?>)clinical.emergencyCard(10L).get("unresolvedAlerts")).size());
+        when(((DataScopeHelper)ReflectionTestUtils.getField(clinical,"scope")).requireUserId()).thenReturn(1L);
+        org.familyhealthcare.util.CurrentUserUtil.runAsUser(1L,()->{
+            assertEquals(1,((List<?>)clinical.attention(10L).get("items")).size());assertEquals(1,((List<?>)clinical.emergencyCard(10L).get("unresolvedAlerts")).size());
+            return null;
+        });
         org.familyhealthcare.service.impl.MonitoringServiceImpl monitor=new org.familyhealthcare.service.impl.MonitoringServiceImpl();mockFields(monitor);ReflectionTestUtils.setField(monitor,"alertMapper",mapper);when(((DataScopeHelper)ReflectionTestUtils.getField(monitor,"dataScopeHelper")).requirePatient(10L)).thenReturn(patient);
         assertEquals(1,monitor.getSnapshot(10L,7).getActiveAlerts().size());
     }
