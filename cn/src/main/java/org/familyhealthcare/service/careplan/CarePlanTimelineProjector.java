@@ -22,7 +22,7 @@ public class CarePlanTimelineProjector {
 
     private static final List<String> PUBLIC=Arrays.asList("PLAN_PUBLISHED","REVISION_PUBLISHED","RECEIPT_SUBMITTED","HELP_REQUESTED","FOLLOW_UP_RECORDED","RECEIPT_CONFIRMED","RECEIPT_RETURNED","PLAN_CANCELLED","PLAN_CLOSED");
     private static final List<String> PRIVATE=Arrays.asList("DRAFT_CREATED","DRAFT_SAVED","REVISION_CREATED");
-    private static final List<String> TIMELINE=Arrays.asList("PLAN_PUBLISHED","REVISION_PUBLISHED","RECEIPT_SUBMITTED","RECEIPT_CONFIRMED","RECEIPT_RETURNED","PLAN_CANCELLED","PLAN_CLOSED");
+    private static final List<String> TIMELINE=PUBLIC;
     private final JdbcTemplate jdbc;private final CarePlanAuthorizationService auth;private final CarePlanProperties properties;private final CarePlanQueryService query;
     public CarePlanTimelineProjector(JdbcTemplate jdbc,CarePlanAuthorizationService auth,CarePlanProperties properties,CarePlanQueryService query){this.jdbc=jdbc;this.auth=auth;this.properties=properties;this.query=query;}
 
@@ -31,7 +31,7 @@ public class CarePlanTimelineProjector {
         if(!properties.isEnabled())return Collections.emptyList();
         if(limit<1||limit>200||from!=null&&to!=null&&from.isAfter(to))throw CarePlanException.invalid("Invalid care-plan timeline range or limit.");
         auth.requireRead(actorId,patientId);
-        String sql="SELECT e.id,e.plan_id,e.event_type,e.recorded_at FROM care_plan_event e JOIN doctor_care_plan p ON p.id=e.plan_id AND p.patient_id=e.patient_id JOIN care_plan_revision r ON r.id=e.revision_id AND r.plan_id=e.plan_id WHERE e.patient_id=? AND p.workflow_version=1 AND p.current_revision_id IS NOT NULL AND r.status='PUBLISHED' AND e.event_type IN ("+types(TIMELINE)+")";
+        String sql="SELECT e.id,e.plan_id,e.event_type,e.recorded_at,p.lifecycle FROM care_plan_event e JOIN doctor_care_plan p ON p.id=e.plan_id AND p.patient_id=e.patient_id JOIN care_plan_revision r ON r.id=e.revision_id AND r.plan_id=e.plan_id WHERE e.patient_id=? AND p.workflow_version=1 AND p.current_revision_id IS NOT NULL AND r.status='PUBLISHED' AND e.event_type IN ("+types(TIMELINE)+")";
         List<Object> args=new ArrayList<>();args.add(patientId);
         if(from!=null){sql+=" AND e.recorded_at>=?";args.add(from.atStartOfDay().toInstant(ZoneOffset.UTC));}
         if(to!=null){sql+=" AND e.recorded_at<?";args.add(to.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC));}
@@ -39,7 +39,7 @@ public class CarePlanTimelineProjector {
         final String statement=sql;
         List<HealthEvent> events=jdbc.query(connection->{PreparedStatement ps=connection.prepareStatement(statement);bind(ps,args);return ps;},(rs,i)->{
             HealthEvent event=new HealthEvent();long id=rs.getLong("id");String type=rs.getString("event_type");Instant at=Instant.parse(time(rs,"recorded_at"));OffsetDateTime utc=at.atOffset(ZoneOffset.UTC);
-            event.setId(id);event.setSourceId(id);event.setSourceType("CARE_PLAN_EVENT");event.setCarePlanId(rs.getLong("plan_id"));event.setPatientId(patientId);
+            event.setId(id);event.setSourceId(id);event.setSourceType("CARE_PLAN_EVENT");event.setCarePlanId(rs.getLong("plan_id"));event.setSourceRecordId(rs.getLong("plan_id"));event.setOccurredAt(at.toString());event.setCurrentState(rs.getString("lifecycle"));event.setPatientId(patientId);
             event.setEventType(type);event.setEventDate(utc.toLocalDate());event.setEventTime(utc.toLocalTime().toString()+"Z");event.setTitle(title(type));event.setSummary("已记录一条照护计划更新。");return event;
         });
         auth.requireRead(actorId,patientId);return events;
@@ -85,6 +85,6 @@ public class CarePlanTimelineProjector {
         }catch(IllegalArgumentException ex){throw CarePlanException.invalid("Invalid care-plan event cursor.");}
     }
     private static String title(String type){
-        switch(type){case "PLAN_PUBLISHED":return "照护计划已发布";case "REVISION_PUBLISHED":return "照护计划已修订";case "RECEIPT_SUBMITTED":return "照护事项已提交";case "RECEIPT_CONFIRMED":return "照护事项已确认";case "RECEIPT_RETURNED":return "照护事项已退回";case "PLAN_CANCELLED":return "照护计划已取消";case "PLAN_CLOSED":return "照护计划已完成";default:throw new IllegalArgumentException("Unsupported care-plan timeline event.");}
+        switch(type){case "HELP_REQUESTED":return "已请求照护帮助";case "FOLLOW_UP_RECORDED":return "已记录照护跟进";case "PLAN_PUBLISHED":return "照护计划已发布";case "REVISION_PUBLISHED":return "照护计划已修订";case "RECEIPT_SUBMITTED":return "照护事项已提交";case "RECEIPT_CONFIRMED":return "照护事项已确认";case "RECEIPT_RETURNED":return "照护事项已退回";case "PLAN_CANCELLED":return "照护计划已取消";case "PLAN_CLOSED":return "照护计划已完成";default:throw new IllegalArgumentException("Unsupported care-plan timeline event.");}
     }
 }

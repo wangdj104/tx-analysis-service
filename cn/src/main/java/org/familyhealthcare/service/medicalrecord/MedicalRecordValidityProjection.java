@@ -71,6 +71,17 @@ public class MedicalRecordValidityProjection {
         if(status==MedicalRecordCorrectionSchema.Status.INCOMPATIBLE||enabled&&status!=MedicalRecordCorrectionSchema.Status.READY)throw MedicalRecordCorrectionSchema.notReady();
         return status;
     }
+    /** Explicit opt-in; the reader validates both schemas on every observation and owns the actual semantics. */
+    public Map<Long,State> observeQualified(Collection<Long> input) {
+        requireDataSource(jdbc.getDataSource());
+        try {MedicalReviewQualificationReader.Batch observed=qualification.read(input);
+            if(observed.parent9Storage==MedicalRecordCorrectionSchema.Status.INCOMPATIBLE
+                    ||enabled&&observed.parent9Storage!=MedicalRecordCorrectionSchema.Status.READY)throw MedicalRecordCorrectionSchema.notReady();
+            Map<Long,State> result=new LinkedHashMap<>();
+            for(MedicalReviewQualificationReader.Observation row:observed.observations.values())result.put(row.id,new State(row,observed));
+            return Collections.unmodifiableMap(result);
+        } catch(MedicalReviewQualificationReader.MetadataUnavailable unavailable){throw unavailable.failure();}
+    }
     public final class Scope {
         public final MedicalRecordCorrectionSchema.Status storage;
         private Scope(MedicalRecordCorrectionSchema.Status status){storage=status;}
@@ -169,10 +180,7 @@ public class MedicalRecordValidityProjection {
             return new Object[]{Thread.currentThread(),holder,handle,connection};
         }
         private Map<Long,State> qualified(Collection<Long> input) {
-            try {MedicalReviewQualificationReader.Batch observed=reader().read(input);Map<Long,State> result=new LinkedHashMap<>();
-                for(MedicalReviewQualificationReader.Observation row:observed.observations.values())result.put(row.id,new State(row,observed));
-                return Collections.unmodifiableMap(result);
-            } catch(MedicalReviewQualificationReader.MetadataUnavailable unavailable){throw unavailable.failure();}
+            return MedicalRecordValidityProjection.this.observeQualified(input);
         }
         /** Identity only: no connection acquisition or qualification. */
         void requireDataSource(javax.sql.DataSource expected){reader().requireDataSource(expected);}

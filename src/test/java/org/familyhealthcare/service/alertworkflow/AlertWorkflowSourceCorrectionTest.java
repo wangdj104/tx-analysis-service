@@ -69,7 +69,7 @@ class AlertWorkflowSourceCorrectionTest {
     }
     @Test void disabledLegacyUpdateKeepsItsExistingResponseAndPatchRules() throws Exception {
         ReflectionTestUtils.setField(h.p,"enabled",false);Map<String,Object>b=nativeApi.selfBody();b.remove("commandKey");b.remove("occurredAt");long source=id(((Map<?,?>)nativeApi.selfPost(b).get("data")).get("id"));
-        h.db.tx.execute(tx->{try {String response=nativeApi.mvc.perform(put("/bp-self-monitor/update").requestAttr("userId",1L).contentType(MediaType.APPLICATION_JSON).content(json(map("id",source,"systolicBp",160)))).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);assertEquals(org.familyhealthcare.common.Result.okMessage("Updated successfully").getData(),object(response).get("data"));return null;}catch(Exception e){throw new IllegalStateException(e);}});
+        h.db.tx.execute(tx->{try {String response=nativeApi.mvc.perform(put("/bp-self-monitor/update").locale(java.util.Locale.ENGLISH).requestAttr("userId",1L).contentType(MediaType.APPLICATION_JSON).content(json(map("id",source,"systolicBp",160)))).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);assertEquals("Updated successfully",object(response).get("data"));return null;}catch(Exception e){throw new IllegalStateException(e);}});
         assertEquals(125,h.db.jdbc.queryForObject("SELECT diastolic_bp FROM bp_self_monitor_record WHERE id=?",Integer.class,source));
     }
 

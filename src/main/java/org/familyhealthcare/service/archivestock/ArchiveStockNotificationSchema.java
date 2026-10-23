@@ -3,6 +3,7 @@ package org.familyhealthcare.service.archivestock;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.familyhealthcare.service.workflow.WorkflowException;
+import org.familyhealthcare.service.workflow.MetadataQueryPrefilter;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -28,7 +29,7 @@ public final class ArchiveStockNotificationSchema {
                 "Stock reminders are paused until the restored-stock policy schema is ready. Install and verify its SQL before deploying the application.");
     }
     private static long scalar(Connection connection,String sql)throws SQLException {
-        try(PreparedStatement p=connection.prepareStatement(sql)) {p.setQueryTimeout(5);try(ResultSet r=p.executeQuery()){
+        try(PreparedStatement p=connection.prepareStatement(MetadataQueryPrefilter.indexed(sql))) {p.setQueryTimeout(5);try(ResultSet r=p.executeQuery()){
             if(!r.next())throw new SQLException("Missing policy metadata result");long v=r.getLong(1);
             if(r.wasNull()||v<0||r.next())throw new SQLException("Invalid policy metadata result");return v;
         }}

@@ -2,6 +2,7 @@
   <el-container class="module-page nutrition-diary-page">
     <el-main class="main-content">
       <div class="page-inner">
+        <SpecialtyCarePlans :patient-id="currentPatientId" plan-type="NUTRITION" />
         <div class="page-header nutrition-hero">
           <div class="top-bar">
             <div class="left">
@@ -179,6 +180,7 @@
 </template>
 
 <script setup>
+import SpecialtyCarePlans from '@/components/care-plan/SpecialtyCarePlans.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Check, Refresh, EditPen, TrendCharts } from '@element-plus/icons-vue';

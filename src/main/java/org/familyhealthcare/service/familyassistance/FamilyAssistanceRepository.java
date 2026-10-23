@@ -19,6 +19,7 @@ import static org.familyhealthcare.service.familyassistance.FamilyAssistanceAuth
         this.schema=schema;
         this.auth=auth;
     }
+    public HouseholdWorkflowSchema.StorageReadiness inspectStorageMetadata() { return schema.inspectStorageMetadata(); }
     // Boundary callers must invoke methods: Spring may inject an exception-translation proxy.
     public HouseholdAuthorityLocks.LockedAuthority lockBoundarySubjects(long patient,Collection<Long> subjects) { return locks.lockPatientAndSubjects(patient,subjects); }
     public void requireBoundarySelected(HouseholdAuthorityLocks.LockedAuthority token,long patient,long actor,Map<String,Collection<Long>> selected) { schema.requireSelectedRows(token,patient,actor,selected); }

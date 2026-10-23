@@ -100,9 +100,9 @@ public final class AlertWorkflowTestDatabase {
         for(String table:Arrays.asList("alert_record","alert_event","alert_source_identity","alert_source_revision","alert_source_link","alert_evidence","alert_command","measurement_command","alert_notification"))
             jdbc.execute(h2(tableSql(sql,table)));
     }
-    public static String read(String path) throws Exception {return new String(Files.readAllBytes(Paths.get(path)),StandardCharsets.UTF_8);}
+    public static String read(String path) throws Exception {return new String(Files.readAllBytes(Paths.get(path)),StandardCharsets.UTF_8).replace("\r\n","\n");}
     public static String tableSql(String sql,String table) {
-        Matcher m=Pattern.compile("CREATE TABLE IF NOT EXISTS `"+table+"` \\([\\s\\S]*?\\) ENGINE=[^;]+;").matcher(sql);
+        Matcher m=Pattern.compile("CREATE TABLE(?: IF NOT EXISTS)? `"+table+"` \\([\\s\\S]*?\\) ENGINE=[^;]+;").matcher(sql);
         assertTrue(m.find(),table+" storage contract must exist");return m.group();
     }
     public static String h2(String sql) {

@@ -116,7 +116,7 @@ public class MedicalReviewNativeLifecycle {
                 parent9=correctionSchema.inspectStorage(connection);if(parent9==MedicalRecordCorrectionSchema.Status.INCOMPATIBLE)throw MedicalRecordCorrectionSchema.notReady();
                 status=schema.inspectStorage(connection);if(status==MedicalReviewSchema.Status.INCOMPATIBLE)throw MedicalReviewSchema.notReady();
                 if(status==MedicalReviewSchema.Status.READY){
-                    Lifecycle lifecycle=sources.readLockedLifecycle(binding.source());verifyResource();
+                    Lifecycle lifecycle=sources.readInspectedLockedLifecycle(binding.source(),connection,status);verifyResource();
                     before=repository.proof(connection,binding,lifecycle);expectedPair=before.pair;expectedWatermark=before.watermark;
                     if(participating()) {
                         if(kind==Kind.GENERIC_UPDATE)throw conflict("VERSIONED_EDIT_REQUIRED","Use a version-advancing medical-record edit for this record.");
@@ -212,12 +212,12 @@ public class MedicalReviewNativeLifecycle {
                         if(kind==Kind.GENERIC_UPDATE||kind==Kind.LEGACY_REVIEW||kind==Kind.WORKSPACE_REVIEW||!retired)expectedBinding=actual;
                     }
                     if(kind==Kind.CORRECTION)correction=readCorrection();else sameCorrection(correction,readCorrection());
-                    verifyCompleted();
+                    verifyCompleted(false);
                 }
                 finished=true;
                 TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){
                     @Override public void beforeCommit(boolean readOnly){
-                        try{if(kind==Kind.CORRECTION&&!prepared)verifyReplay();else verifyCompleted();commitProved=true;}
+                        try{if(kind==Kind.CORRECTION&&!prepared)verifyReplay();else verifyCompleted(true);commitProved=true;}
                         catch(Throwable failure){throw failure(failure);}
                     }
                 });
@@ -236,10 +236,15 @@ public class MedicalReviewNativeLifecycle {
         private void verifyReplay()throws SQLException {
             verifyResource();BindingObservation now=repository.observe(connection,binding.id,true);now.requireIdentity(binding.id,true);binding.requireSame(now);requireAuthority(false);verifyResource();
         }
-        private void verifyCompleted()throws SQLException {
+        private void verifyCompleted(boolean committing)throws SQLException {
             verifyResource();
-            if(schema.inspectStorage(connection)!=status)throw MedicalReviewSchema.notReady();
-            if(correctionSchema.inspectStorage(connection)!=parent9)throw MedicalRecordCorrectionSchema.notReady();
+            // Admission and beforeCommit inspect both complete schemas. The
+            // immediate owner proof retains all row/binding/authority checks;
+            // the transaction cannot publish until the final inspection passes.
+            if(committing) {
+                if(schema.inspectStorage(connection)!=status)throw MedicalReviewSchema.notReady();
+                if(correctionSchema.inspectStorage(connection)!=parent9)throw MedicalRecordCorrectionSchema.notReady();
+            }
             if(kind==Kind.DELETE) {
                 if(repository.observe(connection,binding.id,true).count!=0)throw integrity();
                 requireAuthority(true);dataScope.requirePatientOrOwner(binding.patient,binding.owner);
@@ -251,7 +256,7 @@ public class MedicalReviewNativeLifecycle {
             } else {
                 BindingObservation now=repository.observe(connection,binding.id,true);now.requireIdentity(binding.id,true);expectedBinding.requireSame(now);requireAuthority(false);
                 if(status==MedicalReviewSchema.Status.READY) {
-                    Lifecycle lifecycle=sources.readLockedLifecycle(now.source());verifyResource();
+                    Lifecycle lifecycle=sources.readInspectedLockedLifecycle(now.source(),connection,status);verifyResource();
                     Proof proof=repository.proof(connection,now,lifecycle);if(!expectedPair.equals(proof.pair))throw integrity();sameEvent(expectedWatermark,proof.watermark);
                     if(contentFingerprint!=null){if(!contentFingerprint.equals(sources.readLocked(now.source()).fingerprint()))throw integrity();repository.requireReset(connection,binding.id);}
                 }

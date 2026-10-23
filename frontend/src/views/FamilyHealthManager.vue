@@ -24,13 +24,12 @@
           </div>
         </el-tab-pane>
         <el-tab-pane v-if="availableTabs.includes('timeline')" label="Health Timeline" name="timeline">
-          <div class="measurement-read-model"><div class="mr-controls"><button type="button" :disabled="measurementHistoryLocked" :aria-pressed="timelineView==='measurements'" @click="timelineView='measurements'">{{measurementText('trustedTimeline')}}</button><button type="button" :disabled="measurementHistoryLocked" :aria-pressed="timelineView==='records'" @click="timelineView='records'">{{measurementText('legacyTimeline')}}</button></div></div>
+          <div class="measurement-read-model"><div class="mr-controls"><button type="button" :disabled="measurementHistoryLocked" :aria-pressed="timelineView==='records'" @click="timelineView='records'">Health facts across modules</button><button type="button" :disabled="measurementHistoryLocked" :aria-pressed="timelineView==='measurements'" @click="timelineView='measurements'">{{measurementText('trustedTimeline')}}</button></div></div>
           <MeasurementItemHistory v-if="tab==='timeline' && timelineView==='measurements'" :patient-id="patientId" :patient-name="currentPatientName" @locked="measurementHistoryLocked=$event" />
           <template v-if="tab==='timeline' && timelineView==='records'">
           <p v-if="timelineState==='loading'" role="status">{{measurementText('loading')}}</p><p v-else-if="['denied','unavailable'].includes(timelineState)" role="alert">{{measurementText(timelineState)}}</p>
           <div class="toolbar"><el-button type="primary" @click="openEvent()">Add health event</el-button><el-date-picker v-model="eventRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="Start Date" end-placeholder="End Date" @change="refreshLegacyTimeline" /></div>
-          <p>Measurements, dialysis sessions, and medication records are combined automatically. Up to 200 recent events are shown; edit source records in their original module.</p>
-          <el-timeline><el-timeline-item v-for="e in events" :key="`${e.sourceType || 'MANUAL'}-${e.sourceId ?? e.id}`" :timestamp="timelineTimestamp(e)" placement="top"><el-card><b>{{e.title}}</b><p>{{e.summary || e.remark || '—'}}</p><el-tag size="small">{{eventType(e.eventType)}}</el-tag><router-link v-if="safePlanLink(e)" :to="safePlanLink(e)" class="care-plan-event-link">Open plan and authorized history</router-link><span v-if="!e.sourceType || e.sourceType==='MANUAL'"><el-button link type="primary" @click="openEvent(e)">Edit</el-button><el-popconfirm title="Delete this event?" @confirm="removeEvent(e)"><template #reference><el-button link type="danger" :disabled="saving">Delete</el-button></template></el-popconfirm></span></el-card></el-timeline-item></el-timeline><el-empty v-if="timelineState==='ready' && !events.length" description="No health events" />
+          <HealthFactsTimeline v-if="timelineState==='ready'" :events="events" :patient-id="patientId"><template #actions="{event}"><el-button link type="primary" @click="openEvent(event)">Edit</el-button><el-popconfirm title="Delete this event?" @confirm="removeEvent(event)"><template #reference><el-button link type="danger" :disabled="saving">Delete</el-button></template></el-popconfirm></template></HealthFactsTimeline>
         
           </template>
         </el-tab-pane>
@@ -70,6 +69,8 @@ import {questionText} from '@/utils/visitQuestionCopy'
 import {ref,reactive,computed,watch,onMounted,onUnmounted,inject,nextTick} from 'vue'
 const appointmentPreview=ref(null);
 import MeasurementItemHistory from '@/components/measurement-read-model/MeasurementItemHistory.vue'
+import HealthFactsTimeline from '@/components/HealthFactsTimeline.vue'
+import {validTimelineRows} from '@/utils/healthTimeline'
 import {measurementText} from '@/utils/measurementReadModelCopy'
 import {ElMessage,ElMessageBox} from 'element-plus'
 import {useCurrentPatient} from '@/composables/useCurrentPatient'
@@ -84,7 +85,7 @@ import {selfTime,selfGlucose} from '@/utils/originalMeasurementPresentation'
 import {originalText as ot} from '@/utils/originalMeasurementCopy'
 import {formatPlanTime} from '@/utils/carePlanTime'
 const {currentPatientId:patientId,currentPatientName}=useCurrentPatient()
-const timelineView=ref('measurements'),timelineState=ref('idle'),measurementHistoryLocked=ref(false)
+const timelineView=ref('records'),timelineState=ref('idle'),measurementHistoryLocked=ref(false)
 let timelineEpoch=0,timelineController=null
 const tab=ref('today'),intakes=ref([]),events=ref([]),schedules=ref([]),target=reactive({}),loading=ref(false),saving=ref(false)
 const eventVisible=ref(false),scheduleVisible=ref(false),eventForm=reactive({}),scheduleForm=reactive({}),eventRange=ref(null)
@@ -139,6 +140,7 @@ async function reload(){
   const id=patientId.value
   if(disposed || !id)return
   clearReload()
+  refreshLegacyTimeline()
   const version=++requestVersion,intakeVersion=++taskVersion,auth=captureAuthSession()
   let active=true
   const owns=()=>active&&!disposed&&id===patientId.value&&version===requestVersion&&isAuthSessionCurrent(auth)
@@ -150,9 +152,8 @@ async function reload(){
     if(intakeVersion===taskVersion){intakes.value=a.data||[];today.value=localDateKey()}
     schedules.value=c.data;scheduleState.value=c.state;replaceTarget(target,d.data)
     reloadState.value='ready'
-    refreshLegacyTimeline()
   }catch(error){
-    if(owns()){intakes.value=[];events.value=[];schedules.value=[];replaceTarget(target,null);reloadState.value=readFailure(error);scheduleState.value='unavailable'}
+    if(owns()){intakes.value=[];schedules.value=[];replaceTarget(target,null);reloadState.value=readFailure(error);scheduleState.value='unavailable'}
   } finally {active=false;if(!disposed && version===requestVersion)loading.value=false}
 }
 function clearLegacyTimeline(){timelineEpoch++;timelineController?.abort();timelineController=null;events.value=[];timelineState.value='idle'}
@@ -162,10 +163,11 @@ async function refreshLegacyTimeline(){
   const id=patientId.value,version=timelineEpoch,auth=captureAuthSession(),actor=localStorage.getItem('userId'),controller=new AbortController()
   timelineController=controller;timelineState.value='loading'
   const owns=()=>!disposed&&version===timelineEpoch&&id===patientId.value&&tab.value==='timeline'&&timelineView.value==='records'&&isAuthSessionCurrent(auth)&&actor===localStorage.getItem('userId')
-  try{const result=await api.getTimeline(id,eventRange.value?.[0],eventRange.value?.[1],{signal:controller.signal,expectedAuth:{...auth,actorId:actor}});if(owns()){events.value=result.data||[];timelineState.value='ready'}}catch(error){if(owns()){events.value=[];timelineState.value=readFailure(error)}}finally{if(timelineController===controller)timelineController=null}
+  try{const result=await api.getTimeline(id,eventRange.value?.[0],eventRange.value?.[1],{signal:controller.signal,expectedAuth:{...auth,actorId:actor}});if(owns()){if(!validTimelineRows(result.data,id))throw new Error('INVALID_TIMELINE');events.value=result.data;timelineState.value='ready'}}catch(error){if(owns()){events.value=[];timelineState.value=readFailure(error)}}finally{if(timelineController===controller)timelineController=null}
 }
 watch(patientId,()=>{invalidateContext();reload()},{immediate:true,flush:'sync'})
 watch([tab,timelineView],refreshLegacyTimeline,{flush:'sync'})
+watch(permissionMenus,()=>{invalidateContext();refreshLegacyTimeline()},{deep:true,flush:'sync'})
 async function refreshTasks(){
   const id=patientId.value
   // Skip redundant background reads before advancing result ownership.
@@ -420,6 +422,13 @@ const eventType=s=>({SYMPTOM:'Symptom',VISIT:'Visit',NOTE:'Note',MEASUREMENT:'Me
   justify-content: flex-start;
   flex-wrap: wrap;
   margin-bottom: 18px;
+  min-width: 0;
+}
+
+.toolbar :deep(.el-date-editor) {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .toolbar :deep(.el-button) {
@@ -556,10 +565,16 @@ const eventType=s=>({SYMPTOM:'Symptom',VISIT:'Visit',NOTE:'Note',MEASUREMENT:'Me
 
   .toolbar {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .toolbar :deep(.el-button) {
+    width: 100%;
+    height: auto;
+    white-space: normal;
+  }
+
+  .toolbar :deep(.el-date-editor) {
     width: 100%;
   }
 

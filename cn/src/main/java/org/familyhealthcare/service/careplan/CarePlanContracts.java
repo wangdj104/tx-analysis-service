@@ -14,7 +14,7 @@ import java.util.Set;
 
 /** Pure request validation shared by the care-plan services; never infers authorization. */
 public final class CarePlanContracts {
-    private static final Set<String> PLAN_TYPES = keys("FOLLOW_UP", "MEDICATION", "DIALYSIS", "NUTRITION");
+    private static final Set<String> PLAN_TYPES = keys("FOLLOW_UP", "MEDICATION", "DIALYSIS", "NUTRITION", "REHAB", "MATERNITY", "MENTAL");
     private static final Set<String> ENTRY_MODES = keys("SELF", "ASSISTED");
     private static final Set<String> EVIDENCE_TYPES = keys("MEASUREMENT", "MEDICAL_RECORD");
 

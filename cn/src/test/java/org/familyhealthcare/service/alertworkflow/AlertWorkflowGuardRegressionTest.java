@@ -6,7 +6,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Static SQL predicate fixtures only. Native trigger/preflight/postcheck execution remains NOT_RUN. */
+/** Synthetic SQL predicate fixtures only. H2 does not execute native MySQL triggers. */
 class AlertWorkflowGuardRegressionTest {
     private AlertWorkflowTestDatabase db;private AlertWorkflowSqlPredicates sql;
     @BeforeEach void setup() throws Exception {
@@ -16,7 +16,7 @@ class AlertWorkflowGuardRegressionTest {
         db.jdbc.update("INSERT INTO alert_record(id,patient_id,user_id) VALUES(1,10,1),(2,10,1),(3,20,6),(44,10,1)");
         db.jdbc.update("UPDATE alert_record SET workflow_version=1,alert_type='MEASUREMENT_FOLLOW_UP',workflow_state='OPEN',workflow_mode='PERSONAL',cycle_no=1,source_type='HEALTH_MEASUREMENT',source_id=101,source_revision=2,metric_key='GLUCOSE',classification_json='{}' WHERE id IN (2,44)");
     }
-    @Test void allOwnedGuardsAndStandaloneEmbeddedPreflightHaveExactEditionAndEntryPointParity() throws Exception {sql.parity();}
+    @Test void allOwnedGuardsHaveExactEditionParityInTheSingleInitialization() throws Exception {sql.parity();}
     @ParameterizedTest @ValueSource(longs={10,20}) void legacyEventCannotMoveIntoWorkflowParentEvenWithNullTypedMarker(long patient) {
         Map<String,Object> old=event(1,patient),next=event(2,patient);
         assertTrue(sql.rejects(db.jdbc,"aw57_event_bu",old,next));
@@ -30,7 +30,7 @@ class AlertWorkflowGuardRegressionTest {
         assertFalse(sql.rejects(db.jdbc,"aw57_alert_bu",aggregate(1,false),aggregate(88,false)));
         typedEvent(7,1,10);assertTrue(sql.rejects(db.jdbc,"aw57_alert_bu",aggregate(1,false),aggregate(88,false)));
     }
-    @Test void postcheckFindsUntypedSameAndCrossPatientContaminationOfWorkflowHistory() {
+    @Test void invariantFindsUntypedSameAndCrossPatientContaminationOfWorkflowHistory() {
         db.jdbc.update("INSERT INTO alert_event(alert_id,patient_id,to_status) VALUES(2,10,'PENDING'),(2,20,'PENDING'),(1,10,'PENDING')");
         assertEquals(2,sql.diagnostics(db.jdbc,"orphan_alert_events"));
     }
@@ -48,27 +48,26 @@ class AlertWorkflowGuardRegressionTest {
     @Test void establishedSourceLinkCannotBeDeletedForReinsertionAtAnotherAlert() {
         identities();assertTrue(sql.rejects(db.jdbc,"aw57_link_bd",link(),Collections.emptyMap()));
     }
-    @Test void postcheckDetectsWrongSourceMetricAndLegacyLinkTargets() {
+    @Test void invariantDetectsWrongSourceMetricAndLegacyLinkTargets() {
         identities();
         db.jdbc.update("INSERT INTO alert_source_link(source_identity_id,source_type,source_id,source_revision,metric_key,alert_id) VALUES(1,'HEALTH_MEASUREMENT',101,1,'BP',2),(2,'HEALTH_MEASUREMENT',202,1,'GLUCOSE',2),(3,'BP_SELF_MONITOR',101,1,'GLUCOSE',1)");
         assertEquals(3,sql.diagnostics(db.jdbc,"invalid_source_links"));
     }
-    @Test void upgradePreflightRejectsUnsignedEventIdBeforeProductDdl() {
-        metadata();assertTrue(sql.preflightAllows(db.jdbc,"alert_event_id"));
-        db.jdbc.update("UPDATE aw57_meta_columns SET column_type='bigint unsigned' WHERE table_name='alert_event'");assertFalse(sql.preflightAllows(db.jdbc,"alert_event_id"));
+    @ParameterizedTest @ValueSource(strings={"patient","alert_record","alert_event"})
+    void initializationUsesSignedSingleColumnPrimaryKeysForExistingFkParents(String table) throws Exception {
+        String ddl=AlertWorkflowTestDatabase.tableSql(AlertWorkflowTestDatabase.read("src/main/resources/sql/init.sql"),table);
+        assertTrue(java.util.regex.Pattern.compile("(?i)\\x60id\\x60 BIGINT (?:NOT NULL )?AUTO_INCREMENT").matcher(ddl).find(),table);
+        assertTrue(java.util.regex.Pattern.compile("(?:PRIMARY KEY \\(\\x60id\\x60\\)|\\x60id\\x60 BIGINT (?:NOT NULL )?AUTO_INCREMENT PRIMARY KEY)").matcher(ddl).find(),table);
+        assertFalse(ddl.toUpperCase(java.util.Locale.ROOT).contains("BIGINT UNSIGNED"),table);
     }
-    @ParameterizedTest @ValueSource(strings={"patient","alert_record","alert_event"}) void upgradePreflightRequiresUsableSingleColumnPrimaryKeysForEveryExistingFkParent(String table) {
-        metadata();assertTrue(sql.preflightAllows(db.jdbc,table+"_primary_id"));
-        db.jdbc.update("DELETE FROM aw57_meta_statistics WHERE table_name=?",table);assertFalse(sql.preflightAllows(db.jdbc,table+"_primary_id"));
-        db.jdbc.update("INSERT INTO aw57_meta_statistics VALUES('synthetic',?,'PRIMARY',1,'id',1,0,'BTREE')",table);assertFalse(sql.preflightAllows(db.jdbc,table+"_primary_id"));
-        db.jdbc.update("UPDATE aw57_meta_statistics SET sub_part=NULL,index_type='HASH' WHERE table_name=?",table);assertFalse(sql.preflightAllows(db.jdbc,table+"_primary_id"));
+    @Test void reservedMarkerIsRejectedWithoutReinterpretingLegacyRows() {
+        Map<String,Object> row=aggregate(1,false);
+        assertFalse(sql.rejects(db.jdbc,"aw57_alert_bi",Collections.emptyMap(),row));
+        row.put("alert_type","MEASUREMENT_FOLLOW_UP");
+        assertTrue(sql.rejects(db.jdbc,"aw57_alert_bi",Collections.emptyMap(),row));
+        assertEquals(0,db.jdbc.queryForObject("SELECT workflow_version FROM alert_record WHERE id=1",Integer.class));
     }
-    @Test void upgradePreflightRejectsReservedLegacyMarkerWithoutReinterpretingOrMutatingRows() {
-        assertFalse(sql.preflightAllows(db.jdbc,"reserved_marker_rows"));
-        db.jdbc.update("UPDATE alert_record SET workflow_version=0,alert_type='LEGACY' WHERE id IN (2,44)");assertTrue(sql.preflightAllows(db.jdbc,"reserved_marker_rows"));
-        db.jdbc.update("UPDATE alert_record SET alert_type='MEASUREMENT_FOLLOW_UP' WHERE id=1");assertFalse(sql.preflightAllows(db.jdbc,"reserved_marker_rows"));assertEquals(0,db.jdbc.queryForObject("SELECT workflow_version FROM alert_record WHERE id=1",Integer.class));
-    }
-    @Test void postcheckDetectsReservedMarkerConflictsWithoutTreatingLegacyRowsAsWorkflows() {
+    @Test void invariantDetectsReservedMarkerConflictsWithoutTreatingLegacyRowsAsWorkflows() {
         assertEquals(0,sql.diagnostics(db.jdbc,"reserved_marker_conflicts"));
         db.jdbc.update("UPDATE alert_record SET alert_type='MEASUREMENT_FOLLOW_UP' WHERE id=1");assertEquals(1,sql.diagnostics(db.jdbc,"reserved_marker_conflicts"));
         db.jdbc.update("UPDATE alert_record SET alert_type='LEGACY' WHERE id=2");assertEquals(2,sql.diagnostics(db.jdbc,"reserved_marker_conflicts"));
@@ -136,9 +135,4 @@ class AlertWorkflowGuardRegressionTest {
     private Map<String,Object> event(long parent,long patient){Map<String,Object> row=new HashMap<>();row.put("event_type",null);row.put("alert_id",parent);row.put("patient_id",patient);return row;}
     private Map<String,Object> aggregate(long id,boolean workflow){Map<String,Object> row=new HashMap<>();row.put("id",id);row.put("patient_id",10);row.put("user_id",1);row.put("workflow_version",workflow?1:0);row.put("workflow_state",workflow?"OPEN":null);row.put("workflow_mode",workflow?"PERSONAL":null);row.put("cycle_no",workflow?1:0);row.put("lock_version",0);row.put("source_review_required",0);row.put("reassignment_required",0);row.put("source_type",workflow?"HEALTH_MEASUREMENT":null);row.put("source_id",workflow?101:null);row.put("source_revision",workflow?2:null);row.put("metric_key",workflow?"GLUCOSE":null);row.put("classification_json",workflow?"{}":null);row.put("alert_type",workflow?"MEASUREMENT_FOLLOW_UP":"LEGACY");row.put("current_handling_event_id",null);row.put("current_feedback_event_id",null);return row;}
     private Map<String,Object> link(){Map<String,Object> row=new HashMap<>();row.put("source_identity_id",1);row.put("source_type","HEALTH_MEASUREMENT");row.put("source_id",101);row.put("source_revision",1);row.put("metric_key","GLUCOSE");row.put("alert_id",2);return row;}
-    private void metadata(){
-        db.jdbc.execute("CREATE TABLE aw57_meta_columns(table_schema VARCHAR(50),table_name VARCHAR(50),column_name VARCHAR(50),data_type VARCHAR(50),column_type VARCHAR(50),is_nullable VARCHAR(5))");
-        db.jdbc.execute("CREATE TABLE aw57_meta_statistics(table_schema VARCHAR(50),table_name VARCHAR(50),index_name VARCHAR(50),seq_in_index INT,column_name VARCHAR(50),sub_part INT,non_unique INT,index_type VARCHAR(20))");
-        for(String table:Arrays.asList("patient","alert_record","alert_event")){db.jdbc.update("INSERT INTO aw57_meta_columns VALUES('synthetic',?,'id','bigint','bigint','NO')",table);db.jdbc.update("INSERT INTO aw57_meta_statistics VALUES('synthetic',?,'PRIMARY',1,'id',NULL,0,'BTREE')",table);}
-    }
 }

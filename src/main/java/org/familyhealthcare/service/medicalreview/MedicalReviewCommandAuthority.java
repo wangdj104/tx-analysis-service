@@ -29,9 +29,9 @@ final class MedicalReviewCommandAuthority {
         try{access.requireLockedCurrent(source,actor,true,workspace);}
         catch(IllegalStateException denied){if("Access denied to source record.".equals(denied.getMessage()))throw MedicalRecordCorrectionAuthorization.denied();throw denied;}
         requireActor(actor);
-        if(role(c,actor,"admin"))return "ADMIN";
         if(source.getPatientId()!=null&&role(c,actor,"doctor")&&exists(c,"SELECT EXISTS(SELECT 1 FROM doctor_patient_assignment WHERE doctor_user_id=? AND patient_id=? AND status='ACTIVE')",actor,source.getPatientId()))return "ASSIGNED_DOCTOR";
         if(workspace)throw MedicalRecordCorrectionAuthorization.denied();
+        if(role(c,actor,"admin"))return "ADMIN";
         Long owner=source.getUserId();
         if(source.getPatientId()!=null){
             try(PreparedStatement s=c.prepareStatement("SELECT id,user_id FROM patient WHERE id=? AND status=1 AND COALESCE(deleted,0)=0 LIMIT 2")){

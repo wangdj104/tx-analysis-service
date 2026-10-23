@@ -194,7 +194,7 @@ import static org.familyhealthcare.service.familyassistance.FamilyAssistanceAuth
     /** exact due key 属于请求与周期，即使没有有效接收者也写一次，不推断成功。 */
     public void markDue(Instant now) {
         Objects.requireNonNull(now);
-        HouseholdWorkflowSchema.StorageReadiness ready=repo.schema.inspectStorageMetadata();
+        HouseholdWorkflowSchema.StorageReadiness ready=repo.inspectStorageMetadata();
         // A-only 且关闭时没有到期事实可读；已有 tracked 即使关闭也仍记录真实 DUE。
         if(ready.getStatus()==HouseholdWorkflowSchema.StorageStatus.ABSENT&&!properties.isEnabled())return;
         ready.requireStructurallyReady();

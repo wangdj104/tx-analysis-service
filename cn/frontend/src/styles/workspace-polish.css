@@ -1,0 +1,81 @@
+/* Keep patient context distinct from personal display controls at every width. */
+.workspace-topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "location patient actions";
+  gap: 12px 20px;
+}
+.workspace-topbar__location { grid-area: location; min-width: 0; }
+.workspace-topbar__patient {
+  grid-area: patient;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.workspace-topbar__actions { grid-area: actions; gap: 12px; }
+.workspace-breadcrumb { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.workspace-topbar__patient .patient-switcher { min-width: 0; }
+.workspace-topbar__patient .patient-switcher__field { width: 180px; min-width: 0; }
+.workspace-consultations { box-sizing: border-box; min-width: 44px; min-height: 44px; }
+.appearance-popover { box-sizing: border-box; max-width: calc(100vw - 24px); }
+.appearance-popover .appearance-selector--popover {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  font-size: 14px;
+}
+.appearance-popover .appearance-selector--popover > span { display: block; }
+.appearance-popover .appearance-selector--popover select { width: 100%; max-width: none; min-height: 44px; }
+.appearance-popover .appearance-storage-notice--popover {
+  position: static;
+  display: block;
+  width: auto;
+  max-width: 100%;
+  margin-top: 12px;
+  box-shadow: none;
+  overflow-wrap: anywhere;
+}
+.measurement-read-model .mr-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.measurement-read-model .mr-panel-heading > div { min-width: 0; }
+.measurement-read-model .mr-panel-heading .mr-help { margin-bottom: 0; }
+.measurement-read-model .mr-panel-heading > button { flex: 0 0 auto; max-width: 40%; }
+
+@media (max-width: 1200px) {
+  .workspace-topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "location actions" "patient patient";
+  }
+  .workspace-topbar__patient { padding-top: 10px; border-top: 1px solid var(--line-soft); }
+  .workspace-topbar__patient .patient-switcher { flex: 1; padding-left: 0; border-left: 0; }
+  .workspace-topbar__patient .patient-switcher__field { width: min(100%, 320px); }
+}
+
+@media (max-width: 768px) {
+  .workspace-topbar { align-items: center; gap: 8px; padding: 8px 12px 12px; }
+  .workspace-topbar__location { gap: 8px; }
+  .workspace-mobile-brand { display: block; }
+  .workspace-topbar__actions { gap: 8px; flex-wrap: nowrap; }
+  .workspace-topbar__patient { gap: 8px; padding-top: 8px; }
+  .workspace-topbar__patient .patient-switcher__field { width: 100%; }
+  .workspace-topbar__patient .el-select__wrapper { min-height: 44px; }
+  .workspace-topbar__patient .workspace-icon-button,
+  .workspace-topbar__patient .workspace-consultations { align-self: flex-end; }
+  .workspace-guest-actions { top: 12px; right: 12px; }
+}
+
+@media (max-width: 600px) {
+  .care-workspace.care-workspace--guest .login-page { padding-top: 80px; }
+  .measurement-read-model .mr-panel-heading { flex-direction: column; gap: 12px; }
+  .measurement-read-model .mr-panel-heading > button { width: 100%; max-width: 100%; }
+}
+
+@media print {
+  .appearance-popover, .appearance-toggle { display: none !important; }
+}

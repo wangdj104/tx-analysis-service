@@ -41,7 +41,7 @@ public class MedicationIntakeService {
     private Map<String,Object> execute(long actor,Long execution,Long personalMedication,IntakeCommand c) {
         mutationTransaction(jdbc);
         auth.requireWrite(actor,c.meta.patientId);
-        repo.schema.inspectStorageMetadata().requireStructurallyReady();
+        repo.inspectStorageMetadata().requireStructurallyReady();
         Map<String,Object> discovered=repo.one("SELECT patient_id,medication_id FROM medication_intake WHERE id=?",c.intakeId);
         if(discovered==null||id(discovered.get("patient_id"))!=c.meta.patientId)throw MedicationExecutionAuthorizationService.denied();
         long medication=id(discovered.get("medication_id")),patient=c.meta.patientId;

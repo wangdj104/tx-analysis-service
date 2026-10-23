@@ -1,4 +1,10 @@
 spring:
+  datasource:
+    hikari:
+      data-source-properties:
+        # 所有配置环境均由 Connector/J 同步设置编码和结果字符集，满足原生存储守卫。
+        characterEncoding: UTF-8
+        characterSetResults: UTF-8
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   servlet:

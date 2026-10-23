@@ -184,7 +184,17 @@ final class MedicalReviewQualificationRepository {
         }
         witnesses.add(rows);resource.verify();return rows;
     }
-    private static String table(int count,String[] columns){String tuple="SELECT ";for(int i=0;i<columns.length;i++){if(i>0)tuple+=",";tuple+="? AS "+columns[i];}return "("+String.join(" UNION ALL ",Collections.nCopies(count,tuple))+") k";}
+    private static String table(int count,String[] columns){
+        String tuple="SELECT ";
+        for(int i=0;i<columns.length;i++){
+            if(i>0)tuple+=",";
+            // Event generation/channel keys are ascii_bin even when the pooled connection is utf8mb4.
+            String value="generation".equals(columns[i])||"channel".equals(columns[i])
+                    ?"CAST(? AS CHAR CHARACTER SET ascii) COLLATE ascii_bin":"?";
+            tuple+=value+" AS "+columns[i];
+        }
+        return "("+String.join(" UNION ALL ",Collections.nCopies(count,tuple))+") k";
+    }
     private static List<Object> arguments(List<Key> keys,int width){List<Object> args=new ArrayList<>();for(Key key:keys){args.add(key.record);if(width>1)args.add(key.generation);if(width>2)args.add(key.channel.name());}return args;}
     private static String marks(int count){return String.join(",",Collections.nCopies(count,"?"));}
     private static String string(Map<String,Object> row,String key){Object value=row.get(key);if(value!=null&&!(value instanceof String))throw invalid();return(String)value;}

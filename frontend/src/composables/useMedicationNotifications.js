@@ -9,7 +9,18 @@ export function useMedicationNotifications() {
   const { currentPatientId, currentPatientName } = useCurrentPatient()
   let timer, running = false, stopped = false, patientEpoch = 0, historyDate
   const delivered = new Map()
-  watch([currentPatientId, currentPatientName], () => { patientEpoch++ }, { flush: 'sync' })
+  const visibleNotifications = new Set()
+  function retireNotifications() {
+    patientEpoch++
+    for (const notification of visibleNotifications) {
+      notification.onclick = null
+      notification.onclose = null
+      try { notification.close() } catch { /* The operating system controls notification retention. */ }
+    }
+    visibleNotifications.clear()
+  }
+  const invalidationEvents = ['auth-session-changed', 'auth-session-cleared', 'permissions-changed']
+  watch([currentPatientId, currentPatientName], retireNotifications, { flush: 'sync' })
   const accountKey = session => localStorage.getItem('username') || session.token?.slice(-20)
   async function check() {
     if (stopped || running) return
@@ -47,6 +58,8 @@ export function useMedicationNotifications() {
           body: `${task.drugName || 'medication intake'} · ${task.dosage || 'As prescribed'}`,
           tag: `medication-${task.id}`, requireInteraction: true
         })
+        visibleNotifications.add(notification)
+        notification.onclose = () => visibleNotifications.delete(notification)
         // Record only successful construction, before persistence can fail.
         sent.add(key)
         notification.onclick = () => { window.focus(); notification.close() }
@@ -55,6 +68,14 @@ export function useMedicationNotifications() {
     } catch { /* The next poll retries. */ }
     finally { running = false }
   }
-  onMounted(() => { check(); timer = window.setInterval(check, 30000) })
-  onUnmounted(() => { stopped = true; window.clearInterval(timer) })
+  onMounted(() => {
+    invalidationEvents.forEach(event => window.addEventListener(event, retireNotifications))
+    check(); timer = window.setInterval(check, 30000)
+  })
+  onUnmounted(() => {
+    stopped = true
+    window.clearInterval(timer)
+    invalidationEvents.forEach(event => window.removeEventListener(event, retireNotifications))
+    retireNotifications()
+  })
 }

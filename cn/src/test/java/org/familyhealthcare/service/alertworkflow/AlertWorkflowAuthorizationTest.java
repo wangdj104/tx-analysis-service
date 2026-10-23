@@ -44,7 +44,7 @@ class AlertWorkflowAuthorizationTest {
         db.jdbc.update("UPDATE care_nurse_assignment SET status='REVOKED',revoked_at=?",AlertWorkflowTestDatabase.NOW);deny("requireRead",4);
         db.jdbc.update("DELETE FROM sys_user_role WHERE user_id=4 AND role_id=4");deny("requireRecord",4);
     }
-    @Test void expiredNursingAssignmentAtTheExactDeadlineDenies() {db.jdbc.update("UPDATE care_nurse_assignment SET expires_at=?",AlertWorkflowTestDatabase.NOW);deny("requireRead",4);}
+    @Test void expiredNursingAssignmentAtTheExactDeadlineDenies() {db.jdbc.update(connection->{java.sql.PreparedStatement ps=connection.prepareStatement("UPDATE care_nurse_assignment SET expires_at=?");org.familyhealthcare.service.workflow.WorkflowData.time(ps,1,AlertWorkflowTestDatabase.NOW);return ps;});deny("requireRead",4);}
     @Test void utcNursingExpiryAndLegacyLocalGrantExpiryKeepTheirDistinctInterpretation() {
         db.jdbc.update(connection->{java.sql.PreparedStatement ps=connection.prepareStatement("UPDATE care_nurse_assignment SET expires_at=?");org.familyhealthcare.service.workflow.WorkflowData.time(ps,1,AlertWorkflowTestDatabase.NOW.plusSeconds(60));return ps;});allow("requireNursing",4);
         db.jdbc.update(connection->{java.sql.PreparedStatement ps=connection.prepareStatement("UPDATE care_nurse_assignment SET expires_at=?");org.familyhealthcare.service.workflow.WorkflowData.time(ps,1,AlertWorkflowTestDatabase.NOW);return ps;});deny("requireRead",4);

@@ -24,6 +24,10 @@ public final class SensitiveResponseFilter extends OncePerRequestFilter implemen
             throws ServletException,IOException {
         String path=UrlPathHelper.defaultInstance.getPathWithinApplication(request);
         if(path.endsWith("/"))path=path.substring(0,path.length()-1);
+        if(path.startsWith("/api/")) {
+            response.setHeader("Cache-Control","no-store, private");
+            response.setHeader("X-Content-Type-Options","nosniff");
+        }
         if(path.equals("/api/emergency-assistance")||path.startsWith("/api/emergency-assistance/")||path.equals("/emergency-assistance")||path.startsWith("/emergency-assistance/")||path.equals("/api/care-journey/emergency-capabilities")||path.equals("/care-journey/emergency-capabilities")||path.equals("/api/care-journey/emergency-card")||path.startsWith("/api/care-journey/emergencies")||path.equals("/care-journey/emergency-card")||path.startsWith("/care-journey/emergencies")||path.equals("/api/family-assistance")||path.startsWith("/api/family-assistance/")||path.equals("/family-assistance")||path.startsWith("/family-assistance/")||path.equals("/api/stock-workflows")||path.startsWith("/api/stock-workflows/")||path.equals("/stock-workflows")||path.startsWith("/stock-workflows/")
                 ||path.equals("/api/medication-executions")||path.startsWith("/api/medication-executions/")
                 ||path.equals("/medication-executions")||path.startsWith("/medication-executions/")||ROUTES.contains(path)||path.equals("/api/alert-workflows")||path.startsWith("/api/alert-workflows/")

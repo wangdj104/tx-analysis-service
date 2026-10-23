@@ -80,3 +80,7 @@ backups/
 # Local database backups may contain sensitive production data.
 database-backups/
 scripts/*.class
+
+# Local synthetic acceptance runs and temporary tools
+.tmp/
+frontend/node-cache/

@@ -75,7 +75,7 @@ public final class VisitQuestionTransportReadiness {
             try (PreparedStatement statement = borrowed.prepareStatement(SERVER_SQL)) {
                 statement.setQueryTimeout(5);
                 try (ResultSet rows = statement.executeQuery()) {
-                    if (!rows.next() || !"5.7.18".equals(rows.getString(1)) || rows.getString(2) == null) throw stop();
+                    if (!rows.next() || !supportedVersion(rows.getString(1)) || rows.getString(2) == null) throw stop();
                     long global = rows.getLong(3); if (rows.wasNull() || global < MIN_PACKET) throw stop();
                     long session = rows.getLong(4); if (rows.wasNull() || session < MIN_PACKET) throw stop();
                     if (!"utf8mb4".equals(rows.getString(5)) || !"utf8mb4".equals(rows.getString(6))) throw stop();
@@ -146,6 +146,10 @@ public final class VisitQuestionTransportReadiness {
 
     public static void requireStatement(Connection connection, String sql, Object... parameters) {
         inspect(connection).requireStatement(connection, sql, parameters);
+    }
+    private static boolean supportedVersion(String version) {
+        return version != null && ("5.7.18".equals(version) || version.startsWith("5.7.18-"))
+                && !version.toLowerCase(Locale.ROOT).contains("mariadb");
     }
     private static WorkflowException stop() {
         return new WorkflowException(503, "QUESTION_TRANSPORT_NOT_READY", "The executing question connection could not be verified; no change was made.");

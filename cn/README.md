@@ -70,7 +70,15 @@
 
 已实现“测量 → 明确负责人接手 → 处理凭据 → 本人／协助反馈 → 有原因关闭”，独立 `ALERT_WORKFLOW_ENABLED=false` 默认关闭。两条原有测量入口与现有角色页面接入，保留更正、撤销授权、超时等历史路径。护士仍需有效指派及明确 `MEASUREMENTS` 授权，不附带 `CARE_PLAN` 或临床关闭权；临床关闭仅由当前指派医生完成。
 
-[发布检查点](docs/ALERT_WORKFLOW_RELEASE.md)与[机器核验记录](../docs/verification/alert-workflow.json)分别记录真实服务＋H2、真实 Vue＋模拟 API 的证据：封存源922eaac的新后端两版各389、前端106／98及两版构建通过。集中修复的独立定向复核待完成，真实MySQL5.7.18、实际Java8、浏览器／真实HTTP、恢复及供应商验收仍为 **NOT_RUN**；没有部署或宣称全部路线完成。原始数值／单位可见，缺少权威比较单位时暂不显示归一化比较值／阈值数值。当前生产Compose需用户自行应用环境覆盖，仅写 `.env.production` 无效；详见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。
+[发布检查点](docs/ALERT_WORKFLOW_RELEASE.md)与[机器核验记录](../docs/verification/alert-workflow.json)分别记录真实服务＋H2、真实 Vue＋模拟 API 的证据：封存源922eaac的新后端两版各389、前端106／98及两版构建通过。集中修复的独立定向复核待完成，真实MySQL5.7.18、实际Java8、浏览器／真实HTTP、恢复及供应商验收仍为 **NOT_RUN**；没有部署或宣称全部路线完成。原始数值／单位可见，缺少权威比较单位时暂不显示归一化比较值／阈值数值。当前生产 Compose 已从 `.env.production` 转发 `ALERT_WORKFLOW_ENABLED`，默认 `false`；详见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。
+
+## 跨模块时间线、专项跟进与恢复
+
+家庭健康时间线现将有权查看的测量、异常跟进、已发布照护计划事项、服药事实、出入库、家庭协作和紧急求助串联展示，保留来源与当前处理状态，可返回原模块继续操作。通知送达不会标记为已执行；每个所选日期范围最多读取最新 200 条当前有权查看的事实。
+
+康复、营养、透析、妇幼与心理页面复用已有协作计划，记录执行、求助或漏做、人工修订与阶段复核。报告来源核验和医生复核保持独立；医生决定需要有效医生身份及当前患者指派。
+
+共享请求边界会丢弃旧账号、旧患者及旧授权响应。家庭导入关闭历史提醒并明确有限覆盖范围；另有独立的完整数据库与附件恢复演练，校验副本后仍禁止恢复副本带着旧授权和通知队列启动。操作步骤见[隔离恢复说明](docs/OFFLINE_DEPLOYMENT.md#isolated-restore)。
 
 ## 产品设计原则
 
@@ -113,11 +121,11 @@ docker compose up --build
 
 将服务暴露到任何网络前，请更换全部密钥。Docker 演示仅用于评估，不应用于生产环境。
 
-空 MySQL 数据卷会执行完整的 `init.sql`，再加载 `demo/sql/demo-data.sql` 中的可选本地演示数据。已有数据卷不会再次初始化，应先备份并比对当前结构，只补缺失且适用的内容；切勿删除有数据的卷来强制初始化。`cn/docker-compose.yml` 仅供独立中文版使用，双语部署请使用根目录编排。
+Compose 使用 MySQL 5.7.18 和独立的 `mysql57-data` 卷；原 MySQL 8 的 `mysql-data` 卷保留，不应直接挂载到 MySQL 5.7。空数据卷会执行完整 `init.sql`，再加载 `demo/sql/demo-data.sql` 中的可选本地演示数据。已有数据卷不会再次初始化，应先备份并比对当前结构，只补缺失且适用的内容；切勿删除有数据的卷来强制初始化。`cn/docker-compose.yml` 仅供独立中文版使用，双语部署请使用根目录编排。
 
 ## 中英文生产部署
 
-完整迁移顺序、初始管理员、TLS／私有 HTTP 绑定、可选字体挂载和显式启用验收见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。数据库和实际部署步骤由运维自行执行。
+数据库安装、初始管理员、TLS／私有 HTTP 绑定、可选字体挂载和显式启用验收见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。数据库和实际部署步骤由运维自行执行。
 
 生产镜像会在 `/` 提供英文正式系统，在 `/cn/` 提供中文正式系统。用户通过页面右上角切换语言时会保留当前业务页面；两套界面共用同一个 API、账号、登录状态和数据库。
 
@@ -135,14 +143,14 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 
 ## 技术栈
 
-- 后端：Java 8 兼容源码／字节码（JDK 17 构建）、Spring Boot 2.5、MyBatis-Plus、MySQL 5.7.18／8.0、JWT。
+- 后端：Java 8 兼容源码／字节码（JDK 17 构建）、Spring Boot 2.5、MyBatis-Plus、MySQL 5.7.18、JWT。
 - 前端：Vue 3、Vite、Vue Router、Element Plus、ECharts。
 - 测试：JUnit 5、Mockito、H2 MySQL 模式、Node.js 测试运行器。
 - 部署：Docker Compose、Nginx、GitHub Actions、GitHub Pages。
 
 ## 本地开发
 
-环境要求：推荐 JDK 17（源码和字节码目标兼容 Java 8，CI/Docker 使用 17）、Maven 3.8+、Node.js 20+、MySQL 5.7.18 或 8.0；新随访的真实 5.7.18 验收仍为 NOT_RUN。
+环境要求：推荐 JDK 17（源码和字节码目标兼容 Java 8，CI/Docker 使用 17）、Maven 3.8+、Node.js 20+、MySQL 5.7.18；完整初始化及运行时工作流契约要求该版本。
 
 <a id="database-initialization"></a>
 
@@ -156,11 +164,11 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 mysql -u root -p family_health < src/main/resources/sql/init.sql
 ```
 
-新建空库只需执行完整的 [init.sql](src/main/resources/sql/init.sql)，已包含系统全部表、索引、角色权限与基础字典。已有库先备份并核对结构，只执行适用差异；基础脚本不会自动升级已有表。[demo-data.sql](demo/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
+新建空库只执行 [init.sql](src/main/resources/sql/init.sql)，其中包含完整系统结构、工作流守卫及必要基础数据，包括报告审核。历史增量及其他初始化版本均已合并到该文件。已有库先备份，再将实际结构与 `init.sql` 比对，按[部署说明](docs/OFFLINE_DEPLOYMENT.md#medical-review-setup)只补缺失且兼容的内容。[demo-data.sql](demo/sql/demo-data.sql) 仅用于本地演示，禁止导入生产环境。
 
 完整初始化已包含照护计划协作结构，协作时间采用 UTC `DATETIME(6)` 并由应用显式转换。内部 `workflow_version=0` 计划仍须明确复制、发布，不自动建立行动项或通知。安装表结构不会分配护理账号、授予患者权限或启用协作功能。发布前应在隔离数据库核对实际流程并演练完整备份恢复。停用时保留已发布历史。
 
-中英文初始化结构相同、显示文字分别本地化，一个数据库只选择一版。示例排序规则兼容MySQL5.7；CHECK仅在8.0.16+执行，新随访使用服务校验及5.7兼容守卫，不依赖CHECK。每版源码有86条CREATE TABLE及22个随访守卫，并非实际数据库清点；真实5.7.18验收待完成。已有库使用[运维交接](docs/OFFLINE_DEPLOYMENT.md)中的独立预检／增量／后检，不能用init.sql升级。脚本不创建管理员账号，重复执行可能补回已删除的角色菜单或字典；MySQL DDL 会隐式提交，出错后应检查已完成步骤。
+中英文初始化结构相同、显示文字分别本地化，一个数据库只选择一版。工作流结构契约针对 MySQL 5.7.18，使用服务校验和兼容触发器，不依赖 CHECK 执行。修改存储时应同步维护两版 `init.sql` 和运行时 `*-schema.json` 契约。初始化仅用于空库，不创建管理员账号；已有库按[运维交接](docs/OFFLINE_DEPLOYMENT.md)审查结构差异，不能用 `init.sql` 升级。MySQL DDL 会隐式提交，出错后应检查已完成步骤。
 
 ### 2. 配置环境变量
 
@@ -209,17 +217,20 @@ Vite 通常监听 `http://localhost:5174`，将 `/api` 代理到 `http://localho
 | `OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` | 可选 OCR 服务 | API 密钥仅保存在服务端 |
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_API_URL` / `DEEPSEEK_API_MODEL` | 可选 AI 分析 | 先审查隐私和数据保留策略 |
 | `CARE_PLAN_ENABLED` | 协作照护计划开关，默认 `false` | 迁移与验收完成后，由获授权的部署决策启用 |
-| `ALERT_WORKFLOW_ENABLED` | 独立测量随访，默认 `false` | 当前生产Compose需文档中的用户自行应用覆盖；迁移不会启用 |
+| `MEDICAL_REVIEW_API_ENABLED` / `MEDICAL_REVIEW_ENABLED` | 审核 API 与原生审核流程的独立开关，均默认 `false` | 需要完整审核结构；自动流程仅接受当前版本来源核验通过的资料 |
+| `ALERT_WORKFLOW_ENABLED` | 独立测量随访，默认 `false` | 生产 Compose 从 `.env.production` 读取；迁移不会启用 |
 | `REPORT_PDF_FONT_PATH` | 可选容器／本机 PDF 字体路径；留空使用已安装字体 | 宿主机自定义字体需只读挂载，并验收实际导出 |
 | `DEV_PROXY_TARGET` | Vite 开发代理目标 | 生产不使用此值，由 Nginx 转发 `/api` |
 
 完整配置请查看 [.env.example](.env.example) 和 [application.yml](src/main/resources/application.yml)。
 
+基础 Hikari 配置在所有环境向 Connector/J 传入 `characterEncoding=UTF-8` 和 `characterSetResults=UTF-8`，使客户端、连接、结果三项 MySQL 字符集均为 `utf8mb4`，满足原生存储校验。自定义连接池配置及数据库 URL 的编码参数应保留这一约定。
+
 ## 通知与数据安全
 
 平台可通过企业微信或钉钉机器人 Webhook 及浏览器通知主动发送消息。Webhook 地址和机器人密钥属于敏感信息，API 返回时会脱敏，严禁提交到版本库。
 
-新安装只执行完整 [init.sql](src/main/resources/sql/init.sql)；`demo/sql/demo-data.sql` 仅用于本地演示。应用启动不再运行结构迁移。已有数据库应先备份、比对表列索引与权限，再执行适用差异，详见[运维交接](docs/OFFLINE_DEPLOYMENT.md)。后续结构升级应使用 Flyway 或 Liquibase 等版本化迁移工具。
+新安装只使用适用于 MySQL 5.7.18 的完整 [init.sql](src/main/resources/sql/init.sql)，每版系统 SQL 目录仅保留此文件，不能用于升级已有库。`demo/sql/demo-data.sql` 仅用于本地演示。应用启动不运行结构迁移。已有数据库应先备份、比对表列索引与权限，再按[运维交接](docs/OFFLINE_DEPLOYMENT.md)执行适用差异。
 
 ## 构建
 
@@ -254,7 +265,7 @@ cd ../
 ├── frontend/                       # Vue 3 Web 应用
 ├── src/main/java/                  # Spring Boot API
 ├── src/main/resources/sql/
-│   └── init.sql                    # 完整系统初始化
+│   └── init.sql                    # 唯一完整系统初始化，仅用于空库
 ├── .env.example                    # 不含真实密钥的配置模板
 ├── .env.production.example         # 连接现有数据库的生产配置模板
 ├── docker-compose.production.yml   # 中英文生产部署

@@ -21,9 +21,9 @@ public final class MedicalRecordCorrectionSchema {
     public Status inspectStorage(Connection connection) {
         if (connection == null) return Status.INCOMPATIBLE;
         try {
-            long presence = scalar(connection, MANIFEST.get("presenceSql").asText());
+            long presence = scalar(connection, MANIFEST.get("presenceSql").asText(), 5);
             if (presence == 0) return Status.ABSENT;
-            return scalar(connection, MANIFEST.get("metadataSql").asText()) == 1 ? Status.READY : Status.INCOMPATIBLE;
+            return scalar(connection, MANIFEST.get("metadataSql").asText(), 15) == 1 ? Status.READY : Status.INCOMPATIBLE;
         } catch (SQLException | RuntimeException failure) { return Status.INCOMPATIBLE; }
     }
 
@@ -32,9 +32,9 @@ public final class MedicalRecordCorrectionSchema {
         if (!enabled) throw new WorkflowException(409, "MEDICAL_RECORD_CORRECTION_DISABLED", "病历更正功能当前未启用。");
     }
 
-    private static long scalar(Connection connection, String sql) throws SQLException {
+    private static long scalar(Connection connection, String sql, int timeoutSeconds) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setQueryTimeout(5);
+            statement.setQueryTimeout(timeoutSeconds);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) throw notReady();
                 long value = result.getLong(1);

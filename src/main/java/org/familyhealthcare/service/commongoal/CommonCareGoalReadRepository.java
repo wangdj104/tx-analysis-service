@@ -9,7 +9,7 @@ import static org.familyhealthcare.service.commongoal.CommonCareGoalContracts.*;
 
 /** Bounded patient-local queries. Summaries never load event JSON or medical sources. */
 @Repository
-public final class CommonCareGoalReadRepository {
+public class CommonCareGoalReadRepository {
     private final JdbcTemplate jdbc;
     public CommonCareGoalReadRepository(JdbcTemplate jdbc) { this.jdbc=jdbc; }
     public List<Goal> goals(long patient, String state, long before, int limit) {

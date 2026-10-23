@@ -27,7 +27,7 @@ public class MedicationBoundaryService {
     }
     /** GET is read-only. Concurrent edits are detected by the later lock-bound exact comparison. */
     public Map<String,Object> preview(long actor,long executionId) {
-        repo.schema.inspectStorageMetadata().requireStructurallyReady();
+        repo.inspectStorageMetadata().requireStructurallyReady();
         Map<String,Object> e=required(executionId);
         long patient=id(e.get("patient_id"));
         auth.requireRead(actor,patient);

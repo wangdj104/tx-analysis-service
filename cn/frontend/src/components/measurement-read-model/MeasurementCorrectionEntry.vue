@@ -1,8 +1,9 @@
 <template>
  <section class="measurement-read-model mr-panel" data-testid="measurement-correction-entry">
-  <h2 ref="heading" tabindex="-1">{{t('correctionTitle')}}</h2>
-  <p class="mr-help">{{t('correctionScope')}}</p>
-  <button type="button" data-action="toggle-correction-entry" :aria-expanded="expanded" :disabled="sourceLocked" @click="toggle">{{t(expanded?'correctionClose':'correctionOpen')}}</button>
+  <header class="mr-panel-heading">
+   <div><h2 ref="heading" tabindex="-1">{{t('correctionTitle')}}</h2><p class="mr-help">{{t('correctionScope')}}</p></div>
+   <button type="button" data-action="toggle-correction-entry" :aria-expanded="expanded" :disabled="sourceLocked" @click="toggle">{{t(expanded?'correctionClose':'correctionOpen')}}</button>
+  </header>
   <template v-if="expanded">
    <p class="mr-help">{{t('correctionBaseline')}}</p>
    <p v-if="!patientId" role="status">{{t('choosePatient')}}</p>

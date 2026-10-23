@@ -29,6 +29,7 @@
     </div>
     <el-alert title="恢复会创建独立副本，不覆盖当前数据。用药提醒与自动分析默认关闭；通知渠道需重新配置，照护成员需重新邀请。" type="info" :closable="false" />
     <section v-if="inspection" class="backup-preview">
+      <p>恢复副本的阈值告警规则也默认关闭；历史操作人不视为本次已核验身份。</p>
       <h3>备份预览</h3>
       <p>创建时间：{{ inspection.createdAt }}</p>
       <p>家庭成员：{{ inspection.patients?.map(p => p.name).join('、') }}</p>
@@ -41,6 +42,7 @@
       <el-button type="primary" :disabled="!confirmed || busy" :loading="busy" @click="restore">恢复为副本</el-button>
     </section>
     <el-alert v-if="result" :title="result" type="success" :closable="false" />
+    <el-alert v-if="restoreUncertain" title="尚未确认恢复结果。请先检查患者副本是否已创建，再决定是否重新选择文件；不要连续重试同一次恢复。" type="warning" :closable="false" />
   </section>
 </template>
 
@@ -54,6 +56,7 @@ const busy = ref(false)
 const inspection = ref(null)
 const confirmed = ref(false)
 const result = ref('')
+const restoreUncertain = ref(false)
 let selected = null, inspectedFile = null, disposed = false
 
 async function download() {
@@ -82,6 +85,7 @@ async function preview(e) {
   inspection.value = null
   confirmed.value = false
   result.value = ''
+  restoreUncertain.value = false
   if (!file) return
   busy.value = true
   try {
@@ -109,6 +113,15 @@ async function restore() {
     inspectedFile = null
     emit('restored')
     window.dispatchEvent(new Event('care-patients-changed'))
+  } catch (error) {
+    if (!disposed && error.code !== 'ERR_CANCELED') {
+      restoreUncertain.value = true
+      inspection.value = null
+      selected = null
+      inspectedFile = null
+      confirmed.value = false
+      window.dispatchEvent(new Event('care-patients-changed'))
+    }
   } finally {
     busy.value = false
   }

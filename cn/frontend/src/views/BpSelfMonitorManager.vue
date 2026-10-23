@@ -2,6 +2,7 @@
   <el-container class="module-page bp-monitor-page">
     <el-main class="main-content">
       <div class="page-inner">
+        <el-alert v-if="timelineLocator && timelineLocator.patientId!==currentPatientId" type="warning" :closable="false" :title="`请选择患者档案 #${timelineLocator.patientId} 以查看这条原始测量。`" />
         <div class="page-header bp-hero">
           <div class="top-bar">
             <div class="left">
@@ -240,6 +241,11 @@ import OriginalImportFacts from '@/components/OriginalImportFacts.vue';
 import {originalText as ot} from '@/utils/originalMeasurementCopy';
 import {selfTime,selfBp,selfGlucose,originalIssues,originalEditPatch,originalEditableFields,validOriginalDetail} from '@/utils/originalMeasurementPresentation';
 import {captureAuthSession,isAuthSessionCurrent,readPermissionCache} from '@/utils/authSession';
+
+import {useRoute} from 'vue-router';
+import {parseOriginalMeasurementRoute} from '@/utils/workspaceAccess';
+const sourceRoute=useRoute();
+const timelineLocator=computed(()=>parseOriginalMeasurementRoute(sourceRoute.fullPath));
 
 const { currentPatientId, currentPatientName } = useCurrentPatient();
 const trustedTrend=ref(null),legacyFollowUpsVisible=ref(false);
@@ -625,6 +631,17 @@ onUnmounted(() => {
   loading.value = false;
   invalidateEditor();
 });
+let openedTimelineLocator='';
+watch([()=>sourceRoute.fullPath,currentPatientId,()=>originalMode.value,()=>raw.state.phase],async()=>{
+  const locator=timelineLocator.value;
+  if(!locator||locator.patientId!==currentPatientId.value||disposed)return;
+  if(!rawOpen.value){rawOpen.value=true;return;}
+  if(!['enabled','disabled'].includes(originalMode.value)||raw.state.phase!=='ready')return;
+  const key=`${locator.patientId}:${locator.recordId}:${readerSessionEpoch}`;
+  if(openedTimelineLocator===key)return;
+  openedTimelineLocator=key;
+  await openDetail({id:locator.recordId,patientId:locator.patientId});
+},{immediate:true,flush:'post'});
 </script>
 
 <style scoped src="@/styles/module-layout.css"></style>

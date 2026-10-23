@@ -12,6 +12,28 @@ export function parseAssistanceRoute(fullPath) {
  const query=exactQuery(fullPath,'/care',['patientId','assistanceId']);if(!query)return null;
  const patientId=positiveId(query.get('patientId')),assistanceId=positiveId(query.get('assistanceId'));return patientId&&assistanceId?{patientId,assistanceId}:null;
 }
+export function parseMedicationRoute(fullPath) {
+  const query=exactQuery(fullPath,'/medication',['patientId'],['executionId']);if(!query)return null;
+  const patientId=positiveId(query.get('patientId')),executionId=query.has('executionId')?positiveId(query.get('executionId')):null;
+  return patientId&&(!query.has('executionId')||executionId)?{patientId,executionId}:null;
+}
+export function parseOriginalMeasurementRoute(fullPath) {
+  const query=exactQuery(fullPath,'/bp-self-monitor',['patientId','recordId']);if(!query)return null;
+  const patientId=positiveId(query.get('patientId')),recordId=positiveId(query.get('recordId'));
+  return patientId&&recordId?{patientId,recordId}:null;
+}
+export function parseEmergencyRoute(fullPath) {
+  const query=exactQuery(fullPath,'/care-journey',['tab','patientId','emergencyEventId']);if(!query||query.get('tab')!=='emergency')return null;
+  const patientId=positiveId(query.get('patientId')),emergencyEventId=positiveId(query.get('emergencyEventId'));
+  return patientId&&emergencyEventId?{patientId,emergencyEventId}:null;
+}
+export function parseAlertTimelineRoute(fullPath) {
+  if(typeof fullPath!=='string')return null;
+  const path=fullPath.split('?')[0];if(!/^\/alert-workflows\/[1-9]\d*$/.test(path))return null;
+  const query=exactQuery(fullPath,path,['patientId']);if(!query)return null;
+  const patientId=positiveId(query.get('patientId')),alertId=positiveId(path.split('/').pop());
+  return patientId&&alertId?{patientId,alertId}:null;
+}
 export function parseStockRoute(fullPath) {
   const query = exactQuery(fullPath, '/care', ['patientId', 'stockId']);
   if (!query) return null;
@@ -67,7 +89,7 @@ export function canAccessWorkspace(fullPath, menuPaths = [], roleCodes = []) {
   if (/^\/care-plans\/[1-9]\d*$/.test(path)) return fullPath === path;
   // The authenticated care entry hosts independently authorized plan tasks.
   // Patient/module access stays with the API; this does not grant another tab.
-  if (fullPath === '/care' || parseStockRoute(fullPath) || parseAssistanceRoute(fullPath) || isQuestionRoute(fullPath)) return true;
+  if (fullPath === '/care' || parseStockRoute(fullPath) || parseAssistanceRoute(fullPath) || parseMedicationRoute(fullPath) || parseOriginalMeasurementRoute(fullPath) || parseEmergencyRoute(fullPath) || parseAlertTimelineRoute(fullPath) || isQuestionRoute(fullPath)) return true;
   if (path === '/monitoring' || roleCodes.includes('admin')) return true;
   if (path === '/care-journey' && new URLSearchParams(fullPath.split('?')[1] || '').get('tab') === 'operations' && !roleCodes.includes('doctor')) return false;
   if (menuPaths.includes(fullPath)) return true;

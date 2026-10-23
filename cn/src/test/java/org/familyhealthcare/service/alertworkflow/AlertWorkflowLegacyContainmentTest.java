@@ -16,6 +16,9 @@ class AlertWorkflowLegacyContainmentTest {
     @BeforeEach void setup() throws Exception {
         h=new AlertWorkflowHarness();legacy=new AlertServiceImpl();
         com.baomidou.mybatisplus.core.MybatisConfiguration config=new com.baomidou.mybatisplus.core.MybatisConfiguration();
+        // Test identities must not depend on Windows network-interface discovery.
+        com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils.getGlobalConfig(config)
+                .setIdentifierGenerator(new com.baomidou.mybatisplus.core.incrementer.DefaultIdentifierGenerator(1L,1L));
         config.setEnvironment(new org.apache.ibatis.mapping.Environment("test",new org.mybatis.spring.transaction.SpringManagedTransactionFactory(),h.db.jdbc.getDataSource()));config.addMapper(AlertRecordMapper.class);
         org.apache.ibatis.session.SqlSessionFactory sessions=new com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder().build(config);
         AlertRecordMapper mapper=new org.mybatis.spring.SqlSessionTemplate(sessions).getMapper(AlertRecordMapper.class);
@@ -43,7 +46,10 @@ class AlertWorkflowLegacyContainmentTest {
         com.alibaba.fastjson2.JSONObject archive=backup.readArchive(backup.exportArchive());
         com.alibaba.fastjson2.JSONArray alerts=archive.getJSONObject("tables").getJSONArray("alert_record");assertEquals(1,alerts.size());
         for(String key:alerts.getJSONObject(0).keySet())assertFalse(key.toLowerCase(Locale.ROOT).startsWith("workflow_"));
-        assertTrue(archive.getJSONArray("warnings").toJSONString().contains("measurement follow-up history"));
+        String warnings=archive.getJSONArray("warnings").toJSONString();
+        assertTrue(warnings.contains("measurement follow-up history")||warnings.contains("测量随访历史"));
+        for(String omitted:Arrays.asList("alert_event","alert_source_identity","alert_source_revision","alert_command","alert_notification"))
+            assertFalse(archive.getJSONObject("tables").containsKey(omitted));
     }
     @Test void restoreRejectsMarkerForgeryAndPartialWorkflowHistoryBeforeInsertingAnything() throws Exception {
         org.familyhealthcare.service.FamilyBackupService backup=backup();
@@ -64,7 +70,8 @@ class AlertWorkflowLegacyContainmentTest {
             Set<String> presence=new HashSet<>();
             for(String resource:Arrays.asList("household-workflow-schema.json","visit-followup-schema.json")) {
                 try(java.io.InputStream input=AlertWorkflowLegacyContainmentTest.class.getClassLoader().getResourceAsStream(resource)) {
-                    presence.add(new com.fasterxml.jackson.databind.ObjectMapper().readTree(input).get("presenceSql").asText());
+                    presence.add(org.familyhealthcare.service.workflow.MetadataQueryPrefilter.indexed(
+                            new com.fasterxml.jackson.databind.ObjectMapper().readTree(input).get("presenceSql").asText()));
                 }
             }
             javax.sql.DataSource source=mock(javax.sql.DataSource.class);

@@ -5015,10 +5015,5 @@
     "utcFormat": "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'",
     "wallFormat": "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
   },
-  "profileContract": "EXACT_OLD requires complete original HH and zero p15 objects; FULLY_INSTALLED requires complete HH with exactly two replacements and full p15; no mixtures; one connection snapshot; no cache or migration",
-  "inputs": {
-    "household-workflow-schema.json": "1027b6dca4e158fe9e41cc73f308bc0c2d2d037958f5206926d974ae5abf488e",
-    "init.sql": "0b9f82586970d8379a369e8b19f0b2217ea35534806f9a6ca89e1e48885ff651",
-    "init_with_common_care_goals_20261016.sql": "42442f44d30ffe9b78bdb8489f060b097939eea055ee4f55bd0d73c8c7e4d706"
-  }
+  "profileContract": "EXACT_OLD requires complete original HH and zero p15 objects; FULLY_INSTALLED requires complete HH with exactly two replacements and full p15; no mixtures; one connection snapshot; no cache or migration"
 }

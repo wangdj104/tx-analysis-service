@@ -56,7 +56,7 @@ public class FamilyBackupService {
     private static final Set<String> WORKFLOW_ALERT_COLUMNS=new HashSet<>(Arrays.asList("workflow_version","workflow_state","workflow_mode","cycle_no","source_revision","metric_key","responsible_user_id","due_at","accepted_by","accepted_at","lock_version","current_handling_event_id","current_feedback_event_id","source_review_required","reassignment_required","classification_json","closed_by","closed_at","closure_reason"));
     private static final Set<String> WORKFLOW_TABLES=new HashSet<>(Arrays.asList("alert_event","alert_source_identity","alert_source_revision","alert_source_link","alert_evidence","alert_command","measurement_command","alert_notification"));
 
-    @Transactional(readOnly=true) public byte[] exportArchive() throws IOException {
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED) public byte[] exportArchive() throws IOException {
         ArchiveStorage storage=archiveStorage();boolean modern=storage.modern;
         org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.Scope medical=medicalValidity.open();
         List<Long> pids=new ArrayList<>();
@@ -104,7 +104,9 @@ public class FamilyBackupService {
         }
         if(omittedVisitCopies>0)warnings.add(text("Omitted "+omittedVisitCopies+" visit-summary event copies whose original VISIT_RECORD is not included. This is not a complete clinical-history backup.","已省略 "+omittedVisitCopies+" 条原就诊记录不在本包中的就诊摘要事件副本；本文件不是完整临床历史备份。"));
         clearOmittedAppointmentLinks(tables);
-        ByteArrayOutputStream out=new ByteArrayOutputStream();try(ZipOutputStream zip=new ZipOutputStream(out)){zip.putNextEntry(new ZipEntry("family-health.json"));zip.write(root.toJSONString().getBytes(StandardCharsets.UTF_8));zip.closeEntry();}for(Long patient:questionPatients)finishQuestionCopy(scope.requireUserId(),patient);return out.toByteArray();
+        ByteArrayOutputStream out=new ByteArrayOutputStream();try(ZipOutputStream zip=new ZipOutputStream(out)){zip.putNextEntry(new ZipEntry("family-health.json"));zip.write(root.toJSONString().getBytes(StandardCharsets.UTF_8));zip.closeEntry();}for(Long patient:questionPatients)finishQuestionCopy(scope.requireUserId(),patient);
+        for(Long patient:pids)scope.requirePatientAccess(patient,null,false);
+        return out.toByteArray();
     }
     /** 只清掉本归档未保留的同患者预约引用；普通说明文字与独立旧预约原样保存。 */
     private static void clearOmittedAppointmentLinks(JSONObject tables) {
@@ -210,7 +212,7 @@ public class FamilyBackupService {
             ByteArrayOutputStream out=new ByteArrayOutputStream();byte[]buffer=new byte[8192];int n;while((n=zip.read(buffer))!=-1){if(out.size()+n>200*1024*1024)throw new IllegalArgumentException("decompressafter  backupcopyexceed200MB, Please by Family Membersplitbackupcopy");out.write(buffer,0,n);}
             JSONObject root=JSON.parseObject(new String(out.toByteArray(),StandardCharsets.UTF_8));
             if(!"family-health-backup".equals(root.getString("format"))||root.getIntValue("version")!=1||root.getJSONObject("tables")==null)throw new IllegalArgumentException("backupcopyformat or versionthis not receivesupport");
-            if(root.getJSONObject("tables").getJSONArray("patient")==null)throw new IllegalArgumentException("backupcopymissingFamily Memberrecord");validateWorkflowOmissions(root.getJSONObject("tables"));return root;
+            if(root.getJSONObject("tables").getJSONArray("patient")==null)throw new IllegalArgumentException("backupcopymissingFamily Memberrecord");validateWorkflowOmissions(root.getJSONObject("tables"));validateArchiveRelationships(root.getJSONObject("tables"));return root;
         }}throw new IllegalArgumentException("not Yeshas valid familyhealthbackupcopyfile");
     }
     /** A version-1 archive cannot reconstruct workflow aggregates, history or command identities. */
@@ -270,10 +272,17 @@ public class FamilyBackupService {
                 remap(row,"related_dialysis_id","dialysis_record",ids,false);remap(row,"dialysis_record_id","dialysis_record",ids,false);remap(row,"completed_record_id","dialysis_record",ids,false);
                 remap(row,"reminder_id","medication_reminder",ids,false);remap(row,"intake_id","medication_intake",ids,false);
                 remap(row,"rule_id","alert_rule",ids,false);
-                for(String userColumn:Arrays.asList("user_id","actor_id","assigned_user_id"))if(row.containsKey(userColumn)&&row.get(userColumn)!=null)row.put(userColumn,uid);
-                if(table.equals("patient")){row.put("user_id",uid);row.put("name",String.valueOf(row.get("name"))+" (restoresecondarythis ) ");row.put("deleted",0);}
+                if(row.containsKey("user_id"))row.put("user_id",uid);
+                for(String userColumn:Arrays.asList("actor_id","actor_name","assigned_user_id","acknowledged_by","resolved_by"))
+                    if(row.containsKey(userColumn))row.put(userColumn,null);
+                if(table.equals("care_intake_action")) {
+                    row.put("actor_id",uid);
+                    row.put("actor_name",text("Imported history; original actor unverified","导入历史；原操作人未核验"));
+                }
+                if(table.equals("patient")){row.put("user_id",uid);row.put("name",String.valueOf(row.get("name"))+text(" (restored copy)","（恢复副本）"));row.put("deleted",0);}
                 // 恢复的是历史副本，先关提醒和自动分析、取消待处理服药任务并停止有效处方，避免旧安排再次触发。
                 if(table.equals("medication_reminder")){row.put("enabled",0);if(row.containsKey("last_trigger_at"))row.put("last_trigger_at",null);}
+                if(table.equals("alert_rule"))row.put("enabled",0);
                 if(table.equals("health_analysis_automation")) {
                     row.put("enabled",0);
                     row.put("config_version",0);
@@ -317,6 +326,50 @@ public class FamilyBackupService {
             jdbc.update("UPDATE care_item SET data_json=? WHERE id=?",d.toJSONString(),ids.get("care_item").get(raw.get("id").toString()));
         }
         Map<String,Object>out=new LinkedHashMap<>();out.put("counts",counts);out.put("patientIds",ids.getOrDefault("patient",Collections.emptyMap()).values());out.put("warnings",currentWarnings(root));out.put("stockNotificationMessage",stockNotificationWarning());out.put("message",text("Managed medical records and their dependent alert history are not restored by this limited archive. Appointment attendance facts, visit records, professional authorship, dispositions and successor history are not restored; old appointments remain independent unverified historical records. Restored as independent unverified copies; collaborative medication, stock, family, emergency and measurement follow-up history was omitted. Raw readings require explicit adoption for a follow-up. Medication reminders and automated analysis are disabled; verify care plans, configure notification channels and invite caregivers again before enabling them.", "本限定归档不恢复纳管病历及其依赖告警历史。预约到诊事实、就诊记录、专业归属、诊后决定与后继历史均未恢复；旧预约仅为未经核验的独立历史记录。已恢复为未经核验的独立副本，不包含协作用药、库存、家庭交接、紧急响应及测量随访历史；原始测量需明确纳入随访。用药提醒与自动分析均已关闭；请核对照护计划、重新配置通知渠道并邀请照护成员后再启用。"));return out;
+    }
+    /** Validate every supported relationship before inserting; identity remapping must not hide another patient's source. */
+    private void validateArchiveRelationships(JSONObject tables) {
+        Map<String,Map<String,JSONObject>> indexed=new LinkedHashMap<>();
+        for(String table:TABLES)indexed.put(table,archiveRows(tables.getJSONArray(table)));
+        Map<String,String> links=new LinkedHashMap<>();
+        links.put("medication_id","medication");links.put("record_id","medical_record");
+        links.put("related_dialysis_id","dialysis_record");links.put("dialysis_record_id","dialysis_record");
+        links.put("completed_record_id","dialysis_record");links.put("reminder_id","medication_reminder");
+        links.put("intake_id","medication_intake");links.put("rule_id","alert_rule");
+        Map<String,String> jsonLinks=new LinkedHashMap<>();
+        jsonLinks.put("medicationId","medication");jsonLinks.put("reportId","medical_record");
+        jsonLinks.put("appointmentId","care_item");jsonLinks.put("nextAppointmentId","care_item");
+        jsonLinks.put("sourceId","care_item");jsonLinks.put("intakeId","medication_intake");
+        for(Map.Entry<String,Map<String,JSONObject>> table:indexed.entrySet())for(JSONObject row:table.getValue().values()) {
+            String patient=archivePatient(table.getKey(),row,indexed);
+            if(patient==null||!indexed.get("patient").containsKey(patient))throw invalidArchiveRelationship();
+            for(Map.Entry<String,String> link:links.entrySet())validateArchiveLink(patient,row.get(link.getKey()),link.getValue(),indexed);
+            if("care_item".equals(table.getKey())&&row.get("data_json")!=null) {
+                JSONObject data=JSON.parseObject(String.valueOf(row.get("data_json")));
+                if(data!=null) {
+                    for(Map.Entry<String,String> link:jsonLinks.entrySet())validateArchiveLink(patient,data.get(link.getKey()),link.getValue(),indexed);
+                    JSONArray reminders=data.getJSONArray("reminderIds");
+                    if(reminders!=null)for(Object reminder:reminders)validateArchiveLink(patient,reminder,"medication_reminder",indexed);
+                }
+            }
+        }
+    }
+    private String archivePatient(String table,JSONObject row,Map<String,Map<String,JSONObject>> indexed) {
+        if("patient".equals(table))return row.getString("id");
+        if("medical_record_item".equals(table)||"medical_record_attachment".equals(table)) {
+            JSONObject record=indexed.get("medical_record").get(row.getString("record_id"));
+            return record==null?null:record.getString("patient_id");
+        }
+        return row.getString("patient_id");
+    }
+    private void validateArchiveLink(String patient,Object reference,String table,Map<String,Map<String,JSONObject>> indexed) {
+        if(reference==null)return;
+        JSONObject target=indexed.get(table).get(String.valueOf(reference));
+        // Omitted optional sources are cleared during restore; present sources must belong to this patient.
+        if(target!=null&&!Objects.equals(patient,archivePatient(table,target,indexed)))throw invalidArchiveRelationship();
+    }
+    private IllegalArgumentException invalidArchiveRelationship() {
+        return new IllegalArgumentException(text("The archive contains a missing or cross-patient record relationship.","归档包含缺失或跨患者的记录关联。"));
     }
     /** 恢复前核对归档内的原始患者链，不能让新ID映射掩盖跨患者引用。 */
     private void validateMedicalAlertSources(JSONObject tables) {

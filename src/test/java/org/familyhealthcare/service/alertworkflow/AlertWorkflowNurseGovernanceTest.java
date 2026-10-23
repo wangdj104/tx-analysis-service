@@ -50,7 +50,7 @@ class AlertWorkflowNurseGovernanceTest {
     @Test void revokedAssignmentExpiredAssignmentAndReadOnlyGrantCannotRecord() {
         h.db.grant(4,"NURSE","READ","MEASUREMENTS",null);h.denied(403,()->h.auth.requireRecord(4,10));h.auth.requireRead(4,10);
         h.db.jdbc.update("UPDATE care_access_grant SET access_level='WRITE' WHERE grantee_user_id=4");h.auth.requireRecord(4,10);
-        h.db.jdbc.update("UPDATE care_nurse_assignment SET expires_at=? WHERE nurse_user_id=4",java.sql.Timestamp.from(AlertWorkflowTestDatabase.NOW));h.denied(403,()->h.auth.requireRead(4,10));
+        h.db.jdbc.update(connection->{java.sql.PreparedStatement ps=connection.prepareStatement("UPDATE care_nurse_assignment SET expires_at=? WHERE nurse_user_id=4");org.familyhealthcare.service.workflow.WorkflowData.time(ps,1,AlertWorkflowTestDatabase.NOW);return ps;});h.denied(403,()->h.auth.requireRead(4,10));
         h.db.jdbc.update("UPDATE care_nurse_assignment SET expires_at=NULL,status='REVOKED' WHERE nurse_user_id=4");h.denied(403,()->h.auth.requireRecord(4,10));
     }
 

@@ -234,7 +234,7 @@ public class MedicationTrackedReminderAdapter {
         return tx;
     }
     private boolean storage() {
-        HouseholdWorkflowSchema.StorageReadiness s=repo.schema.inspectStorageMetadata();
+        HouseholdWorkflowSchema.StorageReadiness s=repo.inspectStorageMetadata();
         if(s.getStatus()==HouseholdWorkflowSchema.StorageStatus.ABSENT&&!properties.isEnabled())return false;
         s.requireStructurallyReady();
         return true;

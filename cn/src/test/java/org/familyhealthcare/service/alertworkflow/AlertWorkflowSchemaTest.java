@@ -104,31 +104,17 @@ class AlertWorkflowSchemaTest {
             return null;
         });
     }
-    @Test void additiveUpgradeDdlPreservesLegacyRowsAndCreatesMatchingRelationalContracts() throws Exception {
-        AlertWorkflowTestDatabase fresh=new AlertWorkflowTestDatabase();fresh.workflowTables();
-        AlertWorkflowTestDatabase upgraded=new AlertWorkflowTestDatabase();upgraded.fixtures();
-        String legacy=AlertWorkflowTestDatabase.read("src/test/resources/alertworkflow/legacy-alert-schema.sql");
-        for(String table:Arrays.asList("alert_record","alert_event"))upgraded.jdbc.execute(AlertWorkflowTestDatabase.h2(AlertWorkflowTestDatabase.tableSql(legacy,table)));
-        upgraded.jdbc.update("INSERT INTO alert_record(id,patient_id,user_id,status,handling_note) VALUES(44,10,1,'RESOLVED','synthetic old note')");
-        upgraded.jdbc.update("INSERT INTO alert_event(id,alert_id,patient_id,to_status,note) VALUES(45,44,10,'RESOLVED','synthetic history')");
-        String upgrade=AlertWorkflowTestDatabase.read("src/main/resources/sql/alert_workflow_upgrade_20261013.sql");
-        java.util.regex.Matcher alters=java.util.regex.Pattern.compile("(?m)^ALTER TABLE `[a-z_]+`[\\s\\S]*?;").matcher(upgrade);int count=0;
-        while(alters.find()){
-            String statement=alters.group(),table=statement.substring(statement.indexOf('`'),statement.indexOf('`',statement.indexOf('`')+1)+1);
-            // H2 does not support MySQL multi-clause ALTER: execute each exact additive column clause separately.
-            java.util.regex.Matcher additions=java.util.regex.Pattern.compile("(?m)^  ADD COLUMN ([^,;\\n]+)[,;]").matcher(statement);
-            while(additions.find())upgraded.jdbc.execute("ALTER TABLE "+table+" ADD COLUMN "+additions.group(1));
-            java.util.regex.Matcher indexes=java.util.regex.Pattern.compile("ADD KEY (`[^`]+`) (\\([^;\\n]+\\))").matcher(statement);
-            while(indexes.find())upgraded.jdbc.execute("CREATE INDEX "+indexes.group(1)+" ON "+table+" "+indexes.group(2));
-            count++;
-        }assertEquals(2,count);
-        for(String table:Arrays.asList("alert_source_identity","alert_source_revision","alert_source_link","alert_evidence","alert_command","measurement_command","alert_notification"))upgraded.jdbc.execute(AlertWorkflowTestDatabase.h2(AlertWorkflowTestDatabase.tableSql(upgrade,table)));
-        assertEquals("RESOLVED",upgraded.jdbc.queryForObject("SELECT status FROM alert_record WHERE id=44",String.class));assertEquals("synthetic history",upgraded.jdbc.queryForObject("SELECT note FROM alert_event WHERE id=45",String.class));assertEquals(0,upgraded.jdbc.queryForObject("SELECT workflow_version FROM alert_record WHERE id=44",Integer.class));
-        for(String table:Arrays.asList("ALERT_RECORD","ALERT_EVENT","ALERT_SOURCE_IDENTITY","ALERT_SOURCE_REVISION","ALERT_SOURCE_LINK","ALERT_EVIDENCE","ALERT_COMMAND","MEASUREMENT_COMMAND","ALERT_NOTIFICATION")){
-            String columns="SELECT COLUMN_NAME,TYPE_NAME,IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME=? ORDER BY ORDINAL_POSITION";
-            assertEquals(fresh.jdbc.queryForList(columns,table),upgraded.jdbc.queryForList(columns,table),table);
-        }
-        // Native preflight, dynamic note enlargement, triggers and metadata acceptance remain separate NOT_RUN gates.
+    @Test void initializedSchemaKeepsLegacyRowsOutsideWorkflowByDefault() throws Exception {
+        AlertWorkflowTestDatabase db=new AlertWorkflowTestDatabase();db.fixtures();db.workflowTables();
+        db.jdbc.update("INSERT INTO alert_record(id,patient_id,user_id,status,handling_note) VALUES(44,10,1,'RESOLVED','synthetic old note')");
+        db.jdbc.update("INSERT INTO alert_event(id,alert_id,patient_id,to_status,note) VALUES(45,44,10,'RESOLVED','synthetic history')");
+        assertEquals("RESOLVED",db.jdbc.queryForObject("SELECT status FROM alert_record WHERE id=44",String.class));
+        assertEquals("synthetic old note",db.jdbc.queryForObject("SELECT handling_note FROM alert_record WHERE id=44",String.class));
+        assertEquals("synthetic history",db.jdbc.queryForObject("SELECT note FROM alert_event WHERE id=45",String.class));
+        assertEquals(0,db.jdbc.queryForObject("SELECT workflow_version FROM alert_record WHERE id=44",Integer.class));
+        assertNull(db.jdbc.queryForObject("SELECT event_type FROM alert_event WHERE id=45",String.class));
+        for(String table:Arrays.asList("alert_source_identity","alert_source_revision","alert_source_link","alert_evidence","alert_command","measurement_command","alert_notification"))
+            assertEquals(0,db.jdbc.queryForObject("SELECT COUNT(*) FROM "+table,Integer.class),table);
     }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings={"SOURCE","METRIC","TYPE","LEGACY"})

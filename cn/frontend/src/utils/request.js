@@ -2,6 +2,7 @@ import axios from 'axios';
 import { ElMessage } from 'element-plus';
 import { captureAuthSession, isAuthSessionCurrent, clearAuthSession } from '@/utils/authSession';
 import { captureAssistanceLoginRedirect, ownsAssistanceLoginRedirect } from '@/utils/assistanceLogin';
+import { captureRequestContext, isRequestContextCurrent, isProtectedAccessFailure } from '@/utils/requestContext';
 import { localizePayload, localizeServerText } from '@/utils/serverText';
 
 // Createaxiosinstance
@@ -22,6 +23,9 @@ function logRequestError(event, error) {
 // Report parsing can await Blob.text after axios has delivered the response. Recheck
 // the captured context before any message, redirect, or return at that boundary.
 function requireCurrentReport(config) {
+  if (config?.signal?.aborted || !isRequestContextCurrent(config?.privacyContext)) {
+    throw new axios.CanceledError('REQUEST_CONTEXT_CHANGED', config);
+  }
   if ((config?.executionReport || config?.alertWorkflow || config?.householdWorkflow || config?.visitQuestion) && (config.signal?.aborted || !isAuthSessionCurrent(config.expectedAuth) ||
       config.expectedAuth?.actorId !== localStorage.getItem('userId'))) {
     throw new axios.CanceledError('REPORT_CONTEXT_CHANGED', config);
@@ -57,6 +61,17 @@ function redirectExpiredSession(config) {
 // requestinterceptor
 request.interceptors.request.use(
   (config) => {
+    config.privacyContext ||= captureRequestContext(config);
+    if (!isRequestContextCurrent(config.privacyContext)) {
+      throw Object.assign(new axios.CanceledError('REQUEST_CONTEXT_CHANGED', config), { notDispatched: true });
+    }
+    const privacyAdapter = config.adapter || request.defaults.adapter;
+    config.adapter = dispatchConfig => {
+      if (dispatchConfig.signal?.aborted || !isRequestContextCurrent(config.privacyContext)) {
+        throw Object.assign(new axios.CanceledError('REQUEST_CONTEXT_CHANGED', dispatchConfig), { notDispatched: true });
+      }
+      return axios.getAdapter(privacyAdapter, dispatchConfig)(dispatchConfig);
+    };
     const expected = config.expectedAuth;
     config.authSession = expected || captureAuthSession();
     config.assistanceLogin = captureAssistanceLoginRedirect(browserFullPath(), '/cn/');
@@ -92,10 +107,15 @@ request.interceptors.request.use(
 
 // 共同目标在面板内展示错误，旧请求的消息与登录失效流程保持不变。
 function showRequestError(config, message) {
+  if (config?.privacyInlineErrors && config.url === '/privacy/access-context') return;
   const goalInline = config?.commonGoalInlineErrors === true && /^\/common-care-goals(?:\/|$)/.test(config.url || '');
   // 登录错误只由仍属于当前页面和账号的 Login 展示，旧请求不能先弹共享提示。
   const loginInline = config?.method === 'post' && config.url === '/auth/login';
   if (!goalInline && !loginInline) ElMessage.error(message);
+}
+
+function retireDeniedAccess(config) {
+  if (isProtectedAccessFailure(config)) window.dispatchEvent(new Event('protected-access-denied'));
 }
 
 // responseshouldinterceptor
@@ -121,6 +141,7 @@ request.interceptors.response.use(
 
     // ifBack Statuscodenot Yes200, instructionsAPIhas question
     if (res.code && res.code !== 200) {
+      if (Number(res.code) === 403) retireDeniedAccess(response.config);
       if (res.code === 401) requireCurrentAssistanceLogin(response.config);
       if (!monitoringErrorIsInline(response.config, Number(res.code))) showRequestError(response.config, localizeServerText(res.msg) || '请求失败');
 
@@ -134,6 +155,7 @@ request.interceptors.response.use(
     return res;
   },
   async (error) => {
+    if (axios.isCancel(error)) return Promise.reject(error);
     // Opt-in obsolete/cancelled care requests are silent; legacy error behavior is unchanged.
     if (error.config?.expectedAuth && axios.isCancel(error)) return Promise.reject(error);
     requireCurrentReport(error.config);
@@ -144,6 +166,7 @@ request.interceptors.response.use(
 
     requireCurrentReport(error.config);
     if (error.response?.status === 401) requireCurrentAssistanceLogin(error.config);
+    if (error.response?.status === 403) retireDeniedAccess(error.config);
     logRequestError('response_failed', error);
 
     if (error.response) {
@@ -187,4 +210,23 @@ request.interceptors.response.use(
   }
 );
 
-export default request;
+// Capture synchronously at the call site, before Axios schedules its interceptor microtask.
+const guardedRequest = new Proxy(request, {
+  get(target, property, receiver) {
+    if (['get', 'delete', 'head', 'options', 'post', 'put', 'patch'].includes(property)) {
+      return (url, dataOrConfig, options) => {
+        const writes = ['post', 'put', 'patch'].includes(property);
+        const config = { ...(writes ? options : dataOrConfig), url, method: property, ...(writes ? { data: dataOrConfig } : {}) };
+        config.privacyContext ||= captureRequestContext(config);
+        return Reflect.apply(target, receiver, [config]);
+      };
+    }
+    return Reflect.get(target, property, receiver);
+  },
+  apply(target, thisArg, args) {
+    const config = typeof args[0] === 'string' ? { ...args[1], url: args[0] } : { ...args[0] };
+    config.privacyContext ||= captureRequestContext(config);
+    return Reflect.apply(target, thisArg, [config]);
+  }
+});
+export default guardedRequest;

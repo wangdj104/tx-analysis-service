@@ -77,8 +77,8 @@ public final class HouseholdWorkflowSchema {
         JdbcTemplate same=new JdbcTemplate(new SingleConnectionDataSource(connection,true));
         same.setQueryTimeout(5);
         try {
-            Long household=same.queryForObject(MANIFEST.get("presenceSql").asText(),Long.class);
-            Long followUp=same.queryForObject(FOLLOW_UP_MANIFEST.get("presenceSql").asText(),Long.class);
+            Long household=same.queryForObject(MetadataQueryPrefilter.indexed(MANIFEST.get("presenceSql").asText()),Long.class);
+            Long followUp=same.queryForObject(MetadataQueryPrefilter.indexed(FOLLOW_UP_MANIFEST.get("presenceSql").asText()),Long.class);
             if(household==null||followUp==null||household<0||followUp<0)throw new IllegalStateException("Unreadable metadata");
             if(household==0&&followUp==0)return new Compatibility(Profile.ABSENT,Collections.emptyList(),connection);
             Snapshot snapshot=new Snapshot(same,REMINDER_MANIFEST.get("snapshotQueries"),MANIFEST);
@@ -260,7 +260,7 @@ public final class HouseholdWorkflowSchema {
             Iterator<Map.Entry<String,JsonNode>> queries=queryContract.fields();
             while(queries.hasNext()){
                 Map.Entry<String,JsonNode> query=queries.next();List<Map<String,Object>> rows=new ArrayList<>();
-                for(Map<String,Object> raw:jdbc.queryForList(query.getValue().asText())){
+                for(Map<String,Object> raw:jdbc.queryForList(MetadataQueryPrefilter.indexed(query.getValue().asText()))){
                     Map<String,Object> row=new HashMap<>();for(Map.Entry<String,Object> value:raw.entrySet())row.put(value.getKey().toLowerCase(Locale.ROOT),value.getValue());rows.add(row);
                 }
                 data.put(query.getKey(),rows);
@@ -358,6 +358,8 @@ public final class HouseholdWorkflowSchema {
                 String wanted=str(value(expected.get(field))),found=str(actual.get(field));
                 if("CURRENT_TIMESTAMP".equals(wanted)||"on update CURRENT_TIMESTAMP".equals(wanted)){
                     if(found==null||!found.replace("()", "").equalsIgnoreCase(wanted))return false;
+                }else if("column_default".equals(field)){
+                    if(!columnDefaultMatches(type,expected.get("column_type").asText(),actualType,found,wanted))return false;
                 }else if(!equal(found,wanted))return false;
             }
             return true;
@@ -485,6 +487,15 @@ public final class HouseholdWorkflowSchema {
         }
         return full;
     }
+    /** MySQL serializes a DECIMAL DEFAULT 0 as 0.000 for scale 3.
+     * The caller has already checked column type, precision, scale and nullability. */
+    static boolean columnDefaultMatches(String dataType,String expectedType,String actualType,String actual,String expected){
+        if("decimal".equals(dataType)&&expectedType!=null&&expectedType.matches("decimal\\([1-9][0-9]*,[0-9]+\\)")&&Objects.equals(expectedType,actualType)
+                &&actual!=null&&expected!=null&&actual.matches("[+-]?[0-9]+(?:\\.[0-9]+)?")&&expected.matches("[+-]?[0-9]+(?:\\.[0-9]+)?"))
+            return new java.math.BigDecimal(actual).compareTo(new java.math.BigDecimal(expected))==0;
+        return Objects.equals(actual,expected);
+    }
+
     private static JsonNode readManifest(String resource){
         try(InputStream input=HouseholdWorkflowSchema.class.getResourceAsStream(resource)){
             if(input==null)throw new IllegalStateException("Missing household schema contract");

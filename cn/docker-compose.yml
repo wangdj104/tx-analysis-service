@@ -1,12 +1,12 @@
-# 本仓库 MySQL 8.0 配置只用于演示新库初始化，不等于用户实际 MySQL 5.7.18 的升级路径。
-# 实际旧库须先核验备份，按 01 只读预检 → 02 适用增量升级 → 03 只读后检；未知或部分结构必须停止。
+# 本地演示使用 MySQL 5.7.18，与完整 init.sql 及工作流结构契约一致。
+# 已有库先核验备份，再与 init.sql 比对，只补缺失且兼容的结构；不要直接重跑初始化。
 # A/B 业务开关默认 false，仅透传环境变量；由使用者完成上述检查后明确激活，不能靠启动容器自动开启。
 # 用药排程时区默认留空，必须由使用者明确提供有效时区，不从数据库、主机或浏览器猜测。
 services:
   db:
-    image: mysql:8.0
+    image: mysql:5.7.18
     restart: unless-stopped
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-family_health}
       MYSQL_USER: ${MYSQL_USER:-family_health}
@@ -14,7 +14,8 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Copy .env.example to .env and set MYSQL_ROOT_PASSWORD}
       TZ: Asia/Shanghai
     volumes:
-      - mysql-data:/var/lib/mysql
+      # 新卷与原 MySQL 8 数据卷分离，不能将旧卷直接挂载到 5.7。
+      - mysql57-data:/var/lib/mysql
       # 先初始化完整系统结构，再加载可选的本地演示记录。
       - ./src/main/resources/sql/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./demo/sql/demo-data.sql:/docker-entrypoint-initdb.d/02-demo-data.sql:ro
@@ -80,4 +81,4 @@ services:
       - api
 
 volumes:
-  mysql-data:
+  mysql57-data:

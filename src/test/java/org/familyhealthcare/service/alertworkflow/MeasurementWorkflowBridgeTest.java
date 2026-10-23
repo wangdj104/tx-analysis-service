@@ -26,6 +26,9 @@ class MeasurementWorkflowBridgeTest {
         ReflectionTestUtils.setField(journey,"audience",mock(NotificationAudienceService.class));
         for(String name:Arrays.asList("fasting_glucose_min","fasting_glucose_max","postmeal_glucose_min","postmeal_glucose_max"))h.db.jdbc.execute("ALTER TABLE patient_health_target ADD "+name+" DECIMAL(8,3)");
         com.baomidou.mybatisplus.core.MybatisConfiguration config=new com.baomidou.mybatisplus.core.MybatisConfiguration();
+        // Test identities must not depend on Windows network-interface discovery.
+        com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils.getGlobalConfig(config)
+                .setIdentifierGenerator(new com.baomidou.mybatisplus.core.incrementer.DefaultIdentifierGenerator(1L,1L));
         config.setEnvironment(new org.apache.ibatis.mapping.Environment("test",new org.mybatis.spring.transaction.SpringManagedTransactionFactory(),h.db.jdbc.getDataSource()));
         config.addMapper(org.familyhealthcare.mapper.BpSelfMonitorRecordMapper.class);
         org.apache.ibatis.session.SqlSessionFactory factory=new com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder().build(config);

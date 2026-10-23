@@ -23,6 +23,14 @@ import java.util.Map;
 @Api(tags = "privacy protection")
 public class PrivacyProtectionController {
 
+    @Autowired private org.familyhealthcare.service.PrivacyAccessContextService accessContext;
+
+    @GetMapping("/access-context")
+    public Result<Map<String, String>> accessContext(javax.servlet.http.HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store, private");
+        return Result.ok(java.util.Collections.singletonMap("revision", accessContext.revision()));
+    }
+
     @Autowired
     private PatientMapper patientMapper;
 

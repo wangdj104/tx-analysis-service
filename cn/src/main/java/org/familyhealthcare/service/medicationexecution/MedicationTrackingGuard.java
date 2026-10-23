@@ -214,7 +214,7 @@ public class MedicationTrackingGuard {
         return Boolean.TRUE.equals(tx.execute(transaction->{
             if(expected.getPatientId()==null||expected.getMedicationId()==null||expected.getUserId()==null)return false;
             long patient=expected.getPatientId(),owner=auth.owner(patient);
-            repo.locks.lockPatientAndSubjects(patient,Arrays.asList(owner,expected.getUserId()));
+            repo.lockBoundarySubjects(patient,Arrays.asList(owner,expected.getUserId()));
             try {auth.requireWrite(owner,patient);if(notification)auth.requireRead(expected.getUserId(),patient);}
             catch(WorkflowException denied){if(denied.getStatus()!=403)throw denied;return false;}
             Map<String,Object> medicine=repo.one("SELECT id,patient_id,is_active FROM medication WHERE id=? FOR UPDATE",expected.getMedicationId());
@@ -265,7 +265,7 @@ public class MedicationTrackingGuard {
     }
     private void parent(long actor,long patient,long medication) {
         mutationTransaction(jdbc);
-        repo.locks.lockPatientAndSubjects(patient,Collections.singleton(actor));
+        repo.lockBoundarySubjects(patient,Collections.singleton(actor));
         auth.requireWrite(actor,patient);
         Map<String,Object> m=repo.one("SELECT id,patient_id FROM medication WHERE id=? FOR UPDATE",medication);
         if(m==null||id(m.get("patient_id"))!=patient)throw MedicationExecutionAuthorizationService.denied();

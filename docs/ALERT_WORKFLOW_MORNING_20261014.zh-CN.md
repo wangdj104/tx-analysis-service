@@ -10,7 +10,7 @@
 
 代码入口：[随访服务](../src/main/java/org/familyhealthcare/service/alertworkflow/AlertWorkflowService.java)、[测量桥接](../src/main/java/org/familyhealthcare/service/alertworkflow/MeasurementWorkflowBridge.java)、[现有页面随访组件](../frontend/src/components/alert-workflow/FollowUpDetail.vue)。中文实现对应cn目录。
 
-SQL：[空库完整初始化](../src/main/resources/sql/init.sql)；已有库依次[预检](../src/main/resources/sql/alert_workflow_preflight_20261013.sql) → [增量](../src/main/resources/sql/alert_workflow_upgrade_20261013.sql) → [后检](../src/main/resources/sql/alert_workflow_postcheck_20261013.sql)。这些是待运维执行的文件，没有操作你的数据库。
+SQL：当前仅保留[空库完整初始化](../src/main/resources/sql/init.sql)，历史分阶段脚本已合并删除；已有库先备份，再按[运维交接](OFFLINE_DEPLOYMENT.md)比对并补齐适用差异。下文保留当时的验证记录，不作为当前数据库执行凭证。
 
 ## 已经实际验证
 

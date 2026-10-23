@@ -26,6 +26,7 @@ public class MedicationExecutionRepository {
     public HouseholdWorkflowSchema.StorageReadiness inspectStorageMetadata() {
         return schema.inspectStorageMetadata();
     }
+    public HouseholdAuthorityLocks.LockedAuthority lockBoundarySubjects(long patient,Collection<Long> subjects) { return locks.lockPatientAndSubjects(patient,subjects); }
     public Map<String,Object> execution(long id) {
         return one("SELECT * FROM medication_execution WHERE id=?",id);
     }

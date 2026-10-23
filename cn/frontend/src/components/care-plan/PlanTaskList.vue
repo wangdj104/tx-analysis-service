@@ -35,7 +35,7 @@ import {getCarePlanCapabilities} from '@/api/carePlan'
 import {captureAuthSession,isAuthSessionCurrent} from '@/utils/authSession'
 import {formatPlanTime} from '@/utils/carePlanTime'
 import ReceiptDialog from './ReceiptDialog.vue'
-const props=defineProps({patientId:{type:Number,default:null},mode:{type:String,default:'PATIENT'},queue:{type:String,default:'TODAY'}})
+const props=defineProps({patientId:{type:Number,default:null},mode:{type:String,default:'PATIENT'},queue:{type:String,default:'TODAY'},planType:{type:String,default:null}})
 const client=useCarePlan(computed(()=>props.patientId)),{state}=client,enabled=ref(false),message=ref(''),selected=ref(null),receipt=ref(null)
 const capabilityLoading=ref(false),capabilityStatus=ref('idle'),taskItems=ref([]),taskLastSuccessAt=ref(''),taskError=ref(''),queueLoaded=ref(false)
 let taskReadEpoch=0,sessionOwner=null,taskListContext=null
@@ -77,7 +77,7 @@ async function loadTaskPage(cursor=null){
   if(!owns(c)||c.read!==taskReadEpoch||c.queue!==props.queue)return
   if(['forbidden','unauthenticated','unavailable'].includes(result.status)){revokeTaskAccess(result.status)}
   else if(result.status==='failed'){if(taskListContext!==state.listContext){clearTaskPresentation()}taskError.value='无法加载计划事项，请重试。'}
-  else if(result.status==='succeeded'){taskListContext=state.listContext;taskItems.value=[...state.items];taskLastSuccessAt.value=new Date().toISOString();taskError.value='';message.value='';queueLoaded.value=true}
+  else if(result.status==='succeeded'){taskListContext=state.listContext;taskItems.value=state.items.filter(plan=>!props.planType||plan.planType===props.planType);taskLastSuccessAt.value=new Date().toISOString();taskError.value='';message.value='';queueLoaded.value=true}
   else if(result.status==='stale-cursor'){clearTaskPresentation();taskError.value='事项范围已改变，请重新加载。'}
 }
 async function reload(){return loadTaskPage()}
@@ -111,12 +111,13 @@ function eventLabel(type){return ({RECEIPT_SUBMITTED:'执行记录已提交',HEL
 const guard=()=>{const allowed=receipt.value?.guardLeave?.()??true;if(allowed)receiptEpoch++;return allowed}
 onBeforeRouteLeave(guard);onBeforeRouteUpdate(guard)
 watch(()=>[props.patientId,props.mode],initialize,{immediate:true,flush:'sync'})
-watch(()=>props.queue,()=>{receiptEpoch++;selected.value=null;clearTaskPresentation();reload()},{flush:'sync'})
+watch(()=>[props.queue,props.planType],()=>{receiptEpoch++;selected.value=null;clearTaskPresentation();reload()},{flush:'sync'})
 watch(()=>state.patientId,id=>{if(id==null&&props.patientId!=null&&enabled.value)revokeTaskAccess('unauthenticated')},{flush:'sync'})
 function sessionChanged(){if(sessionOwner&&!owns(sessionOwner)){receiptEpoch++;generation++;controller?.abort();revokeTaskAccess('unauthenticated')}}
 function focusReload(){reload()}
 onMounted(()=>{timer=setInterval(reload,60000);window.addEventListener('focus',focusReload);window.addEventListener('auth-session-cleared',sessionChanged);window.addEventListener('storage',sessionChanged)})
 onUnmounted(()=>{receiptEpoch++;receiptOpeners.clear();generation++;controller?.abort();clearInterval(timer);window.removeEventListener('focus',focusReload);window.removeEventListener('auth-session-cleared',sessionChanged);window.removeEventListener('storage',sessionChanged)})
+defineExpose({requestLeave:guard})
 </script>
 <style scoped>
 .plan-tasks{min-width:0;margin:18px 0;color:var(--ink-800)}

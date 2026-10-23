@@ -33,14 +33,15 @@ export function useCurrentPatient() {
   const currentPatientId = computed({
     get: () => patientId.value,
     set: (val) => {
-      const id = val ? Number(val) : null;
-      patientId.value = id;
+      const parsed = Number(val);
+      const id = Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
       if (id) {
         localStorage.setItem(STORAGE_KEY, String(id));
       } else {
         localStorage.removeItem(STORAGE_KEY);
       }
       window.dispatchEvent(new CustomEvent(EVENT_KEY, { detail: { patientId: id } }));
+      patientId.value = id;
     }
   });
 

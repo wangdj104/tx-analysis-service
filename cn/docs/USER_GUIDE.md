@@ -290,7 +290,7 @@ Send a channel test, verify outbound HTTPS access, webhook security settings, ch
 
 ### The database is empty after startup
 
-新建空 MySQL 库仅需执行完整的 `init.sql`，详见 [SQL 初始化说明](../README.md#database-initialization)。核对连接和限定于应用库的账号权限；应用启动不执行结构迁移。已有库先完整备份数据库及附件并演练恢复，再比对字段、索引和权限，仅补适用差异。
+新建空 MySQL 库按 [SQL 初始化说明](../README.md#database-initialization)执行唯一完整的 `init.sql`。核对连接和限定于应用库的账号权限；应用启动不执行结构迁移。已有库先完整备份数据库及附件并演练恢复，再比对字段、索引和权限，仅补适用差异。
 
 ## 13. Suggested product tour
 

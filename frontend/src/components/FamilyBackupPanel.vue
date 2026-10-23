@@ -29,6 +29,7 @@
     </div>
     <el-alert title="Restore creates independent copies without overwriting current data. Medication reminders and automated analysis are disabled; notification channels and caregiver invitations must be configured again." type="info" :closable="false" />
     <section v-if="inspection" class="backup-preview">
+      <p>Threshold alert rules also restore disabled. Historical actors are not treated as verified identities.</p>
       <h3>Backup preview</h3>
       <p>Created: {{ inspection.createdAt }}</p>
       <p>Family members: {{ inspection.patients?.map(p => p.name).join(', ') }}</p>
@@ -41,6 +42,7 @@
       <el-button type="primary" :disabled="!confirmed || busy" :loading="busy" @click="restore">Restore as copies</el-button>
     </section>
     <el-alert v-if="result" :title="result" type="success" :closable="false" />
+    <el-alert v-if="restoreUncertain" title="The restore result is unconfirmed. Check whether patient copies were created before selecting the file again; do not repeatedly retry this restore." type="warning" :closable="false" />
   </section>
 </template>
 
@@ -54,6 +56,7 @@ const busy = ref(false)
 const inspection = ref(null)
 const confirmed = ref(false)
 const result = ref('')
+const restoreUncertain = ref(false)
 let selected = null, inspectedFile = null, disposed = false
 
 async function download() {
@@ -82,6 +85,7 @@ async function preview(e) {
   inspection.value = null
   confirmed.value = false
   result.value = ''
+  restoreUncertain.value = false
   if (!file) return
   busy.value = true
   try {
@@ -109,6 +113,15 @@ async function restore() {
     inspectedFile = null
     emit('restored')
     window.dispatchEvent(new Event('care-patients-changed'))
+  } catch (error) {
+    if (!disposed && error.code !== 'ERR_CANCELED') {
+      restoreUncertain.value = true
+      inspection.value = null
+      selected = null
+      inspectedFile = null
+      confirmed.value = false
+      window.dispatchEvent(new Event('care-patients-changed'))
+    }
   } finally {
     busy.value = false
   }

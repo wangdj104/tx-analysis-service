@@ -9,6 +9,7 @@ import '@/styles/mobile-optimization.css';
 import '@/styles/health-redesign.css';
 import '@/styles/care-accessibility.css';
 import '@/styles/health-appearance.css';
+import '@/styles/workspace-polish.css';
 import * as ElementPlusIconsVue from '@element-plus/icons-vue';
 import faviconUrl from '@/assets/logo.svg?url';
 import i18n from '@/i18n';

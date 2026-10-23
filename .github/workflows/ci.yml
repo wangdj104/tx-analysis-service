@@ -43,6 +43,7 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ matrix.directory }}/package-lock.json
       - run: npm ci
+      - run: npm test
       - run: npm run build
 
   static-demo:
@@ -54,3 +55,4 @@ jobs:
           node-version: '20'
       - run: node --check demo/app.js
       - run: node --check cn/demo/app.js
+      - run: node --test scripts/tests/*.test.mjs

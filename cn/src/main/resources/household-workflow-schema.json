@@ -9328,7 +9328,7 @@
           "data_type": "decimal",
           "column_type": "decimal(12,3)",
           "is_nullable": "NO",
-          "column_default": "0",
+          "column_default": "0.000",
           "extra": "",
           "character_set_name": null,
           "collation_name": null,
@@ -9373,7 +9373,7 @@
           "data_type": "decimal",
           "column_type": "decimal(12,3)",
           "is_nullable": "YES",
-          "column_default": "0",
+          "column_default": "0.000",
           "extra": "",
           "character_set_name": null,
           "collation_name": null,
@@ -21998,7 +21998,7 @@
     {
       "phase": "prerequisite",
       "reason": "COLUMN:medication_stock.quantity",
-      "sql": "SELECT CASE WHEN ((SELECT COUNT(*) FROM information_schema.columns WHERE BINARY table_schema=BINARY DATABASE() AND BINARY table_name='medication_stock' AND BINARY column_name='quantity' AND ordinal_position=4 AND BINARY data_type='decimal' AND BINARY is_nullable='NO' AND character_set_name IS NULL AND collation_name IS NULL AND character_maximum_length IS NULL AND datetime_precision IS NULL AND numeric_precision=12 AND numeric_scale=3 AND BINARY column_type='decimal(12,3)' AND BINARY column_default='0' AND BINARY extra='')=1) THEN 1 ELSE 0 END AS compatible",
+      "sql": "SELECT CASE WHEN ((SELECT COUNT(*) FROM information_schema.columns WHERE BINARY table_schema=BINARY DATABASE() AND BINARY table_name='medication_stock' AND BINARY column_name='quantity' AND ordinal_position=4 AND BINARY data_type='decimal' AND BINARY is_nullable='NO' AND character_set_name IS NULL AND collation_name IS NULL AND character_maximum_length IS NULL AND datetime_precision IS NULL AND numeric_precision=12 AND numeric_scale=3 AND BINARY column_type='decimal(12,3)' AND CAST(column_default AS DECIMAL(12,3))=0 AND BINARY extra='')=1) THEN 1 ELSE 0 END AS compatible",
       "table": "medication_stock"
     },
     {
@@ -22016,7 +22016,7 @@
     {
       "phase": "prerequisite",
       "reason": "COLUMN:medication_stock.warning_quantity",
-      "sql": "SELECT CASE WHEN ((SELECT COUNT(*) FROM information_schema.columns WHERE BINARY table_schema=BINARY DATABASE() AND BINARY table_name='medication_stock' AND BINARY column_name='warning_quantity' AND ordinal_position=7 AND BINARY data_type='decimal' AND BINARY is_nullable='YES' AND character_set_name IS NULL AND collation_name IS NULL AND character_maximum_length IS NULL AND datetime_precision IS NULL AND numeric_precision=12 AND numeric_scale=3 AND BINARY column_type='decimal(12,3)' AND BINARY column_default='0' AND BINARY extra='')=1) THEN 1 ELSE 0 END AS compatible",
+      "sql": "SELECT CASE WHEN ((SELECT COUNT(*) FROM information_schema.columns WHERE BINARY table_schema=BINARY DATABASE() AND BINARY table_name='medication_stock' AND BINARY column_name='warning_quantity' AND ordinal_position=7 AND BINARY data_type='decimal' AND BINARY is_nullable='YES' AND character_set_name IS NULL AND collation_name IS NULL AND character_maximum_length IS NULL AND datetime_precision IS NULL AND numeric_precision=12 AND numeric_scale=3 AND BINARY column_type='decimal(12,3)' AND CAST(column_default AS DECIMAL(12,3))=0 AND BINARY extra='')=1) THEN 1 ELSE 0 END AS compatible",
       "table": "medication_stock"
     },
     {

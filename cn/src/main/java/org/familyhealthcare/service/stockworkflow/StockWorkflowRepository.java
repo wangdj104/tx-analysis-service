@@ -217,7 +217,7 @@ import static org.familyhealthcare.service.stockworkflow.StockWorkflowAuthorizat
     }
     private final Object preparedKey=new Object();
     /** A server-owned, one-use continuation of the caller's single merged admission. Never deserialized. */
-    public final class PreparedConsumption {
+    public class PreparedConsumption {
         private final long actor,patient,stock,intake;private final Long original,count;
         private final Connection connection;private final Thread thread=Thread.currentThread();private final ConsumptionSelection selection;
         private final long deadline;

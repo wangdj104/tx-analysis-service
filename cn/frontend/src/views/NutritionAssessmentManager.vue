@@ -2,6 +2,7 @@
   <el-container class="module-page dialysis-manager">
     <el-main class="main-content">
       <div class="page-inner">
+        <SpecialtyCarePlans :patient-id="currentPatientId" plan-type="NUTRITION" />
         <div class="page-header">
           <div class="top-bar">
             <div class="left">
@@ -166,6 +167,7 @@
 </template>
 
 <script setup>
+import SpecialtyCarePlans from '@/components/care-plan/SpecialtyCarePlans.vue'
 import { ref, reactive, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Plus, Refresh, FirstAidKit } from '@element-plus/icons-vue';

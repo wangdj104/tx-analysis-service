@@ -33,9 +33,9 @@ public final class MedicalReviewSchema {
     /** Same inspection, preserving JDBC failure for observers that must not neutralize infrastructure faults. */
     public Status inspectStorageStrict(Connection connection) throws SQLException {
         if (connection == null) return Status.INCOMPATIBLE;
-        long presence = scalar(connection, SQL.presence);
+        long presence = scalar(connection, SQL.presence, 5);
         if (presence == 0) return Status.ABSENT;
-        return scalar(connection, SQL.metadata) == 1 ? Status.READY : Status.INCOMPATIBLE;
+        return scalar(connection, SQL.metadata, 15) == 1 ? Status.READY : Status.INCOMPATIBLE;
     }
 
     public void requireNewCommands(Status status, boolean enabled) {
@@ -43,9 +43,9 @@ public final class MedicalReviewSchema {
         if (!enabled) throw new WorkflowException(409, "MEDICAL_REVIEW_DISABLED", "Medical record reviews are currently disabled.");
     }
 
-    private static long scalar(Connection connection, String sql) throws SQLException {
+    private static long scalar(Connection connection, String sql, int timeoutSeconds) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setQueryTimeout(5);
+            statement.setQueryTimeout(timeoutSeconds);
             try (ResultSet result = statement.executeQuery()) {
                 if (result.getMetaData().getColumnCount() != 1 || !result.next()) throw notReady();
                 Object raw = result.getObject(1);

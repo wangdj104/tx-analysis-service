@@ -1,20 +1,28 @@
--- Complete system initialization for MySQL 5.7 / 8.0; select a newly created empty database first.
--- This single file contains all tables, indexes, foreign keys, roles, menus, dictionaries and branding.
--- No default accounts, patients, patient grants or demo business records are created. Demo data: demo/sql/demo-data.sql.
--- For empty databases only: CREATE TABLE IF NOT EXISTS does not upgrade existing tables.
--- Fresh initialization only; existing workflow guards are never replaced. Inspect partial failures before any retry.
--- Foreign-key checks are saved, disabled only during table definitions for circular plan/revision references, then restored before seeds.
--- Collaboration DATETIME(6) values are explicitly bound/read as UTC. CHECK is enforced on MySQL 8.0.16+; 5.7 uses application validation; alert workflow storage also has database triggers.
--- DDL commits implicitly. Stop and inspect partial initialization after errors; do not use mysql --force.
+-- Complete system initialization for MySQL 5.7.18 (including vendor suffixes such as -txsql).
+-- Contains 127 tables, 197 workflow triggers, and the role, menu, dictionary and branding seeds.
+-- Empty databases only. No default accounts, patients, grants or historical business-data migrations.
+-- Select a new empty database and execute this one file with a MySQL client supporting DELIMITER.
+-- DDL commits implicitly: stop at the first error and do not use --force or run against an existing database.
+-- Application configuration controls feature flags. Demo data is separate in demo/sql/demo-data.sql.
 
+SET @init_empty = (DATABASE() IS NOT NULL AND (VERSION()='5.7.18' OR VERSION() LIKE '5.7.18-%') AND LOWER(VERSION()) NOT LIKE '%mariadb%' AND (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE())=0 AND (SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE())=0 AND (SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE())=0 AND (SELECT COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE())=0);
+SET @init_guard_sql = IF(@init_empty, 'SELECT 1 AS initialization_admitted', 'SELECT * FROM information_schema.INIT_REQUIRES_EMPTY_MYSQL_5718_DATABASE');
+PREPARE init_guard FROM @init_guard_sql;
+EXECUTE init_guard;
+DEALLOCATE PREPARE init_guard;
+
+SET @init_saved_sql_mode = @@SESSION.sql_mode;
+SET @init_saved_foreign_key_checks = @@SESSION.foreign_key_checks;
+SET @init_saved_character_set_client = @@SESSION.character_set_client;
+SET @init_saved_character_set_results = @@SESSION.character_set_results;
+SET @init_saved_collation_connection = @@SESSION.collation_connection;
+SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';
 SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS=0;
 
-SET @init_foreign_key_checks = @@FOREIGN_KEY_CHECKS;
-SET FOREIGN_KEY_CHECKS = 0;
+-- Final table definitions, indexes and foreign keys; checks are disabled only for cyclic DDL references.
 
--- 1. Complete system schema (86 CREATE TABLE statements; not an observed database inventory)
-
-CREATE TABLE IF NOT EXISTS `sys_user` (
+CREATE TABLE `sys_user` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'userID',
   `username` VARCHAR(50) NOT NULL COMMENT 'Username (Sign InAccount) ',
   `password` VARCHAR(100) NOT NULL COMMENT 'Password (BCryptaddsecret) ',
@@ -29,7 +37,7 @@ CREATE TABLE IF NOT EXISTS `sys_user` (
   UNIQUE KEY `uk_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='systemusertable';
 
-CREATE TABLE IF NOT EXISTS `sys_role` (
+CREATE TABLE `sys_role` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RoleID',
   `role_code` VARCHAR(50) NOT NULL COMMENT 'RoleCode (onlyoneidentifier) ',
   `role_name` VARCHAR(50) NOT NULL COMMENT 'RoleName',
@@ -42,7 +50,7 @@ CREATE TABLE IF NOT EXISTS `sys_role` (
   UNIQUE KEY `uk_role_code` (`role_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='systemRoletable';
 
-CREATE TABLE IF NOT EXISTS `sys_menu` (
+CREATE TABLE `sys_menu` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'MenuID',
   `parent_id` BIGINT DEFAULT 0 COMMENT 'parentMenuID, 0for toplevelMenu',
   `menu_name` VARCHAR(50) NOT NULL COMMENT 'MenuName',
@@ -57,7 +65,7 @@ CREATE TABLE IF NOT EXISTS `sys_menu` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='systemMenu/Permissiontable';
 
-CREATE TABLE IF NOT EXISTS `patient` (
+CREATE TABLE `patient` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'PatientID',
   `user_id` BIGINT DEFAULT NULL COMMENT 'owner userID',
   `name` VARCHAR(50) NOT NULL COMMENT 'Name',
@@ -80,7 +88,7 @@ CREATE TABLE IF NOT EXISTS `patient` (
   KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patientinformationtable';
 
-CREATE TABLE IF NOT EXISTS `dialysis_record` (
+CREATE TABLE `dialysis_record` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'primary keyID',
   `record_date` DATE NOT NULL COMMENT 'Dialysis Date',
   `user_id` BIGINT DEFAULT NULL COMMENT 'owner userID',
@@ -111,7 +119,7 @@ CREATE TABLE IF NOT EXISTS `dialysis_record` (
   UNIQUE KEY `uk_dialysis_patient_date` (`patient_id`, `record_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Dialysis Recordstable';
 
-CREATE TABLE IF NOT EXISTS `dry_weight_monthly` (
+CREATE TABLE `dry_weight_monthly` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'primary keyID',
   `year_month` VARCHAR(7) NOT NULL COMMENT 'Monthcopy, format yyyy-MM',
   `dry_weight` DECIMAL(5,2) NOT NULL COMMENT 'Dry Weightreference value(kg)',
@@ -125,7 +133,7 @@ CREATE TABLE IF NOT EXISTS `dry_weight_monthly` (
   KEY `idx_patient_id` (`patient_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Dry WeightMonthlevelrecordtable';
 
-CREATE TABLE IF NOT EXISTS `medical_record` (
+CREATE TABLE `medical_record` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `patient_name` VARCHAR(50) NOT NULL COMMENT 'PatientName',
   `patient_id` BIGINT DEFAULT NULL COMMENT 'PatientID',
@@ -137,6 +145,7 @@ CREATE TABLE IF NOT EXISTS `medical_record` (
   `doctor_name` VARCHAR(50) COMMENT 'ClinicianName',
   `ai_raw_result` TEXT COMMENT 'AIoriginalrecognitionresult(JSON)',
   `source_type` VARCHAR(20) DEFAULT 'MANUAL' COMMENT 'MANUAL/OCR/FHIR/DEVICE',
+  `import_facts_json` TEXT CHARACTER SET utf8mb4 DEFAULT NULL COMMENT 'Immutable original import facts v1',
   `source_external_id` VARCHAR(120) DEFAULT NULL COMMENT 'source system record identifier',
   `verification_status` VARCHAR(30) DEFAULT 'VERIFIED' COMMENT 'VERIFIED/REVIEW_REQUIRED/REJECTED',
   `confidence_score` DECIMAL(5,4) DEFAULT NULL COMMENT 'overall import or recognition confidence',
@@ -156,7 +165,7 @@ CREATE TABLE IF NOT EXISTS `medical_record` (
   UNIQUE KEY `uk_record_external` (`patient_id`,`source_type`,`source_external_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Medical Recordsmaintable';
 
-CREATE TABLE IF NOT EXISTS `medical_record_item` (
+CREATE TABLE `medical_record_item` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `record_id` BIGINT NOT NULL COMMENT 'relatedrecordID',
   `item_name` VARCHAR(200) COMMENT 'ExaminationitemName',
@@ -171,7 +180,7 @@ CREATE TABLE IF NOT EXISTS `medical_record_item` (
   KEY `idx_item_record` (`record_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Examination item detailstable';
 
-CREATE TABLE IF NOT EXISTS `medical_record_attachment` (
+CREATE TABLE `medical_record_attachment` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `record_id` BIGINT NOT NULL COMMENT 'relatedrecordID',
   `file_path` VARCHAR(500) COMMENT 'filePath',
@@ -183,7 +192,7 @@ CREATE TABLE IF NOT EXISTS `medical_record_attachment` (
   FOREIGN KEY (`record_id`) REFERENCES `medical_record`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='imagingReportAttachmenttable';
 
-CREATE TABLE IF NOT EXISTS `medication` (
+CREATE TABLE `medication` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `user_id` BIGINT DEFAULT NULL COMMENT 'owner userID',
   `patient_id` BIGINT DEFAULT NULL COMMENT 'PatientID',
@@ -200,11 +209,15 @@ CREATE TABLE IF NOT EXISTS `medication` (
   `is_active` TINYINT DEFAULT 1 COMMENT 'YesNoEnabled: 0-Disabled, 1-Enabled',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Created At',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated At',
+  `workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `execution_id` BIGINT NULL DEFAULT NULL,
   KEY `idx_user_id` (`user_id`),
-  KEY `idx_patient_id` (`patient_id`)
+  KEY `idx_patient_id` (`patient_id`),
+  UNIQUE KEY `hh_nm_execution_uq` (`execution_id`) USING BTREE,
+  CONSTRAINT `hh_nm_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Medicationinformationtable';
 
-CREATE TABLE IF NOT EXISTS `medication_log` (
+CREATE TABLE `medication_log` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `patient_name` VARCHAR(50) NOT NULL COMMENT 'PatientName',
   `patient_id` BIGINT DEFAULT NULL COMMENT 'PatientID',
@@ -229,7 +242,7 @@ CREATE TABLE IF NOT EXISTS `medication_log` (
   KEY `idx_patient_id` (`patient_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='medicationrecordtable';
 
-CREATE TABLE IF NOT EXISTS `ai_analysis_record` (
+CREATE TABLE `ai_analysis_record` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `user_id` BIGINT DEFAULT NULL COMMENT 'owner userID',
   `patient_id` BIGINT DEFAULT NULL COMMENT 'PatientID',
@@ -269,7 +282,7 @@ CREATE TABLE IF NOT EXISTS `ai_analysis_record` (
   KEY `idx_ai_patient` (`patient_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AIDialysisanalysisrecord';
 
-CREATE TABLE IF NOT EXISTS `patient_clinical` (
+CREATE TABLE `patient_clinical` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `patient_id` BIGINT NOT NULL COMMENT 'related patient.id',
   `user_id` BIGINT NOT NULL COMMENT 'belongAccount',
@@ -290,7 +303,7 @@ CREATE TABLE IF NOT EXISTS `patient_clinical` (
   KEY `idx_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patientclinical detailsinformation';
 
-CREATE TABLE IF NOT EXISTS `health_indicator` (
+CREATE TABLE `health_indicator` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `item_code` VARCHAR(64) NOT NULL COMMENT 'indicatorCode, for example  FERRITIN',
   `item_name` VARCHAR(128) NOT NULL COMMENT 'standardName',
@@ -306,7 +319,7 @@ CREATE TABLE IF NOT EXISTS `health_indicator` (
   KEY `idx_name` (`item_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='healthlaboratory test dictionary';
 
-CREATE TABLE IF NOT EXISTS `medication_reminder` (
+CREATE TABLE `medication_reminder` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `user_id` BIGINT NOT NULL COMMENT 'userID',
   `patient_id` BIGINT NOT NULL COMMENT 'PatientID',
@@ -319,11 +332,26 @@ CREATE TABLE IF NOT EXISTS `medication_reminder` (
   `remark` VARCHAR(256) DEFAULT NULL COMMENT 'Notes',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Created At',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated At',
+  `workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `execution_id` BIGINT NULL DEFAULT NULL,
+  `reconciliation_id` BIGINT NULL DEFAULT NULL,
+  `order_id` BIGINT NULL DEFAULT NULL,
+  `planned_quantity` DECIMAL(12,3) NULL DEFAULT NULL,
+  `planned_unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `schedule_zone` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `effective_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `end_at_utc` DATETIME(6) NULL DEFAULT NULL,
   KEY `idx_user_patient` (`user_id`, `patient_id`),
-  KEY `idx_med` (`medication_id`)
+  KEY `idx_med` (`medication_id`),
+  KEY `hh_nmr_execution_id_ix` (`execution_id`) USING BTREE,
+  KEY `hh_nmr_reconciliation_id_ix` (`reconciliation_id`) USING BTREE,
+  KEY `hh_nmr_order_id_ix` (`order_id`) USING BTREE,
+  CONSTRAINT `hh_nmr_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nmr_reconciliation_id_fk` FOREIGN KEY (`reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nmr_order_id_fk` FOREIGN KEY (`order_id`) REFERENCES `care_item` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Medication Remindersplan';
 
-CREATE TABLE IF NOT EXISTS `user_preference` (
+CREATE TABLE `user_preference` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'primary keyID',
   `user_id` BIGINT NOT NULL COMMENT 'userID',
   `pref_key` VARCHAR(128) NOT NULL COMMENT 'for example  table:medical-record-list',
@@ -332,23 +360,25 @@ CREATE TABLE IF NOT EXISTS `user_preference` (
   UNIQUE KEY `uk_user_key` (`user_id`, `pref_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='userinterface preferences';
 
-CREATE TABLE IF NOT EXISTS `sys_user_role` (
+CREATE TABLE `sys_user_role` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'ID',
   `user_id` BIGINT NOT NULL COMMENT 'userID',
   `role_id` BIGINT NOT NULL COMMENT 'RoleID',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_role` (`user_id`, `role_id`)
+  UNIQUE KEY `uk_user_role` (`user_id`, `role_id`),
+  KEY `hh_nur_role_user_ix` (`role_id`,`user_id`,`id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='userRolerelated table';
 
-CREATE TABLE IF NOT EXISTS `sys_role_menu` (
+CREATE TABLE `sys_role_menu` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'ID',
   `role_id` BIGINT NOT NULL COMMENT 'RoleID',
   `menu_id` BIGINT NOT NULL COMMENT 'MenuID',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_role_menu` (`role_id`, `menu_id`)
+  UNIQUE KEY `uk_role_menu` (`role_id`, `menu_id`),
+  KEY `hh_nrm_role_id_ix` (`role_id`,`id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='RoleMenurelated table';
 
-CREATE TABLE IF NOT EXISTS `patient_specialty_role` (
+CREATE TABLE `patient_specialty_role` (
   `patient_id` BIGINT NOT NULL,
   `role_id` BIGINT NOT NULL,
   `assigned_by` BIGINT NOT NULL,
@@ -359,7 +389,7 @@ CREATE TABLE IF NOT EXISTS `patient_specialty_role` (
   CONSTRAINT `fk_patient_specialty_role` FOREIGN KEY (`role_id`) REFERENCES `sys_role` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patient-specific specialty roles';
 
-CREATE TABLE IF NOT EXISTS `complication_record` (
+CREATE TABLE `complication_record` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` BIGINT DEFAULT NULL,
   `user_id` BIGINT DEFAULT NULL,
@@ -380,12 +410,12 @@ CREATE TABLE IF NOT EXISTS `complication_record` (
   KEY `idx_complication_date` (`occurrence_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Complication Trackingrecord';
 
-CREATE TABLE IF NOT EXISTS `bp_self_monitor_record` (
+CREATE TABLE `bp_self_monitor_record` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` BIGINT DEFAULT NULL,
   `user_id` BIGINT DEFAULT NULL,
   `record_date` DATE NOT NULL,
-  `record_time` VARCHAR(10) DEFAULT NULL,
+  `record_time` VARCHAR(15) DEFAULT NULL,
   `measure_type` VARCHAR(10) NOT NULL,
   `systolic_bp` INT DEFAULT NULL,
   `diastolic_bp` INT DEFAULT NULL,
@@ -393,6 +423,7 @@ CREATE TABLE IF NOT EXISTS `bp_self_monitor_record` (
   `bg_unit` VARCHAR(10) DEFAULT 'mmol/L',
   `measure_period` VARCHAR(20) DEFAULT NULL,
   `source_type` VARCHAR(20) DEFAULT 'MANUAL',
+  `import_facts_json` TEXT CHARACTER SET utf8mb4 DEFAULT NULL COMMENT 'Immutable original import facts v1',
   `source_external_id` VARCHAR(120) DEFAULT NULL,
   `verification_status` VARCHAR(30) DEFAULT 'VERIFIED',
   `remark` VARCHAR(500) DEFAULT NULL,
@@ -404,7 +435,7 @@ CREATE TABLE IF NOT EXISTS `bp_self_monitor_record` (
   UNIQUE KEY `uk_bp_external` (`patient_id`,`source_type`,`source_external_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Blood Pressure & Glucoseself-monitoringrecord';
 
-CREATE TABLE IF NOT EXISTS `clinical_import_batch` (
+CREATE TABLE `clinical_import_batch` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `user_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -417,7 +448,7 @@ CREATE TABLE IF NOT EXISTS `clinical_import_batch` (
   KEY `idx_import_patient_time` (`patient_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='clinical import audit batch';
 
-CREATE TABLE IF NOT EXISTS `nutrition_assessment` (
+CREATE TABLE `nutrition_assessment` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` BIGINT DEFAULT NULL,
   `user_id` BIGINT DEFAULT NULL,
@@ -444,7 +475,7 @@ CREATE TABLE IF NOT EXISTS `nutrition_assessment` (
   KEY `idx_nutrition_assessment_date` (`assessment_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Nutrition Assessment';
 
-CREATE TABLE IF NOT EXISTS `nutrition_diary` (
+CREATE TABLE `nutrition_diary` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` BIGINT DEFAULT NULL,
   `user_id` BIGINT DEFAULT NULL,
@@ -465,7 +496,7 @@ CREATE TABLE IF NOT EXISTS `nutrition_diary` (
   KEY `idx_nutrition_diary_date` (`record_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Nutrition Diary';
 
-CREATE TABLE IF NOT EXISTS `bp_pattern_analysis` (
+CREATE TABLE `bp_pattern_analysis` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` BIGINT DEFAULT NULL,
   `user_id` BIGINT DEFAULT NULL,
@@ -490,7 +521,7 @@ CREATE TABLE IF NOT EXISTS `bp_pattern_analysis` (
   KEY `idx_bp_pattern_date` (`analysis_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Blood Pressure Pattern Analysis';
 
-CREATE TABLE IF NOT EXISTS `alert_rule` (
+CREATE TABLE `alert_rule` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
@@ -507,7 +538,7 @@ CREATE TABLE IF NOT EXISTS `alert_rule` (
   KEY `idx_alert_rule_indicator` (`indicator_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='alert rule';
 
-CREATE TABLE IF NOT EXISTS `alert_record` (
+CREATE TABLE `alert_record` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `rule_id` BIGINT DEFAULT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -557,7 +588,7 @@ CREATE TABLE IF NOT EXISTS `alert_record` (
   KEY `idx_aw_patient_queue` (`patient_id`,`workflow_version`,`workflow_state`,`due_at`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='alertrecord';
 
-CREATE TABLE IF NOT EXISTS `alert_event` (
+CREATE TABLE `alert_event` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `alert_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -580,7 +611,7 @@ CREATE TABLE IF NOT EXISTS `alert_event` (
   KEY `idx_aw_event_cycle` (`alert_id`,`cycle_no`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='alert status audit trail';
 
-CREATE TABLE IF NOT EXISTS `medication_safety_rule` (
+CREATE TABLE `medication_safety_rule` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `ingredient_a` VARCHAR(100) NOT NULL,
   `ingredient_b` VARCHAR(100) NOT NULL,
@@ -591,7 +622,7 @@ CREATE TABLE IF NOT EXISTS `medication_safety_rule` (
   UNIQUE KEY `uk_medication_safety_pair` (`ingredient_a`,`ingredient_b`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='curated medication safety screening rules';
 
-CREATE TABLE IF NOT EXISTS `patient_health_target` (
+CREATE TABLE `patient_health_target` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -616,7 +647,7 @@ CREATE TABLE IF NOT EXISTS `patient_health_target` (
   KEY `idx_health_target_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patienthealthtarget';
 
-CREATE TABLE IF NOT EXISTS `medication_intake` (
+CREATE TABLE `medication_intake` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -630,13 +661,39 @@ CREATE TABLE IF NOT EXISTS `medication_intake` (
   `reason` VARCHAR(255) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `execution_id` BIGINT NULL DEFAULT NULL,
+  `reconciliation_id` BIGINT NULL DEFAULT NULL,
+  `provenance` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `planned_quantity` DECIMAL(12,3) NULL DEFAULT NULL,
+  `planned_unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `schedule_zone` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `scheduled_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `schedule_offset_seconds` INT NULL DEFAULT NULL,
+  `actual_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `latest_action_id` BIGINT NULL DEFAULT NULL,
+  `follow_up_state` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `follow_up_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `follow_up_cycle` INT NOT NULL DEFAULT 0,
+  `follow_up_due_at` DATETIME(6) NULL DEFAULT NULL,
+  `snooze_until_utc` DATETIME(6) NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_intake_schedule` (`reminder_id`,`scheduled_at`),
   KEY `idx_intake_patient_schedule` (`patient_id`,`scheduled_at`,`status`),
-  KEY `idx_intake_status` (`status`)
+  KEY `idx_intake_status` (`status`),
+  UNIQUE KEY `hh_nmi_utc_slot_uq` (`reminder_id`,`scheduled_at_utc`) USING BTREE,
+  KEY `hh_nmi_execution_due_ix` (`execution_id`,`follow_up_state`,`follow_up_due_at`,`id`) USING BTREE,
+  KEY `hh_nmi_patient_med_id_ix` (`patient_id`,`medication_id`,`id`) USING BTREE,
+  KEY `hh_nmi_reconciliation_id_ix` (`reconciliation_id`) USING BTREE,
+  KEY `hh_nmi_latest_action_id_ix` (`latest_action_id`) USING BTREE,
+  KEY `hh_nmi_execution_slot_ix` (`execution_id`,`scheduled_at_utc`,`id`) USING BTREE,
+  KEY `hh_nmi_follow_due_ix` (`workflow_version`,`follow_up_state`,`follow_up_due_at`,`id`) USING BTREE,
+  CONSTRAINT `hh_nmi_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nmi_reconciliation_id_fk` FOREIGN KEY (`reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nmi_latest_action_id_fk` FOREIGN KEY (`latest_action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='medicationruntask';
 
-CREATE TABLE IF NOT EXISTS `health_event` (
+CREATE TABLE `health_event` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -656,7 +713,7 @@ CREATE TABLE IF NOT EXISTS `health_event` (
   KEY `idx_event_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Health Timelineevent';
 
-CREATE TABLE IF NOT EXISTS `dialysis_schedule` (
+CREATE TABLE `dialysis_schedule` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -673,7 +730,7 @@ CREATE TABLE IF NOT EXISTS `dialysis_schedule` (
   KEY `idx_schedule_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Dialysis Schedule';
 
-CREATE TABLE IF NOT EXISTS `care_member` (
+CREATE TABLE `care_member` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
@@ -684,7 +741,7 @@ CREATE TABLE IF NOT EXISTS `care_member` (
   UNIQUE KEY `uk_care_member` (`patient_id`,`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Family Carecompletemember';
 
-CREATE TABLE IF NOT EXISTS `care_invitation` (
+CREATE TABLE `care_invitation` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
@@ -694,7 +751,7 @@ CREATE TABLE IF NOT EXISTS `care_invitation` (
   UNIQUE KEY `uk_care_invite` (`invite_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Family CareinvitePlease ';
 
-CREATE TABLE IF NOT EXISTS `care_item` (
+CREATE TABLE `care_item` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
@@ -711,11 +768,22 @@ CREATE TABLE IF NOT EXISTS `care_item` (
   `data_json` LONGTEXT,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `medication_workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `medication_execution_id` BIGINT NULL DEFAULT NULL,
+  `medication_reconciliation_id` BIGINT NULL DEFAULT NULL,
+  `family_workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `family_assistance_id` BIGINT NULL DEFAULT NULL,
   KEY `idx_care_patient_kind` (`patient_id`,`kind`),
-  KEY `idx_care_due` (`status`,`notify_at`)
+  KEY `idx_care_due` (`status`,`notify_at`),
+  KEY `hh_nci_medication_execution_id_ix` (`medication_execution_id`) USING BTREE,
+  KEY `hh_nci_medication_reconciliation_id_ix` (`medication_reconciliation_id`) USING BTREE,
+  KEY `hh_nci_family_assistance_id_ix` (`family_assistance_id`) USING BTREE,
+  CONSTRAINT `hh_nci_medication_execution_id_fk` FOREIGN KEY (`medication_execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nci_medication_reconciliation_id_fk` FOREIGN KEY (`medication_reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nci_family_assistance_id_fk` FOREIGN KEY (`family_assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='careitem';
 
-CREATE TABLE IF NOT EXISTS `medication_stock` (
+CREATE TABLE `medication_stock` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `medication_id` BIGINT NOT NULL,
@@ -725,10 +793,16 @@ CREATE TABLE IF NOT EXISTS `medication_stock` (
   `warning_quantity` DECIMAL(12,3) DEFAULT 0,
   `notified_at` DATETIME DEFAULT NULL,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY `uk_medication_stock` (`patient_id`,`medication_id`)
+  `workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `lock_version` BIGINT NOT NULL DEFAULT 0,
+  `current_work_id` BIGINT NULL DEFAULT NULL,
+  `adopted_at` DATETIME(6) NULL DEFAULT NULL,
+  UNIQUE KEY `uk_medication_stock` (`patient_id`,`medication_id`),
+  UNIQUE KEY `hh_ns_current_work_uq` (`current_work_id`) USING BTREE,
+  CONSTRAINT `hh_ns_current_work_id_fk` FOREIGN KEY (`current_work_id`) REFERENCES `stock_work` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MedicationInventory';
 
-CREATE TABLE IF NOT EXISTS `medication_stock_movement` (
+CREATE TABLE `medication_stock_movement` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `medication_id` BIGINT NOT NULL,
@@ -738,11 +812,31 @@ CREATE TABLE IF NOT EXISTS `medication_stock_movement` (
   `actor_id` BIGINT DEFAULT NULL,
   `actor_name` VARCHAR(100) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `stock_id` BIGINT NULL DEFAULT NULL,
+  `intake_id` BIGINT NULL DEFAULT NULL,
+  `action_id` BIGINT NULL DEFAULT NULL,
+  `count_id` BIGINT NULL DEFAULT NULL,
+  `stock_event_id` BIGINT NULL DEFAULT NULL,
+  `movement_kind` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `actual_at_utc` DATETIME(6) NULL DEFAULT NULL,
   UNIQUE KEY `uk_stock_source` (`source_key`),
-  KEY `idx_stock_medication` (`medication_id`,`created_at`)
+  KEY `idx_stock_medication` (`medication_id`,`created_at`),
+  KEY `hh_nsm_stock_history_ix` (`stock_id`,`id`) USING BTREE,
+  UNIQUE KEY `hh_nsm_count_uq` (`count_id`) USING BTREE,
+  KEY `hh_nsm_intake_id_ix` (`intake_id`) USING BTREE,
+  KEY `hh_nsm_action_id_ix` (`action_id`) USING BTREE,
+  KEY `hh_nsm_stock_event_id_ix` (`stock_event_id`) USING BTREE,
+  KEY `hh_nsm_patient_med_history_ix` (`patient_id`,`medication_id`,`id`) USING BTREE,
+  CONSTRAINT `hh_nsm_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nsm_intake_id_fk` FOREIGN KEY (`intake_id`) REFERENCES `medication_intake` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nsm_action_id_fk` FOREIGN KEY (`action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nsm_count_id_fk` FOREIGN KEY (`count_id`) REFERENCES `stock_count` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nsm_stock_event_id_fk` FOREIGN KEY (`stock_event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MedicationInventoryhistory';
 
-CREATE TABLE IF NOT EXISTS `care_intake_action` (
+CREATE TABLE `care_intake_action` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `intake_id` BIGINT NOT NULL,
@@ -752,16 +846,33 @@ CREATE TABLE IF NOT EXISTS `care_intake_action` (
   `recorded_for` VARCHAR(20) DEFAULT NULL,
   `quantity` DECIMAL(12,3) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  KEY `idx_action_intake` (`intake_id`)
+  `workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `execution_id` BIGINT NULL DEFAULT NULL,
+  `execution_event_id` BIGINT NULL DEFAULT NULL,
+  `original_action_id` BIGINT NULL DEFAULT NULL,
+  `action_kind` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `actual_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `recorded_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `amount_basis` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `correction_reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `provenance_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  KEY `idx_action_intake` (`intake_id`),
+  UNIQUE KEY `hh_nia_event_uq` (`execution_event_id`) USING BTREE,
+  KEY `hh_nia_execution_id_ix` (`execution_id`) USING BTREE,
+  KEY `hh_nia_original_action_id_ix` (`original_action_id`) USING BTREE,
+  CONSTRAINT `hh_nia_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nia_execution_event_id_fk` FOREIGN KEY (`execution_event_id`) REFERENCES `medication_execution_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nia_original_action_id_fk` FOREIGN KEY (`original_action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='medication intakeActionsaudit';
 
-CREATE TABLE IF NOT EXISTS `notification_robot_config` (
+CREATE TABLE `notification_robot_config` (
   `channel_id` BIGINT PRIMARY KEY,
   `secret` VARCHAR(500) DEFAULT NULL,
   `keyword` VARCHAR(100) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='NotificationBotextendconfiguration';
 
-CREATE TABLE IF NOT EXISTS `notification_channel` (
+CREATE TABLE `notification_channel` (
   id BIGINT NOT NULL AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
   channel_type VARCHAR(20) NOT NULL,
@@ -776,7 +887,7 @@ CREATE TABLE IF NOT EXISTS `notification_channel` (
   KEY idx_channel_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='User notification channels';
 
-CREATE TABLE IF NOT EXISTS `health_analysis_automation` (
+CREATE TABLE `health_analysis_automation` (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
   patient_id BIGINT NOT NULL,
@@ -804,7 +915,7 @@ CREATE TABLE IF NOT EXISTS `health_analysis_automation` (
   KEY idx_health_auto_patient (patient_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Automated health analysis tasks';
 
-CREATE TABLE IF NOT EXISTS `health_analysis_run` (
+CREATE TABLE `health_analysis_run` (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   automation_id BIGINT NOT NULL,
   claim_token VARCHAR(64) NOT NULL,
@@ -822,7 +933,7 @@ CREATE TABLE IF NOT EXISTS `health_analysis_run` (
   KEY idx_health_run_recovery (state,updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Durable health analysis operation journal';
 
-CREATE TABLE IF NOT EXISTS `operation_audit_log` (
+CREATE TABLE `operation_audit_log` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT DEFAULT NULL,
   `username` VARCHAR(100) DEFAULT NULL,
@@ -841,7 +952,7 @@ CREATE TABLE IF NOT EXISTS `operation_audit_log` (
   KEY `idx_audit_path_time` (`request_path`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Operation audit log';
 
-CREATE TABLE IF NOT EXISTS `doctor_patient_assignment` (
+CREATE TABLE `doctor_patient_assignment` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `doctor_user_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -854,7 +965,7 @@ CREATE TABLE IF NOT EXISTS `doctor_patient_assignment` (
   KEY `idx_doctor_assignment_doctor` (`doctor_user_id`,`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Doctor-to-patient care-team assignments';
 
-CREATE TABLE IF NOT EXISTS `doctor_clinical_note` (
+CREATE TABLE `doctor_clinical_note` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `doctor_user_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -867,7 +978,7 @@ CREATE TABLE IF NOT EXISTS `doctor_clinical_note` (
   KEY `idx_doctor_note_doctor` (`doctor_user_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Doctor clinical notes with visibility controls';
 
-CREATE TABLE IF NOT EXISTS `doctor_care_plan` (
+CREATE TABLE `doctor_care_plan` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `doctor_user_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -894,7 +1005,7 @@ CREATE TABLE IF NOT EXISTS `doctor_care_plan` (
   CONSTRAINT fk_doctor_plan_legacy_source FOREIGN KEY (legacy_source_id) REFERENCES doctor_care_plan (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Clinician-authored patient care plans';
 
-CREATE TABLE IF NOT EXISTS `doctor_review_log` (
+CREATE TABLE `doctor_review_log` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `doctor_user_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -907,7 +1018,7 @@ CREATE TABLE IF NOT EXISTS `doctor_review_log` (
   KEY `idx_doctor_review_source` (`source_type`,`source_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Immutable clinician review audit log';
 
-CREATE TABLE IF NOT EXISTS `health_measurement` (
+CREATE TABLE `health_measurement` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `recorded_by` BIGINT NOT NULL,
@@ -926,7 +1037,7 @@ CREATE TABLE IF NOT EXISTS `health_measurement` (
   KEY `idx_measurement_type_time` (`patient_id`,`metric_type`,`measured_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Unified patient-entered health measurements';
 
-CREATE TABLE IF NOT EXISTS `measurement_annotation` (
+CREATE TABLE `measurement_annotation` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `measurement_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -938,7 +1049,7 @@ CREATE TABLE IF NOT EXISTS `measurement_annotation` (
   KEY `idx_annotation_patient` (`patient_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Clinician annotations on measurement trend points';
 
-CREATE TABLE IF NOT EXISTS `care_access_grant` (
+CREATE TABLE `care_access_grant` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `grantee_user_id` BIGINT NOT NULL,
@@ -955,7 +1066,7 @@ CREATE TABLE IF NOT EXISTS `care_access_grant` (
   KEY `idx_access_grantee` (`grantee_user_id`,`status`,`expires_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patient-controlled clinician and caregiver access grants';
 
-CREATE TABLE IF NOT EXISTS `doctor_schedule` (
+CREATE TABLE `doctor_schedule` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `doctor_user_id` BIGINT NOT NULL,
   `work_date` DATE NOT NULL,
@@ -970,7 +1081,7 @@ CREATE TABLE IF NOT EXISTS `doctor_schedule` (
   KEY `idx_doctor_schedule` (`doctor_user_id`,`work_date`,`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Clinician availability and appointment slot source';
 
-CREATE TABLE IF NOT EXISTS `care_appointment` (
+CREATE TABLE `care_appointment` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `doctor_user_id` BIGINT NOT NULL,
@@ -988,12 +1099,16 @@ CREATE TABLE IF NOT EXISTS `care_appointment` (
   `notified_at` DATETIME DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `family_workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `family_assistance_id` BIGINT NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_appointment_patient` (`patient_id`,`start_at`,`status`),
-  KEY `idx_appointment_doctor` (`doctor_user_id`,`start_at`,`status`)
+  KEY `idx_appointment_doctor` (`doctor_user_id`,`start_at`,`status`),
+  KEY `hh_nca_family_assistance_id_ix` (`family_assistance_id`) USING BTREE,
+  CONSTRAINT `hh_nca_family_assistance_id_fk` FOREIGN KEY (`family_assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Conflict-checked appointments and recurring follow-up plans';
 
-CREATE TABLE IF NOT EXISTS `visit_record` (
+CREATE TABLE `visit_record` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `appointment_id` BIGINT DEFAULT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -1011,7 +1126,7 @@ CREATE TABLE IF NOT EXISTS `visit_record` (
   KEY `idx_visit_patient_time` (`patient_id`,`visited_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Structured outpatient and follow-up visit summaries';
 
-CREATE TABLE IF NOT EXISTS `electronic_prescription` (
+CREATE TABLE `electronic_prescription` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `visit_id` BIGINT DEFAULT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -1021,11 +1136,12 @@ CREATE TABLE IF NOT EXISTS `electronic_prescription` (
   `instructions` VARCHAR(1000) DEFAULT NULL,
   `published_at` DATETIME DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `workflow_version` TINYINT NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_prescription_patient` (`patient_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Archived clinician orders; no pharmacy integration';
 
-CREATE TABLE IF NOT EXISTS `electronic_prescription_item` (
+CREATE TABLE `electronic_prescription_item` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `prescription_id` BIGINT NOT NULL,
   `drug_name` VARCHAR(160) NOT NULL,
@@ -1034,11 +1150,12 @@ CREATE TABLE IF NOT EXISTS `electronic_prescription_item` (
   `administration_route` VARCHAR(50) DEFAULT NULL,
   `duration_days` INT DEFAULT NULL,
   `remark` VARCHAR(500) DEFAULT NULL,
+  `workflow_version` TINYINT NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_prescription_item` (`prescription_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Electronic prescription line items';
 
-CREATE TABLE IF NOT EXISTS `consultation` (
+CREATE TABLE `consultation` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `doctor_user_id` BIGINT DEFAULT NULL,
@@ -1059,7 +1176,7 @@ CREATE TABLE IF NOT EXISTS `consultation` (
   KEY `idx_consultation_doctor` (`doctor_user_id`,`status`,`started_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Three-party text, voice, or video consultation session';
 
-CREATE TABLE IF NOT EXISTS `consultation_participant` (
+CREATE TABLE `consultation_participant` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `consultation_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
@@ -1069,7 +1186,7 @@ CREATE TABLE IF NOT EXISTS `consultation_participant` (
   UNIQUE KEY `uk_consult_participant` (`consultation_id`,`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patient, clinician, and family participants';
 
-CREATE TABLE IF NOT EXISTS `consultation_message` (
+CREATE TABLE `consultation_message` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `consultation_id` BIGINT NOT NULL,
   `sender_user_id` BIGINT NOT NULL,
@@ -1081,7 +1198,7 @@ CREATE TABLE IF NOT EXISTS `consultation_message` (
   KEY `idx_consult_message` (`consultation_id`,`sent_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Persisted consultation transcript and attachments';
 
-CREATE TABLE IF NOT EXISTS `consultation_signal` (
+CREATE TABLE `consultation_signal` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `consultation_id` BIGINT NOT NULL,
   `sender_user_id` BIGINT NOT NULL,
@@ -1093,7 +1210,7 @@ CREATE TABLE IF NOT EXISTS `consultation_signal` (
   KEY `idx_consult_signal_target` (`consultation_id`,`target_user_id`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Short-lived WebRTC signaling for multi-party consultations';
 
-CREATE TABLE IF NOT EXISTS `treatment_plan` (
+CREATE TABLE `treatment_plan` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `doctor_user_id` BIGINT NOT NULL,
@@ -1109,7 +1226,7 @@ CREATE TABLE IF NOT EXISTS `treatment_plan` (
   KEY `idx_treatment_plan_patient` (`patient_id`,`status`,`start_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Inpatient, surgery, discharge, and rehabilitation plans';
 
-CREATE TABLE IF NOT EXISTS `rehab_checkin` (
+CREATE TABLE `rehab_checkin` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `plan_id` BIGINT DEFAULT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -1126,7 +1243,7 @@ CREATE TABLE IF NOT EXISTS `rehab_checkin` (
   KEY `idx_rehab_abnormal` (`patient_id`,`abnormal`,`recorded_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Rehabilitation completion, wound, drain, and symptom observations';
 
-CREATE TABLE IF NOT EXISTS `emergency_event` (
+CREATE TABLE `emergency_event` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `triggered_by` BIGINT NOT NULL,
@@ -1138,11 +1255,32 @@ CREATE TABLE IF NOT EXISTS `emergency_event` (
   `notified_user_ids` VARCHAR(1000) DEFAULT NULL,
   `triggered_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `resolved_at` DATETIME DEFAULT NULL,
+  `workflow_version` TINYINT NOT NULL DEFAULT 0,
+  `lock_version` BIGINT NOT NULL DEFAULT 0,
+  `workflow_state` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `response_status` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `requester_user_id` BIGINT NULL DEFAULT NULL,
+  `current_lead_id` BIGINT NULL DEFAULT NULL,
+  `pending_successor_id` BIGINT NULL DEFAULT NULL,
+  `requested_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `accepted_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `last_progress_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `resolved_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `snapshot_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `outcome_code` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `outcome_reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_emergency_patient` (`patient_id`,`triggered_at`)
+  KEY `idx_emergency_patient` (`patient_id`,`triggered_at`),
+  KEY `hh_nee_patient_state_ix` (`patient_id`,`workflow_state`,`id`) USING BTREE,
+  KEY `hh_nee_requester_user_id_ix` (`requester_user_id`) USING BTREE,
+  KEY `hh_nee_current_lead_id_ix` (`current_lead_id`) USING BTREE,
+  KEY `hh_nee_pending_successor_id_ix` (`pending_successor_id`) USING BTREE,
+  CONSTRAINT `hh_nee_requester_user_id_fk` FOREIGN KEY (`requester_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nee_current_lead_id_fk` FOREIGN KEY (`current_lead_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_nee_pending_successor_id_fk` FOREIGN KEY (`pending_successor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Emergency calls with immutable clinical snapshot and location';
 
-CREATE TABLE IF NOT EXISTS `growth_record` (
+CREATE TABLE `growth_record` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `recorded_by` BIGINT NOT NULL,
@@ -1158,7 +1296,7 @@ CREATE TABLE IF NOT EXISTS `growth_record` (
   KEY `idx_growth_patient` (`patient_id`,`record_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Child growth observations and standard percentiles';
 
-CREATE TABLE IF NOT EXISTS `vaccination_plan` (
+CREATE TABLE `vaccination_plan` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `vaccine_name` VARCHAR(160) NOT NULL,
@@ -1174,7 +1312,7 @@ CREATE TABLE IF NOT EXISTS `vaccination_plan` (
   KEY `idx_vaccine_due` (`patient_id`,`status`,`planned_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Manually maintained vaccination schedule';
 
-CREATE TABLE IF NOT EXISTS `maternity_record` (
+CREATE TABLE `maternity_record` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `recorded_by` BIGINT NOT NULL,
@@ -1188,7 +1326,7 @@ CREATE TABLE IF NOT EXISTS `maternity_record` (
   KEY `idx_maternity_patient` (`patient_id`,`record_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Prenatal, delivery, and postpartum timeline';
 
-CREATE TABLE IF NOT EXISTS `mental_assessment` (
+CREATE TABLE `mental_assessment` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `scale_code` VARCHAR(30) NOT NULL,
@@ -1204,7 +1342,7 @@ CREATE TABLE IF NOT EXISTS `mental_assessment` (
   KEY `idx_mental_severity` (`severity`,`doctor_notified_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Scheduled mental-health self assessments with privacy control';
 
-CREATE TABLE IF NOT EXISTS `mental_assessment_schedule` (
+CREATE TABLE `mental_assessment_schedule` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `scale_code` VARCHAR(30) NOT NULL,
@@ -1219,7 +1357,7 @@ CREATE TABLE IF NOT EXISTS `mental_assessment_schedule` (
   KEY `idx_mental_schedule_patient` (`patient_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Recurring mental-health assessment delivery schedule';
 
-CREATE TABLE IF NOT EXISTS `patient_group` (
+CREATE TABLE `patient_group` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `doctor_user_id` BIGINT NOT NULL,
   `group_name` VARCHAR(120) NOT NULL,
@@ -1229,7 +1367,7 @@ CREATE TABLE IF NOT EXISTS `patient_group` (
   UNIQUE KEY `uk_patient_group_doctor_name` (`doctor_user_id`,`group_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Clinician-owned patient groups';
 
-CREATE TABLE IF NOT EXISTS `patient_group_member` (
+CREATE TABLE `patient_group_member` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `group_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -1238,7 +1376,7 @@ CREATE TABLE IF NOT EXISTS `patient_group_member` (
   UNIQUE KEY `uk_patient_group_member` (`group_id`,`patient_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Patient membership in clinician groups';
 
-CREATE TABLE IF NOT EXISTS `notification_delivery_log` (
+CREATE TABLE `notification_delivery_log` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `recipient_user_id` BIGINT NOT NULL,
   `patient_id` BIGINT DEFAULT NULL,
@@ -1252,7 +1390,7 @@ CREATE TABLE IF NOT EXISTS `notification_delivery_log` (
   KEY `idx_delivery_event` (`event_type`,`delivery_status`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Auditable notification routing outcomes';
 
-CREATE TABLE IF NOT EXISTS `platform_branding` (
+CREATE TABLE `platform_branding` (
   `id` TINYINT NOT NULL,
   `platform_name` VARCHAR(80) NOT NULL,
   `organization_name` VARCHAR(120) NOT NULL DEFAULT '',
@@ -1264,7 +1402,7 @@ CREATE TABLE IF NOT EXISTS `platform_branding` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Singleton platform branding configuration';
 
-CREATE TABLE IF NOT EXISTS `care_plan_revision` (
+CREATE TABLE `care_plan_revision` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `plan_id` BIGINT NOT NULL,
   `revision_no` INT NOT NULL,
@@ -1281,10 +1419,9 @@ CREATE TABLE IF NOT EXISTS `care_plan_revision` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_care_plan_revision_no` (`plan_id`,`revision_no`),
   CONSTRAINT `fk_care_plan_revision_plan` FOREIGN KEY (`plan_id`) REFERENCES `doctor_care_plan` (`id`)
-  /*!80016 , CONSTRAINT `ck_care_plan_revision_no` CHECK (`revision_no` > 0) */
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Draft and immutable published clinical snapshots';
 
-CREATE TABLE IF NOT EXISTS `care_plan_action` (
+CREATE TABLE `care_plan_action` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `plan_id` BIGINT NOT NULL,
   `revision_id` BIGINT NOT NULL,
@@ -1307,11 +1444,9 @@ CREATE TABLE IF NOT EXISTS `care_plan_action` (
   CONSTRAINT `fk_care_plan_action_plan` FOREIGN KEY (`plan_id`) REFERENCES `doctor_care_plan` (`id`),
   CONSTRAINT `fk_care_plan_action_revision` FOREIGN KEY (`revision_id`) REFERENCES `care_plan_revision` (`id`),
   CONSTRAINT `fk_care_plan_action_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`)
-  /*!80016 , CONSTRAINT `ck_care_plan_action_ordinal` CHECK (`ordinal` BETWEEN 1 AND 50) */
-  /*!80016 , CONSTRAINT `ck_care_plan_action_version` CHECK (`lock_version` >= 0) */
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Published one-time action snapshots';
 
-CREATE TABLE IF NOT EXISTS `care_plan_event` (
+CREATE TABLE `care_plan_event` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `plan_id` BIGINT NOT NULL,
@@ -1337,7 +1472,7 @@ CREATE TABLE IF NOT EXISTS `care_plan_event` (
   CONSTRAINT `fk_care_plan_event_action` FOREIGN KEY (`action_id`) REFERENCES `care_plan_action` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Append-only audit; actor identity is a durable snapshot without a user FK';
 
-CREATE TABLE IF NOT EXISTS `care_plan_evidence` (
+CREATE TABLE `care_plan_evidence` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `event_id` BIGINT NOT NULL,
   `source_type` VARCHAR(30) NOT NULL COMMENT 'MEASUREMENT=health_measurement; MEDICAL_RECORD=medical_record',
@@ -1347,7 +1482,7 @@ CREATE TABLE IF NOT EXISTS `care_plan_evidence` (
   CONSTRAINT `fk_care_plan_evidence_event` FOREIGN KEY (`event_id`) REFERENCES `care_plan_event` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Original record IDs only; no copied clinical titles or content';
 
-CREATE TABLE IF NOT EXISTS `care_nurse_assignment` (
+CREATE TABLE `care_nurse_assignment` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `patient_id` BIGINT NOT NULL,
   `nurse_user_id` BIGINT NOT NULL,
@@ -1362,7 +1497,7 @@ CREATE TABLE IF NOT EXISTS `care_nurse_assignment` (
   CONSTRAINT `fk_care_nurse_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Team relationship only; never implies a patient module grant';
 
-CREATE TABLE IF NOT EXISTS `care_plan_notification` (
+CREATE TABLE `care_plan_notification` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `event_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -1384,11 +1519,9 @@ CREATE TABLE IF NOT EXISTS `care_plan_notification` (
   KEY `idx_care_plan_notification_due` (`status`,`next_attempt_at`,`id`),
   CONSTRAINT `fk_care_plan_notification_event` FOREIGN KEY (`event_id`) REFERENCES `care_plan_event` (`id`),
   CONSTRAINT `fk_care_plan_notification_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`)
-  /*!80016 , CONSTRAINT `ck_care_plan_notification_attempts` CHECK (`attempt_count` BETWEEN 0 AND 3) */
-  /*!80016 , CONSTRAINT `ck_care_plan_notification_dispatch` CHECK (CHAR_LENGTH(`dispatch_key`) > 0) */
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Durable delivery jobs; UNKNOWN is not automatically retried';
 
-CREATE TABLE IF NOT EXISTS `care_plan_command` (
+CREATE TABLE `care_plan_command` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `actor_id` BIGINT NOT NULL,
   `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -1400,11 +1533,9 @@ CREATE TABLE IF NOT EXISTS `care_plan_command` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_care_plan_command_actor_key` (`actor_id`,`command_key`),
   CONSTRAINT `fk_care_plan_command_plan` FOREIGN KEY (`plan_id`) REFERENCES `doctor_care_plan` (`id`)
-  /*!80016 , CONSTRAINT `ck_care_plan_command_version` CHECK (`expected_version` >= 0) */
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Command deduplication; current authorization must be checked before replay';
 
--- Alert workflow storage is opt-in at the application boundary. No patient/account/grant seeds.
-CREATE TABLE IF NOT EXISTS `alert_source_identity` (
+CREATE TABLE `alert_source_identity` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `source_type` VARCHAR(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   `source_id` BIGINT NOT NULL,
@@ -1420,7 +1551,7 @@ CREATE TABLE IF NOT EXISTS `alert_source_identity` (
   CONSTRAINT `fk_aw_source_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Identity retains distinct journey and self-monitor stores';
 
-CREATE TABLE IF NOT EXISTS `alert_source_revision` (
+CREATE TABLE `alert_source_revision` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `source_identity_id` BIGINT NOT NULL,
   `revision_no` BIGINT NOT NULL,
@@ -1436,7 +1567,7 @@ CREATE TABLE IF NOT EXISTS `alert_source_revision` (
   CONSTRAINT `fk_aw_revision_identity` FOREIGN KEY (`source_identity_id`) REFERENCES `alert_source_identity` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Immutable source value/unit/context snapshots, no broad patient prose';
 
-CREATE TABLE IF NOT EXISTS `alert_source_link` (
+CREATE TABLE `alert_source_link` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `source_identity_id` BIGINT NOT NULL,
   `source_type` VARCHAR(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -1451,7 +1582,7 @@ CREATE TABLE IF NOT EXISTS `alert_source_link` (
   CONSTRAINT `fk_aw_link_alert` FOREIGN KEY (`alert_id`) REFERENCES `alert_record` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='One follow-up per original identity, revision and metric';
 
-CREATE TABLE IF NOT EXISTS `alert_evidence` (
+CREATE TABLE `alert_evidence` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `event_id` BIGINT NOT NULL,
   `source_type` VARCHAR(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -1464,7 +1595,7 @@ CREATE TABLE IF NOT EXISTS `alert_evidence` (
   CONSTRAINT `fk_aw_evidence_event` FOREIGN KEY (`event_id`) REFERENCES `alert_event` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='References and dependency versions only, independent source authority required';
 
-CREATE TABLE IF NOT EXISTS `alert_command` (
+CREATE TABLE `alert_command` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `actor_id` BIGINT NOT NULL,
   `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -1478,7 +1609,7 @@ CREATE TABLE IF NOT EXISTS `alert_command` (
   CONSTRAINT `fk_aw_command_alert` FOREIGN KEY (`alert_id`) REFERENCES `alert_record` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Shared ALERT command contract, current authorization on every replay';
 
-CREATE TABLE IF NOT EXISTS `measurement_command` (
+CREATE TABLE `measurement_command` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `actor_id` BIGINT NOT NULL,
   `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -1491,7 +1622,7 @@ CREATE TABLE IF NOT EXISTS `measurement_command` (
   UNIQUE KEY `uk_aw_measurement_actor_key` (`actor_id`,`command_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Shared MEASUREMENT contract; sourceId is the native ID, source type is in canonical payload/result';
 
-CREATE TABLE IF NOT EXISTS `alert_notification` (
+CREATE TABLE `alert_notification` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `event_id` BIGINT NOT NULL,
   `patient_id` BIGINT NOT NULL,
@@ -1515,9 +1646,1096 @@ CREATE TABLE IF NOT EXISTS `alert_notification` (
   CONSTRAINT `fk_aw_notification_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Dedicated alert outbox, never a replacement for care-plan foreign keys';
 
-SET FOREIGN_KEY_CHECKS = @init_foreign_key_checks;
+CREATE TABLE `emergency_assistance_command` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `emergency_event_id` BIGINT NULL DEFAULT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `payload_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_eac_actor_key_uq` (`actor_id`,`command_key`) USING BTREE,
+  KEY `hh_eac_emergency_event_id_ix` (`emergency_event_id`) USING BTREE,
+  CONSTRAINT `hh_eac_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_eac_emergency_event_id_fk` FOREIGN KEY (`emergency_event_id`) REFERENCES `emergency_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
--- MySQL 5.7 ignores CHECK: these owned guards run on 5.7 and 8.0.
+CREATE TABLE `emergency_assistance_event` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `patient_id` BIGINT NOT NULL,
+  `emergency_event_id` BIGINT NOT NULL,
+  `aggregate_version` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `type` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_id` BIGINT NULL DEFAULT NULL,
+  `actor_relation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `occurred_at` DATETIME(6) NOT NULL,
+  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `hh_eae_target_ix` (`emergency_event_id`,`id`) USING BTREE,
+  KEY `hh_eae_patient_ix` (`patient_id`,`id`) USING BTREE,
+  KEY `hh_eae_actor_id_ix` (`actor_id`) USING BTREE,
+  CONSTRAINT `hh_eae_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_eae_emergency_event_id_fk` FOREIGN KEY (`emergency_event_id`) REFERENCES `emergency_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_eae_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `emergency_assistance_notification` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `event_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `emergency_event_id` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `recipient_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `recipient_user_id` BIGINT NULL DEFAULT NULL,
+  `channel_id` BIGINT NULL DEFAULT NULL,
+  `template_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `dispatch_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'QUEUED',
+  `attempt_count` INT NOT NULL DEFAULT 0,
+  `next_attempt_at` DATETIME(6) NULL DEFAULT NULL,
+  `claimed_at` DATETIME(6) NULL DEFAULT NULL,
+  `claim_token` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `request_id` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `last_result` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `delivered_at` DATETIME(6) NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_ean_dispatch_uq` (`dispatch_key`) USING BTREE,
+  KEY `hh_ean_due_ix` (`status`,`next_attempt_at`,`id`) USING BTREE,
+  KEY `hh_ean_recipient_ix` (`recipient_user_id`,`emergency_event_id`,`id`) USING BTREE,
+  KEY `hh_ean_event_id_ix` (`event_id`) USING BTREE,
+  KEY `hh_ean_patient_id_ix` (`patient_id`) USING BTREE,
+  KEY `hh_ean_emergency_event_id_ix` (`emergency_event_id`) USING BTREE,
+  CONSTRAINT `hh_ean_event_id_fk` FOREIGN KEY (`event_id`) REFERENCES `emergency_assistance_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_ean_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_ean_emergency_event_id_fk` FOREIGN KEY (`emergency_event_id`) REFERENCES `emergency_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_ean_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `emergency_assistance_recipient` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `emergency_event_id` BIGINT NOT NULL,
+  `recipient_user_id` BIGINT NOT NULL,
+  `invitation_event_id` BIGINT NOT NULL,
+  `invited_by` BIGINT NOT NULL,
+  `invited_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_ear_event_user_uq` (`emergency_event_id`,`recipient_user_id`) USING BTREE,
+  KEY `hh_ear_recipient_user_id_ix` (`recipient_user_id`) USING BTREE,
+  KEY `hh_ear_invitation_event_id_ix` (`invitation_event_id`) USING BTREE,
+  KEY `hh_ear_invited_by_ix` (`invited_by`) USING BTREE,
+  CONSTRAINT `hh_ear_emergency_event_id_fk` FOREIGN KEY (`emergency_event_id`) REFERENCES `emergency_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_ear_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_ear_invitation_event_id_fk` FOREIGN KEY (`invitation_event_id`) REFERENCES `emergency_assistance_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_ear_invited_by_fk` FOREIGN KEY (`invited_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `family_assistance` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `patient_id` BIGINT NOT NULL,
+  `source_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `care_item_id` BIGINT NULL DEFAULT NULL,
+  `care_appointment_id` BIGINT NULL DEFAULT NULL,
+  `request_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `request_no` INT NOT NULL,
+  `previous_assistance_id` BIGINT NULL DEFAULT NULL,
+  `originator_id` BIGINT NOT NULL,
+  `origin_evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `origin_evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `state` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'REQUESTED',
+  `lock_version` BIGINT NOT NULL DEFAULT 0,
+  `cycle` INT NOT NULL DEFAULT 1,
+  `assigned_user_id` BIGINT NULL DEFAULT NULL,
+  `accepted_by` BIGINT NULL DEFAULT NULL,
+  `accepted_at` DATETIME(6) NULL DEFAULT NULL,
+  `handled_by` BIGINT NULL DEFAULT NULL,
+  `handled_at` DATETIME(6) NULL DEFAULT NULL,
+  `confirmed_at` DATETIME(6) NULL DEFAULT NULL,
+  `deadline_at` DATETIME(6) NULL DEFAULT NULL,
+  `source_fingerprint` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `reconfirmed_fingerprint` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `accepted_fingerprint` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `source_changed` TINYINT NOT NULL DEFAULT 0,
+  `closed_at` DATETIME(6) NULL DEFAULT NULL,
+  `close_reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_fa_item_request_uq` (`care_item_id`,`request_no`) USING BTREE,
+  UNIQUE KEY `hh_fa_appointment_request_uq` (`care_appointment_id`,`request_no`) USING BTREE,
+  UNIQUE KEY `hh_fa_previous_uq` (`previous_assistance_id`) USING BTREE,
+  KEY `hh_fa_patient_state_ix` (`patient_id`,`state`,`id`) USING BTREE,
+  KEY `hh_fa_due_ix` (`state`,`deadline_at`,`id`) USING BTREE,
+  KEY `hh_fa_originator_id_ix` (`originator_id`) USING BTREE,
+  KEY `hh_fa_assigned_user_id_ix` (`assigned_user_id`) USING BTREE,
+  KEY `hh_fa_accepted_by_ix` (`accepted_by`) USING BTREE,
+  KEY `hh_fa_handled_by_ix` (`handled_by`) USING BTREE,
+  CONSTRAINT `hh_fa_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fa_care_item_id_fk` FOREIGN KEY (`care_item_id`) REFERENCES `care_item` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fa_care_appointment_id_fk` FOREIGN KEY (`care_appointment_id`) REFERENCES `care_appointment` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fa_previous_assistance_id_fk` FOREIGN KEY (`previous_assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fa_originator_id_fk` FOREIGN KEY (`originator_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fa_assigned_user_id_fk` FOREIGN KEY (`assigned_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fa_accepted_by_fk` FOREIGN KEY (`accepted_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fa_handled_by_fk` FOREIGN KEY (`handled_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `family_assistance_command` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `assistance_id` BIGINT NULL DEFAULT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `payload_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_fac_actor_key_uq` (`actor_id`,`command_key`) USING BTREE,
+  KEY `hh_fac_assistance_id_ix` (`assistance_id`) USING BTREE,
+  CONSTRAINT `hh_fac_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fac_assistance_id_fk` FOREIGN KEY (`assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `family_assistance_event` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `patient_id` BIGINT NOT NULL,
+  `assistance_id` BIGINT NOT NULL,
+  `aggregate_version` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `type` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_id` BIGINT NULL DEFAULT NULL,
+  `actor_relation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `occurred_at` DATETIME(6) NOT NULL,
+  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `due_at` DATETIME(6) NULL DEFAULT NULL,
+  `due_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_fae_due_uq` (`due_key`) USING BTREE,
+  KEY `hh_fae_target_ix` (`assistance_id`,`id`) USING BTREE,
+  KEY `hh_fae_patient_ix` (`patient_id`,`id`) USING BTREE,
+  KEY `hh_fae_actor_id_ix` (`actor_id`) USING BTREE,
+  CONSTRAINT `hh_fae_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fae_assistance_id_fk` FOREIGN KEY (`assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fae_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `family_assistance_notification` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `event_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `assistance_id` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `recipient_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `recipient_user_id` BIGINT NULL DEFAULT NULL,
+  `channel_id` BIGINT NULL DEFAULT NULL,
+  `template_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `dispatch_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'QUEUED',
+  `attempt_count` INT NOT NULL DEFAULT 0,
+  `next_attempt_at` DATETIME(6) NULL DEFAULT NULL,
+  `claimed_at` DATETIME(6) NULL DEFAULT NULL,
+  `claim_token` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `request_id` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `last_result` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `delivered_at` DATETIME(6) NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_fan_dispatch_uq` (`dispatch_key`) USING BTREE,
+  KEY `hh_fan_due_ix` (`status`,`next_attempt_at`,`id`) USING BTREE,
+  KEY `hh_fan_recipient_ix` (`recipient_user_id`,`assistance_id`,`id`) USING BTREE,
+  KEY `hh_fan_event_id_ix` (`event_id`) USING BTREE,
+  KEY `hh_fan_patient_id_ix` (`patient_id`) USING BTREE,
+  KEY `hh_fan_assistance_id_ix` (`assistance_id`) USING BTREE,
+  CONSTRAINT `hh_fan_event_id_fk` FOREIGN KEY (`event_id`) REFERENCES `family_assistance_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fan_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fan_assistance_id_fk` FOREIGN KEY (`assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_fan_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `medication_execution` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `patient_id` BIGINT NOT NULL,
+  `medication_id` BIGINT NOT NULL,
+  `provenance` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `lock_version` BIGINT NOT NULL DEFAULT 0,
+  `current_reconciliation_id` BIGINT NULL DEFAULT NULL,
+  `pending_reconciliation_id` BIGINT NULL DEFAULT NULL,
+  `review_required` TINYINT NOT NULL DEFAULT 0,
+  `schedule_zone` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `generated_through` DATE NULL DEFAULT NULL,
+  `created_by` BIGINT NOT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_me_patient_med_uq` (`patient_id`,`medication_id`) USING BTREE,
+  KEY `hh_me_patient_queue_ix` (`patient_id`,`updated_at`,`id`) USING BTREE,
+  KEY `hh_me_medication_id_ix` (`medication_id`) USING BTREE,
+  KEY `hh_me_current_reconciliation_id_ix` (`current_reconciliation_id`) USING BTREE,
+  KEY `hh_me_pending_reconciliation_id_ix` (`pending_reconciliation_id`) USING BTREE,
+  KEY `hh_me_created_by_ix` (`created_by`) USING BTREE,
+  CONSTRAINT `hh_me_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_me_medication_id_fk` FOREIGN KEY (`medication_id`) REFERENCES `medication` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_me_current_reconciliation_id_fk` FOREIGN KEY (`current_reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_me_pending_reconciliation_id_fk` FOREIGN KEY (`pending_reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_me_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `medication_execution_command` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `execution_id` BIGINT NULL DEFAULT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `payload_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_mec_actor_key_uq` (`actor_id`,`command_key`) USING BTREE,
+  KEY `hh_mec_execution_id_ix` (`execution_id`) USING BTREE,
+  CONSTRAINT `hh_mec_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mec_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `medication_execution_event` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `patient_id` BIGINT NOT NULL,
+  `execution_id` BIGINT NOT NULL,
+  `aggregate_version` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `type` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_id` BIGINT NULL DEFAULT NULL,
+  `actor_relation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `occurred_at` DATETIME(6) NOT NULL,
+  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `due_at` DATETIME(6) NULL DEFAULT NULL,
+  `due_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `reconciliation_id` BIGINT NULL DEFAULT NULL,
+  `revision_id` BIGINT NULL DEFAULT NULL,
+  `intake_id` BIGINT NULL DEFAULT NULL,
+  `action_id` BIGINT NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_mee_due_uq` (`due_key`) USING BTREE,
+  KEY `hh_mee_target_ix` (`execution_id`,`id`) USING BTREE,
+  KEY `hh_mee_patient_ix` (`patient_id`,`id`) USING BTREE,
+  UNIQUE KEY `hh_mee_action_uq` (`action_id`) USING BTREE,
+  KEY `hh_mee_actor_id_ix` (`actor_id`) USING BTREE,
+  KEY `hh_mee_reconciliation_id_ix` (`reconciliation_id`) USING BTREE,
+  KEY `hh_mee_revision_id_ix` (`revision_id`) USING BTREE,
+  KEY `hh_mee_intake_id_ix` (`intake_id`) USING BTREE,
+  CONSTRAINT `hh_mee_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mee_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mee_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mee_reconciliation_id_fk` FOREIGN KEY (`reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mee_revision_id_fk` FOREIGN KEY (`revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mee_intake_id_fk` FOREIGN KEY (`intake_id`) REFERENCES `medication_intake` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mee_action_id_fk` FOREIGN KEY (`action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `medication_execution_notification` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `event_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `execution_id` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `recipient_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `recipient_user_id` BIGINT NULL DEFAULT NULL,
+  `channel_id` BIGINT NULL DEFAULT NULL,
+  `template_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `dispatch_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'QUEUED',
+  `attempt_count` INT NOT NULL DEFAULT 0,
+  `next_attempt_at` DATETIME(6) NULL DEFAULT NULL,
+  `claimed_at` DATETIME(6) NULL DEFAULT NULL,
+  `claim_token` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `request_id` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `last_result` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `delivered_at` DATETIME(6) NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  `revision_id` BIGINT NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_men_dispatch_uq` (`dispatch_key`) USING BTREE,
+  KEY `hh_men_due_ix` (`status`,`next_attempt_at`,`id`) USING BTREE,
+  KEY `hh_men_recipient_ix` (`recipient_user_id`,`execution_id`,`id`) USING BTREE,
+  KEY `hh_men_event_id_ix` (`event_id`) USING BTREE,
+  KEY `hh_men_patient_id_ix` (`patient_id`) USING BTREE,
+  KEY `hh_men_execution_id_ix` (`execution_id`) USING BTREE,
+  KEY `hh_men_revision_id_ix` (`revision_id`) USING BTREE,
+  CONSTRAINT `hh_men_event_id_fk` FOREIGN KEY (`event_id`) REFERENCES `medication_execution_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_men_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_men_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_men_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_men_revision_id_fk` FOREIGN KEY (`revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `medication_reconciliation` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `execution_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `proposal_no` INT NOT NULL,
+  `state` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'DRAFT',
+  `current_revision_id` BIGINT NULL DEFAULT NULL,
+  `selected_verifier_id` BIGINT NULL DEFAULT NULL,
+  `verified_revision_id` BIGINT NULL DEFAULT NULL,
+  `verified_by` BIGINT NULL DEFAULT NULL,
+  `verified_at` DATETIME(6) NULL DEFAULT NULL,
+  `scheduled_revision_id` BIGINT NULL DEFAULT NULL,
+  `scheduled_by` BIGINT NULL DEFAULT NULL,
+  `scheduled_at` DATETIME(6) NULL DEFAULT NULL,
+  `replacement_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `replacement_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `applied_at` DATETIME(6) NULL DEFAULT NULL,
+  `ended_at` DATETIME(6) NULL DEFAULT NULL,
+  `created_by` BIGINT NOT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  `generated_through` DATE NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_mr_execution_no_uq` (`execution_id`,`proposal_no`) USING BTREE,
+  KEY `hh_mr_patient_state_ix` (`patient_id`,`state`,`id`) USING BTREE,
+  KEY `hh_mr_state_id_ix` (`state`,`id`) USING BTREE,
+  KEY `hh_mr_current_revision_id_ix` (`current_revision_id`) USING BTREE,
+  KEY `hh_mr_selected_verifier_id_ix` (`selected_verifier_id`) USING BTREE,
+  KEY `hh_mr_verified_revision_id_ix` (`verified_revision_id`) USING BTREE,
+  KEY `hh_mr_verified_by_ix` (`verified_by`) USING BTREE,
+  KEY `hh_mr_scheduled_revision_id_ix` (`scheduled_revision_id`) USING BTREE,
+  KEY `hh_mr_scheduled_by_ix` (`scheduled_by`) USING BTREE,
+  KEY `hh_mr_created_by_ix` (`created_by`) USING BTREE,
+  CONSTRAINT `hh_mr_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mr_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mr_current_revision_id_fk` FOREIGN KEY (`current_revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mr_selected_verifier_id_fk` FOREIGN KEY (`selected_verifier_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mr_verified_revision_id_fk` FOREIGN KEY (`verified_revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mr_verified_by_fk` FOREIGN KEY (`verified_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mr_scheduled_revision_id_fk` FOREIGN KEY (`scheduled_revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mr_scheduled_by_fk` FOREIGN KEY (`scheduled_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mr_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `medication_reconciliation_revision` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `reconciliation_id` BIGINT NOT NULL,
+  `execution_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `revision_no` INT NOT NULL,
+  `source_kind` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `prescription_id` BIGINT NULL DEFAULT NULL,
+  `prescription_item_id` BIGINT NULL DEFAULT NULL,
+  `source_version` INT NULL DEFAULT NULL,
+  `source_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `source_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `mapping_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `mapping_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `action` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `schedule_zone` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `effective_local` DATETIME(6) NOT NULL,
+  `effective_offset_seconds` INT NOT NULL,
+  `effective_at` DATETIME(6) NOT NULL,
+  `end_local` DATETIME(6) NULL DEFAULT NULL,
+  `end_offset_seconds` INT NULL DEFAULT NULL,
+  `end_at` DATETIME(6) NULL DEFAULT NULL,
+  `revision_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `transcribed_by` BIGINT NOT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_mrr_proposal_no_uq` (`reconciliation_id`,`revision_no`) USING BTREE,
+  KEY `hh_mrr_execution_id_ix` (`execution_id`) USING BTREE,
+  KEY `hh_mrr_patient_id_ix` (`patient_id`) USING BTREE,
+  KEY `hh_mrr_prescription_id_ix` (`prescription_id`) USING BTREE,
+  KEY `hh_mrr_prescription_item_id_ix` (`prescription_item_id`) USING BTREE,
+  KEY `hh_mrr_transcribed_by_ix` (`transcribed_by`) USING BTREE,
+  CONSTRAINT `hh_mrr_reconciliation_id_fk` FOREIGN KEY (`reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mrr_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mrr_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mrr_prescription_id_fk` FOREIGN KEY (`prescription_id`) REFERENCES `electronic_prescription` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mrr_prescription_item_id_fk` FOREIGN KEY (`prescription_item_id`) REFERENCES `electronic_prescription_item` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_mrr_transcribed_by_fk` FOREIGN KEY (`transcribed_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `stock_command` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `stock_id` BIGINT NULL DEFAULT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `payload_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_sc_actor_key_uq` (`actor_id`,`command_key`) USING BTREE,
+  KEY `hh_sc_stock_id_ix` (`stock_id`) USING BTREE,
+  CONSTRAINT `hh_sc_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sc_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `stock_count` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `stock_id` BIGINT NOT NULL,
+  `work_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `medication_id` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `stock_version` BIGINT NOT NULL,
+  `quantity` DECIMAL(12,3) NOT NULL,
+  `unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `counted_at` DATETIME(6) NOT NULL,
+  `actor_id` BIGINT NOT NULL,
+  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `prior_movements_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `prior_actions_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `reviewed_resolutions_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `hh_sc_stock_cycle_ix` (`stock_id`,`cycle`,`id`) USING BTREE,
+  KEY `hh_sct_work_id_ix` (`work_id`) USING BTREE,
+  KEY `hh_sct_patient_id_ix` (`patient_id`) USING BTREE,
+  KEY `hh_sct_medication_id_ix` (`medication_id`) USING BTREE,
+  KEY `hh_sct_actor_id_ix` (`actor_id`) USING BTREE,
+  CONSTRAINT `hh_sct_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sct_work_id_fk` FOREIGN KEY (`work_id`) REFERENCES `stock_work` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sct_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sct_medication_id_fk` FOREIGN KEY (`medication_id`) REFERENCES `medication` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sct_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `stock_event` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `patient_id` BIGINT NOT NULL,
+  `stock_id` BIGINT NOT NULL,
+  `aggregate_version` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `type` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_id` BIGINT NULL DEFAULT NULL,
+  `actor_relation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `occurred_at` DATETIME(6) NOT NULL,
+  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `due_at` DATETIME(6) NULL DEFAULT NULL,
+  `due_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `work_id` BIGINT NOT NULL,
+  `intake_id` BIGINT NULL DEFAULT NULL,
+  `action_id` BIGINT NULL DEFAULT NULL,
+  `execution_event_id` BIGINT NULL DEFAULT NULL,
+  `original_movement_id` BIGINT NULL DEFAULT NULL,
+  `compensation_movement_id` BIGINT NULL DEFAULT NULL,
+  `count_id` BIGINT NULL DEFAULT NULL,
+  `prior_stock_event_id` BIGINT NULL DEFAULT NULL,
+  `movement_id` BIGINT NULL DEFAULT NULL,
+  `settlement_status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `settled_action_id` BIGINT NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_se_due_uq` (`due_key`) USING BTREE,
+  KEY `hh_se_target_ix` (`stock_id`,`id`) USING BTREE,
+  KEY `hh_se_patient_ix` (`patient_id`,`id`) USING BTREE,
+  UNIQUE KEY `hh_se_settled_action_uq` (`settled_action_id`) USING BTREE,
+  KEY `hh_se_intake_action_ix` (`intake_id`,`action_id`,`id`) USING BTREE,
+  KEY `hh_se_actor_id_ix` (`actor_id`) USING BTREE,
+  KEY `hh_se_work_id_ix` (`work_id`) USING BTREE,
+  KEY `hh_se_action_id_ix` (`action_id`) USING BTREE,
+  KEY `hh_se_execution_event_id_ix` (`execution_event_id`) USING BTREE,
+  KEY `hh_se_original_movement_id_ix` (`original_movement_id`) USING BTREE,
+  KEY `hh_se_compensation_movement_id_ix` (`compensation_movement_id`) USING BTREE,
+  KEY `hh_se_count_id_ix` (`count_id`) USING BTREE,
+  KEY `hh_se_prior_stock_event_id_ix` (`prior_stock_event_id`) USING BTREE,
+  KEY `hh_se_movement_id_ix` (`movement_id`) USING BTREE,
+  CONSTRAINT `hh_se_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_work_id_fk` FOREIGN KEY (`work_id`) REFERENCES `stock_work` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_intake_id_fk` FOREIGN KEY (`intake_id`) REFERENCES `medication_intake` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_action_id_fk` FOREIGN KEY (`action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_execution_event_id_fk` FOREIGN KEY (`execution_event_id`) REFERENCES `medication_execution_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_original_movement_id_fk` FOREIGN KEY (`original_movement_id`) REFERENCES `medication_stock_movement` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_compensation_movement_id_fk` FOREIGN KEY (`compensation_movement_id`) REFERENCES `medication_stock_movement` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_count_id_fk` FOREIGN KEY (`count_id`) REFERENCES `stock_count` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_prior_stock_event_id_fk` FOREIGN KEY (`prior_stock_event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_movement_id_fk` FOREIGN KEY (`movement_id`) REFERENCES `medication_stock_movement` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_se_settled_action_id_fk` FOREIGN KEY (`settled_action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `stock_intake_resolution` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `stock_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `medication_id` BIGINT NOT NULL,
+  `intake_id` BIGINT NOT NULL,
+  `current_action_id` BIGINT NOT NULL,
+  `execution_event_id` BIGINT NOT NULL,
+  `state` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'UNRECONCILED',
+  `stock_event_id` BIGINT NOT NULL,
+  `count_id` BIGINT NULL DEFAULT NULL,
+  `lock_version` BIGINT NOT NULL DEFAULT 0,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_sir_intake_uq` (`intake_id`) USING BTREE,
+  KEY `hh_sir_stock_state_ix` (`stock_id`,`state`,`id`) USING BTREE,
+  KEY `hh_sir_patient_id_ix` (`patient_id`) USING BTREE,
+  KEY `hh_sir_medication_id_ix` (`medication_id`) USING BTREE,
+  KEY `hh_sir_current_action_id_ix` (`current_action_id`) USING BTREE,
+  KEY `hh_sir_execution_event_id_ix` (`execution_event_id`) USING BTREE,
+  KEY `hh_sir_stock_event_id_ix` (`stock_event_id`) USING BTREE,
+  KEY `hh_sir_count_id_ix` (`count_id`) USING BTREE,
+  CONSTRAINT `hh_sir_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sir_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sir_medication_id_fk` FOREIGN KEY (`medication_id`) REFERENCES `medication` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sir_intake_id_fk` FOREIGN KEY (`intake_id`) REFERENCES `medication_intake` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sir_current_action_id_fk` FOREIGN KEY (`current_action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sir_execution_event_id_fk` FOREIGN KEY (`execution_event_id`) REFERENCES `medication_execution_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sir_stock_event_id_fk` FOREIGN KEY (`stock_event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sir_count_id_fk` FOREIGN KEY (`count_id`) REFERENCES `stock_count` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `stock_notification` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `event_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `stock_id` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `recipient_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `recipient_user_id` BIGINT NULL DEFAULT NULL,
+  `channel_id` BIGINT NULL DEFAULT NULL,
+  `template_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `dispatch_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'QUEUED',
+  `attempt_count` INT NOT NULL DEFAULT 0,
+  `next_attempt_at` DATETIME(6) NULL DEFAULT NULL,
+  `claimed_at` DATETIME(6) NULL DEFAULT NULL,
+  `claim_token` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `request_id` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `last_result` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `delivered_at` DATETIME(6) NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_sn_dispatch_uq` (`dispatch_key`) USING BTREE,
+  KEY `hh_sn_due_ix` (`status`,`next_attempt_at`,`id`) USING BTREE,
+  KEY `hh_sn_recipient_ix` (`recipient_user_id`,`stock_id`,`id`) USING BTREE,
+  KEY `hh_sn_event_id_ix` (`event_id`) USING BTREE,
+  KEY `hh_sn_patient_id_ix` (`patient_id`) USING BTREE,
+  KEY `hh_sn_stock_id_ix` (`stock_id`) USING BTREE,
+  CONSTRAINT `hh_sn_event_id_fk` FOREIGN KEY (`event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sn_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sn_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sn_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `stock_work` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `stock_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `medication_id` BIGINT NOT NULL,
+  `cycle` INT NOT NULL,
+  `previous_work_id` BIGINT NULL DEFAULT NULL,
+  `state` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'OPEN',
+  `assigned_user_id` BIGINT NULL DEFAULT NULL,
+  `opening_quantity` DECIMAL(12,3) NOT NULL,
+  `opening_unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `warning_quantity` DECIMAL(12,3) NOT NULL,
+  `warning_days` INT NOT NULL,
+  `daily_use_quantity` DECIMAL(12,3) NULL DEFAULT NULL,
+  `opening_evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `opening_evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `opened_at` DATETIME(6) NOT NULL,
+  `closed_at` DATETIME(6) NULL DEFAULT NULL,
+  `closing_event_id` BIGINT NULL DEFAULT NULL,
+  `created_by` BIGINT NULL DEFAULT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `hh_sw_stock_cycle_uq` (`stock_id`,`cycle`) USING BTREE,
+  UNIQUE KEY `hh_sw_previous_uq` (`previous_work_id`) USING BTREE,
+  KEY `hh_sw_patient_state_ix` (`patient_id`,`state`,`id`) USING BTREE,
+  KEY `hh_sw_medication_id_ix` (`medication_id`) USING BTREE,
+  KEY `hh_sw_assigned_user_id_ix` (`assigned_user_id`) USING BTREE,
+  KEY `hh_sw_closing_event_id_ix` (`closing_event_id`) USING BTREE,
+  KEY `hh_sw_created_by_ix` (`created_by`) USING BTREE,
+  CONSTRAINT `hh_sw_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sw_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sw_medication_id_fk` FOREIGN KEY (`medication_id`) REFERENCES `medication` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sw_previous_work_id_fk` FOREIGN KEY (`previous_work_id`) REFERENCES `stock_work` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sw_assigned_user_id_fk` FOREIGN KEY (`assigned_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sw_closing_event_id_fk` FOREIGN KEY (`closing_event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `hh_sw_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `visit_question_state` (
+  question_id BIGINT NOT NULL,
+  patient_id BIGINT NOT NULL,
+  state VARCHAR(20) NOT NULL,
+  lock_version BIGINT NOT NULL,
+  current_title VARCHAR(200) NOT NULL,
+  current_description MEDIUMTEXT NULL,
+  current_recorded_answer MEDIUMTEXT NULL,
+  current_follow_up MEDIUMTEXT NULL,
+  ordinary_answer_origin VARCHAR(24) NULL,
+  ordinary_answer_recorder_id BIGINT NULL,
+  ordinary_answer_recorded_at DATETIME(6) NULL,
+  legacy_appointment_id BIGINT NULL,
+  source_observed_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  source_observed_at DATETIME(6) NOT NULL,
+  observed_b_assistance_id BIGINT NULL,
+  context_type VARCHAR(24) NULL,
+  context_id BIGINT NULL,
+  context_fingerprint CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  responsible_user_id BIGINT NULL,
+  follow_up_due_date DATE NULL,
+  current_answer_event_id BIGINT NULL,
+  close_reason VARCHAR(40) NULL,
+  created_by BIGINT NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (question_id),
+  KEY vq_state_patient_ix (patient_id,question_id),
+  KEY vq_state_status_ix (patient_id,state,question_id),
+  KEY vq_state_context_ix (patient_id,context_type,context_id,question_id)
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `visit_question_event` (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  question_id BIGINT NOT NULL,
+  patient_id BIGINT NOT NULL,
+  version BIGINT NOT NULL,
+  event_type VARCHAR(32) NOT NULL,
+  from_state VARCHAR(20) NULL,
+  to_state VARCHAR(20) NOT NULL,
+  actor_id BIGINT NOT NULL,
+  actor_kind VARCHAR(24) NOT NULL,
+  answer_origin VARCHAR(24) NULL,
+  reason_code VARCHAR(40) NULL,
+  body_json MEDIUMTEXT NOT NULL,
+  recorded_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY vq_event_version_uq (question_id,version),
+  KEY vq_event_page_ix (patient_id,question_id,id)
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `visit_question_command` (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  actor_id BIGINT NOT NULL,
+  command_key VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  question_id BIGINT NULL,
+  expected_version BIGINT NOT NULL,
+  payload_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  result_json LONGTEXT NULL,
+  created_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY vq_command_key_uq (actor_id,command_key),
+  KEY vq_command_question_ix (question_id,id)
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE `medical_record_correction_state` (
+  `record_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NULL DEFAULT NULL,
+  `owner_user_id` BIGINT NULL DEFAULT NULL,
+  `baseline_content_version` BIGINT NOT NULL,
+  `current_content_version` BIGINT NOT NULL,
+  `current_history_sequence` BIGINT NOT NULL,
+  `validity` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `content_digest` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`record_id`),
+  CONSTRAINT `mrc57_state_record` FOREIGN KEY (`record_id`) REFERENCES `medical_record` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `medical_record_correction_history` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `record_id` BIGINT NOT NULL,
+  `history_sequence` BIGINT NOT NULL,
+  `operation` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `before_version` BIGINT NOT NULL,
+  `after_version` BIGINT NOT NULL,
+  `actor_id` BIGINT NOT NULL,
+  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `captured_at` DATETIME(6) NOT NULL,
+  `validity` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `snapshot_json` MEDIUMTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `snapshot_hash` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `content_digest` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `mrc57_history_sequence` (`record_id`,`history_sequence`),
+  CONSTRAINT `mrc57_history_record` FOREIGN KEY (`record_id`) REFERENCES `medical_record` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `medical_record_command` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `record_id` BIGINT NOT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `payload_hash` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `mrc57_actor_key` (`actor_id`,`command_key`),
+  KEY `mrc57_command_record` (`record_id`),
+  CONSTRAINT `mrc57_command_record` FOREIGN KEY (`record_id`) REFERENCES `medical_record` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `medical_record_reference_version` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `reference_kind` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `reference_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `record_id` BIGINT NOT NULL,
+  `source_item_id` BIGINT NULL DEFAULT NULL,
+  `content_version` BIGINT NOT NULL,
+  `bound_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `mrc57_reference_anchor` (`reference_kind`,`reference_id`),
+  KEY `mrc57_reference_source` (`record_id`,`reference_kind`,`reference_id`),
+  CONSTRAINT `mrc57_reference_record` FOREIGN KEY (`record_id`) REFERENCES `medical_record` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `common_care_goal` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `patient_id` BIGINT NOT NULL,
+  `creator_id` BIGINT NOT NULL,
+  `title` VARCHAR(120) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `goal_text` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `progress_criterion` VARCHAR(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `responsibility` VARCHAR(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `review_date` VARCHAR(10) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `nominee_id` BIGINT NULL DEFAULT NULL,
+  `state` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `version` BIGINT NOT NULL,
+  `cycle` BIGINT NOT NULL,
+  `accepted_by` BIGINT NULL DEFAULT NULL,
+  `accepted_at` DATETIME(6) NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ccg57_patient_goal` (`patient_id`,`id`),
+  KEY `ccg57_patient_state` (`patient_id`,`state`,`id`),
+  KEY `ccg57_creator` (`creator_id`),
+  KEY `ccg57_nominee` (`nominee_id`),
+  KEY `ccg57_accepted` (`accepted_by`),
+  CONSTRAINT `ccg57_goal_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `ccg57_goal_creator` FOREIGN KEY (`creator_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `ccg57_goal_nominee` FOREIGN KEY (`nominee_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `ccg57_goal_accepted` FOREIGN KEY (`accepted_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `common_care_goal_command` (
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `goal_id` BIGINT NULL DEFAULT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `operation` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `payload_hash` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`actor_id`,`command_key`),
+  UNIQUE KEY `ccg57_patient_actor_key` (`patient_id`,`actor_id`,`command_key`),
+  KEY `ccg57_command_goal` (`patient_id`,`goal_id`),
+  CONSTRAINT `ccg57_command_actor` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `ccg57_command_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `ccg57_command_goal_scope` FOREIGN KEY (`patient_id`,`goal_id`) REFERENCES `common_care_goal` (`patient_id`,`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `common_care_goal_event` (
+  `patient_id` BIGINT NOT NULL,
+  `goal_id` BIGINT NOT NULL,
+  `sequence` BIGINT NOT NULL,
+  `cycle` BIGINT NOT NULL,
+  `operation` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `event_json` MEDIUMTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `recorded_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`goal_id`,`sequence`),
+  UNIQUE KEY `ccg57_event_command` (`actor_id`,`command_key`),
+  KEY `ccg57_event_goal_scope` (`patient_id`,`goal_id`),
+  KEY `ccg57_event_command_scope` (`patient_id`,`actor_id`,`command_key`),
+  KEY `ccg57_event_latest` (`goal_id`,`cycle`,`operation`,`sequence`),
+  CONSTRAINT `ccg57_event_goal_scope` FOREIGN KEY (`patient_id`,`goal_id`) REFERENCES `common_care_goal` (`patient_id`,`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `ccg57_event_command_scope` FOREIGN KEY (`patient_id`,`actor_id`,`command_key`) REFERENCES `common_care_goal_command` (`patient_id`,`actor_id`,`command_key`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `visit_followup_state` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `patient_id` BIGINT NOT NULL,
+  `source_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `care_item_id` BIGINT NULL DEFAULT NULL,
+  `care_appointment_id` BIGINT NULL DEFAULT NULL,
+  `visit_record_id` BIGINT NULL DEFAULT NULL,
+  `origin_appointment_state_id` BIGINT NULL DEFAULT NULL,
+  `lock_version` BIGINT NOT NULL,
+  `source_revision` BIGINT NOT NULL,
+  `source_fingerprint` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `native_status` VARCHAR(30) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `native_start_wall` DATETIME(6) NULL DEFAULT NULL,
+  `native_end_wall` DATETIME(6) NULL DEFAULT NULL,
+  `native_notify_wall` DATETIME(6) NULL DEFAULT NULL,
+  `native_doctor_id` BIGINT NULL DEFAULT NULL,
+  `native_schedule_id` BIGINT NULL DEFAULT NULL,
+  `last_native_event_id` BIGINT NULL DEFAULT NULL,
+  `attendance` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `attendance_origin` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actual_time_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actual_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `actual_offset` VARCHAR(6) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `current_fact_event_id` BIGINT NULL DEFAULT NULL,
+  `next_decision` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `responsible_user_id` BIGINT NULL DEFAULT NULL,
+  `decision_due_at` DATETIME(6) NULL DEFAULT NULL,
+  `successor_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `successor_care_item_id` BIGINT NULL DEFAULT NULL,
+  `successor_care_appointment_id` BIGINT NULL DEFAULT NULL,
+  `successor_bound_version` BIGINT NULL DEFAULT NULL,
+  `successor_bound_fingerprint` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `reminder_attempt_source_revision` BIGINT NULL DEFAULT NULL,
+  `reminder_attempt_id` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `reminder_attempted_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `disposition` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `disposition_revision` BIGINT NOT NULL,
+  `decision_event_id` BIGINT NULL DEFAULT NULL,
+  `created_by` BIGINT NOT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  `reminder_delivery_log_id` BIGINT NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `vf57_state_patient_id` (`patient_id`,`id`),
+  UNIQUE KEY `vf57_state_item` (`care_item_id`),
+  UNIQUE KEY `vf57_state_appointment` (`care_appointment_id`),
+  UNIQUE KEY `vf57_state_visit` (`visit_record_id`),
+  KEY `vf57_state_due` (`patient_id`,`next_decision`,`decision_due_at`,`id`),
+  KEY `vf57_state_kind` (`patient_id`,`source_kind`,`id`),
+  UNIQUE KEY `vf57_state_successor_item` (`successor_care_item_id`),
+  UNIQUE KEY `vf57_state_successor_appointment` (`successor_care_appointment_id`),
+  KEY `vf57_state_origin` (`origin_appointment_state_id`),
+  KEY `vf57_state_owner` (`responsible_user_id`),
+  KEY `vf57_state_creator` (`created_by`),
+  KEY `vf57_state_native_event` (`last_native_event_id`),
+  KEY `vf57_state_fact_event` (`current_fact_event_id`),
+  KEY `vf57_state_decision_event` (`decision_event_id`),
+  CONSTRAINT `vf57_state_patient_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_item_fk` FOREIGN KEY (`care_item_id`) REFERENCES `care_item` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_appointment_fk` FOREIGN KEY (`care_appointment_id`) REFERENCES `care_appointment` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_visit_fk` FOREIGN KEY (`visit_record_id`) REFERENCES `visit_record` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_origin_fk` FOREIGN KEY (`origin_appointment_state_id`) REFERENCES `visit_followup_state` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_owner_fk` FOREIGN KEY (`responsible_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_creator_fk` FOREIGN KEY (`created_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_successor_item_fk` FOREIGN KEY (`successor_care_item_id`) REFERENCES `care_item` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_successor_appointment_fk` FOREIGN KEY (`successor_care_appointment_id`) REFERENCES `care_appointment` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_native_event_fk` FOREIGN KEY (`last_native_event_id`) REFERENCES `visit_followup_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_fact_event_fk` FOREIGN KEY (`current_fact_event_id`) REFERENCES `visit_followup_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_state_decision_event_fk` FOREIGN KEY (`decision_event_id`) REFERENCES `visit_followup_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  UNIQUE KEY `vf57_state_reminder_log` (`reminder_delivery_log_id`),
+  CONSTRAINT `vf57_state_reminder_log_fk` FOREIGN KEY (`reminder_delivery_log_id`) REFERENCES `notification_delivery_log` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `visit_followup_command` (
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `state_id` BIGINT NULL DEFAULT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `operation` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `payload_hash` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`actor_id`,`command_key`),
+  KEY `vf57_command_patient` (`patient_id`,`state_id`),
+  CONSTRAINT `vf57_command_actor_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_command_patient_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_command_state_fk` FOREIGN KEY (`patient_id`,`state_id`) REFERENCES `visit_followup_state` (`patient_id`,`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `visit_followup_event` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `state_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `state_version` BIGINT NOT NULL,
+  `event_type` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_id` BIGINT NOT NULL,
+  `actor_name` VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `actor_relation` VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `occurred_at_utc` DATETIME(6) NULL DEFAULT NULL,
+  `recorded_at` DATETIME(6) NOT NULL,
+  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `before_source_fingerprint` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `after_source_fingerprint` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `payload_json` MEDIUMTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `native_status` VARCHAR(30) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
+  `native_start_wall` DATETIME(6) NULL DEFAULT NULL,
+  `native_end_wall` DATETIME(6) NULL DEFAULT NULL,
+  `native_notify_wall` DATETIME(6) NULL DEFAULT NULL,
+  `native_doctor_id` BIGINT NULL DEFAULT NULL,
+  `native_schedule_id` BIGINT NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `vf57_event_version` (`state_id`,`state_version`),
+  KEY `vf57_event_state` (`state_id`,`id`),
+  UNIQUE KEY `vf57_event_scope` (`patient_id`,`state_id`,`id`),
+  KEY `vf57_event_actor_command` (`actor_id`,`command_key`),
+  CONSTRAINT `vf57_event_state_fk` FOREIGN KEY (`patient_id`,`state_id`) REFERENCES `visit_followup_state` (`patient_id`,`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_event_patient_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_event_actor_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `visit_followup_action_link` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `state_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `disposition_revision` BIGINT NOT NULL,
+  `plan_id` BIGINT NOT NULL,
+  `revision_id` BIGINT NOT NULL,
+  `action_id` BIGINT NOT NULL,
+  `binding_event_id` BIGINT NOT NULL,
+  `bound_after_action_event_id` BIGINT NOT NULL,
+  `kind` VARCHAR(10) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `vf57_link_action` (`state_id`,`disposition_revision`,`action_id`),
+  KEY `vf57_link_current` (`state_id`,`disposition_revision`,`id`),
+  KEY `vf57_link_plan` (`plan_id`,`revision_id`,`action_id`),
+  KEY `vf57_link_revision` (`revision_id`),
+  KEY `vf57_link_action_fk` (`action_id`),
+  KEY `vf57_link_state_scope` (`patient_id`,`state_id`),
+  KEY `vf57_link_event_scope` (`patient_id`,`state_id`,`binding_event_id`),
+  CONSTRAINT `vf57_link_state_fk` FOREIGN KEY (`patient_id`,`state_id`) REFERENCES `visit_followup_state` (`patient_id`,`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_link_patient_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_link_plan_fk` FOREIGN KEY (`plan_id`) REFERENCES `doctor_care_plan` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_link_revision_fk` FOREIGN KEY (`revision_id`) REFERENCES `care_plan_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_link_action_id_fk` FOREIGN KEY (`action_id`) REFERENCES `care_plan_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `vf57_link_binding_fk` FOREIGN KEY (`patient_id`,`state_id`,`binding_event_id`) REFERENCES `visit_followup_event` (`patient_id`,`state_id`,`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `archive_stock_notification_state` (
+  `stock_id` BIGINT NOT NULL,
+  `enabled` TINYINT NOT NULL DEFAULT 0,
+  `control_version` BIGINT NOT NULL DEFAULT 0,
+  `enabled_after_stock_version` BIGINT NOT NULL DEFAULT 0,
+  `restored_at` DATETIME(6) NOT NULL,
+  `updated_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`stock_id`),
+  CONSTRAINT `asn57_state_stock` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE CASCADE
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `archive_stock_notification_command` (
+  `actor_id` BIGINT NOT NULL,
+  `command_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `stock_id` BIGINT NOT NULL,
+  `expected_version` BIGINT NOT NULL,
+  `operation` VARCHAR(7) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `payload_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `result_json` VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
+  `created_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`actor_id`,`command_key`),
+  KEY `asn57_command_stock` (`stock_id`),
+  CONSTRAINT `asn57_command_state` FOREIGN KEY (`stock_id`) REFERENCES `archive_stock_notification_state` (`stock_id`) ON UPDATE RESTRICT ON DELETE CASCADE
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `medical_review_event` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `record_id` BIGINT NOT NULL,
+  `source_generation` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `channel` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `operation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `before_content_version` BIGINT NULL DEFAULT NULL,
+  `content_version` BIGINT NOT NULL,
+  `decision_version` BIGINT NOT NULL,
+  `cycle` BIGINT NOT NULL,
+  `state` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_id` BIGINT NOT NULL,
+  `actor_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `occurred_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `mrv57_event_version` (`record_id`,`source_generation`,`channel`,`decision_version`),
+  KEY `mrv57_event_history` (`record_id`,`source_generation`,`channel`,`id`),
+  KEY `mrv57_event_deletion` (`record_id`,`channel`,`operation`,`id`)
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `medical_review_state` (
+  `record_id` BIGINT NOT NULL,
+  `channel` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `source_generation` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `patient_id` BIGINT NULL DEFAULT NULL,
+  `owner_user_id` BIGINT NULL DEFAULT NULL,
+  `content_version` BIGINT NOT NULL,
+  `decision_version` BIGINT NOT NULL,
+  `cycle` BIGINT NOT NULL,
+  `state` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `last_event_id` BIGINT NOT NULL,
+  `current_decision_event_id` BIGINT NULL DEFAULT NULL,
+  PRIMARY KEY (`record_id`,`channel`),
+  KEY `mrv57_state_queue` (`channel`,`state`,`patient_id`,`record_id`),
+  KEY `mrv57_state_last` (`last_event_id`),
+  KEY `mrv57_state_decision` (`current_decision_event_id`),
+  CONSTRAINT `mrv57_state_record` FOREIGN KEY (`record_id`) REFERENCES `medical_record` (`id`) ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT `mrv57_state_last_fk` FOREIGN KEY (`last_event_id`) REFERENCES `medical_review_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `mrv57_state_decision_fk` FOREIGN KEY (`current_decision_event_id`) REFERENCES `medical_review_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `medical_review_text` (
+  `event_id` BIGINT NOT NULL,
+  `record_id` BIGINT NOT NULL,
+  `source_generation` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `text_type` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `text_value` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  PRIMARY KEY (`event_id`),
+  KEY `mrv57_text_source` (`record_id`,`event_id`),
+  CONSTRAINT `mrv57_text_event` FOREIGN KEY (`event_id`) REFERENCES `medical_review_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT `mrv57_text_record` FOREIGN KEY (`record_id`) REFERENCES `medical_record` (`id`) ON UPDATE RESTRICT ON DELETE CASCADE
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `medical_review_command` (
+  `actor_id` BIGINT NOT NULL,
+  `record_id` BIGINT NOT NULL,
+  `channel` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `command_key` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `source_generation` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `request_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `event_id` BIGINT NOT NULL,
+  `operation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `content_version` BIGINT NOT NULL,
+  `decision_version` BIGINT NOT NULL,
+  `cycle` BIGINT NOT NULL,
+  `state` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `actor_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `applied_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`actor_id`,`record_id`,`channel`,`command_key`),
+  KEY `mrv57_command_source` (`record_id`,`channel`,`event_id`),
+  KEY `mrv57_command_event` (`event_id`),
+  CONSTRAINT `mrv57_command_record` FOREIGN KEY (`record_id`) REFERENCES `medical_record` (`id`) ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT `mrv57_command_event_fk` FOREIGN KEY (`event_id`) REFERENCES `medical_review_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+CREATE TABLE `medical_review_reference` (
+  `reference_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `reference_id` BIGINT NOT NULL,
+  `patient_id` BIGINT NOT NULL,
+  `record_id` BIGINT NOT NULL,
+  `source_generation` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `source_item_id` BIGINT NULL DEFAULT NULL,
+  `content_version` BIGINT NOT NULL,
+  `bound_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`reference_kind`,`reference_id`),
+  KEY `mrv57_reference_source` (`record_id`,`reference_kind`,`reference_id`)
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+
+SET FOREIGN_KEY_CHECKS=1;
+
+-- Workflow guards matching the application schema contracts.
+SET NAMES utf8mb4 COLLATE utf8mb4_general_ci;
 DELIMITER $$
 CREATE TRIGGER `aw57_alert_bi` BEFORE INSERT ON `alert_record` FOR EACH ROW
 BEGIN
@@ -1525,241 +2743,146 @@ BEGIN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert workflow metadata';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_alert_bu` BEFORE UPDATE ON `alert_record` FOR EACH ROW
 BEGIN
   IF NEW.workflow_version NOT IN (0,1) OR NEW.lock_version<0 OR NEW.cycle_no<0 OR NEW.source_review_required NOT IN (0,1) OR NEW.reassignment_required NOT IN (0,1) OR (NEW.workflow_version=1 AND (NEW.workflow_state IS NULL OR NEW.workflow_state NOT IN ('OPEN','ACCEPTED','IN_PROGRESS','WAITING_FEEDBACK','READY_FOR_REVIEW','CLOSED','CANCELLED') OR NEW.workflow_mode IS NULL OR NEW.workflow_mode NOT IN ('PERSONAL','CLINICAL') OR NEW.cycle_no<1 OR NEW.source_type IS NULL OR NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') OR NEW.source_id IS NULL OR NEW.source_id<1 OR NEW.source_revision IS NULL OR NEW.source_revision<1 OR NEW.metric_key IS NULL OR NEW.metric_key NOT IN ('BP','GLUCOSE','SPO2','WEIGHT','HEART_RATE','TEMPERATURE','CUSTOM') OR NEW.classification_json IS NULL OR JSON_VALID(NEW.classification_json)=0)) OR (NEW.current_handling_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.current_handling_event_id AND e.alert_id=NEW.id AND e.cycle_no=NEW.cycle_no)) OR (NEW.current_feedback_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.current_feedback_event_id AND e.alert_id=NEW.id AND e.cycle_no=NEW.cycle_no)) OR (NEW.workflow_version=1 AND (NEW.alert_type IS NULL OR NEW.alert_type<>'MEASUREMENT_FOLLOW_UP')) OR (NEW.workflow_version<>1 AND NEW.alert_type='MEASUREMENT_FOLLOW_UP') OR ((OLD.workflow_version=1 OR OLD.alert_type='MEASUREMENT_FOLLOW_UP' OR EXISTS(SELECT 1 FROM alert_event e WHERE e.alert_id=OLD.id AND e.event_type IS NOT NULL)) AND (NEW.id IS NULL OR NEW.id<>OLD.id OR NEW.workflow_version<>1 OR NEW.alert_type IS NULL OR NEW.alert_type<>'MEASUREMENT_FOLLOW_UP' OR NEW.patient_id<>OLD.patient_id OR NEW.user_id<>OLD.user_id OR NEW.source_type<>OLD.source_type OR NEW.source_id<>OLD.source_id OR NEW.metric_key<>OLD.metric_key)) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Workflow identity and marker are immutable';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_alert_bd` BEFORE DELETE ON `alert_record` FOR EACH ROW
 BEGIN
   IF OLD.workflow_version=1 OR OLD.alert_type='MEASUREMENT_FOLLOW_UP' OR EXISTS(SELECT 1 FROM alert_event e WHERE e.alert_id=OLD.id AND e.event_type IS NOT NULL) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Workflow alerts retain their history';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_event_bi` BEFORE INSERT ON `alert_event` FOR EACH ROW
 BEGIN
   IF (NEW.event_type IS NULL AND EXISTS(SELECT 1 FROM alert_record a WHERE a.id=NEW.alert_id AND (a.workflow_version=1 OR a.alert_type='MEASUREMENT_FOLLOW_UP'))) OR NEW.cycle_no<0 OR (NEW.event_type IS NOT NULL AND (NOT EXISTS(SELECT 1 FROM alert_record a WHERE a.id=NEW.alert_id AND a.patient_id=NEW.patient_id AND a.workflow_version=1 AND a.alert_type='MEASUREMENT_FOLLOW_UP') OR NEW.cycle_no<1 OR (NEW.event_type<>'DUE' AND (NEW.actor_id IS NULL OR NEW.actor_id<1 OR NEW.actor_role IS NULL OR NEW.actor_role='SYSTEM' OR NEW.actor_relation IS NULL)) OR (NEW.event_type='DUE' AND (NEW.actor_id IS NOT NULL OR NEW.actor_name IS NOT NULL OR COALESCE(NEW.actor_role,'')<>'SYSTEM' OR COALESCE(NEW.actor_relation,'')<>'SCHEDULER' OR NEW.entry_mode IS NOT NULL OR NEW.note IS NOT NULL OR NEW.occurred_at IS NULL OR NEW.recorded_at IS NULL OR NEW.occurred_at<>NEW.recorded_at OR NEW.from_status IS NULL OR NEW.from_status<>NEW.to_status OR NOT EXISTS(SELECT 1 FROM alert_record d WHERE d.id=NEW.alert_id AND d.patient_id=NEW.patient_id AND d.cycle_no=NEW.cycle_no AND d.workflow_state=NEW.to_status AND d.workflow_state NOT IN ('CLOSED','CANCELLED') AND d.due_at IS NOT NULL AND d.due_at<=NEW.recorded_at AND JSON_TYPE(NEW.payload_json)='OBJECT' AND JSON_LENGTH(NEW.payload_json)=2 AND CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(NEW.payload_json,'$.dueKey')),'') AS BINARY)=CONCAT('due:',d.id,':',d.cycle_no,':',CAST((TIMESTAMPDIFF(MICROSECOND,'1970-01-01 00:00:00',d.due_at)-MICROSECOND(d.due_at))/1000000 AS SIGNED),'.',LPAD(MICROSECOND(d.due_at),6,'0')) AND CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(NEW.payload_json,'$.dueAt')),'') AS BINARY)=CASE WHEN MICROSECOND(d.due_at)=0 THEN DATE_FORMAT(d.due_at,'%Y-%m-%dT%H:%i:%sZ') WHEN MOD(MICROSECOND(d.due_at),1000)=0 THEN CONCAT(DATE_FORMAT(d.due_at,'%Y-%m-%dT%H:%i:%s.'),LEFT(LPAD(MICROSECOND(d.due_at),6,'0'),3),'Z') ELSE DATE_FORMAT(d.due_at,'%Y-%m-%dT%H:%i:%s.%fZ') END))) OR NEW.recorded_at IS NULL OR NEW.payload_json IS NULL OR JSON_VALID(NEW.payload_json)=0 OR (NEW.entry_mode IS NOT NULL AND NEW.entry_mode NOT IN ('SELF','ASSISTED')) OR (NEW.occurred_at IS NOT NULL AND NEW.occurred_at>NEW.recorded_at))) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert workflow event';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_event_bu` BEFORE UPDATE ON `alert_event` FOR EACH ROW
 BEGIN
   IF OLD.event_type IS NOT NULL OR NEW.event_type IS NOT NULL OR EXISTS(SELECT 1 FROM alert_record a WHERE a.id=OLD.alert_id AND (a.workflow_version=1 OR a.alert_type='MEASUREMENT_FOLLOW_UP')) OR EXISTS(SELECT 1 FROM alert_record a WHERE a.id=NEW.alert_id AND (a.workflow_version=1 OR a.alert_type='MEASUREMENT_FOLLOW_UP')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Workflow events are append-only';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_event_bd` BEFORE DELETE ON `alert_event` FOR EACH ROW
 BEGIN
   IF OLD.event_type IS NOT NULL OR EXISTS(SELECT 1 FROM alert_record a WHERE a.id=OLD.alert_id AND (a.workflow_version=1 OR a.alert_type='MEASUREMENT_FOLLOW_UP')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Workflow events are append-only';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_source_bi` BEFORE INSERT ON `alert_source_identity` FOR EACH ROW
 BEGIN
   IF NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') OR NEW.source_id<1 OR NEW.current_revision<1 OR NEW.lock_version<0 OR NEW.status NOT IN ('ACTIVE','INVALIDATED') OR (NEW.source_type='HEALTH_MEASUREMENT' AND NOT EXISTS(SELECT 1 FROM health_measurement m WHERE m.id=NEW.source_id AND m.patient_id=NEW.patient_id)) OR (NEW.source_type='BP_SELF_MONITOR' AND NOT EXISTS(SELECT 1 FROM bp_self_monitor_record m WHERE m.id=NEW.source_id AND m.patient_id=NEW.patient_id)) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid source identity or patient ownership';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_source_bu` BEFORE UPDATE ON `alert_source_identity` FOR EACH ROW
 BEGIN
   IF NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') OR NEW.source_id<1 OR NEW.current_revision<1 OR NEW.lock_version<0 OR NEW.status NOT IN ('ACTIVE','INVALIDATED') OR (NEW.source_type='HEALTH_MEASUREMENT' AND NOT EXISTS(SELECT 1 FROM health_measurement m WHERE m.id=NEW.source_id AND m.patient_id=NEW.patient_id)) OR (NEW.source_type='BP_SELF_MONITOR' AND NOT EXISTS(SELECT 1 FROM bp_self_monitor_record m WHERE m.id=NEW.source_id AND m.patient_id=NEW.patient_id)) OR NEW.source_type<>OLD.source_type OR NEW.source_id<>OLD.source_id OR NEW.patient_id<>OLD.patient_id OR NEW.current_revision<OLD.current_revision OR NOT EXISTS(SELECT 1 FROM alert_source_revision r WHERE r.source_identity_id=NEW.id AND r.revision_no=NEW.current_revision AND r.source_status=NEW.status) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid source revision or immutable identity';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_revision_bi` BEFORE INSERT ON `alert_source_revision` FOR EACH ROW
 BEGIN
   IF NEW.action_versions_json IS NULL OR JSON_VALID(NEW.action_versions_json)=0 OR JSON_TYPE(CASE WHEN JSON_VALID(NEW.action_versions_json)=1 THEN NEW.action_versions_json ELSE 'null' END)<>'OBJECT' OR (NEW.revision_no=1 AND NEW.action_versions_json<>'{}') OR NEW.revision_no<1 OR NEW.recorded_by<1 OR JSON_VALID(NEW.snapshot_json)=0 OR NEW.occurred_at>NEW.recorded_at OR NEW.source_status NOT IN ('ACTIVE','INVALIDATED') OR (NEW.revision_no=1 AND NEW.source_status<>'ACTIVE') OR (NEW.revision_no>1 AND (NEW.correction_reason IS NULL OR CHAR_LENGTH(TRIM(NEW.correction_reason))=0)) OR CHAR_LENGTH(NEW.correction_reason)>1000 THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid source snapshot';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_revision_bu` BEFORE UPDATE ON `alert_source_revision` FOR EACH ROW
 BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source snapshots are immutable';
 END$$
+
 CREATE TRIGGER `aw57_revision_bd` BEFORE DELETE ON `alert_source_revision` FOR EACH ROW
 BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source snapshots are immutable';
 END$$
+
 CREATE TRIGGER `aw57_link_bi` BEFORE INSERT ON `alert_source_link` FOR EACH ROW
 BEGIN
   IF NEW.source_revision<1 OR NEW.metric_key NOT IN ('BP','GLUCOSE','SPO2','WEIGHT','HEART_RATE','TEMPERATURE','CUSTOM') OR NOT EXISTS(SELECT 1 FROM alert_source_identity s JOIN alert_record a ON a.patient_id=s.patient_id WHERE s.id=NEW.source_identity_id AND s.source_type=NEW.source_type AND s.source_id=NEW.source_id AND a.id=NEW.alert_id AND a.workflow_version=1 AND a.alert_type='MEASUREMENT_FOLLOW_UP' AND a.source_type=NEW.source_type AND a.source_id=NEW.source_id AND a.metric_key=NEW.metric_key) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid source metric link';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_link_bu` BEFORE UPDATE ON `alert_source_link` FOR EACH ROW
 BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source links are append-only';
 END$$
+
 CREATE TRIGGER `aw57_link_bd` BEFORE DELETE ON `alert_source_link` FOR EACH ROW
 BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source links are append-only';
 END$$
+
 CREATE TRIGGER `aw57_evidence_bi` BEFORE INSERT ON `alert_evidence` FOR EACH ROW
 BEGIN
   IF NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR','MEDICAL_RECORD','CARE_PLAN_ACTION') OR NEW.source_id<1 OR NEW.dependency_state NOT IN ('VALID','REFERENCE_CHANGED','WITHDRAWN') OR (NEW.source_revision IS NOT NULL AND NEW.source_revision<1) OR (NEW.dependency_version IS NOT NULL AND NEW.dependency_version<0) OR (NEW.source_type IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') AND NEW.source_revision IS NULL) OR (NEW.source_type='CARE_PLAN_ACTION' AND NEW.dependency_version IS NULL) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert evidence reference';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_evidence_bu` BEFORE UPDATE ON `alert_evidence` FOR EACH ROW
 BEGIN
   IF NEW.source_type NOT IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR','MEDICAL_RECORD','CARE_PLAN_ACTION') OR NEW.source_id<1 OR NEW.dependency_state NOT IN ('VALID','REFERENCE_CHANGED','WITHDRAWN') OR (NEW.source_revision IS NOT NULL AND NEW.source_revision<1) OR (NEW.dependency_version IS NOT NULL AND NEW.dependency_version<0) OR (NEW.source_type IN ('HEALTH_MEASUREMENT','BP_SELF_MONITOR') AND NEW.source_revision IS NULL) OR (NEW.source_type='CARE_PLAN_ACTION' AND NEW.dependency_version IS NULL) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert evidence reference';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_command_bi` BEFORE INSERT ON `alert_command` FOR EACH ROW
 BEGIN
   IF NEW.actor_id<1 OR NEW.expected_version<0 OR NEW.command_key NOT REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' OR NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR (NEW.alert_id IS NOT NULL AND NEW.alert_id<1) OR (NEW.result_json IS NOT NULL AND (JSON_VALID(NEW.result_json)=0 OR NEW.alert_id IS NULL)) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid durable workflow command';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_command_bu` BEFORE UPDATE ON `alert_command` FOR EACH ROW
 BEGIN
   IF NEW.actor_id<1 OR NEW.expected_version<0 OR NEW.command_key NOT REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' OR NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR (NEW.alert_id IS NOT NULL AND NEW.alert_id<1) OR (NEW.result_json IS NOT NULL AND (JSON_VALID(NEW.result_json)=0 OR NEW.alert_id IS NULL)) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid durable workflow command';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_measurement_bi` BEFORE INSERT ON `measurement_command` FOR EACH ROW
 BEGIN
   IF NEW.actor_id<1 OR NEW.expected_version<0 OR NEW.command_key NOT REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' OR NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR (NEW.source_id IS NOT NULL AND NEW.source_id<1) OR (NEW.result_json IS NOT NULL AND (JSON_VALID(NEW.result_json)=0 OR NEW.source_id IS NULL)) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid durable workflow command';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_measurement_bu` BEFORE UPDATE ON `measurement_command` FOR EACH ROW
 BEGIN
   IF NEW.actor_id<1 OR NEW.expected_version<0 OR NEW.command_key NOT REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' OR NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR (NEW.source_id IS NOT NULL AND NEW.source_id<1) OR (NEW.result_json IS NOT NULL AND (JSON_VALID(NEW.result_json)=0 OR NEW.source_id IS NULL)) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid durable workflow command';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_notification_bi` BEFORE INSERT ON `alert_notification` FOR EACH ROW
 BEGIN
   IF NEW.attempt_count NOT BETWEEN 0 AND 3 OR CHAR_LENGTH(NEW.dispatch_key)=0 OR NEW.status NOT IN ('QUEUED','DELIVERED','NO_CHANNEL','FAILED','UNKNOWN','SUPPRESSED') OR NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.event_id AND e.patient_id=NEW.patient_id) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert delivery job';
   END IF;
 END$$
+
 CREATE TRIGGER `aw57_notification_bu` BEFORE UPDATE ON `alert_notification` FOR EACH ROW
 BEGIN
   IF NEW.attempt_count NOT BETWEEN 0 AND 3 OR CHAR_LENGTH(NEW.dispatch_key)=0 OR NEW.status NOT IN ('QUEUED','CLAIMED','DELIVERED','NO_CHANNEL','FAILED','UNKNOWN','SUPPRESSED') OR NOT EXISTS(SELECT 1 FROM alert_event e WHERE e.id=NEW.event_id AND e.patient_id=NEW.patient_id) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid alert delivery job';
   END IF;
 END$$
-DELIMITER ;
 
-
--- 2. Initial roles (menu permissions do not grant patient access; no user assignments)
-
-INSERT INTO `sys_role` (`role_code`,`role_name`,`description`,`status`) VALUES
-('admin','Administrator','System administrator with full permissions',1),
-('user','Standard User','Backward-compatible standard application role',1),
-('doctor','Doctor','Clinical review and assigned-patient management',1),
-('patient','Patient','Self-management and personal health records',1),
-('family','Family Caregiver','Authorized family care and coordination',1),
-('specialty_dialysis','Dialysis Patient','Patient-specific dialysis menu scope',1),
-('nurse','Nurse','Assigned-patient care-plan follow-up; separate patient module grants required',1)
-ON DUPLICATE KEY UPDATE role_name=VALUES(role_name),description=VALUES(description),status=VALUES(status);
-
--- 3. Navigation and action permissions
-
-INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`) VALUES
-(1,0,'Dialysis Management','dialysis','/dialysis','Histogram','dialysis:view',1,2,1),
-(2,0,'Medical Records','clinical-record','/medical-record','FolderOpened','medical:view',1,3,1),
-(3,0,'Medication Management','medication','/medication','Goods','medication:view',1,4,1),
-(5,0,'System Administration','system','','Setting','system:manage',1,7,1),
-(6,5,'User Management','system-user','/system/user','User','user:manage',1,1,1),
-(7,5,'Role Management','system-role','/system/role','UserFilled','role:manage',1,2,1),
-(8,30,'Patient Profiles','patient-profile','/system/patient','Avatar','patient:manage',1,1,1),
-(9,5,'Menu Management','system-menu','/system/menu','Menu','menu:manage',1,3,1),
-(11,1,'Dialysis Records','dialysis-record','/dialysis?tab=data','Document','dialysis:record:view',1,1,1),
-(12,1,'Trend Analysis','dialysis-trend','/dialysis?tab=analysis','TrendCharts','dialysis:trend:view',1,2,1),
-(13,1,'Dry Weight Management','dialysis-dry-weight','/dry-weight','ScaleToOriginal','dry-weight:view',1,3,1),
-(14,1,'AI Health Analytics','dialysis-ai','/dialysis?tab=ai','Cpu','dialysis:ai:view',1,4,1),
-(15,1,'Dialysis Schedule','dialysis-schedule','/family-health?tab=schedule','Calendar','dialysis:schedule:view',1,5,1),
-(16,2,'Record List','clinical-record-list','/medical-record?tab=list','FolderOpened','medical:list:view',1,1,1),
-(17,2,'Upload Report','clinical-record-upload','/medical-record?tab=upload','Camera','medical:upload',1,2,1),
-(18,2,'Abnormal Results','clinical-abnormal','/medical-record?tab=abnormal','WarningFilled','medical:abnormal:view',1,3,1),
-(19,2,'Result Trends','clinical-trend','/medical-record?tab=trend','DataLine','medical:trend:view',1,4,1),
-(20,26,'Complication Tracking','health-complication','/health-analysis?tab=complication','Warning','complication:view',1,2,1),
-(21,26,'Health Alerts','health-alert','/health-analysis?tab=alert','Bell','alert:view',1,3,1),
-(22,29,'Blood Pressure Pattern Analysis','analysis-bp-pattern','/health-analysis?tab=bp-pattern','TrendCharts','bp-pattern:view',1,1,1),
-(23,26,'Nutrition Diary','health-nutrition','/health-analysis?tab=nutrition','Apple','nutrition-diary:view',1,4,1),
-(24,29,'Health Report','analysis-health-report','/health-analysis?tab=health-report','DocumentChecked','health-report:view',1,2,1),
-(25,29,'Data Export','analysis-data-export','/health-analysis?tab=data-export','Download','data-export:view',1,3,1),
-(26,0,'Health Monitoring','health-monitoring','','Odometer','health-monitoring:view',1,5,1),
-(27,26,'Blood Pressure & Glucose','health-vitals','/bp-self-monitor','Odometer','bp-self-monitor:view',1,1,1),
-(28,0,'Workspace','workspace','/monitoring','Monitor','monitoring:view',1,0,1),
-(29,0,'Analytics & Reports','analysis-report','','DataAnalysis','analysis-report:view',1,6,1),
-(30,0,'Patient Center','patient-center','','UserFilled','patient:view',1,1,1),
-(31,30,'Care Plan','patient-care','/family-health','Calendar','family-health:view',1,2,1),
-(32,3,'Medication List','medication-catalog','/medication?tab=drugs','Box','medication:catalog:view',1,1,1),
-(33,3,'Medication Log','medication-log','/medication?tab=logs','Notebook','medication:log:view',1,2,1),
-(34,3,'Medication Reminders','medication-reminder','/medication?tab=remind','Bell','medication:reminder:view',1,3,1),
-(35,26,'Nutrition Assessment','health-nutrition-assessment','/health-analysis?tab=nutrition-assessment','DataAnalysis','nutrition-assessment:view',1,5,1),
-(36,30,'Notification Settings','notification-settings','/settings/notifications','Bell','notification:manage',1,3,1),
-(37,5,'Audit Log','system-audit','/system/audit','Document','audit:view',1,4,1),
-(38,0,'Clinical Workbench','clinical-workbench','/clinical-workbench','FirstAidKit','clinical-workbench:view',1,1,1),
-(39,0,'Doctor Workspace','doctor-workspace','/doctor-workspace','FirstAidKit','doctor-workspace:view',1,1,1),
-(40,0,'Care Journey','care-journey','/care-journey','FirstAidKit','care:journey:view',1,2,1),
-(41,5,'Platform Branding','platform-branding','/system/branding','Brush','branding:manage',1,5,1),
-(42,0,'Nursing Follow-up Queue','care-plan-nursing','/nurse-workspace','FirstAidKit','care-plan:nursing:view',1,2,1),
-(43,8,'Manage Nurse Assignments','care-plan-nurse-assignments',NULL,'User','care-plan:nurse-assignment:manage',2,90,1)
-ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),menu_type=VALUES(menu_type),sort_order=VALUES(sort_order),status=VALUES(status);
-
--- 4. Role menu scopes; system administration and nurse assignment are admin-only
-
-INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
-SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','medication','system','system-user','system-role','patient-profile','system-menu','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule','clinical-record-list','clinical-record-upload','clinical-abnormal','clinical-trend','health-complication','health-alert','analysis-bp-pattern','health-nutrition','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','patient-care','medication-catalog','medication-log','medication-reminder','health-nutrition-assessment','notification-settings','system-audit','clinical-workbench','doctor-workspace','care-journey','platform-branding','care-plan-nurse-assignments') WHERE r.role_code='admin'
-ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
-
-INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
-SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','medication','patient-profile','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule','clinical-record-list','clinical-record-upload','clinical-abnormal','clinical-trend','health-complication','health-alert','analysis-bp-pattern','health-nutrition','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','patient-care','medication-catalog','medication-log','medication-reminder','health-nutrition-assessment','notification-settings','clinical-workbench','care-journey') WHERE r.role_code='user'
-ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
-
-INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
-SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','patient-profile','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule','clinical-record-list','clinical-abnormal','clinical-trend','health-complication','health-alert','analysis-bp-pattern','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','health-nutrition-assessment','notification-settings','clinical-workbench','doctor-workspace','care-journey') WHERE r.role_code='doctor'
-ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
-
-INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
-SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','medication','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule','clinical-record-list','clinical-record-upload','clinical-abnormal','clinical-trend','health-complication','health-alert','analysis-bp-pattern','health-nutrition','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','patient-care','medication-catalog','medication-log','medication-reminder','health-nutrition-assessment','notification-settings','care-journey') WHERE r.role_code='patient'
-ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
-
-INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
-SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','medication','dialysis-record','dialysis-trend','dialysis-schedule','clinical-record-list','clinical-record-upload','clinical-abnormal','clinical-trend','health-complication','health-alert','health-nutrition','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','patient-care','medication-catalog','medication-log','medication-reminder','notification-settings','care-journey') WHERE r.role_code='family'
-ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
-
-INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
-SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule') WHERE r.role_code='specialty_dialysis'
-ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
-
-INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
-SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('care-plan-nursing') WHERE r.role_code='nurse'
-ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
-
--- 5. Health indicators, medication screening prompts and platform branding (not prescribing decisions)
-
-INSERT IGNORE INTO `health_indicator` (`item_code`, `item_name`, `aliases`, `unit`, `ref_range_male`, `category`, `sort_order`) VALUES
-('FERRITIN', 'Ferritin', 'ferritin,serum ferritin', 'ng/mL', '27-375', 'IRON', 10),
-('PTH', 'Parathyroid Hormone', 'parathyroid hormone,intact PTH,iPTH', 'pg/mL', '15-65', 'BONE', 20),
-('CA', 'serum calcium', 'calcium,Ca', 'mmol/L', '2.1-2.6', 'BONE', 30),
-('P', 'serum phosphorus', 'phosphorus,P', 'mmol/L', '0.87-1.45', 'BONE', 40),
-('CREA', 'Creatinine', 'creatinine,serum creatinine,Cr', 'μmol/L', '44-133', 'KIDNEY', 50),
-('BUN', 'Blood Urea Nitrogen', 'blood urea nitrogen,BUN', 'mmol/L', '2.9-8.2', 'KIDNEY', 60),
-('K', 'Potassium', 'potassium,serum potassium,K', 'mmol/L', '3.5-5.5', 'BLOOD', 70),
-('HB', 'Hemoglobin', 'hemoglobin,Hb,HGB', 'g/L', '120-160', 'BLOOD', 80);
-
-INSERT IGNORE INTO `medication_safety_rule` (`ingredient_a`,`ingredient_b`,`severity`,`message`,`renal_note`) VALUES
-('warfarin','ibuprofen','CRITICAL','Warfarin with ibuprofen can substantially increase bleeding risk. Confirm the prescriber plan.','Avoid routine NSAID use in advanced kidney disease unless explicitly directed.'),
-('warfarin','aspirin','WARNING','Warfarin with aspirin increases bleeding risk and should have a documented indication.',NULL),
-('lisinopril','potassium','WARNING','ACE inhibitor plus potassium supplementation can increase serum potassium.','Review potassium and renal function before changing therapy.'),
-('losartan','potassium','WARNING','ARB plus potassium supplementation can increase serum potassium.','Review potassium and renal function before changing therapy.'),
-('spironolactone','potassium','CRITICAL','This combination can cause severe hyperkalaemia. Confirm the prescriber plan.','Extra caution is required when kidney function is impaired.'),
-('calcium carbonate','levothyroxine','INFO','Calcium can reduce levothyroxine absorption; separate administration times when directed.',NULL);
-
-INSERT INTO `platform_branding` (`id`,`platform_name`,`organization_name`,`logo_data`,`page_background`,`ownership_text`)
-VALUES (1,'Chengxin Health','Chengxin Health','/logo.svg','#f5f7fb','© 2026 Chengxin Health. All rights reserved.')
-ON DUPLICATE KEY UPDATE id=VALUES(id);
-
--- Exact canonical cp57 prerequisites, fresh empty database only.
-DELIMITER $$
 CREATE TRIGGER cp57_revision_bi BEFORE INSERT ON care_plan_revision
 FOR EACH ROW BEGIN
   IF NEW.revision_no <= 0 THEN
@@ -1815,858 +2938,11 @@ FOR EACH ROW BEGIN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Care plan command version must be nonnegative';
   END IF;
 END$$
+
 DELIMITER ;
 
--- Reviewed household storage, fresh empty database only. All feature flags remain off.
-CREATE TABLE `emergency_assistance_command` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `actor_id` BIGINT NOT NULL,
-  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `emergency_event_id` BIGINT NULL DEFAULT NULL,
-  `expected_version` BIGINT NOT NULL,
-  `payload_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `result_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_eac_actor_key_uq` (`actor_id`,`command_key`) USING BTREE,
-  KEY `hh_eac_emergency_event_id_ix` (`emergency_event_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `emergency_assistance_event` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `patient_id` BIGINT NOT NULL,
-  `emergency_event_id` BIGINT NOT NULL,
-  `aggregate_version` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `type` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `actor_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `actor_id` BIGINT NULL DEFAULT NULL,
-  `actor_relation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `occurred_at` DATETIME(6) NOT NULL,
-  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  KEY `hh_eae_target_ix` (`emergency_event_id`,`id`) USING BTREE,
-  KEY `hh_eae_patient_ix` (`patient_id`,`id`) USING BTREE,
-  KEY `hh_eae_actor_id_ix` (`actor_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `emergency_assistance_notification` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `event_id` BIGINT NOT NULL,
-  `patient_id` BIGINT NOT NULL,
-  `emergency_event_id` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `recipient_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `recipient_user_id` BIGINT NULL DEFAULT NULL,
-  `channel_id` BIGINT NULL DEFAULT NULL,
-  `template_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `dispatch_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'QUEUED',
-  `attempt_count` INT NOT NULL DEFAULT 0,
-  `next_attempt_at` DATETIME(6) NULL DEFAULT NULL,
-  `claimed_at` DATETIME(6) NULL DEFAULT NULL,
-  `claim_token` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `request_id` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `last_result` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `delivered_at` DATETIME(6) NULL DEFAULT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  `updated_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_ean_dispatch_uq` (`dispatch_key`) USING BTREE,
-  KEY `hh_ean_due_ix` (`status`,`next_attempt_at`,`id`) USING BTREE,
-  KEY `hh_ean_recipient_ix` (`recipient_user_id`,`emergency_event_id`,`id`) USING BTREE,
-  KEY `hh_ean_event_id_ix` (`event_id`) USING BTREE,
-  KEY `hh_ean_patient_id_ix` (`patient_id`) USING BTREE,
-  KEY `hh_ean_emergency_event_id_ix` (`emergency_event_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `emergency_assistance_recipient` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `emergency_event_id` BIGINT NOT NULL,
-  `recipient_user_id` BIGINT NOT NULL,
-  `invitation_event_id` BIGINT NOT NULL,
-  `invited_by` BIGINT NOT NULL,
-  `invited_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_ear_event_user_uq` (`emergency_event_id`,`recipient_user_id`) USING BTREE,
-  KEY `hh_ear_recipient_user_id_ix` (`recipient_user_id`) USING BTREE,
-  KEY `hh_ear_invitation_event_id_ix` (`invitation_event_id`) USING BTREE,
-  KEY `hh_ear_invited_by_ix` (`invited_by`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `family_assistance` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `patient_id` BIGINT NOT NULL,
-  `source_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `care_item_id` BIGINT NULL DEFAULT NULL,
-  `care_appointment_id` BIGINT NULL DEFAULT NULL,
-  `request_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `request_no` INT NOT NULL,
-  `previous_assistance_id` BIGINT NULL DEFAULT NULL,
-  `originator_id` BIGINT NOT NULL,
-  `origin_evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `origin_evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `state` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'REQUESTED',
-  `lock_version` BIGINT NOT NULL DEFAULT 0,
-  `cycle` INT NOT NULL DEFAULT 1,
-  `assigned_user_id` BIGINT NULL DEFAULT NULL,
-  `accepted_by` BIGINT NULL DEFAULT NULL,
-  `accepted_at` DATETIME(6) NULL DEFAULT NULL,
-  `handled_by` BIGINT NULL DEFAULT NULL,
-  `handled_at` DATETIME(6) NULL DEFAULT NULL,
-  `confirmed_at` DATETIME(6) NULL DEFAULT NULL,
-  `deadline_at` DATETIME(6) NULL DEFAULT NULL,
-  `source_fingerprint` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `reconfirmed_fingerprint` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `accepted_fingerprint` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `source_changed` TINYINT NOT NULL DEFAULT 0,
-  `closed_at` DATETIME(6) NULL DEFAULT NULL,
-  `close_reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  `updated_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_fa_item_request_uq` (`care_item_id`,`request_no`) USING BTREE,
-  UNIQUE KEY `hh_fa_appointment_request_uq` (`care_appointment_id`,`request_no`) USING BTREE,
-  UNIQUE KEY `hh_fa_previous_uq` (`previous_assistance_id`) USING BTREE,
-  KEY `hh_fa_patient_state_ix` (`patient_id`,`state`,`id`) USING BTREE,
-  KEY `hh_fa_due_ix` (`state`,`deadline_at`,`id`) USING BTREE,
-  KEY `hh_fa_originator_id_ix` (`originator_id`) USING BTREE,
-  KEY `hh_fa_assigned_user_id_ix` (`assigned_user_id`) USING BTREE,
-  KEY `hh_fa_accepted_by_ix` (`accepted_by`) USING BTREE,
-  KEY `hh_fa_handled_by_ix` (`handled_by`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `family_assistance_command` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `actor_id` BIGINT NOT NULL,
-  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `assistance_id` BIGINT NULL DEFAULT NULL,
-  `expected_version` BIGINT NOT NULL,
-  `payload_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `result_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_fac_actor_key_uq` (`actor_id`,`command_key`) USING BTREE,
-  KEY `hh_fac_assistance_id_ix` (`assistance_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `family_assistance_event` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `patient_id` BIGINT NOT NULL,
-  `assistance_id` BIGINT NOT NULL,
-  `aggregate_version` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `type` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `actor_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `actor_id` BIGINT NULL DEFAULT NULL,
-  `actor_relation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `occurred_at` DATETIME(6) NOT NULL,
-  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `due_at` DATETIME(6) NULL DEFAULT NULL,
-  `due_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_fae_due_uq` (`due_key`) USING BTREE,
-  KEY `hh_fae_target_ix` (`assistance_id`,`id`) USING BTREE,
-  KEY `hh_fae_patient_ix` (`patient_id`,`id`) USING BTREE,
-  KEY `hh_fae_actor_id_ix` (`actor_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `family_assistance_notification` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `event_id` BIGINT NOT NULL,
-  `patient_id` BIGINT NOT NULL,
-  `assistance_id` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `recipient_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `recipient_user_id` BIGINT NULL DEFAULT NULL,
-  `channel_id` BIGINT NULL DEFAULT NULL,
-  `template_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `dispatch_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'QUEUED',
-  `attempt_count` INT NOT NULL DEFAULT 0,
-  `next_attempt_at` DATETIME(6) NULL DEFAULT NULL,
-  `claimed_at` DATETIME(6) NULL DEFAULT NULL,
-  `claim_token` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `request_id` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `last_result` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `delivered_at` DATETIME(6) NULL DEFAULT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  `updated_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_fan_dispatch_uq` (`dispatch_key`) USING BTREE,
-  KEY `hh_fan_due_ix` (`status`,`next_attempt_at`,`id`) USING BTREE,
-  KEY `hh_fan_recipient_ix` (`recipient_user_id`,`assistance_id`,`id`) USING BTREE,
-  KEY `hh_fan_event_id_ix` (`event_id`) USING BTREE,
-  KEY `hh_fan_patient_id_ix` (`patient_id`) USING BTREE,
-  KEY `hh_fan_assistance_id_ix` (`assistance_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `medication_execution` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `patient_id` BIGINT NOT NULL,
-  `medication_id` BIGINT NOT NULL,
-  `provenance` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `lock_version` BIGINT NOT NULL DEFAULT 0,
-  `current_reconciliation_id` BIGINT NULL DEFAULT NULL,
-  `pending_reconciliation_id` BIGINT NULL DEFAULT NULL,
-  `review_required` TINYINT NOT NULL DEFAULT 0,
-  `schedule_zone` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `generated_through` DATE NULL DEFAULT NULL,
-  `created_by` BIGINT NOT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  `updated_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_me_patient_med_uq` (`patient_id`,`medication_id`) USING BTREE,
-  KEY `hh_me_patient_queue_ix` (`patient_id`,`updated_at`,`id`) USING BTREE,
-  KEY `hh_me_medication_id_ix` (`medication_id`) USING BTREE,
-  KEY `hh_me_current_reconciliation_id_ix` (`current_reconciliation_id`) USING BTREE,
-  KEY `hh_me_pending_reconciliation_id_ix` (`pending_reconciliation_id`) USING BTREE,
-  KEY `hh_me_created_by_ix` (`created_by`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `medication_execution_command` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `actor_id` BIGINT NOT NULL,
-  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `execution_id` BIGINT NULL DEFAULT NULL,
-  `expected_version` BIGINT NOT NULL,
-  `payload_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `result_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_mec_actor_key_uq` (`actor_id`,`command_key`) USING BTREE,
-  KEY `hh_mec_execution_id_ix` (`execution_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `medication_execution_event` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `patient_id` BIGINT NOT NULL,
-  `execution_id` BIGINT NOT NULL,
-  `aggregate_version` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `type` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `actor_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `actor_id` BIGINT NULL DEFAULT NULL,
-  `actor_relation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `occurred_at` DATETIME(6) NOT NULL,
-  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `due_at` DATETIME(6) NULL DEFAULT NULL,
-  `due_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `reconciliation_id` BIGINT NULL DEFAULT NULL,
-  `revision_id` BIGINT NULL DEFAULT NULL,
-  `intake_id` BIGINT NULL DEFAULT NULL,
-  `action_id` BIGINT NULL DEFAULT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_mee_due_uq` (`due_key`) USING BTREE,
-  KEY `hh_mee_target_ix` (`execution_id`,`id`) USING BTREE,
-  KEY `hh_mee_patient_ix` (`patient_id`,`id`) USING BTREE,
-  UNIQUE KEY `hh_mee_action_uq` (`action_id`) USING BTREE,
-  KEY `hh_mee_actor_id_ix` (`actor_id`) USING BTREE,
-  KEY `hh_mee_reconciliation_id_ix` (`reconciliation_id`) USING BTREE,
-  KEY `hh_mee_revision_id_ix` (`revision_id`) USING BTREE,
-  KEY `hh_mee_intake_id_ix` (`intake_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `medication_execution_notification` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `event_id` BIGINT NOT NULL,
-  `patient_id` BIGINT NOT NULL,
-  `execution_id` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `recipient_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `recipient_user_id` BIGINT NULL DEFAULT NULL,
-  `channel_id` BIGINT NULL DEFAULT NULL,
-  `template_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `dispatch_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'QUEUED',
-  `attempt_count` INT NOT NULL DEFAULT 0,
-  `next_attempt_at` DATETIME(6) NULL DEFAULT NULL,
-  `claimed_at` DATETIME(6) NULL DEFAULT NULL,
-  `claim_token` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `request_id` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `last_result` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `delivered_at` DATETIME(6) NULL DEFAULT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  `updated_at` DATETIME(6) NOT NULL,
-  `revision_id` BIGINT NULL DEFAULT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_men_dispatch_uq` (`dispatch_key`) USING BTREE,
-  KEY `hh_men_due_ix` (`status`,`next_attempt_at`,`id`) USING BTREE,
-  KEY `hh_men_recipient_ix` (`recipient_user_id`,`execution_id`,`id`) USING BTREE,
-  KEY `hh_men_event_id_ix` (`event_id`) USING BTREE,
-  KEY `hh_men_patient_id_ix` (`patient_id`) USING BTREE,
-  KEY `hh_men_execution_id_ix` (`execution_id`) USING BTREE,
-  KEY `hh_men_revision_id_ix` (`revision_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `medication_reconciliation` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `execution_id` BIGINT NOT NULL,
-  `patient_id` BIGINT NOT NULL,
-  `proposal_no` INT NOT NULL,
-  `state` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'DRAFT',
-  `current_revision_id` BIGINT NULL DEFAULT NULL,
-  `selected_verifier_id` BIGINT NULL DEFAULT NULL,
-  `verified_revision_id` BIGINT NULL DEFAULT NULL,
-  `verified_by` BIGINT NULL DEFAULT NULL,
-  `verified_at` DATETIME(6) NULL DEFAULT NULL,
-  `scheduled_revision_id` BIGINT NULL DEFAULT NULL,
-  `scheduled_by` BIGINT NULL DEFAULT NULL,
-  `scheduled_at` DATETIME(6) NULL DEFAULT NULL,
-  `replacement_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `replacement_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `applied_at` DATETIME(6) NULL DEFAULT NULL,
-  `ended_at` DATETIME(6) NULL DEFAULT NULL,
-  `created_by` BIGINT NOT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  `updated_at` DATETIME(6) NOT NULL,
-  `generated_through` DATE NULL DEFAULT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_mr_execution_no_uq` (`execution_id`,`proposal_no`) USING BTREE,
-  KEY `hh_mr_patient_state_ix` (`patient_id`,`state`,`id`) USING BTREE,
-  KEY `hh_mr_state_id_ix` (`state`,`id`) USING BTREE,
-  KEY `hh_mr_current_revision_id_ix` (`current_revision_id`) USING BTREE,
-  KEY `hh_mr_selected_verifier_id_ix` (`selected_verifier_id`) USING BTREE,
-  KEY `hh_mr_verified_revision_id_ix` (`verified_revision_id`) USING BTREE,
-  KEY `hh_mr_verified_by_ix` (`verified_by`) USING BTREE,
-  KEY `hh_mr_scheduled_revision_id_ix` (`scheduled_revision_id`) USING BTREE,
-  KEY `hh_mr_scheduled_by_ix` (`scheduled_by`) USING BTREE,
-  KEY `hh_mr_created_by_ix` (`created_by`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `medication_reconciliation_revision` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `reconciliation_id` BIGINT NOT NULL,
-  `execution_id` BIGINT NOT NULL,
-  `patient_id` BIGINT NOT NULL,
-  `revision_no` INT NOT NULL,
-  `source_kind` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `prescription_id` BIGINT NULL DEFAULT NULL,
-  `prescription_item_id` BIGINT NULL DEFAULT NULL,
-  `source_version` INT NULL DEFAULT NULL,
-  `source_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `source_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `mapping_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `mapping_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `action` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `schedule_zone` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `effective_local` DATETIME(6) NOT NULL,
-  `effective_offset_seconds` INT NOT NULL,
-  `effective_at` DATETIME(6) NOT NULL,
-  `end_local` DATETIME(6) NULL DEFAULT NULL,
-  `end_offset_seconds` INT NULL DEFAULT NULL,
-  `end_at` DATETIME(6) NULL DEFAULT NULL,
-  `revision_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `transcribed_by` BIGINT NOT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_mrr_proposal_no_uq` (`reconciliation_id`,`revision_no`) USING BTREE,
-  KEY `hh_mrr_execution_id_ix` (`execution_id`) USING BTREE,
-  KEY `hh_mrr_patient_id_ix` (`patient_id`) USING BTREE,
-  KEY `hh_mrr_prescription_id_ix` (`prescription_id`) USING BTREE,
-  KEY `hh_mrr_prescription_item_id_ix` (`prescription_item_id`) USING BTREE,
-  KEY `hh_mrr_transcribed_by_ix` (`transcribed_by`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `stock_command` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `actor_id` BIGINT NOT NULL,
-  `command_key` VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `stock_id` BIGINT NULL DEFAULT NULL,
-  `expected_version` BIGINT NOT NULL,
-  `payload_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `result_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_sc_actor_key_uq` (`actor_id`,`command_key`) USING BTREE,
-  KEY `hh_sc_stock_id_ix` (`stock_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `stock_count` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `stock_id` BIGINT NOT NULL,
-  `work_id` BIGINT NOT NULL,
-  `patient_id` BIGINT NOT NULL,
-  `medication_id` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `stock_version` BIGINT NOT NULL,
-  `quantity` DECIMAL(12,3) NOT NULL,
-  `unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `counted_at` DATETIME(6) NOT NULL,
-  `actor_id` BIGINT NOT NULL,
-  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `prior_movements_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `prior_actions_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `reviewed_resolutions_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  KEY `hh_sc_stock_cycle_ix` (`stock_id`,`cycle`,`id`) USING BTREE,
-  KEY `hh_sct_work_id_ix` (`work_id`) USING BTREE,
-  KEY `hh_sct_patient_id_ix` (`patient_id`) USING BTREE,
-  KEY `hh_sct_medication_id_ix` (`medication_id`) USING BTREE,
-  KEY `hh_sct_actor_id_ix` (`actor_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `stock_event` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `patient_id` BIGINT NOT NULL,
-  `stock_id` BIGINT NOT NULL,
-  `aggregate_version` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `type` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `actor_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `actor_id` BIGINT NULL DEFAULT NULL,
-  `actor_relation` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `occurred_at` DATETIME(6) NOT NULL,
-  `reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  `evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `due_at` DATETIME(6) NULL DEFAULT NULL,
-  `due_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `work_id` BIGINT NOT NULL,
-  `intake_id` BIGINT NULL DEFAULT NULL,
-  `action_id` BIGINT NULL DEFAULT NULL,
-  `execution_event_id` BIGINT NULL DEFAULT NULL,
-  `original_movement_id` BIGINT NULL DEFAULT NULL,
-  `compensation_movement_id` BIGINT NULL DEFAULT NULL,
-  `count_id` BIGINT NULL DEFAULT NULL,
-  `prior_stock_event_id` BIGINT NULL DEFAULT NULL,
-  `movement_id` BIGINT NULL DEFAULT NULL,
-  `settlement_status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `settled_action_id` BIGINT NULL DEFAULT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_se_due_uq` (`due_key`) USING BTREE,
-  KEY `hh_se_target_ix` (`stock_id`,`id`) USING BTREE,
-  KEY `hh_se_patient_ix` (`patient_id`,`id`) USING BTREE,
-  UNIQUE KEY `hh_se_settled_action_uq` (`settled_action_id`) USING BTREE,
-  KEY `hh_se_intake_action_ix` (`intake_id`,`action_id`,`id`) USING BTREE,
-  KEY `hh_se_actor_id_ix` (`actor_id`) USING BTREE,
-  KEY `hh_se_work_id_ix` (`work_id`) USING BTREE,
-  KEY `hh_se_action_id_ix` (`action_id`) USING BTREE,
-  KEY `hh_se_execution_event_id_ix` (`execution_event_id`) USING BTREE,
-  KEY `hh_se_original_movement_id_ix` (`original_movement_id`) USING BTREE,
-  KEY `hh_se_compensation_movement_id_ix` (`compensation_movement_id`) USING BTREE,
-  KEY `hh_se_count_id_ix` (`count_id`) USING BTREE,
-  KEY `hh_se_prior_stock_event_id_ix` (`prior_stock_event_id`) USING BTREE,
-  KEY `hh_se_movement_id_ix` (`movement_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `stock_intake_resolution` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `stock_id` BIGINT NOT NULL,
-  `patient_id` BIGINT NOT NULL,
-  `medication_id` BIGINT NOT NULL,
-  `intake_id` BIGINT NOT NULL,
-  `current_action_id` BIGINT NOT NULL,
-  `execution_event_id` BIGINT NOT NULL,
-  `state` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'UNRECONCILED',
-  `stock_event_id` BIGINT NOT NULL,
-  `count_id` BIGINT NULL DEFAULT NULL,
-  `lock_version` BIGINT NOT NULL DEFAULT 0,
-  `created_at` DATETIME(6) NOT NULL,
-  `updated_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_sir_intake_uq` (`intake_id`) USING BTREE,
-  KEY `hh_sir_stock_state_ix` (`stock_id`,`state`,`id`) USING BTREE,
-  KEY `hh_sir_patient_id_ix` (`patient_id`) USING BTREE,
-  KEY `hh_sir_medication_id_ix` (`medication_id`) USING BTREE,
-  KEY `hh_sir_current_action_id_ix` (`current_action_id`) USING BTREE,
-  KEY `hh_sir_execution_event_id_ix` (`execution_event_id`) USING BTREE,
-  KEY `hh_sir_stock_event_id_ix` (`stock_event_id`) USING BTREE,
-  KEY `hh_sir_count_id_ix` (`count_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `stock_notification` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `event_id` BIGINT NOT NULL,
-  `patient_id` BIGINT NOT NULL,
-  `stock_id` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `recipient_kind` VARCHAR(8) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `recipient_user_id` BIGINT NULL DEFAULT NULL,
-  `channel_id` BIGINT NULL DEFAULT NULL,
-  `template_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `dispatch_key` VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `status` VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'QUEUED',
-  `attempt_count` INT NOT NULL DEFAULT 0,
-  `next_attempt_at` DATETIME(6) NULL DEFAULT NULL,
-  `claimed_at` DATETIME(6) NULL DEFAULT NULL,
-  `claim_token` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `request_id` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `last_result` VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  `delivered_at` DATETIME(6) NULL DEFAULT NULL,
-  `created_at` DATETIME(6) NOT NULL,
-  `updated_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_sn_dispatch_uq` (`dispatch_key`) USING BTREE,
-  KEY `hh_sn_due_ix` (`status`,`next_attempt_at`,`id`) USING BTREE,
-  KEY `hh_sn_recipient_ix` (`recipient_user_id`,`stock_id`,`id`) USING BTREE,
-  KEY `hh_sn_event_id_ix` (`event_id`) USING BTREE,
-  KEY `hh_sn_patient_id_ix` (`patient_id`) USING BTREE,
-  KEY `hh_sn_stock_id_ix` (`stock_id`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE `stock_work` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `stock_id` BIGINT NOT NULL,
-  `patient_id` BIGINT NOT NULL,
-  `medication_id` BIGINT NOT NULL,
-  `cycle` INT NOT NULL,
-  `previous_work_id` BIGINT NULL DEFAULT NULL,
-  `state` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'OPEN',
-  `assigned_user_id` BIGINT NULL DEFAULT NULL,
-  `opening_quantity` DECIMAL(12,3) NOT NULL,
-  `opening_unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `warning_quantity` DECIMAL(12,3) NOT NULL,
-  `warning_days` INT NOT NULL,
-  `daily_use_quantity` DECIMAL(12,3) NULL DEFAULT NULL,
-  `opening_evidence_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `opening_evidence_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `opened_at` DATETIME(6) NOT NULL,
-  `closed_at` DATETIME(6) NULL DEFAULT NULL,
-  `closing_event_id` BIGINT NULL DEFAULT NULL,
-  `created_by` BIGINT NULL DEFAULT NULL,
-  `updated_at` DATETIME(6) NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `hh_sw_stock_cycle_uq` (`stock_id`,`cycle`) USING BTREE,
-  UNIQUE KEY `hh_sw_previous_uq` (`previous_work_id`) USING BTREE,
-  KEY `hh_sw_patient_state_ix` (`patient_id`,`state`,`id`) USING BTREE,
-  KEY `hh_sw_medication_id_ix` (`medication_id`) USING BTREE,
-  KEY `hh_sw_assigned_user_id_ix` (`assigned_user_id`) USING BTREE,
-  KEY `hh_sw_closing_event_id_ix` (`closing_event_id`) USING BTREE,
-  KEY `hh_sw_created_by_ix` (`created_by`) USING BTREE
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-ALTER TABLE `care_appointment`
-  ADD COLUMN `family_workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `family_assistance_id` BIGINT NULL DEFAULT NULL,
-  ADD KEY `hh_nca_family_assistance_id_ix` (`family_assistance_id`) USING BTREE;
-
-ALTER TABLE `care_intake_action`
-  ADD COLUMN `workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `execution_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `execution_event_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `original_action_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `action_kind` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `actual_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `recorded_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  ADD COLUMN `amount_basis` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `correction_reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  ADD COLUMN `provenance_json` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  ADD UNIQUE KEY `hh_nia_event_uq` (`execution_event_id`) USING BTREE,
-  ADD KEY `hh_nia_execution_id_ix` (`execution_id`) USING BTREE,
-  ADD KEY `hh_nia_original_action_id_ix` (`original_action_id`) USING BTREE;
-
-ALTER TABLE `care_item`
-  ADD COLUMN `medication_workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `medication_execution_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `medication_reconciliation_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `family_workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `family_assistance_id` BIGINT NULL DEFAULT NULL,
-  ADD KEY `hh_nci_medication_execution_id_ix` (`medication_execution_id`) USING BTREE,
-  ADD KEY `hh_nci_medication_reconciliation_id_ix` (`medication_reconciliation_id`) USING BTREE,
-  ADD KEY `hh_nci_family_assistance_id_ix` (`family_assistance_id`) USING BTREE;
-
-ALTER TABLE `electronic_prescription`
-  ADD COLUMN `workflow_version` TINYINT NOT NULL DEFAULT 0;
-
-ALTER TABLE `electronic_prescription_item`
-  ADD COLUMN `workflow_version` TINYINT NOT NULL DEFAULT 0;
-
-ALTER TABLE `emergency_event`
-  ADD COLUMN `workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `lock_version` BIGINT NOT NULL DEFAULT 0,
-  ADD COLUMN `workflow_state` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `response_status` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `requester_user_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `current_lead_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `pending_successor_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `requested_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `accepted_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `last_progress_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `resolved_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `snapshot_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `outcome_code` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `outcome_reason` VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  ADD KEY `hh_nee_patient_state_ix` (`patient_id`,`workflow_state`,`id`) USING BTREE,
-  ADD KEY `hh_nee_requester_user_id_ix` (`requester_user_id`) USING BTREE,
-  ADD KEY `hh_nee_current_lead_id_ix` (`current_lead_id`) USING BTREE,
-  ADD KEY `hh_nee_pending_successor_id_ix` (`pending_successor_id`) USING BTREE;
-
-ALTER TABLE `medication`
-  ADD COLUMN `workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `execution_id` BIGINT NULL DEFAULT NULL,
-  ADD UNIQUE KEY `hh_nm_execution_uq` (`execution_id`) USING BTREE;
-
-ALTER TABLE `medication_intake`
-  ADD COLUMN `workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `execution_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `reconciliation_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `provenance` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `planned_quantity` DECIMAL(12,3) NULL DEFAULT NULL,
-  ADD COLUMN `planned_unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  ADD COLUMN `schedule_zone` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `scheduled_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `schedule_offset_seconds` INT NULL DEFAULT NULL,
-  ADD COLUMN `actual_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `latest_action_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `follow_up_state` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `follow_up_kind` VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `follow_up_cycle` INT NOT NULL DEFAULT 0,
-  ADD COLUMN `follow_up_due_at` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `snooze_until_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD UNIQUE KEY `hh_nmi_utc_slot_uq` (`reminder_id`,`scheduled_at_utc`) USING BTREE,
-  ADD KEY `hh_nmi_execution_due_ix` (`execution_id`,`follow_up_state`,`follow_up_due_at`,`id`) USING BTREE,
-  ADD KEY `hh_nmi_patient_med_id_ix` (`patient_id`,`medication_id`,`id`) USING BTREE,
-  ADD KEY `hh_nmi_reconciliation_id_ix` (`reconciliation_id`) USING BTREE,
-  ADD KEY `hh_nmi_latest_action_id_ix` (`latest_action_id`) USING BTREE,
-  ADD KEY `hh_nmi_execution_slot_ix` (`execution_id`,`scheduled_at_utc`,`id`) USING BTREE,
-  ADD KEY `hh_nmi_follow_due_ix` (`workflow_version`,`follow_up_state`,`follow_up_due_at`,`id`) USING BTREE;
-
-ALTER TABLE `medication_reminder`
-  ADD COLUMN `workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `execution_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `reconciliation_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `order_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `planned_quantity` DECIMAL(12,3) NULL DEFAULT NULL,
-  ADD COLUMN `planned_unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  ADD COLUMN `schedule_zone` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `effective_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD COLUMN `end_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD KEY `hh_nmr_execution_id_ix` (`execution_id`) USING BTREE,
-  ADD KEY `hh_nmr_reconciliation_id_ix` (`reconciliation_id`) USING BTREE,
-  ADD KEY `hh_nmr_order_id_ix` (`order_id`) USING BTREE;
-
-ALTER TABLE `medication_stock`
-  ADD COLUMN `workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `lock_version` BIGINT NOT NULL DEFAULT 0,
-  ADD COLUMN `current_work_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `adopted_at` DATETIME(6) NULL DEFAULT NULL,
-  ADD UNIQUE KEY `hh_ns_current_work_uq` (`current_work_id`) USING BTREE;
-
-ALTER TABLE `medication_stock_movement`
-  ADD COLUMN `workflow_version` TINYINT NOT NULL DEFAULT 0,
-  ADD COLUMN `stock_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `intake_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `action_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `count_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `stock_event_id` BIGINT NULL DEFAULT NULL,
-  ADD COLUMN `movement_kind` VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL,
-  ADD COLUMN `unit` VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,
-  ADD COLUMN `actual_at_utc` DATETIME(6) NULL DEFAULT NULL,
-  ADD KEY `hh_nsm_stock_history_ix` (`stock_id`,`id`) USING BTREE,
-  ADD UNIQUE KEY `hh_nsm_count_uq` (`count_id`) USING BTREE,
-  ADD KEY `hh_nsm_intake_id_ix` (`intake_id`) USING BTREE,
-  ADD KEY `hh_nsm_action_id_ix` (`action_id`) USING BTREE,
-  ADD KEY `hh_nsm_stock_event_id_ix` (`stock_event_id`) USING BTREE,
-  ADD KEY `hh_nsm_patient_med_history_ix` (`patient_id`,`medication_id`,`id`) USING BTREE;
-
-ALTER TABLE `sys_role_menu`
-  ADD KEY `hh_nrm_role_id_ix` (`role_id`,`id`) USING BTREE;
-
-ALTER TABLE `sys_user_role`
-  ADD KEY `hh_nur_role_user_ix` (`role_id`,`user_id`,`id`) USING BTREE;
-
-ALTER TABLE `emergency_assistance_command`
-  ADD CONSTRAINT `hh_eac_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_eac_emergency_event_id_fk` FOREIGN KEY (`emergency_event_id`) REFERENCES `emergency_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `emergency_assistance_event`
-  ADD CONSTRAINT `hh_eae_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_eae_emergency_event_id_fk` FOREIGN KEY (`emergency_event_id`) REFERENCES `emergency_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_eae_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `emergency_assistance_notification`
-  ADD CONSTRAINT `hh_ean_event_id_fk` FOREIGN KEY (`event_id`) REFERENCES `emergency_assistance_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_ean_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_ean_emergency_event_id_fk` FOREIGN KEY (`emergency_event_id`) REFERENCES `emergency_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_ean_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `emergency_assistance_recipient`
-  ADD CONSTRAINT `hh_ear_emergency_event_id_fk` FOREIGN KEY (`emergency_event_id`) REFERENCES `emergency_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_ear_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_ear_invitation_event_id_fk` FOREIGN KEY (`invitation_event_id`) REFERENCES `emergency_assistance_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_ear_invited_by_fk` FOREIGN KEY (`invited_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `family_assistance`
-  ADD CONSTRAINT `hh_fa_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fa_care_item_id_fk` FOREIGN KEY (`care_item_id`) REFERENCES `care_item` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fa_care_appointment_id_fk` FOREIGN KEY (`care_appointment_id`) REFERENCES `care_appointment` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fa_previous_assistance_id_fk` FOREIGN KEY (`previous_assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fa_originator_id_fk` FOREIGN KEY (`originator_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fa_assigned_user_id_fk` FOREIGN KEY (`assigned_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fa_accepted_by_fk` FOREIGN KEY (`accepted_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fa_handled_by_fk` FOREIGN KEY (`handled_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `family_assistance_command`
-  ADD CONSTRAINT `hh_fac_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fac_assistance_id_fk` FOREIGN KEY (`assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `family_assistance_event`
-  ADD CONSTRAINT `hh_fae_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fae_assistance_id_fk` FOREIGN KEY (`assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fae_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `family_assistance_notification`
-  ADD CONSTRAINT `hh_fan_event_id_fk` FOREIGN KEY (`event_id`) REFERENCES `family_assistance_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fan_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fan_assistance_id_fk` FOREIGN KEY (`assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_fan_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_execution`
-  ADD CONSTRAINT `hh_me_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_me_medication_id_fk` FOREIGN KEY (`medication_id`) REFERENCES `medication` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_me_current_reconciliation_id_fk` FOREIGN KEY (`current_reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_me_pending_reconciliation_id_fk` FOREIGN KEY (`pending_reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_me_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_execution_command`
-  ADD CONSTRAINT `hh_mec_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mec_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_execution_event`
-  ADD CONSTRAINT `hh_mee_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mee_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mee_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mee_reconciliation_id_fk` FOREIGN KEY (`reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mee_revision_id_fk` FOREIGN KEY (`revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mee_intake_id_fk` FOREIGN KEY (`intake_id`) REFERENCES `medication_intake` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mee_action_id_fk` FOREIGN KEY (`action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_execution_notification`
-  ADD CONSTRAINT `hh_men_event_id_fk` FOREIGN KEY (`event_id`) REFERENCES `medication_execution_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_men_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_men_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_men_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_men_revision_id_fk` FOREIGN KEY (`revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_reconciliation`
-  ADD CONSTRAINT `hh_mr_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mr_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mr_current_revision_id_fk` FOREIGN KEY (`current_revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mr_selected_verifier_id_fk` FOREIGN KEY (`selected_verifier_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mr_verified_revision_id_fk` FOREIGN KEY (`verified_revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mr_verified_by_fk` FOREIGN KEY (`verified_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mr_scheduled_revision_id_fk` FOREIGN KEY (`scheduled_revision_id`) REFERENCES `medication_reconciliation_revision` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mr_scheduled_by_fk` FOREIGN KEY (`scheduled_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mr_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_reconciliation_revision`
-  ADD CONSTRAINT `hh_mrr_reconciliation_id_fk` FOREIGN KEY (`reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mrr_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mrr_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mrr_prescription_id_fk` FOREIGN KEY (`prescription_id`) REFERENCES `electronic_prescription` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mrr_prescription_item_id_fk` FOREIGN KEY (`prescription_item_id`) REFERENCES `electronic_prescription_item` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_mrr_transcribed_by_fk` FOREIGN KEY (`transcribed_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `stock_command`
-  ADD CONSTRAINT `hh_sc_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sc_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `stock_count`
-  ADD CONSTRAINT `hh_sct_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sct_work_id_fk` FOREIGN KEY (`work_id`) REFERENCES `stock_work` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sct_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sct_medication_id_fk` FOREIGN KEY (`medication_id`) REFERENCES `medication` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sct_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `stock_event`
-  ADD CONSTRAINT `hh_se_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_actor_id_fk` FOREIGN KEY (`actor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_work_id_fk` FOREIGN KEY (`work_id`) REFERENCES `stock_work` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_intake_id_fk` FOREIGN KEY (`intake_id`) REFERENCES `medication_intake` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_action_id_fk` FOREIGN KEY (`action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_execution_event_id_fk` FOREIGN KEY (`execution_event_id`) REFERENCES `medication_execution_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_original_movement_id_fk` FOREIGN KEY (`original_movement_id`) REFERENCES `medication_stock_movement` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_compensation_movement_id_fk` FOREIGN KEY (`compensation_movement_id`) REFERENCES `medication_stock_movement` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_count_id_fk` FOREIGN KEY (`count_id`) REFERENCES `stock_count` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_prior_stock_event_id_fk` FOREIGN KEY (`prior_stock_event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_movement_id_fk` FOREIGN KEY (`movement_id`) REFERENCES `medication_stock_movement` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_se_settled_action_id_fk` FOREIGN KEY (`settled_action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `stock_intake_resolution`
-  ADD CONSTRAINT `hh_sir_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sir_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sir_medication_id_fk` FOREIGN KEY (`medication_id`) REFERENCES `medication` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sir_intake_id_fk` FOREIGN KEY (`intake_id`) REFERENCES `medication_intake` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sir_current_action_id_fk` FOREIGN KEY (`current_action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sir_execution_event_id_fk` FOREIGN KEY (`execution_event_id`) REFERENCES `medication_execution_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sir_stock_event_id_fk` FOREIGN KEY (`stock_event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sir_count_id_fk` FOREIGN KEY (`count_id`) REFERENCES `stock_count` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `stock_notification`
-  ADD CONSTRAINT `hh_sn_event_id_fk` FOREIGN KEY (`event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sn_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sn_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sn_recipient_user_id_fk` FOREIGN KEY (`recipient_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `stock_work`
-  ADD CONSTRAINT `hh_sw_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sw_patient_id_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sw_medication_id_fk` FOREIGN KEY (`medication_id`) REFERENCES `medication` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sw_previous_work_id_fk` FOREIGN KEY (`previous_work_id`) REFERENCES `stock_work` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sw_assigned_user_id_fk` FOREIGN KEY (`assigned_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sw_closing_event_id_fk` FOREIGN KEY (`closing_event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_sw_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `care_appointment`
-  ADD CONSTRAINT `hh_nca_family_assistance_id_fk` FOREIGN KEY (`family_assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `care_intake_action`
-  ADD CONSTRAINT `hh_nia_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nia_execution_event_id_fk` FOREIGN KEY (`execution_event_id`) REFERENCES `medication_execution_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nia_original_action_id_fk` FOREIGN KEY (`original_action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `care_item`
-  ADD CONSTRAINT `hh_nci_medication_execution_id_fk` FOREIGN KEY (`medication_execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nci_medication_reconciliation_id_fk` FOREIGN KEY (`medication_reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nci_family_assistance_id_fk` FOREIGN KEY (`family_assistance_id`) REFERENCES `family_assistance` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `emergency_event`
-  ADD CONSTRAINT `hh_nee_requester_user_id_fk` FOREIGN KEY (`requester_user_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nee_current_lead_id_fk` FOREIGN KEY (`current_lead_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nee_pending_successor_id_fk` FOREIGN KEY (`pending_successor_id`) REFERENCES `sys_user` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication`
-  ADD CONSTRAINT `hh_nm_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_intake`
-  ADD CONSTRAINT `hh_nmi_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nmi_reconciliation_id_fk` FOREIGN KEY (`reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nmi_latest_action_id_fk` FOREIGN KEY (`latest_action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_reminder`
-  ADD CONSTRAINT `hh_nmr_execution_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `medication_execution` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nmr_reconciliation_id_fk` FOREIGN KEY (`reconciliation_id`) REFERENCES `medication_reconciliation` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nmr_order_id_fk` FOREIGN KEY (`order_id`) REFERENCES `care_item` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_stock`
-  ADD CONSTRAINT `hh_ns_current_work_id_fk` FOREIGN KEY (`current_work_id`) REFERENCES `stock_work` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-ALTER TABLE `medication_stock_movement`
-  ADD CONSTRAINT `hh_nsm_stock_id_fk` FOREIGN KEY (`stock_id`) REFERENCES `medication_stock` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nsm_intake_id_fk` FOREIGN KEY (`intake_id`) REFERENCES `medication_intake` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nsm_action_id_fk` FOREIGN KEY (`action_id`) REFERENCES `care_intake_action` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nsm_count_id_fk` FOREIGN KEY (`count_id`) REFERENCES `stock_count` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  ADD CONSTRAINT `hh_nsm_stock_event_id_fk` FOREIGN KEY (`stock_event_id`) REFERENCES `stock_event` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-SET @hh_saved_sql_mode=@@SESSION.sql_mode;
-
-SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';
-
 SET NAMES utf8mb4 COLLATE utf8mb4_bin;
-
 DELIMITER $$
-
 CREATE TRIGGER hh_me_bi BEFORE INSERT ON medication_execution
 FOR EACH ROW BEGIN
   IF ((NEW.patient_id IS NOT NULL AND (NEW.patient_id <= 0 OR NEW.patient_id > 9007199254740991)))
@@ -3815,28 +4091,6 @@ FOR EACH ROW BEGIN
   END IF;
 END$$
 
-CREATE TRIGGER hh_nci_bu BEFORE UPDATE ON care_item
-FOR EACH ROW BEGIN
-  IF ((NEW.medication_execution_id IS NOT NULL AND (NEW.medication_execution_id <= 0 OR NEW.medication_execution_id > 9007199254740991)))
-    OR ((NEW.medication_reconciliation_id IS NOT NULL AND (NEW.medication_reconciliation_id <= 0 OR NEW.medication_reconciliation_id > 9007199254740991)))
-    OR ((NEW.family_assistance_id IS NOT NULL AND (NEW.family_assistance_id <= 0 OR NEW.family_assistance_id > 9007199254740991)))
-    OR (NEW.medication_workflow_version NOT IN (0,1))
-    OR (NEW.family_workflow_version NOT IN (0,1))
-    OR (NEW.medication_workflow_version<OLD.medication_workflow_version)
-    OR (NEW.family_workflow_version<OLD.family_workflow_version)
-    OR ((NEW.medication_workflow_version=1 AND (NEW.kind<>'ORDER' OR NEW.medication_execution_id IS NULL OR NEW.medication_reconciliation_id IS NULL)))
-    OR ((NEW.family_workflow_version=1 AND NEW.family_assistance_id IS NULL))
-    OR ((NEW.medication_workflow_version=1 AND NEW.family_workflow_version=1))
-    OR ((NEW.medication_execution_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM medication_execution r WHERE r.id=NEW.medication_execution_id AND r.patient_id=NEW.patient_id)))
-    OR ((NEW.medication_reconciliation_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM medication_reconciliation r WHERE r.id=NEW.medication_reconciliation_id AND r.execution_id=NEW.medication_execution_id AND r.patient_id=NEW.patient_id)))
-    OR ((NEW.family_assistance_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM family_assistance r WHERE r.id=NEW.family_assistance_id AND r.patient_id=NEW.patient_id AND r.care_item_id=NEW.id AND r.care_appointment_id IS NULL)))
-    OR ((OLD.family_workflow_version=1 AND NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.user_id <=> BINARY OLD.user_id) AND (BINARY NEW.kind <=> BINARY OLD.kind) AND (BINARY NEW.title <=> BINARY OLD.title) AND (BINARY NEW.status <=> BINARY OLD.status) AND (BINARY NEW.assigned_user_id <=> BINARY OLD.assigned_user_id) AND (BINARY NEW.actor_id <=> BINARY OLD.actor_id) AND (BINARY NEW.actor_name <=> BINARY OLD.actor_name) AND (BINARY NEW.event_at <=> BINARY OLD.event_at) AND (BINARY NEW.notify_at <=> BINARY OLD.notify_at) AND (BINARY NEW.notified_at <=> BINARY OLD.notified_at) AND (BINARY NEW.escalated_at <=> BINARY OLD.escalated_at) AND (BINARY NEW.data_json <=> BINARY OLD.data_json) AND (BINARY NEW.created_at <=> BINARY OLD.created_at))))
-    OR ((OLD.medication_workflow_version=1 AND NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.user_id <=> BINARY OLD.user_id) AND (BINARY NEW.kind <=> BINARY OLD.kind) AND (BINARY NEW.title <=> BINARY OLD.title) AND (BINARY NEW.assigned_user_id <=> BINARY OLD.assigned_user_id) AND (BINARY NEW.actor_id <=> BINARY OLD.actor_id) AND (BINARY NEW.actor_name <=> BINARY OLD.actor_name) AND (BINARY NEW.event_at <=> BINARY OLD.event_at) AND (BINARY NEW.notify_at <=> BINARY OLD.notify_at) AND (BINARY NEW.notified_at <=> BINARY OLD.notified_at) AND (BINARY NEW.escalated_at <=> BINARY OLD.escalated_at) AND (BINARY NEW.data_json <=> BINARY OLD.data_json) AND (BINARY NEW.created_at <=> BINARY OLD.created_at) AND (BINARY NEW.medication_execution_id <=> BINARY OLD.medication_execution_id) AND (BINARY NEW.medication_reconciliation_id <=> BINARY OLD.medication_reconciliation_id))))
-    OR ((OLD.family_workflow_version=1 AND NOT (NEW.family_assistance_id <=> OLD.family_assistance_id) AND NOT EXISTS (SELECT 1 FROM family_assistance f WHERE f.id=NEW.family_assistance_id AND f.previous_assistance_id=OLD.family_assistance_id))) THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='HH invalid care_item';
-  END IF;
-END$$
-
 CREATE TRIGGER hh_nci_bd BEFORE DELETE ON care_item
 FOR EACH ROW BEGIN
   IF (OLD.medication_workflow_version=1 OR OLD.family_workflow_version=1) THEN
@@ -3850,19 +4104,6 @@ FOR EACH ROW BEGIN
     OR (NEW.family_workflow_version NOT IN (0,1))
     OR ((NEW.family_workflow_version=1 AND NEW.family_assistance_id IS NULL))
     OR ((NEW.family_assistance_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM family_assistance r WHERE r.id=NEW.family_assistance_id AND r.patient_id=NEW.patient_id AND r.care_appointment_id=NEW.id AND r.care_item_id IS NULL))) THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='HH invalid care_appointment';
-  END IF;
-END$$
-
-CREATE TRIGGER hh_nca_bu BEFORE UPDATE ON care_appointment
-FOR EACH ROW BEGIN
-  IF ((NEW.family_assistance_id IS NOT NULL AND (NEW.family_assistance_id <= 0 OR NEW.family_assistance_id > 9007199254740991)))
-    OR (NEW.family_workflow_version NOT IN (0,1))
-    OR (NEW.family_workflow_version<OLD.family_workflow_version)
-    OR ((NEW.family_workflow_version=1 AND NEW.family_assistance_id IS NULL))
-    OR ((NEW.family_assistance_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM family_assistance r WHERE r.id=NEW.family_assistance_id AND r.patient_id=NEW.patient_id AND r.care_appointment_id=NEW.id AND r.care_item_id IS NULL)))
-    OR ((OLD.family_workflow_version=1 AND NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.created_by <=> BINARY OLD.created_by) AND (BINARY NEW.created_at <=> BINARY OLD.created_at))))
-    OR ((OLD.family_workflow_version=1 AND NOT (NEW.family_assistance_id <=> OLD.family_assistance_id) AND NOT EXISTS (SELECT 1 FROM family_assistance f WHERE f.id=NEW.family_assistance_id AND f.previous_assistance_id=OLD.family_assistance_id))) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='HH invalid care_appointment';
   END IF;
 END$$
@@ -4167,87 +4408,6 @@ FOR EACH ROW BEGIN
   END IF;
 END$$
 
-DELIMITER ;
-
-SET SESSION sql_mode=@hh_saved_sql_mode;
-
--- VISIT_QUESTION_STORAGE_20261015
--- 就诊问题跟踪：仅新增三个独立表，不修改既有问题或家庭协作 B 对象。
--- 目标原生 MySQL 5.7.18；功能默认关闭，不执行历史回填，不自动启用。
--- 先停写、核对库名与权限、完成全库及附件备份，并在隔离库验证恢复。
--- 现有库按 01 只读预检 → 02 仅 ABSENT 时升级 → 03 只读后检；全新空库单独使用 init.sql。
--- DDL 隐式提交；任一步失败立即停止，禁止 --force、盲重跑、删除重建或用 init.sql 修补。
--- 执行连接须使用 utf8mb4/utf8mb4_bin，严格 SQL 模式须与 B 守卫一致；本文件不会修改连接或服务器设置。
--- 仅源码交付。原生数据库执行、驱动收发和并发验证仍为 NOT_RUN。
--- 以下仅为新库初始化追加段；不要在现有库执行。
-
-CREATE TABLE visit_question_state (
-  question_id BIGINT NOT NULL,
-  patient_id BIGINT NOT NULL,
-  state VARCHAR(20) NOT NULL,
-  lock_version BIGINT NOT NULL,
-  current_title VARCHAR(200) NOT NULL,
-  current_description MEDIUMTEXT NULL,
-  current_recorded_answer MEDIUMTEXT NULL,
-  current_follow_up MEDIUMTEXT NULL,
-  ordinary_answer_origin VARCHAR(24) NULL,
-  ordinary_answer_recorder_id BIGINT NULL,
-  ordinary_answer_recorded_at DATETIME(6) NULL,
-  legacy_appointment_id BIGINT NULL,
-  source_observed_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  source_observed_at DATETIME(6) NOT NULL,
-  observed_b_assistance_id BIGINT NULL,
-  context_type VARCHAR(24) NULL,
-  context_id BIGINT NULL,
-  context_fingerprint CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
-  responsible_user_id BIGINT NULL,
-  follow_up_due_date DATE NULL,
-  current_answer_event_id BIGINT NULL,
-  close_reason VARCHAR(40) NULL,
-  created_by BIGINT NOT NULL,
-  created_at DATETIME(6) NOT NULL,
-  updated_at DATETIME(6) NOT NULL,
-  PRIMARY KEY (question_id),
-  KEY vq_state_patient_ix (patient_id,question_id),
-  KEY vq_state_status_ix (patient_id,state,question_id),
-  KEY vq_state_context_ix (patient_id,context_type,context_id,question_id)
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE visit_question_event (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  question_id BIGINT NOT NULL,
-  patient_id BIGINT NOT NULL,
-  version BIGINT NOT NULL,
-  event_type VARCHAR(32) NOT NULL,
-  from_state VARCHAR(20) NULL,
-  to_state VARCHAR(20) NOT NULL,
-  actor_id BIGINT NOT NULL,
-  actor_kind VARCHAR(24) NOT NULL,
-  answer_origin VARCHAR(24) NULL,
-  reason_code VARCHAR(40) NULL,
-  body_json MEDIUMTEXT NOT NULL,
-  recorded_at DATETIME(6) NOT NULL,
-  PRIMARY KEY (id),
-  UNIQUE KEY vq_event_version_uq (question_id,version),
-  KEY vq_event_page_ix (patient_id,question_id,id)
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-CREATE TABLE visit_question_command (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  actor_id BIGINT NOT NULL,
-  command_key VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  question_id BIGINT NULL,
-  expected_version BIGINT NOT NULL,
-  payload_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  result_json LONGTEXT NULL,
-  created_at DATETIME(6) NOT NULL,
-  PRIMARY KEY (id),
-  UNIQUE KEY vq_command_key_uq (actor_id,command_key),
-  KEY vq_command_question_ix (question_id,id)
-) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
-
-DELIMITER $$
-
 CREATE TRIGGER vq_state_bi BEFORE INSERT ON visit_question_state
 FOR EACH ROW BEGIN
   IF COALESCE((NEW.question_id BETWEEN 1 AND 9007199254740991
@@ -4396,4 +4556,1037 @@ FOR EACH ROW BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VQ history is immutable';
 END$$
 
+CREATE TRIGGER `if57_bp_insert_facts` BEFORE INSERT ON `bp_self_monitor_record` FOR EACH ROW
+BEGIN
+  IF NEW.import_facts_json IS NOT NULL THEN
+    IF OCTET_LENGTH(NEW.import_facts_json) > 4096 OR JSON_VALID(NEW.import_facts_json) <> 1 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'IF57_INVALID_IMPORT_FACTS';
+    END IF;
+    IF JSON_TYPE(NEW.import_facts_json) <> 'OBJECT'
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.version')) <=> 'INTEGER')
+      OR NOT (JSON_UNQUOTE(JSON_EXTRACT(NEW.import_facts_json, '$.version')) <=> '1')
+      OR NOT (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.import_facts_json, '$.format')) <=> BINARY NEW.source_type)
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.timestamps')) <=> 'OBJECT')
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.basis')) <=> 'OBJECT')
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.readings')) <=> 'ARRAY')
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.selectedTimestamp')) <=> 'STRING')
+      OR NOT (JSON_CONTAINS_PATH(NEW.import_facts_json, 'all', '$.version', '$.format', '$.kind', '$.timestamps', '$.selectedTimestamp', '$.basis', '$.readings') <=> 1)
+      OR NEW.source_external_id IS NULL OR CHAR_LENGTH(TRIM(NEW.source_external_id)) = 0
+      OR NOT (BINARY NEW.source_type <=> BINARY 'FHIR') AND NOT (BINARY NEW.source_type <=> BINARY 'DEVICE')
+      OR NOT (JSON_LENGTH(NEW.import_facts_json) <=> IF(BINARY NEW.source_type = BINARY 'DEVICE', 8, 7))
+      OR (BINARY NEW.source_type = BINARY 'DEVICE' AND NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.deviceUnit')) <=> 'OBJECT'))
+      OR NOT (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.import_facts_json, '$.kind')) <=> BINARY NEW.measure_type)
+      OR NOT (BINARY NEW.measure_type <=> BINARY 'BP') AND NOT (BINARY NEW.measure_type <=> BINARY 'BG') AND NOT (BINARY NEW.measure_type <=> BINARY 'BP_BG')
+      OR NOT (JSON_LENGTH(JSON_EXTRACT(NEW.import_facts_json, '$.readings')) <=> IF(BINARY NEW.measure_type = BINARY 'BP', 2, IF(BINARY NEW.measure_type = BINARY 'BG', 1, 3))) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'IF57_INVALID_IMPORT_FACTS';
+    END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER `if57_bp_update_facts` BEFORE UPDATE ON `bp_self_monitor_record` FOR EACH ROW
+BEGIN
+  IF NOT ((BINARY NEW.import_facts_json <=> BINARY OLD.import_facts_json)
+      AND (OCTET_LENGTH(NEW.import_facts_json) <=> OCTET_LENGTH(OLD.import_facts_json))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'IF57_ORIGINAL_BINDING_IMMUTABLE';
+  END IF;
+  IF OLD.import_facts_json IS NOT NULL AND (
+      NOT (NEW.id <=> OLD.id) OR NOT (NEW.patient_id <=> OLD.patient_id) OR NOT (NEW.user_id <=> OLD.user_id)
+      OR NOT ((BINARY NEW.source_type <=> BINARY OLD.source_type) AND (OCTET_LENGTH(NEW.source_type) <=> OCTET_LENGTH(OLD.source_type)))
+      OR NOT ((BINARY NEW.source_external_id <=> BINARY OLD.source_external_id) AND (OCTET_LENGTH(NEW.source_external_id) <=> OCTET_LENGTH(OLD.source_external_id)))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'IF57_ORIGINAL_BINDING_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `if57_medical_insert_facts` BEFORE INSERT ON `medical_record` FOR EACH ROW
+BEGIN
+  IF NEW.import_facts_json IS NOT NULL THEN
+    IF OCTET_LENGTH(NEW.import_facts_json) > 4096 OR JSON_VALID(NEW.import_facts_json) <> 1 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'IF57_INVALID_IMPORT_FACTS';
+    END IF;
+    IF JSON_TYPE(NEW.import_facts_json) <> 'OBJECT'
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.version')) <=> 'INTEGER')
+      OR NOT (JSON_UNQUOTE(JSON_EXTRACT(NEW.import_facts_json, '$.version')) <=> '1')
+      OR NOT (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.import_facts_json, '$.format')) <=> BINARY NEW.source_type)
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.timestamps')) <=> 'OBJECT')
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.basis')) <=> 'OBJECT')
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.readings')) <=> 'ARRAY')
+      OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.import_facts_json, '$.selectedTimestamp')) <=> 'STRING')
+      OR NOT (JSON_CONTAINS_PATH(NEW.import_facts_json, 'all', '$.version', '$.format', '$.kind', '$.timestamps', '$.selectedTimestamp', '$.basis', '$.readings') <=> 1)
+      OR NEW.source_external_id IS NULL OR CHAR_LENGTH(TRIM(NEW.source_external_id)) = 0
+      OR NOT (BINARY NEW.source_type <=> BINARY 'FHIR')
+      OR NOT (JSON_LENGTH(NEW.import_facts_json) <=> 7)
+      OR NOT (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.import_facts_json, '$.kind')) <=> BINARY 'LAB')
+      OR NOT (JSON_LENGTH(JSON_EXTRACT(NEW.import_facts_json, '$.readings')) <=> 1) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'IF57_INVALID_IMPORT_FACTS';
+    END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER `if57_medical_update_facts` BEFORE UPDATE ON `medical_record` FOR EACH ROW
+BEGIN
+  IF NOT ((BINARY NEW.import_facts_json <=> BINARY OLD.import_facts_json)
+      AND (OCTET_LENGTH(NEW.import_facts_json) <=> OCTET_LENGTH(OLD.import_facts_json))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'IF57_ORIGINAL_BINDING_IMMUTABLE';
+  END IF;
+  IF OLD.import_facts_json IS NOT NULL AND (
+      NOT (NEW.id <=> OLD.id) OR NOT (NEW.patient_id <=> OLD.patient_id) OR NOT (NEW.user_id <=> OLD.user_id)
+      OR NOT ((BINARY NEW.source_type <=> BINARY OLD.source_type) AND (OCTET_LENGTH(NEW.source_type) <=> OCTET_LENGTH(OLD.source_type)))
+      OR NOT ((BINARY NEW.source_external_id <=> BINARY OLD.source_external_id) AND (OCTET_LENGTH(NEW.source_external_id) <=> OCTET_LENGTH(OLD.source_external_id)))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'IF57_ORIGINAL_BINDING_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_history_insert` BEFORE INSERT ON `medical_record_correction_history` FOR EACH ROW
+BEGIN
+  IF NEW.record_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.actor_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.before_version NOT BETWEEN 1 AND 9007199254740991 OR NEW.after_version NOT BETWEEN 1 AND 9007199254740991 OR NEW.history_sequence NOT BETWEEN 0 AND 9007199254740991 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_HISTORY_RANGE';
+  END IF;
+  IF NOT (BINARY NEW.operation IN ('BASELINE','CORRECT','INVALIDATE')) OR NOT (BINARY NEW.validity IN ('ACTIVE','INVALIDATED')) OR OCTET_LENGTH(NEW.snapshot_hash)<>64 OR BINARY NEW.snapshot_hash NOT REGEXP '^[0-9a-f]{64}$' OR OCTET_LENGTH(NEW.content_digest)<>64 OR BINARY NEW.content_digest NOT REGEXP '^[0-9a-f]{64}$' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_HISTORY_SHAPE';
+  END IF;
+  IF OCTET_LENGTH(NEW.snapshot_json)>262144 OR JSON_VALID(NEW.snapshot_json)<>1 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_SNAPSHOT_LIMIT';
+  END IF;
+  IF NOT (JSON_TYPE(NEW.snapshot_json) <=> 'OBJECT') OR JSON_LENGTH(NEW.snapshot_json)<>4 OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.snapshot_json,'$.schemaVersion')) <=> 'INTEGER') OR NOT (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.snapshot_json,'$.schemaVersion')) <=> BINARY '1') OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.snapshot_json,'$.record')) <=> 'OBJECT') OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.snapshot_json,'$.items')) <=> 'ARRAY') OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.snapshot_json,'$.attachments')) <=> 'ARRAY') OR JSON_LENGTH(JSON_EXTRACT(NEW.snapshot_json,'$.items'))>100 OR JSON_LENGTH(JSON_EXTRACT(NEW.snapshot_json,'$.attachments'))>100 OR NOT (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.snapshot_json,'$.record.id')) <=> BINARY CAST(NEW.record_id AS CHAR)) OR NOT (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.snapshot_json,'$.record.contentVersion')) <=> BINARY CAST(NEW.after_version AS CHAR)) OR NOT (BINARY SHA2(NEW.snapshot_json,256) <=> BINARY NEW.snapshot_hash) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_SNAPSHOT_SHAPE';
+  END IF;
+  IF BINARY NEW.operation='BASELINE' THEN
+  IF NEW.history_sequence<>0 OR NEW.before_version<>NEW.after_version OR NEW.reason IS NOT NULL OR BINARY NEW.validity<>'ACTIVE' OR EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=NEW.record_id) OR EXISTS(SELECT 1 FROM medical_record_correction_history WHERE record_id=NEW.record_id) OR NOT EXISTS(SELECT 1 FROM medical_record WHERE id=NEW.record_id AND content_version=NEW.after_version) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_BASELINE_ORDER';
+  END IF;
+  ELSE
+  IF NEW.reason IS NULL OR CHAR_LENGTH(NEW.reason)>1000 OR NOT (NEW.reason REGEXP '[^[:space:]]') OR NEW.after_version<>NEW.before_version+1 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_CHANGE_REASON';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM medical_record_correction_state s JOIN medical_record m ON m.id=s.record_id WHERE s.record_id=NEW.record_id AND s.current_content_version=NEW.before_version AND m.content_version=s.current_content_version AND NEW.history_sequence=s.current_history_sequence+1 AND ((BINARY NEW.operation='CORRECT' AND BINARY NEW.validity=BINARY s.validity) OR (BINARY NEW.operation='INVALIDATE' AND BINARY s.validity='ACTIVE' AND BINARY NEW.validity='INVALIDATED'))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_CHANGE_ORDER';
+  END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_history_update` BEFORE UPDATE ON `medical_record_correction_history` FOR EACH ROW
+BEGIN
+  IF TRUE THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_HISTORY_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_history_delete` BEFORE DELETE ON `medical_record_correction_history` FOR EACH ROW
+BEGIN
+  IF TRUE THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_HISTORY_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_state_insert` BEFORE INSERT ON `medical_record_correction_state` FOR EACH ROW
+BEGIN
+  IF NEW.record_id NOT BETWEEN 1 AND 9007199254740991 OR (NEW.patient_id IS NOT NULL AND NEW.patient_id NOT BETWEEN 1 AND 9007199254740991) OR (NEW.owner_user_id IS NOT NULL AND NEW.owner_user_id NOT BETWEEN 1 AND 9007199254740991) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_STATE_BINDING';
+  END IF;
+  IF NEW.current_history_sequence<>0 OR NEW.baseline_content_version<>NEW.current_content_version OR BINARY NEW.validity<>'ACTIVE' OR NOT EXISTS(SELECT 1 FROM medical_record m JOIN medical_record_correction_history h ON h.record_id=m.id AND h.history_sequence=0 WHERE m.id=NEW.record_id AND (m.patient_id <=> NEW.patient_id) AND (m.user_id <=> NEW.owner_user_id) AND m.content_version=NEW.current_content_version AND h.before_version=m.content_version AND h.after_version=m.content_version AND BINARY h.operation='BASELINE' AND BINARY h.validity='ACTIVE' AND BINARY h.content_digest=BINARY NEW.content_digest) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_INITIAL_STATE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_state_update` BEFORE UPDATE ON `medical_record_correction_state` FOR EACH ROW
+BEGIN
+  IF NOT ((BINARY NEW.record_id <=> BINARY OLD.record_id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.owner_user_id <=> BINARY OLD.owner_user_id) AND (BINARY NEW.baseline_content_version <=> BINARY OLD.baseline_content_version) AND (BINARY NEW.created_at <=> BINARY OLD.created_at)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_STATE_BINDING';
+  END IF;
+  IF NEW.current_content_version<>OLD.current_content_version+1 OR NEW.current_history_sequence<>OLD.current_history_sequence+1 OR NEW.current_content_version>9007199254740991 OR NEW.current_history_sequence>9007199254740991 OR NOT EXISTS(SELECT 1 FROM medical_record m JOIN medical_record_correction_history h ON h.record_id=m.id AND h.history_sequence=NEW.current_history_sequence WHERE m.id=NEW.record_id AND (m.patient_id <=> NEW.patient_id) AND (m.user_id <=> NEW.owner_user_id) AND m.content_version=NEW.current_content_version AND h.before_version=OLD.current_content_version AND h.after_version=NEW.current_content_version AND BINARY h.validity=BINARY NEW.validity AND BINARY h.content_digest=BINARY NEW.content_digest AND ((BINARY h.operation='CORRECT' AND BINARY NEW.validity=BINARY OLD.validity) OR (BINARY h.operation='INVALIDATE' AND BINARY OLD.validity='ACTIVE' AND BINARY NEW.validity='INVALIDATED'))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_FINAL_STATE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_state_delete` BEFORE DELETE ON `medical_record_correction_state` FOR EACH ROW
+BEGIN
+  IF TRUE THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_STATE_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_command_insert` BEFORE INSERT ON `medical_record_command` FOR EACH ROW
+BEGIN
+  IF NEW.actor_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.record_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.expected_version NOT BETWEEN 1 AND 9007199254740990 OR OCTET_LENGTH(NEW.command_key)<>36 OR BINARY NEW.command_key NOT REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' OR OCTET_LENGTH(NEW.payload_hash)<>64 OR BINARY NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR NEW.result_json IS NOT NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_COMMAND_RESERVATION';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_command_update` BEFORE UPDATE ON `medical_record_command` FOR EACH ROW
+BEGIN
+  IF OLD.result_json IS NOT NULL OR NEW.result_json IS NULL OR NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.actor_id <=> BINARY OLD.actor_id) AND (BINARY NEW.command_key <=> BINARY OLD.command_key) AND (BINARY NEW.record_id <=> BINARY OLD.record_id) AND (BINARY NEW.expected_version <=> BINARY OLD.expected_version) AND (BINARY NEW.payload_hash <=> BINARY OLD.payload_hash) AND (BINARY NEW.created_at <=> BINARY OLD.created_at)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_COMMAND_IMMUTABLE';
+  END IF;
+  IF OCTET_LENGTH(NEW.result_json)>512 OR JSON_VALID(NEW.result_json)<>1 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_RECEIPT_LIMIT';
+  END IF;
+  IF NOT (JSON_TYPE(NEW.result_json) <=> 'OBJECT') OR JSON_LENGTH(NEW.result_json)<>5 OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.recordId')) <=> 'INTEGER') OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.contentVersion')) <=> 'INTEGER') OR NOT (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.historySequence')) <=> 'INTEGER') OR NOT (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.recordId')) <=> BINARY CAST(NEW.record_id AS CHAR)) OR NOT (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.contentVersion')) <=> BINARY CAST(NEW.expected_version+1 AS CHAR)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_RECEIPT_SHAPE';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM medical_record_correction_state s JOIN medical_record m ON m.id=s.record_id JOIN medical_record_correction_history h ON h.record_id=s.record_id AND h.history_sequence=s.current_history_sequence WHERE s.record_id=NEW.record_id AND m.content_version=s.current_content_version AND s.current_content_version=NEW.expected_version+1 AND h.before_version=NEW.expected_version AND h.after_version=s.current_content_version AND h.actor_id=NEW.actor_id AND BINARY h.content_digest=BINARY s.content_digest AND BINARY h.validity=BINARY s.validity AND BINARY h.operation IN ('CORRECT','INVALIDATE') AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.historySequence')) <=> BINARY CAST(s.current_history_sequence AS CHAR)) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.validity')) <=> BINARY s.validity) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.operation')) <=> BINARY h.operation)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_RECEIPT_TRANSITION';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_command_delete` BEFORE DELETE ON `medical_record_command` FOR EACH ROW
+BEGIN
+  IF TRUE THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_COMMAND_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_reference_insert` BEFORE INSERT ON `medical_record_reference_version` FOR EACH ROW
+BEGIN
+  IF NEW.reference_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.patient_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.record_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.content_version NOT BETWEEN 1 AND 9007199254740991 OR NOT (BINARY NEW.reference_kind IN ('CARE_PLAN_EVIDENCE','ALERT_EVIDENCE','LEGACY_ALERT')) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_REFERENCE_SHAPE';
+  END IF;
+  IF (BINARY NEW.reference_kind='LEGACY_ALERT' AND (NEW.source_item_id IS NULL OR NEW.source_item_id NOT BETWEEN 1 AND 9007199254740991 OR NOT EXISTS(SELECT 1 FROM medical_record_item WHERE id=NEW.source_item_id AND record_id=NEW.record_id))) OR (BINARY NEW.reference_kind IN ('CARE_PLAN_EVIDENCE','ALERT_EVIDENCE') AND NEW.source_item_id IS NOT NULL) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_REFERENCE_ITEM';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM medical_record m JOIN medical_record_correction_state s ON s.record_id=m.id WHERE m.id=NEW.record_id AND m.patient_id=NEW.patient_id AND s.patient_id=NEW.patient_id AND (m.user_id <=> s.owner_user_id) AND m.content_version=NEW.content_version AND s.current_content_version=m.content_version AND BINARY s.validity='ACTIVE' AND BINARY m.verification_status='VERIFIED' AND NOT EXISTS(SELECT 1 FROM medical_record_correction_history h WHERE h.record_id=s.record_id AND h.history_sequence>s.current_history_sequence)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_REFERENCE_SOURCE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_reference_update` BEFORE UPDATE ON `medical_record_reference_version` FOR EACH ROW
+BEGIN
+  IF TRUE THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_REFERENCE_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_reference_delete` BEFORE DELETE ON `medical_record_reference_version` FOR EACH ROW
+BEGIN
+  IF TRUE THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_REFERENCE_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_native_update` BEFORE UPDATE ON `medical_record` FOR EACH ROW FOLLOWS `if57_medical_update_facts`
+BEGIN
+  IF EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=OLD.id) THEN
+  IF NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.patient_name <=> BINARY OLD.patient_name) AND (BINARY NEW.user_id <=> BINARY OLD.user_id) AND (BINARY NEW.record_type <=> BINARY OLD.record_type) AND (BINARY NEW.source_type <=> BINARY OLD.source_type) AND (BINARY NEW.source_external_id <=> BINARY OLD.source_external_id) AND (BINARY NEW.ai_raw_result <=> BINARY OLD.ai_raw_result) AND (BINARY NEW.import_facts_json <=> BINARY OLD.import_facts_json) AND (BINARY NEW.confidence_score <=> BINARY OLD.confidence_score) AND (BINARY NEW.created_at <=> BINARY OLD.created_at)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_NATIVE_IDENTITY';
+  END IF;
+  IF NEW.content_version=OLD.content_version THEN
+  IF NOT ((BINARY NEW.record_date <=> BINARY OLD.record_date) AND (BINARY NEW.hospital_name <=> BINARY OLD.hospital_name) AND (BINARY NEW.dept_name <=> BINARY OLD.dept_name) AND (BINARY NEW.doctor_name <=> BINARY OLD.doctor_name) AND (BINARY NEW.remark <=> BINARY OLD.remark)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_NATIVE_UNAUDITED';
+  END IF;
+  IF EXISTS(SELECT 1 FROM medical_record_correction_state s WHERE s.record_id=OLD.id AND (s.current_content_version<>OLD.content_version OR EXISTS(SELECT 1 FROM medical_record_correction_history h WHERE h.record_id=s.record_id AND h.history_sequence>s.current_history_sequence))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_PENDING_REVIEW';
+  END IF;
+  IF BINARY NEW.verification_status='VERIFIED' AND EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=OLD.id AND BINARY validity='INVALIDATED') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_INVALIDATED_REVIEW';
+  END IF;
+  ELSE
+  IF NEW.content_version<>OLD.content_version+1 OR NEW.content_version>9007199254740991 OR NOT (BINARY NEW.verification_status <=> BINARY 'REVIEW_REQUIRED') OR NEW.verified_by IS NOT NULL OR NEW.verified_at IS NOT NULL OR NEW.verification_note IS NOT NULL OR NOT EXISTS(SELECT 1 FROM medical_record_correction_state s JOIN medical_record_correction_history h ON h.record_id=s.record_id AND h.history_sequence=s.current_history_sequence+1 WHERE s.record_id=OLD.id AND s.current_content_version=OLD.content_version AND h.before_version=OLD.content_version AND h.after_version=NEW.content_version AND BINARY h.operation IN ('CORRECT','INVALIDATE')) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_NATIVE_TRANSITION';
+  END IF;
+  IF NOT ((BINARY NEW.record_date <=> BINARY OLD.record_date) AND (BINARY NEW.hospital_name <=> BINARY OLD.hospital_name) AND (BINARY NEW.dept_name <=> BINARY OLD.dept_name) AND (BINARY NEW.doctor_name <=> BINARY OLD.doctor_name) AND (BINARY NEW.remark <=> BINARY OLD.remark)) AND EXISTS(SELECT 1 FROM medical_record_correction_state s JOIN medical_record_correction_history h ON h.record_id=s.record_id AND h.history_sequence=s.current_history_sequence+1 WHERE s.record_id=OLD.id AND BINARY h.operation='INVALIDATE') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_INVALIDATE_CONTENT';
+  END IF;
+  END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_native_delete` BEFORE DELETE ON `medical_record` FOR EACH ROW
+BEGIN
+  IF EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=OLD.id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_NATIVE_RETAINED';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_item_insert` BEFORE INSERT ON `medical_record_item` FOR EACH ROW
+BEGIN
+  IF EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=NEW.record_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_ITEM_TOPOLOGY';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_item_update` BEFORE UPDATE ON `medical_record_item` FOR EACH ROW
+BEGIN
+  IF EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=OLD.record_id OR record_id=NEW.record_id) THEN
+  IF NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.record_id <=> BINARY OLD.record_id) AND (BINARY NEW.ai_confidence <=> BINARY OLD.ai_confidence) AND (BINARY NEW.created_at <=> BINARY OLD.created_at)) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_ITEM_IDENTITY';
+  END IF;
+  IF NOT ((BINARY NEW.item_name <=> BINARY OLD.item_name) AND (BINARY NEW.item_code <=> BINARY OLD.item_code) AND (BINARY NEW.result_value <=> BINARY OLD.result_value) AND (BINARY NEW.unit <=> BINARY OLD.unit) AND (BINARY NEW.reference_range <=> BINARY OLD.reference_range) AND (BINARY NEW.is_abnormal <=> BINARY OLD.is_abnormal)) THEN
+  IF NOT EXISTS(SELECT 1 FROM medical_record_correction_state s JOIN medical_record m ON m.id=s.record_id JOIN medical_record_correction_history h ON h.record_id=s.record_id AND h.history_sequence=s.current_history_sequence+1 WHERE s.record_id=OLD.record_id AND m.content_version=s.current_content_version+1 AND h.before_version=s.current_content_version AND h.after_version=m.content_version AND BINARY h.operation='CORRECT') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_ITEM_TRANSITION';
+  END IF;
+  END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_item_delete` BEFORE DELETE ON `medical_record_item` FOR EACH ROW
+BEGIN
+  IF EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=OLD.record_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_ITEM_TOPOLOGY';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_attachment_insert` BEFORE INSERT ON `medical_record_attachment` FOR EACH ROW
+BEGIN
+  IF EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=NEW.record_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_ATTACHMENT_RETAINED';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_attachment_update` BEFORE UPDATE ON `medical_record_attachment` FOR EACH ROW
+BEGIN
+  IF EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=OLD.record_id OR record_id=NEW.record_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_ATTACHMENT_RETAINED';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrc57_attachment_delete` BEFORE DELETE ON `medical_record_attachment` FOR EACH ROW
+BEGIN
+  IF EXISTS(SELECT 1 FROM medical_record_correction_state WHERE record_id=OLD.record_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRC57_ATTACHMENT_RETAINED';
+  END IF;
+END$$
+
+CREATE TRIGGER `ccg57_goal_insert` BEFORE INSERT ON `common_care_goal` FOR EACH ROW
+BEGIN
+  IF COALESCE((NOT ((NEW.patient_id BETWEEN 1 AND 9007199254740991) AND (NEW.creator_id BETWEEN 1 AND 9007199254740991) AND (NEW.version BETWEEN 1 AND 9007199254740991) AND (NEW.cycle BETWEEN 1 AND NEW.version) AND (BINARY NEW.state IN ('PROPOSED','ACTIVE','COMPLETED','CANCELLED')) AND ((NEW.title IS NOT NULL AND CHAR_LENGTH(NEW.title) BETWEEN 1 AND 120 AND NEW.title REGEXP '[^[:space:]]')) AND ((NEW.goal_text IS NOT NULL AND CHAR_LENGTH(NEW.goal_text) BETWEEN 1 AND 1000 AND NEW.goal_text REGEXP '[^[:space:]]')) AND ((NEW.progress_criterion IS NOT NULL AND CHAR_LENGTH(NEW.progress_criterion) BETWEEN 1 AND 500 AND NEW.progress_criterion REGEXP '[^[:space:]]')) AND ((NEW.responsibility IS NOT NULL AND CHAR_LENGTH(NEW.responsibility) BETWEEN 1 AND 500 AND NEW.responsibility REGEXP '[^[:space:]]')) AND ((NEW.nominee_id IS NULL OR NEW.nominee_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.accepted_by IS NULL OR NEW.accepted_by BETWEEN 1 AND 9007199254740991)) AND (NOT (NEW.review_date IS NOT NULL AND (OCTET_LENGTH(NEW.review_date)<>10 OR BINARY NEW.review_date NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' OR CAST(SUBSTRING(NEW.review_date,1,4) AS UNSIGNED)<1 OR CAST(SUBSTRING(NEW.review_date,6,2) AS UNSIGNED) NOT BETWEEN 1 AND 12 OR CAST(SUBSTRING(NEW.review_date,9,2) AS UNSIGNED)<1 OR CAST(SUBSTRING(NEW.review_date,9,2) AS UNSIGNED)>CASE WHEN CAST(SUBSTRING(NEW.review_date,6,2) AS UNSIGNED)=2 THEN IF(MOD(CAST(SUBSTRING(NEW.review_date,1,4) AS UNSIGNED),400)=0 OR (MOD(CAST(SUBSTRING(NEW.review_date,1,4) AS UNSIGNED),4)=0 AND MOD(CAST(SUBSTRING(NEW.review_date,1,4) AS UNSIGNED),100)<>0),29,28) WHEN CAST(SUBSTRING(NEW.review_date,6,2) AS UNSIGNED) IN (4,6,9,11) THEN 30 ELSE 31 END))) AND ((NEW.accepted_by IS NULL)=(NEW.accepted_at IS NULL)) AND ((NEW.accepted_by IS NULL OR NEW.accepted_by <=> NEW.nominee_id)) AND ((BINARY NEW.state<>'PROPOSED' OR NEW.accepted_by IS NULL)) AND ((BINARY NEW.state NOT IN ('ACTIVE','COMPLETED') OR NEW.accepted_by IS NOT NULL)))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_GOAL_SHAPE';
+  END IF;
+  IF COALESCE((NEW.id<0 OR NEW.id>9007199254740991 OR NEW.version<>1 OR NEW.cycle<>1 OR BINARY NEW.state<>'PROPOSED' OR NEW.accepted_by IS NOT NULL OR NOT (NEW.created_at <=> NEW.updated_at)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_GOAL_INITIAL';
+  END IF;
+END$$
+
+CREATE TRIGGER `ccg57_goal_update` BEFORE UPDATE ON `common_care_goal` FOR EACH ROW
+BEGIN
+  DECLARE v_event MEDIUMTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL;
+  IF COALESCE((NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.creator_id <=> BINARY OLD.creator_id) AND (BINARY NEW.created_at <=> BINARY OLD.created_at)) OR NEW.version<>OLD.version+1 OR NOT ((NEW.patient_id BETWEEN 1 AND 9007199254740991) AND (NEW.creator_id BETWEEN 1 AND 9007199254740991) AND (NEW.version BETWEEN 1 AND 9007199254740991) AND (NEW.cycle BETWEEN 1 AND NEW.version) AND (BINARY NEW.state IN ('PROPOSED','ACTIVE','COMPLETED','CANCELLED')) AND ((NEW.title IS NOT NULL AND CHAR_LENGTH(NEW.title) BETWEEN 1 AND 120 AND NEW.title REGEXP '[^[:space:]]')) AND ((NEW.goal_text IS NOT NULL AND CHAR_LENGTH(NEW.goal_text) BETWEEN 1 AND 1000 AND NEW.goal_text REGEXP '[^[:space:]]')) AND ((NEW.progress_criterion IS NOT NULL AND CHAR_LENGTH(NEW.progress_criterion) BETWEEN 1 AND 500 AND NEW.progress_criterion REGEXP '[^[:space:]]')) AND ((NEW.responsibility IS NOT NULL AND CHAR_LENGTH(NEW.responsibility) BETWEEN 1 AND 500 AND NEW.responsibility REGEXP '[^[:space:]]')) AND ((NEW.nominee_id IS NULL OR NEW.nominee_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.accepted_by IS NULL OR NEW.accepted_by BETWEEN 1 AND 9007199254740991)) AND (NOT (NEW.review_date IS NOT NULL AND (OCTET_LENGTH(NEW.review_date)<>10 OR BINARY NEW.review_date NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' OR CAST(SUBSTRING(NEW.review_date,1,4) AS UNSIGNED)<1 OR CAST(SUBSTRING(NEW.review_date,6,2) AS UNSIGNED) NOT BETWEEN 1 AND 12 OR CAST(SUBSTRING(NEW.review_date,9,2) AS UNSIGNED)<1 OR CAST(SUBSTRING(NEW.review_date,9,2) AS UNSIGNED)>CASE WHEN CAST(SUBSTRING(NEW.review_date,6,2) AS UNSIGNED)=2 THEN IF(MOD(CAST(SUBSTRING(NEW.review_date,1,4) AS UNSIGNED),400)=0 OR (MOD(CAST(SUBSTRING(NEW.review_date,1,4) AS UNSIGNED),4)=0 AND MOD(CAST(SUBSTRING(NEW.review_date,1,4) AS UNSIGNED),100)<>0),29,28) WHEN CAST(SUBSTRING(NEW.review_date,6,2) AS UNSIGNED) IN (4,6,9,11) THEN 30 ELSE 31 END))) AND ((NEW.accepted_by IS NULL)=(NEW.accepted_at IS NULL)) AND ((NEW.accepted_by IS NULL OR NEW.accepted_by <=> NEW.nominee_id)) AND ((BINARY NEW.state<>'PROPOSED' OR NEW.accepted_by IS NULL)) AND ((BINARY NEW.state NOT IN ('ACTIVE','COMPLETED') OR NEW.accepted_by IS NOT NULL)))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_GOAL_ADVANCE';
+  END IF;
+  SELECT event_json INTO v_event FROM common_care_goal_event WHERE goal_id=OLD.id AND sequence=NEW.version AND patient_id=OLD.patient_id;
+  IF COALESCE((v_event IS NULL OR NOT ((BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.goalId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.goalId'))) <=> BINARY NEW.id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.patientId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.patientId'))) <=> BINARY NEW.patient_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.creatorId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.creatorId'))) <=> BINARY NEW.creator_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.state'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.state'))) <=> BINARY NEW.state) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.version'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.version'))) <=> BINARY NEW.version) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.cycle'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.cycle'))) <=> BINARY NEW.cycle) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.acceptedBy'))) <=> BINARY NEW.accepted_by) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.content.title'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.content.title'))) <=> BINARY NEW.title) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.content.goalText'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.content.goalText'))) <=> BINARY NEW.goal_text) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.content.progressCriterion'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.content.progressCriterion'))) <=> BINARY NEW.progress_criterion) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.content.responsibility'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.content.responsibility'))) <=> BINARY NEW.responsibility) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.content.reviewDate'))) <=> BINARY NEW.review_date) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.content.nomineeId'))) <=> BINARY NEW.nominee_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.acceptedAt'))) <=> BINARY DATE_FORMAT(NEW.accepted_at,'%Y-%m-%dT%H:%i:%s.%fZ')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.createdAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.createdAt'))) <=> BINARY DATE_FORMAT(NEW.created_at,'%Y-%m-%dT%H:%i:%s.%fZ')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(v_event,'$.after.updatedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(v_event,'$.after.updatedAt'))) <=> BINARY DATE_FORMAT(NEW.updated_at,'%Y-%m-%dT%H:%i:%s.%fZ')))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_GOAL_EVENT';
+  END IF;
+END$$
+
+CREATE TRIGGER `ccg57_goal_delete` BEFORE DELETE ON `common_care_goal` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_GOAL_RETAINED';
+  END IF;
+END$$
+
+CREATE TRIGGER `ccg57_command_insert` BEFORE INSERT ON `common_care_goal_command` FOR EACH ROW
+BEGIN
+  IF COALESCE((NEW.actor_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.patient_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.expected_version NOT BETWEEN 0 AND 9007199254740990 OR (NEW.goal_id IS NOT NULL AND NEW.goal_id NOT BETWEEN 1 AND 9007199254740991) OR NOT (BINARY NEW.operation IN ('CREATE','REVISE','ACCEPT','DECLINE','STEP_BACK','ADD_PROGRESS','ADD_FEEDBACK','COMPLETE','CANCEL','REOPEN'))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_COMMAND_SHAPE';
+  END IF;
+  IF COALESCE((OCTET_LENGTH(NEW.command_key)<>36 OR BINARY NEW.command_key NOT REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' OR OCTET_LENGTH(NEW.payload_hash)<>64 OR BINARY NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$' OR NEW.result_json IS NOT NULL),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_COMMAND_RESERVATION';
+  END IF;
+  IF COALESCE(((BINARY NEW.operation='CREATE')<>(NEW.goal_id IS NULL) OR (BINARY NEW.operation='CREATE')<>(NEW.expected_version=0)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_COMMAND_CREATE';
+  END IF;
+END$$
+
+CREATE TRIGGER `ccg57_command_update` BEFORE UPDATE ON `common_care_goal_command` FOR EACH ROW
+BEGIN
+  IF COALESCE((OLD.result_json IS NOT NULL OR NEW.result_json IS NULL OR NEW.goal_id IS NULL OR NOT ((BINARY NEW.actor_id <=> BINARY OLD.actor_id) AND (BINARY NEW.command_key <=> BINARY OLD.command_key) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.expected_version <=> BINARY OLD.expected_version) AND (BINARY NEW.operation <=> BINARY OLD.operation) AND (BINARY NEW.payload_hash <=> BINARY OLD.payload_hash) AND (BINARY NEW.created_at <=> BINARY OLD.created_at)) OR (OLD.goal_id IS NOT NULL AND NOT (OLD.goal_id <=> NEW.goal_id))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_COMMAND_IMMUTABLE';
+  END IF;
+  IF COALESCE((OCTET_LENGTH(NEW.result_json)>512 OR JSON_VALID(NEW.result_json)<>1),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_RECEIPT_LIMIT';
+  END IF;
+  IF COALESCE((NOT ((JSON_TYPE(NEW.result_json) <=> 'OBJECT') AND (JSON_LENGTH(NEW.result_json)=5) AND (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.goalId')) <=> 'INTEGER') AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.goalId')) <=> BINARY CAST(NEW.goal_id AS CHAR))) AND (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.version')) <=> 'INTEGER') AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.version')) <=> BINARY CAST(NEW.expected_version+1 AS CHAR))) AND (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.cycle')) <=> 'INTEGER') AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.operation')) <=> BINARY NEW.operation)))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_RECEIPT_SHAPE';
+  END IF;
+  IF COALESCE((NOT EXISTS(SELECT 1 FROM common_care_goal g JOIN common_care_goal_event e ON e.patient_id=g.patient_id AND e.goal_id=g.id AND e.sequence=g.version WHERE g.patient_id=NEW.patient_id AND g.id=NEW.goal_id AND g.version=NEW.expected_version+1 AND e.actor_id=NEW.actor_id AND BINARY e.command_key=BINARY NEW.command_key AND BINARY e.operation=BINARY NEW.operation AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.cycle')) <=> BINARY CAST(g.cycle AS CHAR)) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.state')) <=> BINARY g.state))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_RECEIPT_TRANSITION';
+  END IF;
+END$$
+
+CREATE TRIGGER `ccg57_command_delete` BEFORE DELETE ON `common_care_goal_command` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_COMMAND_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `ccg57_event_insert` BEFORE INSERT ON `common_care_goal_event` FOR EACH ROW
+BEGIN
+  IF COALESCE((NEW.patient_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.goal_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.actor_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.sequence NOT BETWEEN 1 AND 9007199254740991 OR NEW.cycle NOT BETWEEN 1 AND NEW.sequence OR NOT (BINARY NEW.operation IN ('CREATE','REVISE','ACCEPT','DECLINE','STEP_BACK','ADD_PROGRESS','ADD_FEEDBACK','COMPLETE','CANCEL','REOPEN'))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_RANGE';
+  END IF;
+  IF COALESCE((OCTET_LENGTH(NEW.event_json)>61440 OR JSON_VALID(NEW.event_json)<>1),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_LIMIT';
+  END IF;
+  IF COALESCE((NOT ((JSON_TYPE(NEW.event_json) <=> 'OBJECT') AND (JSON_LENGTH(NEW.event_json)=14) AND ((JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.patientId')) <=> 'INTEGER')) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.patientId')) <=> BINARY CAST(NEW.patient_id AS CHAR))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.goalId')) <=> 'INTEGER')) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.goalId')) <=> BINARY CAST(NEW.goal_id AS CHAR))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.sequence')) <=> 'INTEGER')) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.sequence')) <=> BINARY CAST(NEW.sequence AS CHAR))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.cycle')) <=> 'INTEGER')) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.cycle')) <=> BINARY CAST(NEW.cycle AS CHAR))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.actorId')) <=> 'INTEGER')) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.actorId')) <=> BINARY CAST(NEW.actor_id AS CHAR))) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.operation')) <=> BINARY NEW.operation)) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.recordedAt')) <=> BINARY DATE_FORMAT(NEW.recorded_at,'%Y-%m-%dT%H:%i:%s.%fZ'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after')) <=> 'OBJECT') AND JSON_LENGTH(JSON_EXTRACT(NEW.event_json,'$.after'))=11 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content')) <=> 'OBJECT') AND JSON_LENGTH(JSON_EXTRACT(NEW.event_json,'$.after.content'))=6 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.goalId')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.goalId')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.patientId')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.patientId')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.creatorId')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.creatorId')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.version')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.version')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.cycle')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.cycle')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy')) IN ('INTEGER','NULL')) AND (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))) IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))) BETWEEN 1 AND 9007199254740991) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId')) IN ('INTEGER','NULL')) AND (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))) IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))) BETWEEN 1 AND 9007199254740991) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.state')) <=> 'STRING') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state')) IN ('PROPOSED','ACTIVE','COMPLETED','CANCELLED') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.title')) <=> 'STRING') AND (JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.title')) IS NOT NULL AND CHAR_LENGTH(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.title'))) BETWEEN 1 AND 120 AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.title')) REGEXP '[^[:space:]]') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText')) <=> 'STRING') AND (JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText')) IS NOT NULL AND CHAR_LENGTH(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText'))) BETWEEN 1 AND 1000 AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText')) REGEXP '[^[:space:]]') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion')) <=> 'STRING') AND (JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion')) IS NOT NULL AND CHAR_LENGTH(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion'))) BETWEEN 1 AND 500 AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion')) REGEXP '[^[:space:]]') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility')) <=> 'STRING') AND (JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility')) IS NOT NULL AND CHAR_LENGTH(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility'))) BETWEEN 1 AND 500 AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility')) REGEXP '[^[:space:]]') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate')) IN ('STRING','NULL')) AND NOT (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))) IS NOT NULL AND (OCTET_LENGTH(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))))<>10 OR BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))) NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))),1,4) AS UNSIGNED)<1 OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))),6,2) AS UNSIGNED) NOT BETWEEN 1 AND 12 OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))),9,2) AS UNSIGNED)<1 OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))),9,2) AS UNSIGNED)>CASE WHEN CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))),6,2) AS UNSIGNED)=2 THEN IF(MOD(CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))),1,4) AS UNSIGNED),400)=0 OR (MOD(CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))),1,4) AS UNSIGNED),4)=0 AND MOD(CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))),1,4) AS UNSIGNED),100)<>0),29,28) WHEN CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))),6,2) AS UNSIGNED) IN (4,6,9,11) THEN 30 ELSE 31 END)) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.createdAt')) <=> 'STRING') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.createdAt')) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$' AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.updatedAt')) <=> 'STRING') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.updatedAt')) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$' AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt')) IN ('STRING','NULL')) AND (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))) IS NULL OR BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt')) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$') AND CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.cycle')) AS UNSIGNED)<=CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.version')) AS UNSIGNED) AND ((IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))) IS NULL)=(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))) IS NULL)) AND (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))) IS NULL OR (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))))) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))<>'PROPOSED' OR IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))) IS NULL) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state')) NOT IN ('ACTIVE','COMPLETED') OR IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))) IS NOT NULL)) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.goalId')) <=> BINARY CAST(NEW.goal_id AS CHAR))) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.patientId')) <=> BINARY CAST(NEW.patient_id AS CHAR))) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.version')) <=> BINARY CAST(NEW.sequence AS CHAR))) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.cycle')) <=> BINARY CAST(NEW.cycle AS CHAR))) AND ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.updatedAt')) <=> BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.recordedAt')))) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reason')) IN ('STRING','NULL')) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.note')) IN ('STRING','NULL')) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate')) IN ('STRING','NULL')) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.feedbackSource')) IN ('STRING','NULL')) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.result')) IN ('STRING','NULL')))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_SHAPE';
+  END IF;
+  IF COALESCE((NOT EXISTS(SELECT 1 FROM common_care_goal_command c WHERE c.patient_id=NEW.patient_id AND c.actor_id=NEW.actor_id AND BINARY c.command_key=BINARY NEW.command_key AND c.expected_version=NEW.sequence-1 AND BINARY c.operation=BINARY NEW.operation AND c.result_json IS NULL AND c.created_at=NEW.recorded_at AND ((BINARY c.operation='CREATE' AND c.goal_id IS NULL) OR c.goal_id=NEW.goal_id))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_COMMAND';
+  END IF;
+  IF BINARY NEW.operation='CREATE' THEN
+  IF COALESCE((NEW.sequence<>1 OR NEW.cycle<>1 OR NOT ((JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before')) <=> 'NULL')) OR NOT EXISTS(SELECT 1 FROM common_care_goal g WHERE g.id=NEW.goal_id AND g.patient_id=NEW.patient_id AND g.creator_id=NEW.actor_id AND g.version=1 AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.goalId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.goalId'))) <=> BINARY g.id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.patientId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.patientId'))) <=> BINARY g.patient_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.creatorId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.creatorId'))) <=> BINARY g.creator_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))) <=> BINARY g.state) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.version'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.version'))) <=> BINARY g.version) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.cycle'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.cycle'))) <=> BINARY g.cycle) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))) <=> BINARY g.accepted_by) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.title'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.title'))) <=> BINARY g.title) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText'))) <=> BINARY g.goal_text) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion'))) <=> BINARY g.progress_criterion) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility'))) <=> BINARY g.responsibility) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))) <=> BINARY g.review_date) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))) <=> BINARY g.nominee_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))) <=> BINARY DATE_FORMAT(g.accepted_at,'%Y-%m-%dT%H:%i:%s.%fZ')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.createdAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.createdAt'))) <=> BINARY DATE_FORMAT(g.created_at,'%Y-%m-%dT%H:%i:%s.%fZ')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.updatedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.updatedAt'))) <=> BINARY DATE_FORMAT(g.updated_at,'%Y-%m-%dT%H:%i:%s.%fZ')))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_CREATE';
+  END IF;
+  ELSE
+  IF COALESCE((NOT ((JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before')) <=> 'OBJECT') AND JSON_LENGTH(JSON_EXTRACT(NEW.event_json,'$.before'))=11 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content')) <=> 'OBJECT') AND JSON_LENGTH(JSON_EXTRACT(NEW.event_json,'$.before.content'))=6 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.goalId')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.goalId')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.patientId')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.patientId')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.creatorId')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.creatorId')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.version')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.version')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.cycle')) <=> 'INTEGER') AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.cycle')) BETWEEN 1 AND 9007199254740991 AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy')) IN ('INTEGER','NULL')) AND (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) BETWEEN 1 AND 9007199254740991) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId')) IN ('INTEGER','NULL')) AND (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))) IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))) BETWEEN 1 AND 9007199254740991) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.state')) <=> 'STRING') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('PROPOSED','ACTIVE','COMPLETED','CANCELLED') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.title')) <=> 'STRING') AND (JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.title')) IS NOT NULL AND CHAR_LENGTH(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.title'))) BETWEEN 1 AND 120 AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.title')) REGEXP '[^[:space:]]') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText')) <=> 'STRING') AND (JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText')) IS NOT NULL AND CHAR_LENGTH(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText'))) BETWEEN 1 AND 1000 AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText')) REGEXP '[^[:space:]]') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion')) <=> 'STRING') AND (JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion')) IS NOT NULL AND CHAR_LENGTH(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion'))) BETWEEN 1 AND 500 AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion')) REGEXP '[^[:space:]]') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility')) <=> 'STRING') AND (JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility')) IS NOT NULL AND CHAR_LENGTH(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility'))) BETWEEN 1 AND 500 AND JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility')) REGEXP '[^[:space:]]') AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate')) IN ('STRING','NULL')) AND NOT (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))) IS NOT NULL AND (OCTET_LENGTH(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))))<>10 OR BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))) NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))),1,4) AS UNSIGNED)<1 OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))),6,2) AS UNSIGNED) NOT BETWEEN 1 AND 12 OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))),9,2) AS UNSIGNED)<1 OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))),9,2) AS UNSIGNED)>CASE WHEN CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))),6,2) AS UNSIGNED)=2 THEN IF(MOD(CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))),1,4) AS UNSIGNED),400)=0 OR (MOD(CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))),1,4) AS UNSIGNED),4)=0 AND MOD(CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))),1,4) AS UNSIGNED),100)<>0),29,28) WHEN CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))),6,2) AS UNSIGNED) IN (4,6,9,11) THEN 30 ELSE 31 END)) AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.createdAt')) <=> 'STRING') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.createdAt')) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$' AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.updatedAt')) <=> 'STRING') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.updatedAt')) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$' AND (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt')) IN ('STRING','NULL')) AND (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt'))) IS NULL OR BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt')) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$') AND CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.cycle')) AS UNSIGNED)<=CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.version')) AS UNSIGNED) AND ((IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) IS NULL)=(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt'))) IS NULL)) AND (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) IS NULL OR (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))))) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state'))<>'PROPOSED' OR IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) IS NULL) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) NOT IN ('ACTIVE','COMPLETED') OR IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) IS NOT NULL)) OR NOT EXISTS(SELECT 1 FROM common_care_goal g WHERE g.id=NEW.goal_id AND g.patient_id=NEW.patient_id AND g.version=NEW.sequence-1 AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.goalId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.goalId'))) <=> BINARY g.id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.patientId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.patientId'))) <=> BINARY g.patient_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.creatorId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.creatorId'))) <=> BINARY g.creator_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.state'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state'))) <=> BINARY g.state) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.version'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.version'))) <=> BINARY g.version) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.cycle'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.cycle'))) <=> BINARY g.cycle) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) <=> BINARY g.accepted_by) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.title'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.title'))) <=> BINARY g.title) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText'))) <=> BINARY g.goal_text) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion'))) <=> BINARY g.progress_criterion) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility'))) <=> BINARY g.responsibility) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))) <=> BINARY g.review_date) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))) <=> BINARY g.nominee_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt'))) <=> BINARY DATE_FORMAT(g.accepted_at,'%Y-%m-%dT%H:%i:%s.%fZ')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.createdAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.createdAt'))) <=> BINARY DATE_FORMAT(g.created_at,'%Y-%m-%dT%H:%i:%s.%fZ')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.updatedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.updatedAt'))) <=> BINARY DATE_FORMAT(g.updated_at,'%Y-%m-%dT%H:%i:%s.%fZ')))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_BEFORE';
+  END IF;
+  IF COALESCE((NOT ((BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.goalId')) <=> BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.goalId'))) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.patientId')) <=> BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.patientId'))) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.creatorId')) <=> BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.creatorId'))) AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.createdAt')) <=> BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.createdAt'))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_IDENTITY';
+  END IF;
+  IF BINARY NEW.operation='REVISE' THEN
+  IF COALESCE(((BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.title'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.title'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.title'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.title')))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText')))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion')))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility')))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate')))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_NO_CHANGE';
+  END IF;
+  END IF;
+  IF COALESCE((CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.cycle')) AS UNSIGNED)<>CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.cycle')) AS UNSIGNED)+IF(BINARY NEW.operation IN ('REVISE','DECLINE','STEP_BACK','REOPEN'),1,0)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_CYCLE';
+  END IF;
+  IF COALESCE((NOT ((BINARY NEW.operation='REVISE' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('PROPOSED','ACTIVE') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='PROPOSED') OR (BINARY NEW.operation='ACCEPT' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('PROPOSED') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='ACTIVE') OR (BINARY NEW.operation='DECLINE' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('PROPOSED') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='PROPOSED') OR (BINARY NEW.operation='STEP_BACK' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('ACTIVE') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='PROPOSED') OR (BINARY NEW.operation='ADD_PROGRESS' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('ACTIVE') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='ACTIVE') OR (BINARY NEW.operation='ADD_FEEDBACK' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('ACTIVE') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='ACTIVE') OR (BINARY NEW.operation='COMPLETE' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('ACTIVE') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='COMPLETED') OR (BINARY NEW.operation='CANCEL' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('PROPOSED','ACTIVE') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='CANCELLED') OR (BINARY NEW.operation='REOPEN' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.state')) IN ('COMPLETED','CANCELLED') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.state'))='PROPOSED'))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_STATE';
+  END IF;
+  IF BINARY NEW.operation<>'REVISE' THEN
+  IF COALESCE((NOT ((BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.title'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.title'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.title'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.title')))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.goalText'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.goalText')))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.progressCriterion'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.progressCriterion')))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.responsibility'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.responsibility')))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.reviewDate'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.reviewDate')))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_CONTENT';
+  END IF;
+  END IF;
+  IF BINARY NEW.operation IN ('DECLINE','STEP_BACK','REOPEN') THEN
+  IF COALESCE((IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))) IS NOT NULL),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_UNASSIGNED';
+  END IF;
+  ELSEIF BINARY NEW.operation<>'REVISE' THEN
+  IF COALESCE((NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.content.nomineeId'))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_NOMINEE';
+  END IF;
+  END IF;
+  IF BINARY NEW.operation='ACCEPT' THEN
+  IF COALESCE((NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))) <=> BINARY CAST(NEW.actor_id AS CHAR)) OR NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))) <=> BINARY CAST(NEW.actor_id AS CHAR)) OR NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))) <=> BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.recordedAt')))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_ACCEPT';
+  END IF;
+  ELSEIF BINARY NEW.operation IN ('ADD_PROGRESS','ADD_FEEDBACK','COMPLETE','CANCEL') THEN
+  IF COALESCE((NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedBy')))) OR NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedAt'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.after.acceptedAt'))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_ACCEPTANCE';
+  END IF;
+  END IF;
+  IF BINARY NEW.operation='DECLINE' THEN
+  IF COALESCE((NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.content.nomineeId'))) <=> BINARY CAST(NEW.actor_id AS CHAR))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_SELF';
+  END IF;
+  ELSEIF BINARY NEW.operation='STEP_BACK' THEN
+  IF COALESCE((NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.before.acceptedBy'))) <=> BINARY CAST(NEW.actor_id AS CHAR))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_SELF';
+  END IF;
+  END IF;
+  END IF;
+  IF BINARY NEW.operation IN ('REVISE','DECLINE','STEP_BACK','CANCEL','REOPEN') THEN
+  IF COALESCE((NOT (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reason'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reason'))) IS NOT NULL AND CHAR_LENGTH(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reason'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reason')))) BETWEEN 1 AND 1000 AND IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reason'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reason'))) REGEXP '[^[:space:]]')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_REASON';
+  END IF;
+  ELSE
+  IF COALESCE((NOT (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reason')) <=> 'NULL')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_REASON';
+  END IF;
+  END IF;
+  IF BINARY NEW.operation IN ('ADD_PROGRESS','ADD_FEEDBACK') THEN
+  IF COALESCE((NOT (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.note'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.note'))) IS NOT NULL AND CHAR_LENGTH(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.note'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.note')))) BETWEEN 1 AND 1000 AND IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.note'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.note'))) REGEXP '[^[:space:]]')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_NOTE';
+  END IF;
+  ELSE
+  IF COALESCE((NOT (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.note')) <=> 'NULL')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_NOTE';
+  END IF;
+  END IF;
+  IF BINARY NEW.operation IN ('COMPLETE') THEN
+  IF COALESCE((NOT (IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.result'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.result'))) IS NOT NULL AND CHAR_LENGTH(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.result'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.result')))) BETWEEN 1 AND 1000 AND IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.result'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.result'))) REGEXP '[^[:space:]]')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_RESULT';
+  END IF;
+  ELSE
+  IF COALESCE((NOT (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.result')) <=> 'NULL')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_RESULT';
+  END IF;
+  END IF;
+  IF BINARY NEW.operation IN ('ADD_PROGRESS','ADD_FEEDBACK') THEN
+  IF COALESCE(((IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))) IS NOT NULL AND (OCTET_LENGTH(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))))<>10 OR BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))) NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))),1,4) AS UNSIGNED)<1 OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))),6,2) AS UNSIGNED) NOT BETWEEN 1 AND 12 OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))),9,2) AS UNSIGNED)<1 OR CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))),9,2) AS UNSIGNED)>CASE WHEN CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))),6,2) AS UNSIGNED)=2 THEN IF(MOD(CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))),1,4) AS UNSIGNED),400)=0 OR (MOD(CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))),1,4) AS UNSIGNED),4)=0 AND MOD(CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))),1,4) AS UNSIGNED),100)<>0),29,28) WHEN CAST(SUBSTRING(IF(JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.reportedDate'))),6,2) AS UNSIGNED) IN (4,6,9,11) THEN 30 ELSE 31 END))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_DATE';
+  END IF;
+  ELSE
+  IF COALESCE((NOT (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.reportedDate')) <=> 'NULL')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_DATE';
+  END IF;
+  END IF;
+  IF BINARY NEW.operation='ADD_FEEDBACK' THEN
+  IF COALESCE((NOT ((JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.feedbackSource')) <=> 'STRING') AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.event_json,'$.feedbackSource')) IN ('ACCOUNT_STATEMENT','REPORTED_PATIENT','REPORTED_PARTICIPANT','NOT_OBTAINED'))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_FEEDBACK';
+  END IF;
+  ELSE
+  IF COALESCE((NOT (JSON_TYPE(JSON_EXTRACT(NEW.event_json,'$.feedbackSource')) <=> 'NULL')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_FEEDBACK';
+  END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER `ccg57_event_update` BEFORE UPDATE ON `common_care_goal_event` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `ccg57_event_delete` BEFORE DELETE ON `common_care_goal_event` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CCG57_EVENT_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_state_delete` BEFORE DELETE ON `visit_followup_state` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_STATE_RETAINED';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_event_insert` BEFORE INSERT ON `visit_followup_event` FOR EACH ROW
+BEGIN
+  IF COALESCE((NEW.id<0 OR NEW.id>9007199254740991 OR NEW.state_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.patient_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.state_version NOT BETWEEN 1 AND 9007199254740991 OR NEW.actor_id NOT BETWEEN 1 AND 9007199254740991 OR BINARY NEW.event_type NOT IN ('TRACK_APPOINTMENT','RESCHEDULE','CANCEL','RECORD_ATTENDANCE','COMPLETE_SELECTED_APPOINTMENT','CORRECT_ATTENDANCE','SET_NEXT_DECISION','CREATE_NEXT','LINK_NEXT','REPLACE_NEXT','CREATE_VISIT','PUBLISH_VISIT','SET_DISPOSITION','REVISE_DISPOSITION')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_EVENT_SHAPE';
+  END IF;
+  IF COALESCE((OCTET_LENGTH(NEW.payload_json)>16384 OR JSON_VALID(NEW.payload_json)<>1),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_EVENT_PAYLOAD';
+  END IF;
+  IF COALESCE((NOT ((JSON_TYPE(NEW.payload_json)='OBJECT') AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after'))='OBJECT') AND (JSON_LENGTH(JSON_EXTRACT(NEW.payload_json,'$.after'))=30) AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.source_revision'))='INTEGER') AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.source_fingerprint'))='STRING') AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.native_status')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.native_start_wall')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.native_end_wall')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.native_notify_wall')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.native_doctor_id')) IN ('INTEGER','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.native_schedule_id')) IN ('INTEGER','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.last_native_event_id')) IN ('INTEGER','NULL') OR (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.last_native_event_id'))='STRING' AND BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.last_native_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.payload_json,'$.after.last_native_event_id')))='SELF'))) AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.attendance'))='STRING') AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.attendance_origin'))='STRING') AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.actual_time_kind'))='STRING') AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.actual_at_utc')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.actual_offset')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.current_fact_event_id')) IN ('INTEGER','NULL') OR (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.current_fact_event_id'))='STRING' AND BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.current_fact_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.payload_json,'$.after.current_fact_event_id')))='SELF'))) AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.next_decision'))='STRING') AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.responsible_user_id')) IN ('INTEGER','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.decision_due_at')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.successor_kind')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.successor_care_item_id')) IN ('INTEGER','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.successor_care_appointment_id')) IN ('INTEGER','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.successor_bound_version')) IN ('INTEGER','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.successor_bound_fingerprint')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.reminder_attempt_source_revision')) IN ('INTEGER','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.reminder_attempt_id')) IN ('STRING','NULL'))) AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.reminder_attempted_at_utc')) IN ('STRING','NULL'))) AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.disposition'))='STRING') AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.disposition_revision'))='INTEGER') AND ((JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.decision_event_id')) IN ('INTEGER','NULL') OR (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.decision_event_id'))='STRING' AND BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.decision_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.payload_json,'$.after.decision_event_id')))='SELF'))) AND (JSON_TYPE(JSON_EXTRACT(NEW.payload_json,'$.after.updated_at'))='STRING'))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_EVENT_AFTER';
+  END IF;
+  IF COALESCE((OCTET_LENGTH(NEW.command_key)<>36 OR BINARY NEW.command_key NOT REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' OR OCTET_LENGTH(NEW.after_source_fingerprint)<>64 OR BINARY NEW.after_source_fingerprint NOT REGEXP '^[0-9a-f]{64}$' OR (NEW.before_source_fingerprint IS NOT NULL AND (OCTET_LENGTH(NEW.before_source_fingerprint)<>64 OR BINARY NEW.before_source_fingerprint NOT REGEXP '^[0-9a-f]{64}$')) OR CHAR_LENGTH(NEW.actor_name) NOT BETWEEN 1 AND 100 OR CHAR_LENGTH(NEW.actor_relation) NOT BETWEEN 1 AND 40 OR (NEW.occurred_at_utc IS NOT NULL AND NEW.occurred_at_utc>NEW.recorded_at)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_EVENT_FACT';
+  END IF;
+  IF COALESCE((NOT EXISTS(SELECT 1 FROM visit_followup_state s WHERE s.id=NEW.state_id AND s.patient_id=NEW.patient_id AND s.lock_version=NEW.state_version-1 AND (BINARY s.source_fingerprint <=> BINARY NEW.before_source_fingerprint))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_EVENT_PREVIOUS';
+  END IF;
+  IF COALESCE((NOT EXISTS(SELECT 1 FROM visit_followup_command c WHERE c.actor_id=NEW.actor_id AND BINARY c.command_key=BINARY NEW.command_key AND c.patient_id=NEW.patient_id AND c.result_json IS NULL AND BINARY c.operation=BINARY NEW.event_type AND ((c.state_id=NEW.state_id AND c.expected_version=NEW.state_version-1) OR (NEW.state_version=1 AND ((c.state_id IS NULL AND c.expected_version=0 AND BINARY c.operation IN ('TRACK_APPOINTMENT','CREATE_VISIT','SET_DISPOSITION')) OR (c.state_id IS NOT NULL AND c.state_id<>NEW.state_id AND BINARY c.operation IN ('CREATE_NEXT','LINK_NEXT','REPLACE_NEXT') AND EXISTS(SELECT 1 FROM visit_followup_state p JOIN visit_followup_state t ON t.id=NEW.state_id AND t.patient_id=p.patient_id AND BINARY t.source_kind=BINARY p.source_kind WHERE p.id=c.state_id AND p.patient_id=c.patient_id AND BINARY t.source_kind IN ('CARE_ITEM_APPOINTMENT','CARE_APPOINTMENT')))))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_EVENT_COMMAND';
+  END IF;
+  IF COALESCE(((NEW.reason IS NOT NULL AND CHAR_LENGTH(NEW.reason)>IF(BINARY NEW.event_type IN ('SET_DISPOSITION','REVISE_DISPOSITION'),1000,500)) OR (BINARY NEW.event_type IN ('RESCHEDULE','CANCEL','RECORD_ATTENDANCE','CORRECT_ATTENDANCE','REVISE_DISPOSITION') AND (NEW.reason IS NULL OR CHAR_LENGTH(TRIM(NEW.reason))=0))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_EVENT_REASON';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_event_update` BEFORE UPDATE ON `visit_followup_event` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_EVENT_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_event_delete` BEFORE DELETE ON `visit_followup_event` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_EVENT_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_command_insert` BEFORE INSERT ON `visit_followup_command` FOR EACH ROW
+BEGIN
+  IF COALESCE((NEW.actor_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.patient_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.expected_version NOT BETWEEN 0 AND 9007199254740990 OR (NEW.state_id IS NOT NULL AND NEW.state_id NOT BETWEEN 1 AND 9007199254740991) OR BINARY NEW.operation NOT IN ('TRACK_APPOINTMENT','RESCHEDULE','CANCEL','RECORD_ATTENDANCE','COMPLETE_SELECTED_APPOINTMENT','CORRECT_ATTENDANCE','SET_NEXT_DECISION','CREATE_NEXT','LINK_NEXT','REPLACE_NEXT','CREATE_VISIT','PUBLISH_VISIT','SET_DISPOSITION','REVISE_DISPOSITION') OR OCTET_LENGTH(NEW.command_key)<>36 OR BINARY NEW.command_key NOT REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' OR OCTET_LENGTH(NEW.payload_hash)<>64 OR BINARY NEW.payload_hash NOT REGEXP '^[0-9a-f]{64}$'),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_COMMAND_SHAPE';
+  END IF;
+  IF COALESCE((NEW.result_json IS NOT NULL OR (NEW.state_id IS NULL AND (NEW.expected_version<>0 OR BINARY NEW.operation NOT IN ('TRACK_APPOINTMENT','CREATE_VISIT','SET_DISPOSITION'))) OR (NEW.state_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM visit_followup_state s WHERE s.id=NEW.state_id AND s.patient_id=NEW.patient_id))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_COMMAND_RESERVATION';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_command_update` BEFORE UPDATE ON `visit_followup_command` FOR EACH ROW
+BEGIN
+  IF COALESCE((OLD.result_json IS NOT NULL OR NEW.result_json IS NULL OR NEW.state_id IS NULL OR NOT ((BINARY NEW.actor_id <=> BINARY OLD.actor_id) AND (BINARY NEW.command_key <=> BINARY OLD.command_key) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.expected_version <=> BINARY OLD.expected_version) AND (BINARY NEW.operation <=> BINARY OLD.operation) AND (BINARY NEW.payload_hash <=> BINARY OLD.payload_hash) AND (BINARY NEW.created_at <=> BINARY OLD.created_at)) OR (OLD.state_id IS NOT NULL AND NOT (NEW.state_id <=> OLD.state_id))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_COMMAND_IMMUTABLE';
+  END IF;
+  IF COALESCE((OCTET_LENGTH(NEW.result_json)>512 OR JSON_VALID(NEW.result_json)<>1),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_RECEIPT_LIMIT';
+  END IF;
+  IF COALESCE((NOT ((JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.workflowId'))='INTEGER') AND (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.sourceId'))='INTEGER') AND (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.version'))='INTEGER') AND (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.eventId'))='INTEGER') AND (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.sourceKind'))='STRING') AND (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.operation'))='STRING') AND (JSON_TYPE(NEW.result_json)='OBJECT') AND (JSON_LENGTH(NEW.result_json)=IF(BINARY NEW.operation IN ('CREATE_NEXT','LINK_NEXT','REPLACE_NEXT'),8,6)) AND ((BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.workflowId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.workflowId'))) <=> BINARY CAST(NEW.state_id AS CHAR))) AND ((BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.version'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.version'))) <=> BINARY CAST(NEW.expected_version+1 AS CHAR))) AND ((BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.operation'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.operation'))) <=> BINARY NEW.operation)) AND ((NOT (BINARY NEW.operation IN ('CREATE_NEXT','LINK_NEXT','REPLACE_NEXT')) OR (JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.successorKind'))='STRING' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.successorKind')) IN ('CARE_ITEM_APPOINTMENT','CARE_APPOINTMENT') AND JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.successorId'))='INTEGER' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.successorId')) AS UNSIGNED) BETWEEN 1 AND 9007199254740991))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_RECEIPT_SHAPE';
+  END IF;
+  IF COALESCE((NOT EXISTS(SELECT 1 FROM visit_followup_state s JOIN visit_followup_event e ON e.state_id=s.id AND e.patient_id=s.patient_id AND e.state_version=s.lock_version WHERE s.id=NEW.state_id AND s.patient_id=NEW.patient_id AND s.lock_version=NEW.expected_version+1 AND e.state_id=NEW.state_id AND e.patient_id=NEW.patient_id AND e.state_version=NEW.expected_version+1 AND e.actor_id=NEW.actor_id AND BINARY e.command_key=BINARY NEW.command_key AND BINARY e.event_type=BINARY NEW.operation AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.eventId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.eventId'))) <=> BINARY CAST(e.id AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.sourceKind'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.sourceKind'))) <=> BINARY s.source_kind) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.sourceId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.sourceId'))) <=> BINARY CAST(COALESCE(s.care_item_id,s.care_appointment_id,s.visit_record_id) AS CHAR)))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_RECEIPT_EVENT';
+  END IF;
+  IF COALESCE(((BINARY NEW.operation IN ('CREATE_NEXT','LINK_NEXT','REPLACE_NEXT')) AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.state_id=NEW.state_id AND e.patient_id=NEW.patient_id AND e.state_version=NEW.expected_version+1 AND e.actor_id=NEW.actor_id AND BINARY e.command_key=BINARY NEW.command_key AND BINARY e.event_type=BINARY NEW.operation AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.eventId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.eventId'))) <=> BINARY CAST(e.id AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_kind'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_kind'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.successorKind'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.successorKind')))) AND ((BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.successorKind'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.successorKind')))='CARE_ITEM_APPOINTMENT' AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_item_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_item_id'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.successorId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.successorId'))))) OR (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.successorKind'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.successorKind')))='CARE_APPOINTMENT' AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_appointment_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_appointment_id'))) <=> BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.successorId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.successorId')))))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_RECEIPT_SUCCESSOR';
+  END IF;
+  IF COALESCE((NOT (NOT EXISTS(SELECT 1 FROM visit_followup_event x WHERE x.actor_id=NEW.actor_id AND BINARY x.command_key=BINARY NEW.command_key AND x.state_id<>NEW.state_id AND NOT EXISTS(SELECT 1 FROM visit_followup_event e JOIN visit_followup_state t ON t.id=x.state_id AND t.patient_id=NEW.patient_id WHERE e.state_id=NEW.state_id AND e.patient_id=NEW.patient_id AND e.state_version=NEW.expected_version+1 AND e.actor_id=NEW.actor_id AND BINARY e.command_key=BINARY NEW.command_key AND BINARY e.event_type=BINARY NEW.operation AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.eventId'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.eventId'))) <=> BINARY CAST(e.id AS CHAR)) AND BINARY NEW.operation IN ('CREATE_NEXT','LINK_NEXT','REPLACE_NEXT') AND x.patient_id=NEW.patient_id AND BINARY x.event_type=BINARY NEW.operation AND x.state_version=1 AND t.lock_version=x.state_version AND (BINARY t.source_fingerprint <=> BINARY x.after_source_fingerprint) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_kind'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_kind'))) <=> BINARY t.source_kind) AND ((BINARY t.source_kind='CARE_ITEM_APPOINTMENT' AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_item_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_item_id'))) <=> BINARY CAST(COALESCE(t.care_item_id,t.care_appointment_id) AS CHAR))) OR (BINARY t.source_kind='CARE_APPOINTMENT' AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_appointment_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_appointment_id'))) <=> BINARY CAST(COALESCE(t.care_item_id,t.care_appointment_id) AS CHAR)))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_bound_version'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_bound_version'))) <=> BINARY CAST(x.state_version AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_bound_fingerprint'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_bound_fingerprint'))) <=> BINARY x.after_source_fingerprint))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_SECONDARY_CLOSURE';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_command_delete` BEFORE DELETE ON `visit_followup_command` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_COMMAND_RETAINED';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_link_insert` BEFORE INSERT ON `visit_followup_action_link` FOR EACH ROW
+BEGIN
+  IF COALESCE((NEW.id<0 OR NEW.id>9007199254740991 OR NEW.state_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.patient_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.disposition_revision NOT BETWEEN 1 AND 9007199254740991 OR NEW.plan_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.revision_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.action_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.binding_event_id NOT BETWEEN 1 AND 9007199254740991 OR NEW.bound_after_action_event_id NOT BETWEEN 0 AND 9007199254740991 OR BINARY NEW.kind NOT IN ('CHECK','REVISIT','REFERRAL')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_LINK_SHAPE';
+  END IF;
+  IF COALESCE((NOT EXISTS(SELECT 1 FROM visit_followup_state s JOIN visit_followup_event e ON e.id=NEW.binding_event_id AND e.state_id=s.id AND e.patient_id=s.patient_id JOIN doctor_care_plan p ON p.id=NEW.plan_id AND p.patient_id=s.patient_id JOIN care_plan_revision r ON r.id=NEW.revision_id AND r.plan_id=p.id JOIN care_plan_action a ON a.id=NEW.action_id AND a.plan_id=p.id AND a.revision_id=r.id AND a.patient_id=s.patient_id WHERE s.id=NEW.state_id AND s.patient_id=NEW.patient_id AND BINARY s.source_kind='VISIT_RECORD' AND BINARY s.native_status='PUBLISHED' AND BINARY s.disposition='ACTIONS_REQUIRED' AND s.disposition_revision=NEW.disposition_revision AND s.decision_event_id=e.id AND e.state_version=s.lock_version AND BINARY e.event_type IN ('SET_DISPOSITION','REVISE_DISPOSITION') AND p.workflow_version=1 AND p.current_revision_id=r.id AND BINARY p.lifecycle='ACTIVE' AND BINARY r.status='PUBLISHED' AND BINARY r.plan_type='FOLLOW_UP' AND BINARY a.status IN ('OPEN','NEEDS_HELP') AND a.assigned_user_id IS NOT NULL AND a.due_at IS NOT NULL)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_LINK_CURRENT';
+  END IF;
+  IF COALESCE((NEW.bound_after_action_event_id<>COALESCE((SELECT MAX(e.id) FROM care_plan_event e WHERE e.action_id=NEW.action_id),0)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_LINK_WATERMARK';
+  END IF;
+  IF COALESCE(((SELECT COUNT(*) FROM visit_followup_action_link l WHERE l.state_id=NEW.state_id AND l.disposition_revision=NEW.disposition_revision)>=10),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_LINK_LIMIT';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_link_update` BEFORE UPDATE ON `visit_followup_action_link` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_LINK_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_link_delete` BEFORE DELETE ON `visit_followup_action_link` FOR EACH ROW
+BEGIN
+  IF COALESCE((TRUE),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_LINK_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_state_insert` BEFORE INSERT ON `visit_followup_state` FOR EACH ROW
+BEGIN
+  IF COALESCE((NEW.id<0 OR NEW.id>9007199254740991 OR NOT ((NEW.patient_id BETWEEN 1 AND 9007199254740991) AND (NEW.created_by BETWEEN 1 AND 9007199254740991) AND (NEW.lock_version BETWEEN 0 AND 9007199254740991) AND (NEW.source_revision BETWEEN 0 AND 9007199254740991) AND (NEW.disposition_revision BETWEEN 0 AND 9007199254740991) AND (OCTET_LENGTH(NEW.source_fingerprint)=64 AND BINARY NEW.source_fingerprint REGEXP '^[0-9a-f]{64}$') AND ((NEW.care_item_id IS NULL OR NEW.care_item_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.care_appointment_id IS NULL OR NEW.care_appointment_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.visit_record_id IS NULL OR NEW.visit_record_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.origin_appointment_state_id IS NULL OR NEW.origin_appointment_state_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.native_doctor_id IS NULL OR NEW.native_doctor_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.native_schedule_id IS NULL OR NEW.native_schedule_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.last_native_event_id IS NULL OR NEW.last_native_event_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.current_fact_event_id IS NULL OR NEW.current_fact_event_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.responsible_user_id IS NULL OR NEW.responsible_user_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.successor_care_item_id IS NULL OR NEW.successor_care_item_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.successor_care_appointment_id IS NULL OR NEW.successor_care_appointment_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.successor_bound_version IS NULL OR NEW.successor_bound_version BETWEEN 1 AND 9007199254740991)) AND ((NEW.reminder_attempt_source_revision IS NULL OR NEW.reminder_attempt_source_revision BETWEEN 1 AND 9007199254740991)) AND ((NEW.decision_event_id IS NULL OR NEW.decision_event_id BETWEEN 1 AND 9007199254740991)) AND (((BINARY NEW.source_kind='CARE_ITEM_APPOINTMENT' AND NEW.care_item_id IS NOT NULL AND NEW.care_appointment_id IS NULL AND NEW.visit_record_id IS NULL AND EXISTS(SELECT 1 FROM care_item n WHERE n.id=NEW.care_item_id AND n.patient_id=NEW.patient_id AND BINARY n.kind='APPOINTMENT')) OR (BINARY NEW.source_kind='CARE_APPOINTMENT' AND NEW.care_appointment_id IS NOT NULL AND NEW.care_item_id IS NULL AND NEW.visit_record_id IS NULL AND EXISTS(SELECT 1 FROM care_appointment n WHERE n.id=NEW.care_appointment_id AND n.patient_id=NEW.patient_id)) OR (BINARY NEW.source_kind='VISIT_RECORD' AND NEW.visit_record_id IS NOT NULL AND NEW.care_item_id IS NULL AND NEW.care_appointment_id IS NULL AND EXISTS(SELECT 1 FROM visit_record n WHERE n.id=NEW.visit_record_id AND n.patient_id=NEW.patient_id)))) AND (BINARY NEW.attendance IN ('UNVERIFIED','ATTENDED','NO_SHOW')) AND (BINARY NEW.attendance_origin IN ('UNKNOWN','REPORTED','SELECTED_CLINICIAN_RECORDED')) AND (BINARY NEW.actual_time_kind IN ('KNOWN','UNKNOWN')) AND (BINARY NEW.next_decision IN ('NEEDS_DECISION','SCHEDULED','NOT_ARRANGED','CLOSED_UNRESOLVED')) AND (BINARY NEW.disposition IN ('UNASSESSED','NO_FOLLOW_UP','ACTIONS_REQUIRED')) AND (((BINARY NEW.actual_time_kind='UNKNOWN' AND NEW.actual_at_utc IS NULL AND NEW.actual_offset IS NULL) OR (BINARY NEW.actual_time_kind='KNOWN' AND NEW.actual_at_utc IS NOT NULL AND NEW.actual_at_utc<=NEW.updated_at AND NEW.actual_offset IS NOT NULL AND (BINARY NEW.actual_offset='Z' OR (OCTET_LENGTH(NEW.actual_offset)=6 AND BINARY NEW.actual_offset REGEXP '^[+-]((0[0-9]|1[0-7]):[0-5][0-9]|18:00)$'))))) AND (((BINARY NEW.attendance='UNVERIFIED' AND BINARY NEW.attendance_origin='UNKNOWN' AND NEW.current_fact_event_id IS NULL) OR (BINARY NEW.attendance<>'UNVERIFIED' AND BINARY NEW.attendance_origin<>'UNKNOWN' AND NEW.current_fact_event_id IS NOT NULL))) AND ((BINARY NEW.attendance_origin<>'SELECTED_CLINICIAN_RECORDED' OR BINARY NEW.source_kind='CARE_APPOINTMENT')) AND ((BINARY NEW.source_kind='VISIT_RECORD' OR BINARY NEW.attendance<>'UNVERIFIED' OR BINARY NEW.actual_time_kind='UNKNOWN')) AND (((NEW.reminder_attempt_source_revision IS NULL AND NEW.reminder_attempt_id IS NULL AND NEW.reminder_attempted_at_utc IS NULL) OR (NEW.reminder_attempt_source_revision IS NOT NULL AND NEW.reminder_attempt_source_revision<=NEW.source_revision AND NEW.reminder_attempt_id IS NOT NULL AND OCTET_LENGTH(NEW.reminder_attempt_id)=36 AND BINARY NEW.reminder_attempt_id REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND NEW.reminder_attempted_at_utc IS NOT NULL))) AND ((NEW.successor_bound_fingerprint IS NULL OR (OCTET_LENGTH(NEW.successor_bound_fingerprint)=64 AND BINARY NEW.successor_bound_fingerprint REGEXP '^[0-9a-f]{64}$'))) AND (((NEW.successor_kind IS NULL AND NEW.successor_care_item_id IS NULL AND NEW.successor_care_appointment_id IS NULL AND NEW.successor_bound_version IS NULL AND NEW.successor_bound_fingerprint IS NULL AND BINARY NEW.next_decision<>'SCHEDULED') OR (BINARY NEW.successor_kind=BINARY NEW.source_kind AND NEW.successor_bound_version IS NOT NULL AND NEW.successor_bound_fingerprint IS NOT NULL AND BINARY NEW.next_decision='SCHEDULED' AND ((BINARY NEW.source_kind='CARE_ITEM_APPOINTMENT' AND NEW.successor_care_item_id IS NOT NULL AND NEW.successor_care_item_id<>NEW.care_item_id AND NEW.successor_care_appointment_id IS NULL AND EXISTS(SELECT 1 FROM care_item n WHERE n.id=NEW.successor_care_item_id AND n.patient_id=NEW.patient_id AND BINARY n.kind='APPOINTMENT')) OR (BINARY NEW.source_kind='CARE_APPOINTMENT' AND NEW.successor_care_appointment_id IS NOT NULL AND NEW.successor_care_appointment_id<>NEW.care_appointment_id AND NEW.successor_care_item_id IS NULL AND EXISTS(SELECT 1 FROM care_appointment n WHERE n.id=NEW.successor_care_appointment_id AND n.patient_id=NEW.patient_id)))))) AND (((BINARY NEW.source_kind='VISIT_RECORD' AND BINARY NEW.attendance='UNVERIFIED' AND BINARY NEW.next_decision='NEEDS_DECISION' AND NEW.responsible_user_id IS NULL AND NEW.decision_due_at IS NULL AND NEW.successor_kind IS NULL AND NEW.reminder_attempt_id IS NULL) OR (BINARY NEW.source_kind<>'VISIT_RECORD' AND NEW.origin_appointment_state_id IS NULL AND BINARY NEW.disposition='UNASSESSED' AND NEW.disposition_revision=0 AND NEW.decision_event_id IS NULL AND NEW.responsible_user_id IS NOT NULL AND NEW.decision_due_at IS NOT NULL))) AND (((BINARY NEW.disposition='UNASSESSED' AND NEW.disposition_revision=0 AND NEW.decision_event_id IS NULL) OR (BINARY NEW.disposition<>'UNASSESSED' AND NEW.disposition_revision>0 AND NEW.decision_event_id IS NOT NULL AND BINARY NEW.native_status='PUBLISHED'))) AND ((BINARY NEW.source_kind<>'CARE_ITEM_APPOINTMENT' OR (NEW.native_end_wall IS NULL AND NEW.native_doctor_id IS NULL AND NEW.native_schedule_id IS NULL))) AND ((BINARY NEW.source_kind<>'CARE_APPOINTMENT' OR (NEW.native_doctor_id IS NOT NULL AND NEW.native_start_wall IS NOT NULL AND NEW.native_end_wall>NEW.native_start_wall AND NEW.native_notify_wall IS NULL))) AND ((NEW.origin_appointment_state_id IS NULL OR EXISTS(SELECT 1 FROM visit_followup_state o JOIN visit_record v ON v.id=NEW.visit_record_id WHERE o.id=NEW.origin_appointment_state_id AND o.patient_id=NEW.patient_id AND ((BINARY o.source_kind='CARE_ITEM_APPOINTMENT' AND v.appointment_id IS NULL) OR (BINARY o.source_kind='CARE_APPOINTMENT' AND v.appointment_id=o.care_appointment_id))))) AND ((BINARY NEW.source_kind='VISIT_RECORD' OR (BINARY NEW.source_kind='CARE_ITEM_APPOINTMENT' AND BINARY NEW.native_status IN ('OPEN','DONE','NO_SHOW','CANCELLED') AND (BINARY NEW.attendance='UNVERIFIED' OR (BINARY NEW.attendance='ATTENDED' AND BINARY NEW.native_status='DONE') OR (BINARY NEW.attendance='NO_SHOW' AND BINARY NEW.native_status='NO_SHOW'))) OR (BINARY NEW.source_kind='CARE_APPOINTMENT' AND BINARY NEW.native_status IN ('BOOKED','COMPLETED','NO_SHOW','CANCELLED') AND (BINARY NEW.attendance='UNVERIFIED' OR (BINARY NEW.attendance='NO_SHOW' AND BINARY NEW.native_status='NO_SHOW') OR (BINARY NEW.attendance='ATTENDED' AND ((BINARY NEW.attendance_origin='REPORTED' AND BINARY NEW.native_status='BOOKED') OR (BINARY NEW.attendance_origin='SELECTED_CLINICIAN_RECORDED' AND BINARY NEW.native_status='COMPLETED'))))))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_STATE_SHAPE';
+  END IF;
+  IF COALESCE((NEW.lock_version<>0 OR NEW.source_revision<>0 OR NEW.last_native_event_id IS NOT NULL OR NEW.current_fact_event_id IS NOT NULL OR BINARY NEW.attendance<>'UNVERIFIED' OR BINARY NEW.actual_time_kind<>'UNKNOWN' OR NEW.disposition_revision<>0 OR NEW.reminder_attempt_id IS NOT NULL OR NEW.successor_kind IS NOT NULL OR NOT (NEW.created_at <=> NEW.updated_at)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_STATE_SKELETON';
+  END IF;
+  IF COALESCE((NEW.reminder_delivery_log_id IS NOT NULL),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_REMINDER_SKELETON';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_state_update` BEFORE UPDATE ON `visit_followup_state` FOR EACH ROW
+BEGIN
+  IF COALESCE((NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.source_kind <=> BINARY OLD.source_kind) AND (BINARY NEW.care_item_id <=> BINARY OLD.care_item_id) AND (BINARY NEW.care_appointment_id <=> BINARY OLD.care_appointment_id) AND (BINARY NEW.visit_record_id <=> BINARY OLD.visit_record_id) AND (BINARY NEW.origin_appointment_state_id <=> BINARY OLD.origin_appointment_state_id) AND (BINARY NEW.created_by <=> BINARY OLD.created_by) AND (BINARY NEW.created_at <=> BINARY OLD.created_at)) OR NOT ((NEW.patient_id BETWEEN 1 AND 9007199254740991) AND (NEW.created_by BETWEEN 1 AND 9007199254740991) AND (NEW.lock_version BETWEEN 0 AND 9007199254740991) AND (NEW.source_revision BETWEEN 0 AND 9007199254740991) AND (NEW.disposition_revision BETWEEN 0 AND 9007199254740991) AND (OCTET_LENGTH(NEW.source_fingerprint)=64 AND BINARY NEW.source_fingerprint REGEXP '^[0-9a-f]{64}$') AND ((NEW.care_item_id IS NULL OR NEW.care_item_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.care_appointment_id IS NULL OR NEW.care_appointment_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.visit_record_id IS NULL OR NEW.visit_record_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.origin_appointment_state_id IS NULL OR NEW.origin_appointment_state_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.native_doctor_id IS NULL OR NEW.native_doctor_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.native_schedule_id IS NULL OR NEW.native_schedule_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.last_native_event_id IS NULL OR NEW.last_native_event_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.current_fact_event_id IS NULL OR NEW.current_fact_event_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.responsible_user_id IS NULL OR NEW.responsible_user_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.successor_care_item_id IS NULL OR NEW.successor_care_item_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.successor_care_appointment_id IS NULL OR NEW.successor_care_appointment_id BETWEEN 1 AND 9007199254740991)) AND ((NEW.successor_bound_version IS NULL OR NEW.successor_bound_version BETWEEN 1 AND 9007199254740991)) AND ((NEW.reminder_attempt_source_revision IS NULL OR NEW.reminder_attempt_source_revision BETWEEN 1 AND 9007199254740991)) AND ((NEW.decision_event_id IS NULL OR NEW.decision_event_id BETWEEN 1 AND 9007199254740991)) AND (((BINARY NEW.source_kind='CARE_ITEM_APPOINTMENT' AND NEW.care_item_id IS NOT NULL AND NEW.care_appointment_id IS NULL AND NEW.visit_record_id IS NULL AND EXISTS(SELECT 1 FROM care_item n WHERE n.id=NEW.care_item_id AND n.patient_id=NEW.patient_id AND BINARY n.kind='APPOINTMENT')) OR (BINARY NEW.source_kind='CARE_APPOINTMENT' AND NEW.care_appointment_id IS NOT NULL AND NEW.care_item_id IS NULL AND NEW.visit_record_id IS NULL AND EXISTS(SELECT 1 FROM care_appointment n WHERE n.id=NEW.care_appointment_id AND n.patient_id=NEW.patient_id)) OR (BINARY NEW.source_kind='VISIT_RECORD' AND NEW.visit_record_id IS NOT NULL AND NEW.care_item_id IS NULL AND NEW.care_appointment_id IS NULL AND EXISTS(SELECT 1 FROM visit_record n WHERE n.id=NEW.visit_record_id AND n.patient_id=NEW.patient_id)))) AND (BINARY NEW.attendance IN ('UNVERIFIED','ATTENDED','NO_SHOW')) AND (BINARY NEW.attendance_origin IN ('UNKNOWN','REPORTED','SELECTED_CLINICIAN_RECORDED')) AND (BINARY NEW.actual_time_kind IN ('KNOWN','UNKNOWN')) AND (BINARY NEW.next_decision IN ('NEEDS_DECISION','SCHEDULED','NOT_ARRANGED','CLOSED_UNRESOLVED')) AND (BINARY NEW.disposition IN ('UNASSESSED','NO_FOLLOW_UP','ACTIONS_REQUIRED')) AND (((BINARY NEW.actual_time_kind='UNKNOWN' AND NEW.actual_at_utc IS NULL AND NEW.actual_offset IS NULL) OR (BINARY NEW.actual_time_kind='KNOWN' AND NEW.actual_at_utc IS NOT NULL AND NEW.actual_at_utc<=NEW.updated_at AND NEW.actual_offset IS NOT NULL AND (BINARY NEW.actual_offset='Z' OR (OCTET_LENGTH(NEW.actual_offset)=6 AND BINARY NEW.actual_offset REGEXP '^[+-]((0[0-9]|1[0-7]):[0-5][0-9]|18:00)$'))))) AND (((BINARY NEW.attendance='UNVERIFIED' AND BINARY NEW.attendance_origin='UNKNOWN' AND NEW.current_fact_event_id IS NULL) OR (BINARY NEW.attendance<>'UNVERIFIED' AND BINARY NEW.attendance_origin<>'UNKNOWN' AND NEW.current_fact_event_id IS NOT NULL))) AND ((BINARY NEW.attendance_origin<>'SELECTED_CLINICIAN_RECORDED' OR BINARY NEW.source_kind='CARE_APPOINTMENT')) AND ((BINARY NEW.source_kind='VISIT_RECORD' OR BINARY NEW.attendance<>'UNVERIFIED' OR BINARY NEW.actual_time_kind='UNKNOWN')) AND (((NEW.reminder_attempt_source_revision IS NULL AND NEW.reminder_attempt_id IS NULL AND NEW.reminder_attempted_at_utc IS NULL) OR (NEW.reminder_attempt_source_revision IS NOT NULL AND NEW.reminder_attempt_source_revision<=NEW.source_revision AND NEW.reminder_attempt_id IS NOT NULL AND OCTET_LENGTH(NEW.reminder_attempt_id)=36 AND BINARY NEW.reminder_attempt_id REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND NEW.reminder_attempted_at_utc IS NOT NULL))) AND ((NEW.successor_bound_fingerprint IS NULL OR (OCTET_LENGTH(NEW.successor_bound_fingerprint)=64 AND BINARY NEW.successor_bound_fingerprint REGEXP '^[0-9a-f]{64}$'))) AND (((NEW.successor_kind IS NULL AND NEW.successor_care_item_id IS NULL AND NEW.successor_care_appointment_id IS NULL AND NEW.successor_bound_version IS NULL AND NEW.successor_bound_fingerprint IS NULL AND BINARY NEW.next_decision<>'SCHEDULED') OR (BINARY NEW.successor_kind=BINARY NEW.source_kind AND NEW.successor_bound_version IS NOT NULL AND NEW.successor_bound_fingerprint IS NOT NULL AND BINARY NEW.next_decision='SCHEDULED' AND ((BINARY NEW.source_kind='CARE_ITEM_APPOINTMENT' AND NEW.successor_care_item_id IS NOT NULL AND NEW.successor_care_item_id<>NEW.care_item_id AND NEW.successor_care_appointment_id IS NULL AND EXISTS(SELECT 1 FROM care_item n WHERE n.id=NEW.successor_care_item_id AND n.patient_id=NEW.patient_id AND BINARY n.kind='APPOINTMENT')) OR (BINARY NEW.source_kind='CARE_APPOINTMENT' AND NEW.successor_care_appointment_id IS NOT NULL AND NEW.successor_care_appointment_id<>NEW.care_appointment_id AND NEW.successor_care_item_id IS NULL AND EXISTS(SELECT 1 FROM care_appointment n WHERE n.id=NEW.successor_care_appointment_id AND n.patient_id=NEW.patient_id)))))) AND (((BINARY NEW.source_kind='VISIT_RECORD' AND BINARY NEW.attendance='UNVERIFIED' AND BINARY NEW.next_decision='NEEDS_DECISION' AND NEW.responsible_user_id IS NULL AND NEW.decision_due_at IS NULL AND NEW.successor_kind IS NULL AND NEW.reminder_attempt_id IS NULL) OR (BINARY NEW.source_kind<>'VISIT_RECORD' AND NEW.origin_appointment_state_id IS NULL AND BINARY NEW.disposition='UNASSESSED' AND NEW.disposition_revision=0 AND NEW.decision_event_id IS NULL AND NEW.responsible_user_id IS NOT NULL AND NEW.decision_due_at IS NOT NULL))) AND (((BINARY NEW.disposition='UNASSESSED' AND NEW.disposition_revision=0 AND NEW.decision_event_id IS NULL) OR (BINARY NEW.disposition<>'UNASSESSED' AND NEW.disposition_revision>0 AND NEW.decision_event_id IS NOT NULL AND BINARY NEW.native_status='PUBLISHED'))) AND ((BINARY NEW.source_kind<>'CARE_ITEM_APPOINTMENT' OR (NEW.native_end_wall IS NULL AND NEW.native_doctor_id IS NULL AND NEW.native_schedule_id IS NULL))) AND ((BINARY NEW.source_kind<>'CARE_APPOINTMENT' OR (NEW.native_doctor_id IS NOT NULL AND NEW.native_start_wall IS NOT NULL AND NEW.native_end_wall>NEW.native_start_wall AND NEW.native_notify_wall IS NULL))) AND ((NEW.origin_appointment_state_id IS NULL OR EXISTS(SELECT 1 FROM visit_followup_state o JOIN visit_record v ON v.id=NEW.visit_record_id WHERE o.id=NEW.origin_appointment_state_id AND o.patient_id=NEW.patient_id AND ((BINARY o.source_kind='CARE_ITEM_APPOINTMENT' AND v.appointment_id IS NULL) OR (BINARY o.source_kind='CARE_APPOINTMENT' AND v.appointment_id=o.care_appointment_id))))) AND ((BINARY NEW.source_kind='VISIT_RECORD' OR (BINARY NEW.source_kind='CARE_ITEM_APPOINTMENT' AND BINARY NEW.native_status IN ('OPEN','DONE','NO_SHOW','CANCELLED') AND (BINARY NEW.attendance='UNVERIFIED' OR (BINARY NEW.attendance='ATTENDED' AND BINARY NEW.native_status='DONE') OR (BINARY NEW.attendance='NO_SHOW' AND BINARY NEW.native_status='NO_SHOW'))) OR (BINARY NEW.source_kind='CARE_APPOINTMENT' AND BINARY NEW.native_status IN ('BOOKED','COMPLETED','NO_SHOW','CANCELLED') AND (BINARY NEW.attendance='UNVERIFIED' OR (BINARY NEW.attendance='NO_SHOW' AND BINARY NEW.native_status='NO_SHOW') OR (BINARY NEW.attendance='ATTENDED' AND ((BINARY NEW.attendance_origin='REPORTED' AND BINARY NEW.native_status='BOOKED') OR (BINARY NEW.attendance_origin='SELECTED_CLINICIAN_RECORDED' AND BINARY NEW.native_status='COMPLETED'))))))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_STATE_IDENTITY';
+  END IF;
+  IF COALESCE((NOT ((NEW.reminder_delivery_log_id IS NULL OR (NEW.reminder_delivery_log_id BETWEEN 1 AND 9007199254740991 AND BINARY NEW.source_kind IN ('CARE_ITEM_APPOINTMENT','CARE_APPOINTMENT') AND NEW.reminder_attempt_source_revision IS NOT NULL AND NEW.reminder_attempt_id IS NOT NULL AND NEW.reminder_attempted_at_utc IS NOT NULL AND EXISTS(SELECT 1 FROM notification_delivery_log n WHERE n.id=NEW.reminder_delivery_log_id AND n.patient_id=NEW.patient_id AND BINARY n.event_type='VISIT_FOLLOWUP_REMINDER' AND BINARY n.delivery_status='DELIVERED' AND n.recipient_user_id BETWEEN 1 AND 9007199254740991 AND JSON_VALID(n.detail)=1 AND JSON_TYPE(IF(JSON_VALID(n.detail),n.detail,'{}'))='OBJECT' AND JSON_LENGTH(IF(JSON_VALID(n.detail),n.detail,'{}'))=7 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId')) <=> BINARY NEW.reminder_attempt_id) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId')) <=> BINARY CAST(NEW.id AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind')) <=> BINARY NEW.source_kind) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId')) <=> BINARY CAST(COALESCE(NEW.care_item_id,NEW.care_appointment_id) AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision')) <=> BINARY CAST(NEW.reminder_attempt_source_revision AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId'))='INTEGER' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId')) AS UNSIGNED) BETWEEN 1 AND 9007199254740991 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.reasonCode'))='NULL'))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_REMINDER_LOG_SHAPE';
+  END IF;
+  IF NEW.lock_version=OLD.lock_version THEN
+  IF COALESCE((NOT ((OLD.lock_version>0 AND NEW.reminder_attempt_source_revision=NEW.source_revision AND BINARY NEW.attendance='UNVERIFIED' AND ((BINARY NEW.source_kind='CARE_ITEM_APPOINTMENT' AND BINARY NEW.attendance='UNVERIFIED' AND BINARY NEW.native_status='OPEN' AND EXISTS(SELECT 1 FROM care_item n WHERE n.id=NEW.care_item_id AND n.patient_id=NEW.patient_id AND n.notified_at IS NULL AND BINARY n.kind='APPOINTMENT' AND (BINARY n.status <=> BINARY NEW.native_status) AND (n.event_at <=> NEW.native_start_wall) AND (n.notify_at <=> NEW.native_notify_wall))) OR (BINARY NEW.source_kind='CARE_APPOINTMENT' AND BINARY NEW.attendance='UNVERIFIED' AND BINARY NEW.native_status='BOOKED' AND EXISTS(SELECT 1 FROM care_appointment n WHERE n.id=NEW.care_appointment_id AND n.patient_id=NEW.patient_id AND n.notified_at IS NULL AND (BINARY n.status <=> BINARY NEW.native_status) AND (n.start_at <=> NEW.native_start_wall) AND (n.end_at <=> NEW.native_end_wall) AND (BINARY n.doctor_user_id <=> BINARY NEW.native_doctor_id) AND (BINARY n.schedule_id <=> BINARY NEW.native_schedule_id)))) AND (BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.source_kind <=> BINARY OLD.source_kind) AND (BINARY NEW.care_item_id <=> BINARY OLD.care_item_id) AND (BINARY NEW.care_appointment_id <=> BINARY OLD.care_appointment_id) AND (BINARY NEW.visit_record_id <=> BINARY OLD.visit_record_id) AND (BINARY NEW.origin_appointment_state_id <=> BINARY OLD.origin_appointment_state_id) AND (BINARY NEW.lock_version <=> BINARY OLD.lock_version) AND (BINARY NEW.source_revision <=> BINARY OLD.source_revision) AND (BINARY NEW.source_fingerprint <=> BINARY OLD.source_fingerprint) AND (BINARY NEW.native_status <=> BINARY OLD.native_status) AND (BINARY NEW.native_start_wall <=> BINARY OLD.native_start_wall) AND (BINARY NEW.native_end_wall <=> BINARY OLD.native_end_wall) AND (BINARY NEW.native_notify_wall <=> BINARY OLD.native_notify_wall) AND (BINARY NEW.native_doctor_id <=> BINARY OLD.native_doctor_id) AND (BINARY NEW.native_schedule_id <=> BINARY OLD.native_schedule_id) AND (BINARY NEW.last_native_event_id <=> BINARY OLD.last_native_event_id) AND (BINARY NEW.attendance <=> BINARY OLD.attendance) AND (BINARY NEW.attendance_origin <=> BINARY OLD.attendance_origin) AND (BINARY NEW.actual_time_kind <=> BINARY OLD.actual_time_kind) AND (BINARY NEW.actual_at_utc <=> BINARY OLD.actual_at_utc) AND (BINARY NEW.actual_offset <=> BINARY OLD.actual_offset) AND (BINARY NEW.current_fact_event_id <=> BINARY OLD.current_fact_event_id) AND (BINARY NEW.next_decision <=> BINARY OLD.next_decision) AND (BINARY NEW.responsible_user_id <=> BINARY OLD.responsible_user_id) AND (BINARY NEW.decision_due_at <=> BINARY OLD.decision_due_at) AND (BINARY NEW.successor_kind <=> BINARY OLD.successor_kind) AND (BINARY NEW.successor_care_item_id <=> BINARY OLD.successor_care_item_id) AND (BINARY NEW.successor_care_appointment_id <=> BINARY OLD.successor_care_appointment_id) AND (BINARY NEW.successor_bound_version <=> BINARY OLD.successor_bound_version) AND (BINARY NEW.successor_bound_fingerprint <=> BINARY OLD.successor_bound_fingerprint) AND (BINARY NEW.disposition <=> BINARY OLD.disposition) AND (BINARY NEW.disposition_revision <=> BINARY OLD.disposition_revision) AND (BINARY NEW.decision_event_id <=> BINARY OLD.decision_event_id) AND (BINARY NEW.created_by <=> BINARY OLD.created_by) AND (BINARY NEW.created_at <=> BINARY OLD.created_at) AND (BINARY NEW.updated_at <=> BINARY OLD.updated_at) AND (OLD.reminder_attempt_source_revision IS NULL OR OLD.reminder_attempt_source_revision<OLD.source_revision) AND NEW.reminder_attempt_id IS NOT NULL AND NEW.reminder_attempted_at_utc IS NOT NULL AND NEW.reminder_delivery_log_id IS NULL) OR (OLD.lock_version>0 AND NEW.reminder_attempt_source_revision=NEW.source_revision AND BINARY NEW.attendance='UNVERIFIED' AND ((BINARY NEW.source_kind='CARE_ITEM_APPOINTMENT' AND BINARY NEW.attendance='UNVERIFIED' AND BINARY NEW.native_status='OPEN' AND EXISTS(SELECT 1 FROM care_item n WHERE n.id=NEW.care_item_id AND n.patient_id=NEW.patient_id AND n.notified_at IS NULL AND BINARY n.kind='APPOINTMENT' AND (BINARY n.status <=> BINARY NEW.native_status) AND (n.event_at <=> NEW.native_start_wall) AND (n.notify_at <=> NEW.native_notify_wall))) OR (BINARY NEW.source_kind='CARE_APPOINTMENT' AND BINARY NEW.attendance='UNVERIFIED' AND BINARY NEW.native_status='BOOKED' AND EXISTS(SELECT 1 FROM care_appointment n WHERE n.id=NEW.care_appointment_id AND n.patient_id=NEW.patient_id AND n.notified_at IS NULL AND (BINARY n.status <=> BINARY NEW.native_status) AND (n.start_at <=> NEW.native_start_wall) AND (n.end_at <=> NEW.native_end_wall) AND (BINARY n.doctor_user_id <=> BINARY NEW.native_doctor_id) AND (BINARY n.schedule_id <=> BINARY NEW.native_schedule_id)))) AND (BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.source_kind <=> BINARY OLD.source_kind) AND (BINARY NEW.care_item_id <=> BINARY OLD.care_item_id) AND (BINARY NEW.care_appointment_id <=> BINARY OLD.care_appointment_id) AND (BINARY NEW.visit_record_id <=> BINARY OLD.visit_record_id) AND (BINARY NEW.origin_appointment_state_id <=> BINARY OLD.origin_appointment_state_id) AND (BINARY NEW.lock_version <=> BINARY OLD.lock_version) AND (BINARY NEW.source_revision <=> BINARY OLD.source_revision) AND (BINARY NEW.source_fingerprint <=> BINARY OLD.source_fingerprint) AND (BINARY NEW.native_status <=> BINARY OLD.native_status) AND (BINARY NEW.native_start_wall <=> BINARY OLD.native_start_wall) AND (BINARY NEW.native_end_wall <=> BINARY OLD.native_end_wall) AND (BINARY NEW.native_notify_wall <=> BINARY OLD.native_notify_wall) AND (BINARY NEW.native_doctor_id <=> BINARY OLD.native_doctor_id) AND (BINARY NEW.native_schedule_id <=> BINARY OLD.native_schedule_id) AND (BINARY NEW.last_native_event_id <=> BINARY OLD.last_native_event_id) AND (BINARY NEW.attendance <=> BINARY OLD.attendance) AND (BINARY NEW.attendance_origin <=> BINARY OLD.attendance_origin) AND (BINARY NEW.actual_time_kind <=> BINARY OLD.actual_time_kind) AND (BINARY NEW.actual_at_utc <=> BINARY OLD.actual_at_utc) AND (BINARY NEW.actual_offset <=> BINARY OLD.actual_offset) AND (BINARY NEW.current_fact_event_id <=> BINARY OLD.current_fact_event_id) AND (BINARY NEW.next_decision <=> BINARY OLD.next_decision) AND (BINARY NEW.responsible_user_id <=> BINARY OLD.responsible_user_id) AND (BINARY NEW.decision_due_at <=> BINARY OLD.decision_due_at) AND (BINARY NEW.successor_kind <=> BINARY OLD.successor_kind) AND (BINARY NEW.successor_care_item_id <=> BINARY OLD.successor_care_item_id) AND (BINARY NEW.successor_care_appointment_id <=> BINARY OLD.successor_care_appointment_id) AND (BINARY NEW.successor_bound_version <=> BINARY OLD.successor_bound_version) AND (BINARY NEW.successor_bound_fingerprint <=> BINARY OLD.successor_bound_fingerprint) AND (BINARY NEW.reminder_attempt_source_revision <=> BINARY OLD.reminder_attempt_source_revision) AND (BINARY NEW.reminder_attempt_id <=> BINARY OLD.reminder_attempt_id) AND (BINARY NEW.reminder_attempted_at_utc <=> BINARY OLD.reminder_attempted_at_utc) AND (BINARY NEW.disposition <=> BINARY OLD.disposition) AND (BINARY NEW.disposition_revision <=> BINARY OLD.disposition_revision) AND (BINARY NEW.decision_event_id <=> BINARY OLD.decision_event_id) AND (BINARY NEW.created_by <=> BINARY OLD.created_by) AND (BINARY NEW.created_at <=> BINARY OLD.created_at) AND (BINARY NEW.updated_at <=> BINARY OLD.updated_at) AND OLD.reminder_delivery_log_id IS NULL AND NEW.reminder_delivery_log_id IS NOT NULL AND EXISTS(SELECT 1 FROM notification_delivery_log n WHERE n.id=NEW.reminder_delivery_log_id AND n.patient_id=NEW.patient_id AND BINARY n.event_type='VISIT_FOLLOWUP_REMINDER' AND BINARY n.delivery_status='DELIVERED' AND n.recipient_user_id BETWEEN 1 AND 9007199254740991 AND JSON_VALID(n.detail)=1 AND JSON_TYPE(IF(JSON_VALID(n.detail),n.detail,'{}'))='OBJECT' AND JSON_LENGTH(IF(JSON_VALID(n.detail),n.detail,'{}'))=7 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId')) <=> BINARY NEW.reminder_attempt_id) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId')) <=> BINARY CAST(NEW.id AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind')) <=> BINARY NEW.source_kind) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId')) <=> BINARY CAST(COALESCE(NEW.care_item_id,NEW.care_appointment_id) AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision')) <=> BINARY CAST(NEW.reminder_attempt_source_revision AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId'))='INTEGER' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId')) AS UNSIGNED) BETWEEN 1 AND 9007199254740991 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.reasonCode'))='NULL')))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_REMINDER_ONCE';
+  END IF;
+  ELSE
+  IF COALESCE((NOT ((BINARY NEW.reminder_delivery_log_id <=> BINARY OLD.reminder_delivery_log_id))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_REMINDER_HUMAN_IMMUTABLE';
+  END IF;
+  IF COALESCE((NEW.lock_version<>OLD.lock_version+1 OR NEW.source_revision<OLD.source_revision OR NEW.source_revision>OLD.source_revision+1 OR NOT ((BINARY NEW.reminder_attempt_source_revision <=> BINARY OLD.reminder_attempt_source_revision) AND (BINARY NEW.reminder_attempt_id <=> BINARY OLD.reminder_attempt_id) AND (BINARY NEW.reminder_attempted_at_utc <=> BINARY OLD.reminder_attempted_at_utc))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_STATE_ADVANCE';
+  END IF;
+  IF COALESCE((NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.state_id=OLD.id AND e.patient_id=OLD.patient_id AND e.state_version=NEW.lock_version AND e.recorded_at=NEW.updated_at AND (BINARY e.before_source_fingerprint <=> BINARY OLD.source_fingerprint) AND (BINARY e.after_source_fingerprint <=> BINARY NEW.source_fingerprint) AND (BINARY e.occurred_at_utc <=> BINARY NEW.actual_at_utc) AND (BINARY e.native_status <=> BINARY NEW.native_status) AND (BINARY e.native_start_wall <=> BINARY NEW.native_start_wall) AND (BINARY e.native_end_wall <=> BINARY NEW.native_end_wall) AND (BINARY e.native_notify_wall <=> BINARY NEW.native_notify_wall) AND (BINARY e.native_doctor_id <=> BINARY NEW.native_doctor_id) AND (BINARY e.native_schedule_id <=> BINARY NEW.native_schedule_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.source_revision'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.source_revision'))) <=> BINARY CAST(NEW.source_revision AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.source_fingerprint'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.source_fingerprint'))) <=> BINARY NEW.source_fingerprint) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.native_status'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.native_status'))) <=> BINARY NEW.native_status) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.native_start_wall'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.native_start_wall'))) <=> BINARY DATE_FORMAT(NEW.native_start_wall,'%Y-%m-%dT%H:%i:%s.%f')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.native_end_wall'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.native_end_wall'))) <=> BINARY DATE_FORMAT(NEW.native_end_wall,'%Y-%m-%dT%H:%i:%s.%f')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.native_notify_wall'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.native_notify_wall'))) <=> BINARY DATE_FORMAT(NEW.native_notify_wall,'%Y-%m-%dT%H:%i:%s.%f')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.native_doctor_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.native_doctor_id'))) <=> BINARY CAST(NEW.native_doctor_id AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.native_schedule_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.native_schedule_id'))) <=> BINARY CAST(NEW.native_schedule_id AS CHAR)) AND ((BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.last_native_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.last_native_event_id')))='SELF' AND NEW.last_native_event_id=e.id) OR (NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.last_native_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.last_native_event_id'))) <=> BINARY 'SELF') AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.last_native_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.last_native_event_id'))) <=> BINARY CAST(NEW.last_native_event_id AS CHAR)))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.attendance'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.attendance'))) <=> BINARY NEW.attendance) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.attendance_origin'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.attendance_origin'))) <=> BINARY NEW.attendance_origin) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.actual_time_kind'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.actual_time_kind'))) <=> BINARY NEW.actual_time_kind) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.actual_at_utc'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.actual_at_utc'))) <=> BINARY DATE_FORMAT(NEW.actual_at_utc,'%Y-%m-%dT%H:%i:%s.%fZ')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.actual_offset'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.actual_offset'))) <=> BINARY NEW.actual_offset) AND ((BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.current_fact_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.current_fact_event_id')))='SELF' AND NEW.current_fact_event_id=e.id) OR (NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.current_fact_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.current_fact_event_id'))) <=> BINARY 'SELF') AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.current_fact_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.current_fact_event_id'))) <=> BINARY CAST(NEW.current_fact_event_id AS CHAR)))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.next_decision'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.next_decision'))) <=> BINARY NEW.next_decision) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.responsible_user_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.responsible_user_id'))) <=> BINARY CAST(NEW.responsible_user_id AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.decision_due_at'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.decision_due_at'))) <=> BINARY DATE_FORMAT(NEW.decision_due_at,'%Y-%m-%dT%H:%i:%s.%fZ')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_kind'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_kind'))) <=> BINARY NEW.successor_kind) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_item_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_item_id'))) <=> BINARY CAST(NEW.successor_care_item_id AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_appointment_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_care_appointment_id'))) <=> BINARY CAST(NEW.successor_care_appointment_id AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_bound_version'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_bound_version'))) <=> BINARY CAST(NEW.successor_bound_version AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.successor_bound_fingerprint'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.successor_bound_fingerprint'))) <=> BINARY NEW.successor_bound_fingerprint) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.reminder_attempt_source_revision'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.reminder_attempt_source_revision'))) <=> BINARY CAST(NEW.reminder_attempt_source_revision AS CHAR)) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.reminder_attempt_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.reminder_attempt_id'))) <=> BINARY NEW.reminder_attempt_id) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.reminder_attempted_at_utc'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.reminder_attempted_at_utc'))) <=> BINARY DATE_FORMAT(NEW.reminder_attempted_at_utc,'%Y-%m-%dT%H:%i:%s.%fZ')) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.disposition'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.disposition'))) <=> BINARY NEW.disposition) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.disposition_revision'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.disposition_revision'))) <=> BINARY CAST(NEW.disposition_revision AS CHAR)) AND ((BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.decision_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.decision_event_id')))='SELF' AND NEW.decision_event_id=e.id) OR (NOT (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.decision_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.decision_event_id'))) <=> BINARY 'SELF') AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.decision_event_id'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.decision_event_id'))) <=> BINARY CAST(NEW.decision_event_id AS CHAR)))) AND (BINARY IF(JSON_TYPE(JSON_EXTRACT(e.payload_json,'$.after.updated_at'))='NULL',NULL,JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.after.updated_at'))) <=> BINARY DATE_FORMAT(NEW.updated_at,'%Y-%m-%dT%H:%i:%s.%fZ')))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_STATE_EVENT';
+  END IF;
+  IF COALESCE((OLD.lock_version=0 AND NEW.source_revision<>1),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_SOURCE_INITIAL';
+  END IF;
+  IF COALESCE((NOT ((BINARY NEW.native_status <=> BINARY OLD.native_status) AND (BINARY NEW.native_start_wall <=> BINARY OLD.native_start_wall) AND (BINARY NEW.native_end_wall <=> BINARY OLD.native_end_wall) AND (BINARY NEW.native_notify_wall <=> BINARY OLD.native_notify_wall) AND (BINARY NEW.native_doctor_id <=> BINARY OLD.native_doctor_id) AND (BINARY NEW.native_schedule_id <=> BINARY OLD.native_schedule_id) AND (BINARY NEW.source_fingerprint <=> BINARY OLD.source_fingerprint)) AND NEW.source_revision<>OLD.source_revision+1),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_SOURCE_REVISION';
+  END IF;
+  IF COALESCE((NOT ((BINARY NEW.native_status <=> BINARY OLD.native_status) AND (BINARY NEW.native_start_wall <=> BINARY OLD.native_start_wall) AND (BINARY NEW.native_end_wall <=> BINARY OLD.native_end_wall) AND (BINARY NEW.native_notify_wall <=> BINARY OLD.native_notify_wall) AND (BINARY NEW.native_doctor_id <=> BINARY OLD.native_doctor_id) AND (BINARY NEW.native_schedule_id <=> BINARY OLD.native_schedule_id) AND (BINARY NEW.source_fingerprint <=> BINARY OLD.source_fingerprint)) AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.state_id=NEW.id AND e.state_version=NEW.lock_version AND ((e.id=NEW.last_native_event_id AND BINARY e.event_type IN ('RESCHEDULE','CANCEL','RECORD_ATTENDANCE','COMPLETE_SELECTED_APPOINTMENT','CORRECT_ATTENDANCE','CREATE_VISIT','PUBLISH_VISIT','TRACK_APPOINTMENT','CREATE_NEXT','REPLACE_NEXT')) OR (BINARY NEW.source_kind='VISIT_RECORD' AND BINARY e.event_type IN ('SET_DISPOSITION','REVISE_DISPOSITION') AND (BINARY NEW.native_status <=> BINARY OLD.native_status) AND (BINARY NEW.native_start_wall <=> BINARY OLD.native_start_wall) AND (BINARY NEW.native_end_wall <=> BINARY OLD.native_end_wall) AND (BINARY NEW.native_notify_wall <=> BINARY OLD.native_notify_wall) AND (BINARY NEW.native_doctor_id <=> BINARY OLD.native_doctor_id) AND (BINARY NEW.native_schedule_id <=> BINARY OLD.native_schedule_id) AND (BINARY NEW.last_native_event_id <=> BINARY OLD.last_native_event_id) AND NEW.source_revision=OLD.source_revision+1)))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_NATIVE_EVENT';
+  END IF;
+  IF COALESCE((NOT ((BINARY NEW.disposition <=> BINARY OLD.disposition) AND (BINARY NEW.disposition_revision <=> BINARY OLD.disposition_revision) AND (BINARY NEW.decision_event_id <=> BINARY OLD.decision_event_id)) AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=NEW.decision_event_id AND e.state_id=NEW.id AND e.state_version=NEW.lock_version AND BINARY e.event_type IN ('SET_DISPOSITION','REVISE_DISPOSITION'))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_DECISION_EVENT';
+  END IF;
+  IF COALESCE((NEW.disposition_revision<>OLD.disposition_revision AND NEW.disposition_revision<>OLD.disposition_revision+1),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_DECISION_REVISION';
+  END IF;
+  IF COALESCE((BINARY OLD.attendance_origin='SELECTED_CLINICIAN_RECORDED' AND NOT ((BINARY NEW.attendance <=> BINARY OLD.attendance) AND (BINARY NEW.attendance_origin <=> BINARY OLD.attendance_origin) AND (BINARY NEW.actual_time_kind <=> BINARY OLD.actual_time_kind) AND (BINARY NEW.actual_at_utc <=> BINARY OLD.actual_at_utc) AND (BINARY NEW.actual_offset <=> BINARY OLD.actual_offset) AND (BINARY NEW.current_fact_event_id <=> BINARY OLD.current_fact_event_id)) AND NOT EXISTS(SELECT 1 FROM visit_followup_event prior JOIN visit_followup_event e ON e.state_id=prior.state_id AND e.state_version=NEW.lock_version WHERE prior.id=OLD.current_fact_event_id AND prior.actor_id=e.actor_id AND e.actor_id=NEW.native_doctor_id AND BINARY e.event_type='CORRECT_ATTENDANCE')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_PROFESSIONAL_FACT';
+  END IF;
+  IF COALESCE((BINARY NEW.attendance_origin='SELECTED_CLINICIAN_RECORDED' AND NOT ((BINARY NEW.attendance <=> BINARY OLD.attendance) AND (BINARY NEW.attendance_origin <=> BINARY OLD.attendance_origin) AND (BINARY NEW.actual_time_kind <=> BINARY OLD.actual_time_kind) AND (BINARY NEW.actual_at_utc <=> BINARY OLD.actual_at_utc) AND (BINARY NEW.actual_offset <=> BINARY OLD.actual_offset) AND (BINARY NEW.current_fact_event_id <=> BINARY OLD.current_fact_event_id)) AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=NEW.current_fact_event_id AND e.state_id=NEW.id AND e.state_version=NEW.lock_version AND e.actor_id=NEW.native_doctor_id AND BINARY e.event_type IN ('COMPLETE_SELECTED_APPOINTMENT','CORRECT_ATTENDANCE'))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_SELECTED_FACT';
+  END IF;
+  IF COALESCE((NEW.current_fact_event_id IS NOT NULL AND NOT ((BINARY NEW.current_fact_event_id <=> BINARY OLD.current_fact_event_id)) AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=NEW.current_fact_event_id AND e.state_id=NEW.id AND e.state_version=NEW.lock_version AND BINARY e.event_type IN ('RECORD_ATTENDANCE','COMPLETE_SELECTED_APPOINTMENT','CORRECT_ATTENDANCE'))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_FACT_EVENT';
+  END IF;
+  IF COALESCE((BINARY NEW.source_kind<>'VISIT_RECORD' AND NOT ((BINARY NEW.attendance <=> BINARY OLD.attendance) AND (BINARY NEW.attendance_origin <=> BINARY OLD.attendance_origin) AND (BINARY NEW.actual_time_kind <=> BINARY OLD.actual_time_kind) AND (BINARY NEW.actual_at_utc <=> BINARY OLD.actual_at_utc) AND (BINARY NEW.actual_offset <=> BINARY OLD.actual_offset) AND (BINARY NEW.current_fact_event_id <=> BINARY OLD.current_fact_event_id)) AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.state_id=NEW.id AND e.state_version=NEW.lock_version AND BINARY e.event_type IN ('RECORD_ATTENDANCE','COMPLETE_SELECTED_APPOINTMENT','CORRECT_ATTENDANCE') AND ((BINARY NEW.attendance='UNVERIFIED' AND NEW.current_fact_event_id IS NULL AND BINARY e.event_type='CORRECT_ATTENDANCE') OR NEW.current_fact_event_id=e.id))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_FACT_OPERATION';
+  END IF;
+  IF COALESCE((BINARY OLD.attendance_origin<>'SELECTED_CLINICIAN_RECORDED' AND BINARY NEW.attendance_origin='SELECTED_CLINICIAN_RECORDED' AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=NEW.current_fact_event_id AND e.state_version=NEW.lock_version AND BINARY e.event_type='COMPLETE_SELECTED_APPOINTMENT' AND BINARY OLD.native_status='BOOKED' AND BINARY NEW.native_status='COMPLETED' AND BINARY NEW.attendance='ATTENDED')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_FACT_UPGRADE';
+  END IF;
+  IF COALESCE((EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.state_id=NEW.id AND e.state_version=NEW.lock_version AND ((BINARY e.event_type IN ('RESCHEDULE','CANCEL','RECORD_ATTENDANCE') AND (BINARY OLD.attendance<>'UNVERIFIED' OR BINARY OLD.native_status NOT IN ('OPEN','BOOKED'))) OR (BINARY e.event_type='CORRECT_ATTENDANCE' AND OLD.current_fact_event_id IS NULL) OR (BINARY e.event_type='COMPLETE_SELECTED_APPOINTMENT' AND (BINARY OLD.source_kind<>'CARE_APPOINTMENT' OR BINARY OLD.native_status<>'BOOKED' OR BINARY OLD.attendance='NO_SHOW'))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_FACT_PRESTATE';
+  END IF;
+  IF COALESCE((OLD.lock_version>0 AND NEW.source_revision<>OLD.source_revision AND ((BINARY NEW.native_status <=> BINARY OLD.native_status) AND (BINARY NEW.native_start_wall <=> BINARY OLD.native_start_wall) AND (BINARY NEW.native_end_wall <=> BINARY OLD.native_end_wall) AND (BINARY NEW.native_notify_wall <=> BINARY OLD.native_notify_wall) AND (BINARY NEW.native_doctor_id <=> BINARY OLD.native_doctor_id) AND (BINARY NEW.native_schedule_id <=> BINARY OLD.native_schedule_id) AND (BINARY NEW.source_fingerprint <=> BINARY OLD.source_fingerprint))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_SOURCE_NOOP';
+  END IF;
+  IF COALESCE((NEW.last_native_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=NEW.last_native_event_id AND e.state_id=NEW.id AND e.patient_id=NEW.patient_id AND e.state_version<=NEW.lock_version)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_NATIVE_EVENT_SCOPE';
+  END IF;
+  IF COALESCE((NEW.current_fact_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=NEW.current_fact_event_id AND e.state_id=NEW.id AND e.patient_id=NEW.patient_id AND e.state_version<=NEW.lock_version)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_FACT_EVENT_SCOPE';
+  END IF;
+  IF COALESCE((NEW.decision_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=NEW.decision_event_id AND e.state_id=NEW.id AND e.patient_id=NEW.patient_id AND e.state_version<=NEW.lock_version)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_DECISION_EVENT_SCOPE';
+  END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER `hh_nci_bu` BEFORE UPDATE ON `care_item` FOR EACH ROW
+BEGIN
+  IF ((NEW.medication_execution_id IS NOT NULL AND (NEW.medication_execution_id <= 0 OR NEW.medication_execution_id > 9007199254740991)))
+    OR ((NEW.medication_reconciliation_id IS NOT NULL AND (NEW.medication_reconciliation_id <= 0 OR NEW.medication_reconciliation_id > 9007199254740991)))
+    OR ((NEW.family_assistance_id IS NOT NULL AND (NEW.family_assistance_id <= 0 OR NEW.family_assistance_id > 9007199254740991)))
+    OR (NEW.medication_workflow_version NOT IN (0,1))
+    OR (NEW.family_workflow_version NOT IN (0,1))
+    OR (NEW.medication_workflow_version<OLD.medication_workflow_version)
+    OR (NEW.family_workflow_version<OLD.family_workflow_version)
+    OR ((NEW.medication_workflow_version=1 AND (NEW.kind<>'ORDER' OR NEW.medication_execution_id IS NULL OR NEW.medication_reconciliation_id IS NULL)))
+    OR ((NEW.family_workflow_version=1 AND NEW.family_assistance_id IS NULL))
+    OR ((NEW.medication_workflow_version=1 AND NEW.family_workflow_version=1))
+    OR ((NEW.medication_execution_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM medication_execution r WHERE r.id=NEW.medication_execution_id AND r.patient_id=NEW.patient_id)))
+    OR ((NEW.medication_reconciliation_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM medication_reconciliation r WHERE r.id=NEW.medication_reconciliation_id AND r.execution_id=NEW.medication_execution_id AND r.patient_id=NEW.patient_id)))
+    OR ((NEW.family_assistance_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM family_assistance r WHERE r.id=NEW.family_assistance_id AND r.patient_id=NEW.patient_id AND r.care_item_id=NEW.id AND r.care_appointment_id IS NULL)))
+    OR ((OLD.family_workflow_version=1 AND NOT (((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.user_id <=> BINARY OLD.user_id) AND (BINARY NEW.kind <=> BINARY OLD.kind) AND (BINARY NEW.title <=> BINARY OLD.title) AND (BINARY NEW.status <=> BINARY OLD.status) AND (BINARY NEW.assigned_user_id <=> BINARY OLD.assigned_user_id) AND (BINARY NEW.actor_id <=> BINARY OLD.actor_id) AND (BINARY NEW.actor_name <=> BINARY OLD.actor_name) AND (BINARY NEW.event_at <=> BINARY OLD.event_at) AND (BINARY NEW.notify_at <=> BINARY OLD.notify_at) AND (BINARY NEW.notified_at <=> BINARY OLD.notified_at) AND (BINARY NEW.escalated_at <=> BINARY OLD.escalated_at) AND (BINARY NEW.data_json <=> BINARY OLD.data_json) AND (BINARY NEW.created_at <=> BINARY OLD.created_at)) OR (BINARY OLD.kind='APPOINTMENT' AND BINARY NEW.kind='APPOINTMENT' AND (BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.user_id <=> BINARY OLD.user_id) AND (BINARY NEW.kind <=> BINARY OLD.kind) AND (BINARY NEW.title <=> BINARY OLD.title) AND (BINARY NEW.assigned_user_id <=> BINARY OLD.assigned_user_id) AND (BINARY NEW.actor_id <=> BINARY OLD.actor_id) AND (BINARY NEW.actor_name <=> BINARY OLD.actor_name) AND (BINARY NEW.data_json <=> BINARY OLD.data_json) AND (BINARY NEW.created_at <=> BINARY OLD.created_at) AND (BINARY NEW.medication_workflow_version <=> BINARY OLD.medication_workflow_version) AND (BINARY NEW.medication_execution_id <=> BINARY OLD.medication_execution_id) AND (BINARY NEW.medication_reconciliation_id <=> BINARY OLD.medication_reconciliation_id) AND (BINARY NEW.family_workflow_version <=> BINARY OLD.family_workflow_version) AND EXISTS(SELECT 1 FROM visit_followup_state s WHERE s.care_item_id=OLD.id AND s.patient_id=OLD.patient_id AND BINARY s.source_kind='CARE_ITEM_APPOINTMENT' AND s.lock_version>0 AND (BINARY NEW.status <=> BINARY s.native_status) AND (NEW.event_at <=> s.native_start_wall) AND (NEW.notify_at <=> s.native_notify_wall) AND (((BINARY NEW.status <=> BINARY OLD.status) AND (BINARY NEW.event_at <=> BINARY OLD.event_at) AND (BINARY NEW.notify_at <=> BINARY OLD.notify_at) AND (BINARY NEW.notified_at <=> BINARY OLD.notified_at) AND (BINARY NEW.escalated_at <=> BINARY OLD.escalated_at)) OR (EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=s.last_native_event_id AND e.state_id=s.id AND e.patient_id=s.patient_id AND e.state_version=s.lock_version AND BINARY e.event_type IN ('RESCHEDULE','CANCEL','RECORD_ATTENDANCE','CORRECT_ATTENDANCE') AND (BINARY e.native_status <=> BINARY s.native_status) AND (BINARY e.native_start_wall <=> BINARY s.native_start_wall) AND (BINARY e.native_end_wall <=> BINARY s.native_end_wall) AND (BINARY e.native_notify_wall <=> BINARY s.native_notify_wall) AND (BINARY e.native_doctor_id <=> BINARY s.native_doctor_id) AND (BINARY e.native_schedule_id <=> BINARY s.native_schedule_id)) AND ((BINARY NEW.notified_at <=> BINARY OLD.notified_at) AND (BINARY NEW.escalated_at <=> BINARY OLD.escalated_at) OR (NEW.notified_at IS NULL AND NEW.escalated_at IS NULL))) OR (((BINARY NEW.status <=> BINARY OLD.status) AND (BINARY NEW.event_at <=> BINARY OLD.event_at) AND (BINARY NEW.notify_at <=> BINARY OLD.notify_at) AND NEW.notified_at IS NOT NULL AND (OLD.notified_at IS NULL OR NEW.notified_at=OLD.notified_at) AND NEW.escalated_at <=> OLD.escalated_at AND s.reminder_attempt_source_revision=s.source_revision AND s.reminder_attempt_id IS NOT NULL AND s.reminder_attempted_at_utc IS NOT NULL AND BINARY s.attendance='UNVERIFIED' AND BINARY s.native_status IN ('OPEN','BOOKED') AND EXISTS(SELECT 1 FROM notification_delivery_log n WHERE n.id=s.reminder_delivery_log_id AND n.patient_id=s.patient_id AND BINARY n.event_type='VISIT_FOLLOWUP_REMINDER' AND BINARY n.delivery_status='DELIVERED' AND n.recipient_user_id BETWEEN 1 AND 9007199254740991 AND JSON_VALID(n.detail)=1 AND JSON_TYPE(IF(JSON_VALID(n.detail),n.detail,'{}'))='OBJECT' AND JSON_LENGTH(IF(JSON_VALID(n.detail),n.detail,'{}'))=7 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId')) <=> BINARY s.reminder_attempt_id) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId')) <=> BINARY CAST(s.id AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind')) <=> BINARY s.source_kind) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId')) <=> BINARY CAST(COALESCE(s.care_item_id,s.care_appointment_id) AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision')) <=> BINARY CAST(s.reminder_attempt_source_revision AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId'))='INTEGER' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId')) AS UNSIGNED) BETWEEN 1 AND 9007199254740991 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.reasonCode'))='NULL')))))))))
+    OR ((OLD.medication_workflow_version=1 AND NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.user_id <=> BINARY OLD.user_id) AND (BINARY NEW.kind <=> BINARY OLD.kind) AND (BINARY NEW.title <=> BINARY OLD.title) AND (BINARY NEW.assigned_user_id <=> BINARY OLD.assigned_user_id) AND (BINARY NEW.actor_id <=> BINARY OLD.actor_id) AND (BINARY NEW.actor_name <=> BINARY OLD.actor_name) AND (BINARY NEW.event_at <=> BINARY OLD.event_at) AND (BINARY NEW.notify_at <=> BINARY OLD.notify_at) AND (BINARY NEW.notified_at <=> BINARY OLD.notified_at) AND (BINARY NEW.escalated_at <=> BINARY OLD.escalated_at) AND (BINARY NEW.data_json <=> BINARY OLD.data_json) AND (BINARY NEW.created_at <=> BINARY OLD.created_at) AND (BINARY NEW.medication_execution_id <=> BINARY OLD.medication_execution_id) AND (BINARY NEW.medication_reconciliation_id <=> BINARY OLD.medication_reconciliation_id))))
+    OR ((OLD.family_workflow_version=1 AND NOT (NEW.family_assistance_id <=> OLD.family_assistance_id) AND NOT EXISTS (SELECT 1 FROM family_assistance f WHERE f.id=NEW.family_assistance_id AND f.previous_assistance_id=OLD.family_assistance_id))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='HH invalid care_item';
+  END IF;
+  IF COALESCE((EXISTS(SELECT 1 FROM visit_followup_state s WHERE s.care_item_id=OLD.id) AND (NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.user_id <=> BINARY OLD.user_id) AND (BINARY NEW.kind <=> BINARY OLD.kind) AND (BINARY NEW.title <=> BINARY OLD.title) AND (BINARY NEW.assigned_user_id <=> BINARY OLD.assigned_user_id) AND (BINARY NEW.actor_id <=> BINARY OLD.actor_id) AND (BINARY NEW.actor_name <=> BINARY OLD.actor_name) AND (BINARY NEW.data_json <=> BINARY OLD.data_json) AND (BINARY NEW.created_at <=> BINARY OLD.created_at) AND (BINARY NEW.medication_workflow_version <=> BINARY OLD.medication_workflow_version) AND (BINARY NEW.medication_execution_id <=> BINARY OLD.medication_execution_id) AND (BINARY NEW.medication_reconciliation_id <=> BINARY OLD.medication_reconciliation_id)) OR NOT (EXISTS(SELECT 1 FROM visit_followup_state s WHERE s.care_item_id=OLD.id AND s.patient_id=OLD.patient_id AND BINARY s.source_kind='CARE_ITEM_APPOINTMENT' AND s.lock_version>0 AND (BINARY NEW.status <=> BINARY s.native_status) AND (NEW.event_at <=> s.native_start_wall) AND (NEW.notify_at <=> s.native_notify_wall) AND (((BINARY NEW.status <=> BINARY OLD.status) AND (BINARY NEW.event_at <=> BINARY OLD.event_at) AND (BINARY NEW.notify_at <=> BINARY OLD.notify_at) AND (BINARY NEW.notified_at <=> BINARY OLD.notified_at) AND (BINARY NEW.escalated_at <=> BINARY OLD.escalated_at)) OR (EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=s.last_native_event_id AND e.state_id=s.id AND e.patient_id=s.patient_id AND e.state_version=s.lock_version AND BINARY e.event_type IN ('RESCHEDULE','CANCEL','RECORD_ATTENDANCE','CORRECT_ATTENDANCE') AND (BINARY e.native_status <=> BINARY s.native_status) AND (BINARY e.native_start_wall <=> BINARY s.native_start_wall) AND (BINARY e.native_end_wall <=> BINARY s.native_end_wall) AND (BINARY e.native_notify_wall <=> BINARY s.native_notify_wall) AND (BINARY e.native_doctor_id <=> BINARY s.native_doctor_id) AND (BINARY e.native_schedule_id <=> BINARY s.native_schedule_id)) AND ((BINARY NEW.notified_at <=> BINARY OLD.notified_at) AND (BINARY NEW.escalated_at <=> BINARY OLD.escalated_at) OR (NEW.notified_at IS NULL AND NEW.escalated_at IS NULL))) OR (((BINARY NEW.status <=> BINARY OLD.status) AND (BINARY NEW.event_at <=> BINARY OLD.event_at) AND (BINARY NEW.notify_at <=> BINARY OLD.notify_at) AND NEW.notified_at IS NOT NULL AND (OLD.notified_at IS NULL OR NEW.notified_at=OLD.notified_at) AND NEW.escalated_at <=> OLD.escalated_at AND s.reminder_attempt_source_revision=s.source_revision AND s.reminder_attempt_id IS NOT NULL AND s.reminder_attempted_at_utc IS NOT NULL AND BINARY s.attendance='UNVERIFIED' AND BINARY s.native_status IN ('OPEN','BOOKED') AND EXISTS(SELECT 1 FROM notification_delivery_log n WHERE n.id=s.reminder_delivery_log_id AND n.patient_id=s.patient_id AND BINARY n.event_type='VISIT_FOLLOWUP_REMINDER' AND BINARY n.delivery_status='DELIVERED' AND n.recipient_user_id BETWEEN 1 AND 9007199254740991 AND JSON_VALID(n.detail)=1 AND JSON_TYPE(IF(JSON_VALID(n.detail),n.detail,'{}'))='OBJECT' AND JSON_LENGTH(IF(JSON_VALID(n.detail),n.detail,'{}'))=7 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId')) <=> BINARY s.reminder_attempt_id) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId')) <=> BINARY CAST(s.id AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind')) <=> BINARY s.source_kind) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId')) <=> BINARY CAST(COALESCE(s.care_item_id,s.care_appointment_id) AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision')) <=> BINARY CAST(s.reminder_attempt_source_revision AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId'))='INTEGER' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId')) AS UNSIGNED) BETWEEN 1 AND 9007199254740991 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.reasonCode'))='NULL')))))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_NATIVE_TARGET';
+  END IF;
+END$$
+
+CREATE TRIGGER `hh_nca_bu` BEFORE UPDATE ON `care_appointment` FOR EACH ROW
+BEGIN
+  IF ((NEW.family_assistance_id IS NOT NULL AND (NEW.family_assistance_id <= 0 OR NEW.family_assistance_id > 9007199254740991)))
+    OR (NEW.family_workflow_version NOT IN (0,1))
+    OR (NEW.family_workflow_version<OLD.family_workflow_version)
+    OR ((NEW.family_workflow_version=1 AND NEW.family_assistance_id IS NULL))
+    OR ((NEW.family_assistance_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM family_assistance r WHERE r.id=NEW.family_assistance_id AND r.patient_id=NEW.patient_id AND r.care_appointment_id=NEW.id AND r.care_item_id IS NULL)))
+    OR ((OLD.family_workflow_version=1 AND NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.created_by <=> BINARY OLD.created_by) AND (BINARY NEW.created_at <=> BINARY OLD.created_at))))
+    OR ((OLD.family_workflow_version=1 AND NOT (NEW.family_assistance_id <=> OLD.family_assistance_id) AND NOT EXISTS (SELECT 1 FROM family_assistance f WHERE f.id=NEW.family_assistance_id AND f.previous_assistance_id=OLD.family_assistance_id))) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='HH invalid care_appointment';
+  END IF;
+  IF COALESCE((EXISTS(SELECT 1 FROM visit_followup_state s WHERE s.care_appointment_id=OLD.id) AND (NOT ((BINARY NEW.id <=> BINARY OLD.id) AND (BINARY NEW.patient_id <=> BINARY OLD.patient_id) AND (BINARY NEW.created_by <=> BINARY OLD.created_by) AND (BINARY NEW.created_at <=> BINARY OLD.created_at) AND (BINARY NEW.appointment_type <=> BINARY OLD.appointment_type) AND (BINARY NEW.consultation_mode <=> BINARY OLD.consultation_mode) AND (BINARY NEW.recurrence_days <=> BINARY OLD.recurrence_days) AND (BINARY NEW.next_follow_up_at <=> BINARY OLD.next_follow_up_at)) OR NOT (EXISTS(SELECT 1 FROM visit_followup_state s WHERE s.care_appointment_id=OLD.id AND s.patient_id=OLD.patient_id AND BINARY s.source_kind='CARE_APPOINTMENT' AND s.lock_version>0 AND (BINARY NEW.status <=> BINARY s.native_status) AND (NEW.start_at <=> s.native_start_wall) AND (NEW.end_at <=> s.native_end_wall) AND (BINARY NEW.doctor_user_id <=> BINARY s.native_doctor_id) AND (BINARY NEW.schedule_id <=> BINARY s.native_schedule_id) AND (((BINARY NEW.status <=> BINARY OLD.status) AND (BINARY NEW.start_at <=> BINARY OLD.start_at) AND (BINARY NEW.end_at <=> BINARY OLD.end_at) AND (BINARY NEW.doctor_user_id <=> BINARY OLD.doctor_user_id) AND (BINARY NEW.schedule_id <=> BINARY OLD.schedule_id) AND (BINARY NEW.notified_at <=> BINARY OLD.notified_at)) OR (EXISTS(SELECT 1 FROM visit_followup_event e WHERE e.id=s.last_native_event_id AND e.state_id=s.id AND e.patient_id=s.patient_id AND e.state_version=s.lock_version AND BINARY e.event_type IN ('RESCHEDULE','CANCEL','RECORD_ATTENDANCE','COMPLETE_SELECTED_APPOINTMENT','CORRECT_ATTENDANCE') AND (BINARY e.native_status <=> BINARY s.native_status) AND (BINARY e.native_start_wall <=> BINARY s.native_start_wall) AND (BINARY e.native_end_wall <=> BINARY s.native_end_wall) AND (BINARY e.native_notify_wall <=> BINARY s.native_notify_wall) AND (BINARY e.native_doctor_id <=> BINARY s.native_doctor_id) AND (BINARY e.native_schedule_id <=> BINARY s.native_schedule_id)) AND ((BINARY NEW.notified_at <=> BINARY OLD.notified_at) OR (NEW.notified_at IS NULL))) OR (((BINARY NEW.status <=> BINARY OLD.status) AND (BINARY NEW.start_at <=> BINARY OLD.start_at) AND (BINARY NEW.end_at <=> BINARY OLD.end_at) AND (BINARY NEW.doctor_user_id <=> BINARY OLD.doctor_user_id) AND (BINARY NEW.schedule_id <=> BINARY OLD.schedule_id) AND NEW.notified_at IS NOT NULL AND (OLD.notified_at IS NULL OR NEW.notified_at=OLD.notified_at) AND s.reminder_attempt_source_revision=s.source_revision AND s.reminder_attempt_id IS NOT NULL AND s.reminder_attempted_at_utc IS NOT NULL AND BINARY s.attendance='UNVERIFIED' AND BINARY s.native_status IN ('OPEN','BOOKED') AND EXISTS(SELECT 1 FROM notification_delivery_log n WHERE n.id=s.reminder_delivery_log_id AND n.patient_id=s.patient_id AND BINARY n.event_type='VISIT_FOLLOWUP_REMINDER' AND BINARY n.delivery_status='DELIVERED' AND n.recipient_user_id BETWEEN 1 AND 9007199254740991 AND JSON_VALID(n.detail)=1 AND JSON_TYPE(IF(JSON_VALID(n.detail),n.detail,'{}'))='OBJECT' AND JSON_LENGTH(IF(JSON_VALID(n.detail),n.detail,'{}'))=7 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.attemptId')) <=> BINARY s.reminder_attempt_id) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.stateId')) <=> BINARY CAST(s.id AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind'))='STRING' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceKind')) <=> BINARY s.source_kind) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceId')) <=> BINARY CAST(COALESCE(s.care_item_id,s.care_appointment_id) AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision'))='INTEGER' AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.sourceRevision')) <=> BINARY CAST(s.reminder_attempt_source_revision AS CHAR)) AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId'))='INTEGER' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.channelId')) AS UNSIGNED) BETWEEN 1 AND 9007199254740991 AND JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(n.detail),n.detail,'{}'),'$.reasonCode'))='NULL')))))))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_NATIVE_TARGET';
+  END IF;
+END$$
+
+CREATE TRIGGER `vf57_reminder_log_update` BEFORE UPDATE ON `notification_delivery_log` FOR EACH ROW
+BEGIN
+  IF COALESCE((BINARY OLD.event_type='VISIT_FOLLOWUP_REMINDER' OR BINARY NEW.event_type='VISIT_FOLLOWUP_REMINDER'),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='VF57_REMINDER_LOG_IMMUTABLE';
+  END IF;
+END$$
+
+CREATE TRIGGER `asn57_state_insert` BEFORE INSERT ON `archive_stock_notification_state` FOR EACH ROW
+BEGIN
+  IF COALESCE((NOT (NEW.stock_id BETWEEN 1 AND 9007199254740991 AND NEW.enabled IN (0,1) AND NEW.control_version BETWEEN 0 AND 9007199254740991 AND NEW.enabled_after_stock_version BETWEEN 0 AND 9007199254740991 AND NEW.restored_at IS NOT NULL AND NEW.updated_at IS NOT NULL AND NEW.updated_at>=NEW.restored_at) OR NEW.enabled<>0 OR NEW.control_version<>0 OR NEW.enabled_after_stock_version<>0 OR NOT (NEW.updated_at <=> NEW.restored_at)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ASN57_STATE_INITIAL';
+  END IF;
+END$$
+
+CREATE TRIGGER `asn57_state_update` BEFORE UPDATE ON `archive_stock_notification_state` FOR EACH ROW
+BEGIN
+  IF COALESCE((NOT (NEW.stock_id BETWEEN 1 AND 9007199254740991 AND NEW.enabled IN (0,1) AND NEW.control_version BETWEEN 0 AND 9007199254740991 AND NEW.enabled_after_stock_version BETWEEN 0 AND 9007199254740991 AND NEW.restored_at IS NOT NULL AND NEW.updated_at IS NOT NULL AND NEW.updated_at>=NEW.restored_at) OR NOT (NEW.stock_id <=> OLD.stock_id) OR NOT (NEW.restored_at <=> OLD.restored_at) OR OLD.control_version>=9007199254740991 OR NEW.control_version<>OLD.control_version+1 OR NEW.enabled=OLD.enabled OR NEW.updated_at<OLD.updated_at OR NEW.enabled_after_stock_version<OLD.enabled_after_stock_version OR (NEW.enabled=0 AND NEW.enabled_after_stock_version<>OLD.enabled_after_stock_version)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ASN57_STATE_TRANSITION';
+  END IF;
+END$$
+
+CREATE TRIGGER `asn57_state_delete` BEFORE DELETE ON `archive_stock_notification_state` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ASN57_STATE_DIRECT_DELETE';
+END$$
+
+CREATE TRIGGER `asn57_command_insert` BEFORE INSERT ON `archive_stock_notification_command` FOR EACH ROW
+BEGIN
+  IF COALESCE((NOT (NEW.actor_id BETWEEN 1 AND 9007199254740991 AND NEW.stock_id BETWEEN 1 AND 9007199254740991 AND NEW.expected_version BETWEEN 0 AND 9007199254740990 AND OCTET_LENGTH(NEW.command_key) BETWEEN 16 AND 64 AND BINARY NEW.command_key REGEXP '^[A-Za-z0-9][A-Za-z0-9_-]{15,63}$' AND BINARY NEW.operation IN ('ENABLE','DISABLE') AND OCTET_LENGTH(NEW.payload_hash)=64 AND BINARY NEW.payload_hash REGEXP '^[0-9a-f]{64}$' AND NEW.created_at IS NOT NULL) OR NEW.result_json IS NOT NULL OR NOT EXISTS(SELECT 1 FROM archive_stock_notification_state s WHERE s.stock_id=NEW.stock_id AND s.control_version=NEW.expected_version AND s.enabled=IF(BINARY NEW.operation='ENABLE',0,1))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ASN57_COMMAND_INITIAL';
+  END IF;
+END$$
+
+CREATE TRIGGER `asn57_command_update` BEFORE UPDATE ON `archive_stock_notification_command` FOR EACH ROW
+BEGIN
+  IF COALESCE((OLD.result_json IS NOT NULL OR NEW.result_json IS NULL OR NOT (BINARY NEW.actor_id <=> BINARY OLD.actor_id) OR NOT (BINARY NEW.command_key <=> BINARY OLD.command_key) OR NOT (BINARY NEW.stock_id <=> BINARY OLD.stock_id) OR NOT (BINARY NEW.expected_version <=> BINARY OLD.expected_version) OR NOT (BINARY NEW.operation <=> BINARY OLD.operation) OR NOT (BINARY NEW.payload_hash <=> BINARY OLD.payload_hash) OR NOT (BINARY NEW.created_at <=> BINARY OLD.created_at)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ASN57_COMMAND_IMMUTABLE';
+  END IF;
+  IF COALESCE((NOT (JSON_VALID(NEW.result_json))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ASN57_RECEIPT_JSON';
+  END IF;
+  IF COALESCE((NOT (JSON_VALID(NEW.result_json) AND OCTET_LENGTH(NEW.result_json)<=512 AND JSON_TYPE(NEW.result_json)='OBJECT' AND JSON_LENGTH(NEW.result_json)=5 AND JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.stockId'))='INTEGER' AND JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.stockId'))=NEW.stock_id AND JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.controlVersion'))='INTEGER' AND JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.controlVersion'))=NEW.expected_version+1 AND JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.operation'))='STRING' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.operation'))=BINARY NEW.operation AND JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.enabled'))='BOOLEAN' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.enabled'))=IF(BINARY NEW.operation='ENABLE','true','false') AND JSON_TYPE(JSON_EXTRACT(NEW.result_json,'$.recordedAt'))='STRING' AND BINARY JSON_UNQUOTE(JSON_EXTRACT(NEW.result_json,'$.recordedAt'))=BINARY DATE_FORMAT(NEW.created_at,'%Y-%m-%dT%H:%i:%s.%fZ')) OR NOT EXISTS(SELECT 1 FROM archive_stock_notification_state s WHERE s.stock_id=NEW.stock_id AND s.control_version=NEW.expected_version+1 AND s.enabled=IF(BINARY NEW.operation='ENABLE',1,0) AND s.updated_at=NEW.created_at)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ASN57_RECEIPT_SHAPE';
+  END IF;
+END$$
+
+CREATE TRIGGER `asn57_command_delete` BEFORE DELETE ON `archive_stock_notification_command` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ASN57_COMMAND_DIRECT_DELETE';
+END$$
+
+CREATE TRIGGER `mrv57_event_insert` BEFORE INSERT ON `medical_review_event` FOR EACH ROW
+BEGIN
+  IF COALESCE(NOT (NEW.id=0 AND NEW.record_id BETWEEN 1 AND 9007199254740991 AND OCTET_LENGTH(NEW.source_generation)=36 AND BINARY NEW.source_generation REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND NEW.content_version BETWEEN 1 AND 9007199254740991 AND (NEW.before_content_version IS NULL OR NEW.before_content_version BETWEEN 1 AND 9007199254740991) AND NEW.actor_id BETWEEN 1 AND 9007199254740991 AND BINARY NEW.actor_kind IN ('OWNER','ASSIGNED_DOCTOR','ADMIN','DELEGATE') AND NEW.occurred_at BETWEEN '1000-01-01 00:00:00.000000' AND '9999-12-31 23:59:59.999999'),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_EVENT_SHAPE';
+  END IF;
+  IF COALESCE(NOT (EXISTS(SELECT 1 FROM medical_record r WHERE r.id=NEW.record_id AND r.content_version=NEW.content_version AND (BINARY NEW.channel<>'DOCTOR' OR r.patient_id IS NOT NULL)) AND NOT EXISTS(SELECT 1 FROM medical_review_state s WHERE s.record_id=NEW.record_id AND BINARY s.source_generation<>BINARY NEW.source_generation) AND NOT EXISTS(SELECT 1 FROM medical_review_event e WHERE e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation AND BINARY e.channel='RECORD' AND BINARY e.operation='SOURCE_DELETED')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_EVENT_SOURCE';
+  END IF;
+  IF BINARY NEW.operation='SOURCE_DELETED' THEN
+  IF COALESCE(NOT (BINARY NEW.channel='RECORD' AND BINARY NEW.state='DELETED' AND NEW.decision_version=0 AND NEW.cycle=0 AND NEW.before_content_version=NEW.content_version),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_DELETE_SHAPE';
+  END IF;
+  ELSE
+  IF COALESCE(NOT (BINARY NEW.channel IN ('SOURCE','DOCTOR') AND NEW.decision_version BETWEEN 1 AND 9007199254740991 AND NEW.cycle BETWEEN 1 AND 9007199254740991 AND ((BINARY NEW.operation='REQUEST' AND BINARY NEW.channel='DOCTOR' AND BINARY NEW.state='PENDING') OR (BINARY NEW.operation='APPROVE' AND BINARY NEW.state='APPROVED') OR (BINARY NEW.operation='REJECT' AND BINARY NEW.state='REJECTED') OR (BINARY NEW.operation='RESUBMIT' AND BINARY NEW.state='PENDING') OR (BINARY NEW.operation='CONTENT_CHANGED' AND BINARY NEW.state='SUPERSEDED')) AND (BINARY NEW.channel<>'DOCTOR' OR BINARY NEW.operation NOT IN ('APPROVE','REJECT') OR BINARY NEW.actor_kind IN ('ASSIGNED_DOCTOR','ADMIN'))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_EVENT_OPERATION';
+  END IF;
+  IF COALESCE(NOT ((NOT EXISTS(SELECT 1 FROM medical_review_state s WHERE s.record_id=NEW.record_id AND BINARY s.channel=BINARY NEW.channel)
+      AND NEW.before_content_version IS NULL AND NEW.decision_version=1 AND NEW.cycle=1
+      AND ((BINARY NEW.channel='SOURCE' AND BINARY NEW.operation IN ('APPROVE','REJECT')) OR (BINARY NEW.channel='DOCTOR' AND BINARY NEW.operation='REQUEST'))) OR EXISTS(SELECT 1 FROM medical_review_state s WHERE s.record_id=NEW.record_id AND BINARY s.channel=BINARY NEW.channel
+      AND BINARY s.source_generation=BINARY NEW.source_generation
+      AND s.decision_version<9007199254740991 AND NEW.decision_version=s.decision_version+1
+      AND NEW.before_content_version=s.content_version
+      AND ((BINARY NEW.operation IN ('APPROVE','REJECT') AND BINARY s.state='PENDING' AND NEW.content_version=s.content_version AND NEW.cycle=s.cycle)
+        OR (BINARY NEW.operation='RESUBMIT' AND BINARY s.state IN ('APPROVED','REJECTED','SUPERSEDED') AND NEW.content_version=s.content_version AND s.cycle<9007199254740991 AND NEW.cycle=s.cycle+1)
+        OR (BINARY NEW.operation='CONTENT_CHANGED' AND s.content_version<9007199254740991 AND NEW.content_version=s.content_version+1 AND NEW.cycle=s.cycle)))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_EVENT_TRANSITION';
+  END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER `mrv57_event_id` AFTER INSERT ON `medical_review_event` FOR EACH ROW
+BEGIN
+  IF COALESCE(NOT (NEW.id BETWEEN 1 AND 9007199254740991),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_EVENT_ID_RANGE';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrv57_event_update` BEFORE UPDATE ON `medical_review_event` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_EVENT_IMMUTABLE';
+END$$
+
+CREATE TRIGGER `mrv57_event_delete` BEFORE DELETE ON `medical_review_event` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_EVENT_IMMUTABLE';
+END$$
+
+CREATE TRIGGER `mrv57_state_insert` BEFORE INSERT ON `medical_review_state` FOR EACH ROW
+BEGIN
+  IF COALESCE(NOT (NEW.record_id BETWEEN 1 AND 9007199254740991 AND BINARY NEW.channel IN ('SOURCE','DOCTOR') AND OCTET_LENGTH(NEW.source_generation)=36 AND BINARY NEW.source_generation REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND (NEW.patient_id IS NULL OR NEW.patient_id BETWEEN 1 AND 9007199254740991) AND (NEW.owner_user_id IS NULL OR NEW.owner_user_id BETWEEN 1 AND 9007199254740991) AND NEW.content_version BETWEEN 1 AND 9007199254740991 AND NEW.decision_version BETWEEN 1 AND 9007199254740991 AND NEW.cycle BETWEEN 1 AND 9007199254740991 AND BINARY NEW.state IN ('PENDING','APPROVED','REJECTED','SUPERSEDED') AND NEW.last_event_id BETWEEN 1 AND 9007199254740991 AND (NEW.current_decision_event_id IS NULL OR NEW.current_decision_event_id BETWEEN 1 AND 9007199254740991) AND ((BINARY NEW.state IN ('APPROVED','REJECTED') AND NEW.current_decision_event_id=NEW.last_event_id) OR (BINARY NEW.state IN ('PENDING','SUPERSEDED') AND NEW.current_decision_event_id IS NULL)) AND NEW.decision_version=1 AND NEW.cycle=1),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_STATE_INITIAL';
+  END IF;
+  IF COALESCE(NOT (EXISTS(SELECT 1 FROM medical_record r WHERE r.id=NEW.record_id AND r.content_version=NEW.content_version AND (r.patient_id <=> NEW.patient_id) AND (r.user_id <=> NEW.owner_user_id) AND (BINARY NEW.channel<>'DOCTOR' OR r.patient_id IS NOT NULL)) AND NOT EXISTS(SELECT 1 FROM medical_review_state s WHERE s.record_id=NEW.record_id AND BINARY s.source_generation<>BINARY NEW.source_generation) AND NOT EXISTS(SELECT 1 FROM medical_review_event e WHERE e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation AND BINARY e.channel='RECORD' AND BINARY e.operation='SOURCE_DELETED')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_STATE_SOURCE';
+  END IF;
+  IF COALESCE(NOT (EXISTS(SELECT 1 FROM medical_review_event e WHERE e.id=NEW.last_event_id AND e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation AND BINARY e.channel=BINARY NEW.channel AND e.content_version=NEW.content_version AND e.decision_version=NEW.decision_version AND e.cycle=NEW.cycle AND BINARY e.state=BINARY NEW.state AND e.before_content_version IS NULL AND ((BINARY NEW.channel='SOURCE' AND BINARY e.operation IN ('APPROVE','REJECT')) OR (BINARY NEW.channel='DOCTOR' AND BINARY e.operation='REQUEST')))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_STATE_HEAD';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrv57_state_update` BEFORE UPDATE ON `medical_review_state` FOR EACH ROW
+BEGIN
+  IF COALESCE(NOT (NEW.record_id BETWEEN 1 AND 9007199254740991 AND BINARY NEW.channel IN ('SOURCE','DOCTOR') AND OCTET_LENGTH(NEW.source_generation)=36 AND BINARY NEW.source_generation REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND (NEW.patient_id IS NULL OR NEW.patient_id BETWEEN 1 AND 9007199254740991) AND (NEW.owner_user_id IS NULL OR NEW.owner_user_id BETWEEN 1 AND 9007199254740991) AND NEW.content_version BETWEEN 1 AND 9007199254740991 AND NEW.decision_version BETWEEN 1 AND 9007199254740991 AND NEW.cycle BETWEEN 1 AND 9007199254740991 AND BINARY NEW.state IN ('PENDING','APPROVED','REJECTED','SUPERSEDED') AND NEW.last_event_id BETWEEN 1 AND 9007199254740991 AND (NEW.current_decision_event_id IS NULL OR NEW.current_decision_event_id BETWEEN 1 AND 9007199254740991) AND ((BINARY NEW.state IN ('APPROVED','REJECTED') AND NEW.current_decision_event_id=NEW.last_event_id) OR (BINARY NEW.state IN ('PENDING','SUPERSEDED') AND NEW.current_decision_event_id IS NULL)) AND (NEW.record_id <=> OLD.record_id) AND (NEW.channel <=> OLD.channel) AND (NEW.source_generation <=> OLD.source_generation) AND (NEW.patient_id <=> OLD.patient_id) AND (NEW.owner_user_id <=> OLD.owner_user_id) AND OLD.decision_version<9007199254740991 AND NEW.decision_version=OLD.decision_version+1 AND NEW.last_event_id>OLD.last_event_id),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_STATE_TRANSITION';
+  END IF;
+  IF COALESCE(NOT (EXISTS(SELECT 1 FROM medical_record r WHERE r.id=NEW.record_id AND r.content_version=NEW.content_version AND (r.patient_id <=> NEW.patient_id) AND (r.user_id <=> NEW.owner_user_id) AND (BINARY NEW.channel<>'DOCTOR' OR r.patient_id IS NOT NULL)) AND NOT EXISTS(SELECT 1 FROM medical_review_state s WHERE s.record_id=NEW.record_id AND BINARY s.source_generation<>BINARY NEW.source_generation) AND NOT EXISTS(SELECT 1 FROM medical_review_event e WHERE e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation AND BINARY e.channel='RECORD' AND BINARY e.operation='SOURCE_DELETED')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_STATE_SOURCE';
+  END IF;
+  IF COALESCE(NOT (EXISTS(SELECT 1 FROM medical_review_event e WHERE e.id=NEW.last_event_id AND e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation AND BINARY e.channel=BINARY NEW.channel AND e.content_version=NEW.content_version AND e.decision_version=NEW.decision_version AND e.cycle=NEW.cycle AND BINARY e.state=BINARY NEW.state AND e.before_content_version=OLD.content_version
+    AND ((BINARY e.operation IN ('APPROVE','REJECT') AND BINARY OLD.state='PENDING' AND NEW.content_version=OLD.content_version AND NEW.cycle=OLD.cycle)
+      OR (BINARY e.operation='RESUBMIT' AND BINARY OLD.state IN ('APPROVED','REJECTED','SUPERSEDED') AND NEW.content_version=OLD.content_version AND OLD.cycle<9007199254740991 AND NEW.cycle=OLD.cycle+1)
+      OR (BINARY e.operation='CONTENT_CHANGED' AND OLD.content_version<9007199254740991 AND NEW.content_version=OLD.content_version+1 AND NEW.cycle=OLD.cycle)))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_STATE_HEAD';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrv57_text_insert` BEFORE INSERT ON `medical_review_text` FOR EACH ROW
+BEGIN
+  IF COALESCE(NOT (NEW.event_id BETWEEN 1 AND 9007199254740991 AND NEW.record_id BETWEEN 1 AND 9007199254740991 AND OCTET_LENGTH(NEW.source_generation)=36 AND BINARY NEW.source_generation REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND BINARY NEW.text_type IN ('REJECTION_REASON','REVIEW_NOTE','RESUBMISSION_REASON') AND CHAR_LENGTH(NEW.text_value)<=1000 AND OCTET_LENGTH(NEW.text_value)<=4000 AND (BINARY NEW.text_type='REVIEW_NOTE' OR OCTET_LENGTH(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(NEW.text_value,CONVERT(0x09 USING utf8mb4),''),CONVERT(0x0a USING utf8mb4),''),CONVERT(0x0b USING utf8mb4),''),CONVERT(0x0c USING utf8mb4),''),CONVERT(0x0d USING utf8mb4),''),CONVERT(0x1c USING utf8mb4),''),CONVERT(0x1d USING utf8mb4),''),CONVERT(0x1e USING utf8mb4),''),CONVERT(0x1f USING utf8mb4),''),CONVERT(0x20 USING utf8mb4),''),CONVERT(0xc285 USING utf8mb4),''),CONVERT(0xc2a0 USING utf8mb4),''),CONVERT(0xe19a80 USING utf8mb4),''),CONVERT(0xe28080 USING utf8mb4),''),CONVERT(0xe28081 USING utf8mb4),''),CONVERT(0xe28082 USING utf8mb4),''),CONVERT(0xe28083 USING utf8mb4),''),CONVERT(0xe28084 USING utf8mb4),''),CONVERT(0xe28085 USING utf8mb4),''),CONVERT(0xe28086 USING utf8mb4),''),CONVERT(0xe28087 USING utf8mb4),''),CONVERT(0xe28088 USING utf8mb4),''),CONVERT(0xe28089 USING utf8mb4),''),CONVERT(0xe2808a USING utf8mb4),''),CONVERT(0xe280a8 USING utf8mb4),''),CONVERT(0xe280a9 USING utf8mb4),''),CONVERT(0xe280af USING utf8mb4),''),CONVERT(0xe2819f USING utf8mb4),''),CONVERT(0xe38080 USING utf8mb4),''),CONVERT(0xefbbbf USING utf8mb4),''))>0)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_TEXT_SHAPE';
+  END IF;
+  IF COALESCE(NOT (EXISTS(SELECT 1 FROM medical_review_event e JOIN medical_record r ON r.id=e.record_id
+    JOIN medical_review_state s ON s.record_id=e.record_id AND BINARY s.channel=BINARY e.channel
+    WHERE e.id=NEW.event_id AND e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation
+      AND BINARY s.source_generation=BINARY NEW.source_generation AND s.last_event_id=e.id AND s.content_version=e.content_version AND r.content_version=e.content_version
+      AND BINARY e.channel IN ('SOURCE','DOCTOR')
+      AND ((BINARY NEW.text_type='REJECTION_REASON' AND BINARY e.operation='REJECT')
+        OR (BINARY NEW.text_type='REVIEW_NOTE' AND BINARY e.operation='APPROVE')
+        OR (BINARY NEW.text_type='RESUBMISSION_REASON' AND BINARY e.operation='RESUBMIT'))) AND NOT EXISTS(SELECT 1 FROM medical_review_event e WHERE e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation AND BINARY e.channel='RECORD' AND BINARY e.operation='SOURCE_DELETED')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_TEXT_EVENT';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrv57_text_update` BEFORE UPDATE ON `medical_review_text` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_TEXT_IMMUTABLE';
+END$$
+
+CREATE TRIGGER `mrv57_command_insert` BEFORE INSERT ON `medical_review_command` FOR EACH ROW
+BEGIN
+  IF COALESCE(NOT (NEW.actor_id BETWEEN 1 AND 9007199254740991 AND NEW.record_id BETWEEN 1 AND 9007199254740991 AND BINARY NEW.channel IN ('SOURCE','DOCTOR') AND OCTET_LENGTH(NEW.command_key)=36 AND BINARY NEW.command_key REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND OCTET_LENGTH(NEW.source_generation)=36 AND BINARY NEW.source_generation REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND OCTET_LENGTH(NEW.request_hash)=64 AND BINARY NEW.request_hash REGEXP '^[0-9a-f]{64}$' AND NEW.event_id BETWEEN 1 AND 9007199254740991 AND BINARY NEW.operation IN ('REQUEST','APPROVE','REJECT','RESUBMIT') AND NEW.content_version BETWEEN 1 AND 9007199254740991 AND NEW.decision_version BETWEEN 1 AND 9007199254740991 AND NEW.cycle BETWEEN 1 AND 9007199254740991 AND BINARY NEW.state IN ('PENDING','APPROVED','REJECTED') AND BINARY NEW.actor_kind IN ('OWNER','ASSIGNED_DOCTOR','ADMIN','DELEGATE') AND NEW.applied_at BETWEEN '1000-01-01 00:00:00.000000' AND '9999-12-31 23:59:59.999999'),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_COMMAND_SHAPE';
+  END IF;
+  IF COALESCE(NOT (EXISTS(SELECT 1 FROM medical_review_event e JOIN medical_record r ON r.id=e.record_id
+    JOIN medical_review_state s ON s.record_id=e.record_id AND BINARY s.channel=BINARY e.channel
+    WHERE e.id=NEW.event_id AND e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation
+      AND BINARY e.channel=BINARY NEW.channel AND e.actor_id=NEW.actor_id AND BINARY e.actor_kind=BINARY NEW.actor_kind
+      AND BINARY e.operation=BINARY NEW.operation AND e.content_version=NEW.content_version AND e.decision_version=NEW.decision_version
+      AND e.cycle=NEW.cycle AND BINARY e.state=BINARY NEW.state AND e.occurred_at=NEW.applied_at
+      AND BINARY s.source_generation=BINARY NEW.source_generation AND s.last_event_id=e.id AND s.content_version=e.content_version AND r.content_version=e.content_version
+      AND (BINARY e.operation NOT IN ('REJECT','RESUBMIT') OR EXISTS(SELECT 1 FROM medical_review_text t WHERE t.event_id=e.id AND t.record_id=e.record_id AND BINARY t.source_generation=BINARY e.source_generation AND BINARY t.text_type=IF(BINARY e.operation='REJECT','REJECTION_REASON','RESUBMISSION_REASON')))) AND NOT EXISTS(SELECT 1 FROM medical_review_event e WHERE e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation AND BINARY e.channel='RECORD' AND BINARY e.operation='SOURCE_DELETED')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_COMMAND_EVENT';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrv57_command_update` BEFORE UPDATE ON `medical_review_command` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_COMMAND_IMMUTABLE';
+END$$
+
+CREATE TRIGGER `mrv57_reference_insert` BEFORE INSERT ON `medical_review_reference` FOR EACH ROW
+BEGIN
+  IF COALESCE(NOT (BINARY NEW.reference_kind IN ('CARE_PLAN_EVIDENCE','ALERT_EVIDENCE','LEGACY_ALERT') AND NEW.reference_id BETWEEN 1 AND 9007199254740991 AND NEW.patient_id BETWEEN 1 AND 9007199254740991 AND NEW.record_id BETWEEN 1 AND 9007199254740991 AND OCTET_LENGTH(NEW.source_generation)=36 AND BINARY NEW.source_generation REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND (NEW.source_item_id IS NULL OR NEW.source_item_id BETWEEN 1 AND 9007199254740991) AND NEW.content_version BETWEEN 1 AND 9007199254740991 AND NEW.bound_at BETWEEN '1000-01-01 00:00:00.000000' AND '9999-12-31 23:59:59.999999' AND ((BINARY NEW.reference_kind='LEGACY_ALERT' AND NEW.source_item_id IS NOT NULL) OR (BINARY NEW.reference_kind IN ('CARE_PLAN_EVIDENCE','ALERT_EVIDENCE') AND NEW.source_item_id IS NULL))),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_REFERENCE_SHAPE';
+  END IF;
+  IF COALESCE(NOT (EXISTS(SELECT 1 FROM medical_record r JOIN medical_review_state s ON s.record_id=r.id AND BINARY s.channel='SOURCE'
+    WHERE r.id=NEW.record_id AND r.patient_id=NEW.patient_id AND r.content_version=NEW.content_version
+      AND s.patient_id=NEW.patient_id AND (s.owner_user_id <=> r.user_id) AND s.content_version=NEW.content_version
+      AND BINARY s.source_generation=BINARY NEW.source_generation AND BINARY s.state='APPROVED') AND NOT EXISTS(SELECT 1 FROM medical_review_event e WHERE e.record_id=NEW.record_id AND BINARY e.source_generation=BINARY NEW.source_generation AND BINARY e.channel='RECORD' AND BINARY e.operation='SOURCE_DELETED')),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_REFERENCE_SOURCE';
+  END IF;
+  IF COALESCE(NOT (BINARY NEW.reference_kind<>'LEGACY_ALERT' OR EXISTS(SELECT 1 FROM medical_record_item i WHERE i.id=NEW.source_item_id AND i.record_id=NEW.record_id)),TRUE) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_REFERENCE_ITEM';
+  END IF;
+END$$
+
+CREATE TRIGGER `mrv57_reference_update` BEFORE UPDATE ON `medical_review_reference` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_REFERENCE_IMMUTABLE';
+END$$
+
+CREATE TRIGGER `mrv57_reference_delete` BEFORE DELETE ON `medical_review_reference` FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'MRV57_REFERENCE_IMMUTABLE';
+END$$
+
 DELIMITER ;
+
+-- Initial system configuration (no business data).
+SET NAMES utf8mb4;
+
+INSERT INTO `sys_role` (`role_code`,`role_name`,`description`,`status`) VALUES
+('admin','Administrator','System administrator with full permissions',1),
+('user','Standard User','Backward-compatible standard application role',1),
+('doctor','Doctor','Clinical review and assigned-patient management',1),
+('patient','Patient','Self-management and personal health records',1),
+('family','Family Caregiver','Authorized family care and coordination',1),
+('specialty_dialysis','Dialysis Patient','Patient-specific dialysis menu scope',1),
+('nurse','Nurse','Assigned-patient care-plan follow-up; separate patient module grants required',1)
+ON DUPLICATE KEY UPDATE role_name=VALUES(role_name),description=VALUES(description),status=VALUES(status);
+
+INSERT INTO `sys_menu` (`id`,`parent_id`,`menu_name`,`menu_code`,`menu_path`,`menu_icon`,`permission`,`menu_type`,`sort_order`,`status`) VALUES
+(1,0,'Dialysis Management','dialysis','/dialysis','Histogram','dialysis:view',1,2,1),
+(2,0,'Medical Records','clinical-record','/medical-record','FolderOpened','medical:view',1,3,1),
+(3,0,'Medication Management','medication','/medication','Goods','medication:view',1,4,1),
+(5,0,'System Administration','system','','Setting','system:manage',1,7,1),
+(6,5,'User Management','system-user','/system/user','User','user:manage',1,1,1),
+(7,5,'Role Management','system-role','/system/role','UserFilled','role:manage',1,2,1),
+(8,30,'Patient Profiles','patient-profile','/system/patient','Avatar','patient:manage',1,1,1),
+(9,5,'Menu Management','system-menu','/system/menu','Menu','menu:manage',1,3,1),
+(11,1,'Dialysis Records','dialysis-record','/dialysis?tab=data','Document','dialysis:record:view',1,1,1),
+(12,1,'Trend Analysis','dialysis-trend','/dialysis?tab=analysis','TrendCharts','dialysis:trend:view',1,2,1),
+(13,1,'Dry Weight Management','dialysis-dry-weight','/dry-weight','ScaleToOriginal','dry-weight:view',1,3,1),
+(14,1,'AI Health Analytics','dialysis-ai','/dialysis?tab=ai','Cpu','dialysis:ai:view',1,4,1),
+(15,1,'Dialysis Schedule','dialysis-schedule','/family-health?tab=schedule','Calendar','dialysis:schedule:view',1,5,1),
+(16,2,'Record List','clinical-record-list','/medical-record?tab=list','FolderOpened','medical:list:view',1,1,1),
+(17,2,'Upload Report','clinical-record-upload','/medical-record?tab=upload','Camera','medical:upload',1,2,1),
+(18,2,'Abnormal Results','clinical-abnormal','/medical-record?tab=abnormal','WarningFilled','medical:abnormal:view',1,3,1),
+(19,2,'Result Trends','clinical-trend','/medical-record?tab=trend','DataLine','medical:trend:view',1,4,1),
+(20,26,'Complication Tracking','health-complication','/health-analysis?tab=complication','Warning','complication:view',1,2,1),
+(21,26,'Health Alerts','health-alert','/health-analysis?tab=alert','Bell','alert:view',1,3,1),
+(22,29,'Blood Pressure Pattern Analysis','analysis-bp-pattern','/health-analysis?tab=bp-pattern','TrendCharts','bp-pattern:view',1,1,1),
+(23,26,'Nutrition Diary','health-nutrition','/health-analysis?tab=nutrition','Apple','nutrition-diary:view',1,4,1),
+(24,29,'Health Report','analysis-health-report','/health-analysis?tab=health-report','DocumentChecked','health-report:view',1,2,1),
+(25,29,'Data Export','analysis-data-export','/health-analysis?tab=data-export','Download','data-export:view',1,3,1),
+(26,0,'Health Monitoring','health-monitoring','','Odometer','health-monitoring:view',1,5,1),
+(27,26,'Blood Pressure & Glucose','health-vitals','/bp-self-monitor','Odometer','bp-self-monitor:view',1,1,1),
+(28,0,'Workspace','workspace','/monitoring','Monitor','monitoring:view',1,0,1),
+(29,0,'Analytics & Reports','analysis-report','','DataAnalysis','analysis-report:view',1,6,1),
+(30,0,'Patient Center','patient-center','','UserFilled','patient:view',1,1,1),
+(31,30,'Care Plan','patient-care','/family-health','Calendar','family-health:view',1,2,1),
+(32,3,'Medication List','medication-catalog','/medication?tab=drugs','Box','medication:catalog:view',1,1,1),
+(33,3,'Medication Log','medication-log','/medication?tab=logs','Notebook','medication:log:view',1,2,1),
+(34,3,'Medication Reminders','medication-reminder','/medication?tab=remind','Bell','medication:reminder:view',1,3,1),
+(35,26,'Nutrition Assessment','health-nutrition-assessment','/health-analysis?tab=nutrition-assessment','DataAnalysis','nutrition-assessment:view',1,5,1),
+(36,30,'Notification Settings','notification-settings','/settings/notifications','Bell','notification:manage',1,3,1),
+(37,5,'Audit Log','system-audit','/system/audit','Document','audit:view',1,4,1),
+(38,0,'Clinical Workbench','clinical-workbench','/clinical-workbench','FirstAidKit','clinical-workbench:view',1,1,1),
+(39,0,'Doctor Workspace','doctor-workspace','/doctor-workspace','FirstAidKit','doctor-workspace:view',1,1,1),
+(40,0,'Care Journey','care-journey','/care-journey','FirstAidKit','care:journey:view',1,2,1),
+(41,5,'Platform Branding','platform-branding','/system/branding','Brush','branding:manage',1,5,1),
+(42,0,'Nursing Follow-up Queue','care-plan-nursing','/nurse-workspace','FirstAidKit','care-plan:nursing:view',1,2,1),
+(43,8,'Manage Nurse Assignments','care-plan-nurse-assignments',NULL,'User','care-plan:nurse-assignment:manage',2,90,1)
+ON DUPLICATE KEY UPDATE parent_id=VALUES(parent_id),menu_name=VALUES(menu_name),menu_code=VALUES(menu_code),menu_path=VALUES(menu_path),menu_icon=VALUES(menu_icon),permission=VALUES(permission),menu_type=VALUES(menu_type),sort_order=VALUES(sort_order),status=VALUES(status);
+
+INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
+SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','medication','system','system-user','system-role','patient-profile','system-menu','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule','clinical-record-list','clinical-record-upload','clinical-abnormal','clinical-trend','health-complication','health-alert','analysis-bp-pattern','health-nutrition','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','patient-care','medication-catalog','medication-log','medication-reminder','health-nutrition-assessment','notification-settings','system-audit','clinical-workbench','doctor-workspace','care-journey','platform-branding','care-plan-nurse-assignments') WHERE r.role_code='admin'
+ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
+
+INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
+SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','medication','patient-profile','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule','clinical-record-list','clinical-record-upload','clinical-abnormal','clinical-trend','health-complication','health-alert','analysis-bp-pattern','health-nutrition','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','patient-care','medication-catalog','medication-log','medication-reminder','health-nutrition-assessment','notification-settings','clinical-workbench','care-journey') WHERE r.role_code='user'
+ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
+
+INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
+SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','patient-profile','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule','clinical-record-list','clinical-abnormal','clinical-trend','health-complication','health-alert','analysis-bp-pattern','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','health-nutrition-assessment','notification-settings','clinical-workbench','doctor-workspace','care-journey') WHERE r.role_code='doctor'
+ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
+
+INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
+SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','medication','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule','clinical-record-list','clinical-record-upload','clinical-abnormal','clinical-trend','health-complication','health-alert','analysis-bp-pattern','health-nutrition','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','patient-care','medication-catalog','medication-log','medication-reminder','health-nutrition-assessment','notification-settings','care-journey') WHERE r.role_code='patient'
+ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
+
+INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
+SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','clinical-record','medication','dialysis-record','dialysis-trend','dialysis-schedule','clinical-record-list','clinical-record-upload','clinical-abnormal','clinical-trend','health-complication','health-alert','health-nutrition','analysis-health-report','analysis-data-export','health-monitoring','health-vitals','workspace','analysis-report','patient-center','patient-care','medication-catalog','medication-log','medication-reminder','notification-settings','care-journey') WHERE r.role_code='family'
+ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
+
+INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
+SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('dialysis','dialysis-record','dialysis-trend','dialysis-dry-weight','dialysis-ai','dialysis-schedule') WHERE r.role_code='specialty_dialysis'
+ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
+
+INSERT INTO `sys_role_menu` (`role_id`,`menu_id`)
+SELECT r.id,m.id FROM sys_role r JOIN sys_menu m ON m.menu_code IN ('care-plan-nursing') WHERE r.role_code='nurse'
+ON DUPLICATE KEY UPDATE role_id=VALUES(role_id);
+
+INSERT IGNORE INTO `health_indicator` (`item_code`, `item_name`, `aliases`, `unit`, `ref_range_male`, `category`, `sort_order`) VALUES
+('FERRITIN', 'Ferritin', 'ferritin,serum ferritin', 'ng/mL', '27-375', 'IRON', 10),
+('PTH', 'Parathyroid Hormone', 'parathyroid hormone,intact PTH,iPTH', 'pg/mL', '15-65', 'BONE', 20),
+('CA', 'serum calcium', 'calcium,Ca', 'mmol/L', '2.1-2.6', 'BONE', 30),
+('P', 'serum phosphorus', 'phosphorus,P', 'mmol/L', '0.87-1.45', 'BONE', 40),
+('CREA', 'Creatinine', 'creatinine,serum creatinine,Cr', 'μmol/L', '44-133', 'KIDNEY', 50),
+('BUN', 'Blood Urea Nitrogen', 'blood urea nitrogen,BUN', 'mmol/L', '2.9-8.2', 'KIDNEY', 60),
+('K', 'Potassium', 'potassium,serum potassium,K', 'mmol/L', '3.5-5.5', 'BLOOD', 70),
+('HB', 'Hemoglobin', 'hemoglobin,Hb,HGB', 'g/L', '120-160', 'BLOOD', 80);
+
+INSERT IGNORE INTO `medication_safety_rule` (`ingredient_a`,`ingredient_b`,`severity`,`message`,`renal_note`) VALUES
+('warfarin','ibuprofen','CRITICAL','Warfarin with ibuprofen can substantially increase bleeding risk. Confirm the prescriber plan.','Avoid routine NSAID use in advanced kidney disease unless explicitly directed.'),
+('warfarin','aspirin','WARNING','Warfarin with aspirin increases bleeding risk and should have a documented indication.',NULL),
+('lisinopril','potassium','WARNING','ACE inhibitor plus potassium supplementation can increase serum potassium.','Review potassium and renal function before changing therapy.'),
+('losartan','potassium','WARNING','ARB plus potassium supplementation can increase serum potassium.','Review potassium and renal function before changing therapy.'),
+('spironolactone','potassium','CRITICAL','This combination can cause severe hyperkalaemia. Confirm the prescriber plan.','Extra caution is required when kidney function is impaired.'),
+('calcium carbonate','levothyroxine','INFO','Calcium can reduce levothyroxine absorption; separate administration times when directed.',NULL);
+
+INSERT INTO `platform_branding` (`id`,`platform_name`,`organization_name`,`logo_data`,`page_background`,`ownership_text`)
+VALUES (1,'Chengxin Health','Chengxin Health','/logo.svg','#f5f7fb','© 2026 Chengxin Health. All rights reserved.')
+ON DUPLICATE KEY UPDATE id=VALUES(id);
+
+SET SESSION foreign_key_checks=@init_saved_foreign_key_checks;
+SET SESSION sql_mode=@init_saved_sql_mode;
+SET SESSION character_set_client=@init_saved_character_set_client;
+SET SESSION character_set_results=@init_saved_character_set_results;
+SET SESSION collation_connection=@init_saved_collation_connection;

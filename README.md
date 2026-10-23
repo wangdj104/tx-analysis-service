@@ -70,7 +70,15 @@ The read-only report separates a fresh current-action snapshot from activity rec
 
 Implemented behind independent `ALERT_WORKFLOW_ENABLED=false`: measurement → named acceptance → handling evidence → self/assisted feedback → reasoned personal or doctor-only clinical closure. Both native measurement paths and existing role pages are connected; correction/revocation/uncertain-result paths retain traceable history. Nurse assignment still requires explicit `MEASUREMENTS` access and grants no `CARE_PLAN` or clinical closure authority.
 
-The [release checkpoint](docs/ALERT_WORKFLOW_RELEASE.md) and [verification record](docs/verification/alert-workflow.json) separate real-service/H2 and real-Vue/fake-API checks from **NOT_RUN** native MySQL 5.7.18, actual Java 8, browser/live HTTP, restore and provider gates. Fresh root/CN backend389 each, Node106/98 and both builds passed at sealed source922eaac. The consolidated whole-branch fixes await independent scoped re-review; no rollout or whole-roadmap completion is claimed. The UI preserves original readings/units but withholds normalized numeric comparison/thresholds pending an authoritative comparison-unit contract. Production Compose currently requires a user-applied environment override; adding the flag to `.env.production` alone is ineffective. See the [operator handoff](docs/OFFLINE_DEPLOYMENT.md).
+The [release checkpoint](docs/ALERT_WORKFLOW_RELEASE.md) and [verification record](docs/verification/alert-workflow.json) separate real-service/H2 and real-Vue/fake-API checks from **NOT_RUN** native MySQL 5.7.18, actual Java 8, browser/live HTTP, restore and provider gates. Fresh root/CN backend389 each, Node106/98 and both builds passed at sealed source922eaac. The consolidated whole-branch fixes await independent scoped re-review; no rollout or whole-roadmap completion is claimed. The UI preserves original readings/units but withholds normalized numeric comparison/thresholds pending an authoritative comparison-unit contract. The current production Compose template forwards `ALERT_WORKFLOW_ENABLED` from `.env.production`, defaulting to `false`. See the [operator handoff](docs/OFFLINE_DEPLOYMENT.md).
+
+## Connected timeline, specialty follow-up and recovery
+
+The family health timeline now combines authorized measurements, abnormality follow-up, published care-plan events, medication facts, inventory movements, family coordination and emergency requests. Each fact retains its source and current handling state, with navigation back to the original module. Delivery receipts never mark care as executed. The view reads up to 200 current authorized facts per selected date range.
+
+Rehabilitation, nutrition, dialysis, child/maternity and mental-health pages use the existing collaborative plan workflow for execution, help or missed work, manual revision and stage review. Report source verification and doctor review remain separate; current assigned-doctor authority is required for clinical decisions.
+
+The shared request boundary discards superseded account, patient and permission responses. Family imports disable historical reminders and preserve their limited coverage; a separate full database/attachment rehearsal verifies an isolated copy and prevents the restored application from starting with old grants or queued notifications. See the [isolated recovery procedure](docs/OFFLINE_DEPLOYMENT.md#isolated-restore).
 
 ## Product principles
 
@@ -115,11 +123,11 @@ Password: Demo@123456
 
 Change all secrets before exposing a deployment to any network. The Docker demo is intended for evaluation, not production.
 
-On an empty MySQL volume, Compose runs the complete `init.sql`, then optional local data from `demo/sql/demo-data.sql`. Existing volumes are not reinitialized. Compare an existing database against the current schema and apply only reviewed missing changes after a backup; do not delete a volume containing records to force initialization.
+Compose uses MySQL 5.7.18 and the separate `mysql57-data` volume. It leaves the former MySQL 8 `mysql-data` volume untouched; do not attach that volume to MySQL 5.7. On an empty volume, Compose runs the complete `init.sql`, then optional local data from `demo/sql/demo-data.sql`. Existing volumes are not reinitialized. Compare an existing database against the current schema and apply only reviewed missing changes after a backup; do not delete a volume containing records to force initialization.
 
 ## Bilingual production deployment
 
-Follow the [operator handoff](docs/OFFLINE_DEPLOYMENT.md) for the full migration order, first administrator, TLS/private HTTP binding, optional font mount and opt-in acceptance. Database changes and actual deployment are operator-run.
+Follow the [operator handoff](docs/OFFLINE_DEPLOYMENT.md) for database setup, the first administrator, TLS/private HTTP binding, optional font mounting and opt-in acceptance. Database changes and actual deployment are operator-run.
 
 The production image serves the English application at `/`, the Chinese application at `/cn/`, and preserves the current route when the language control in the top-right corner is used. Both applications use the same API, accounts, sessions, and database.
 
@@ -137,7 +145,7 @@ Chinese PDF downloads require a CJK font with TrueType (`glyf`) outlines. The ba
 
 ## Technology stack
 
-- Backend: Java 8-compatible source/bytecode (JDK 17 build), Spring Boot 2.5, MyBatis-Plus, MySQL 5.7.18 / 8.0, JWT.
+- Backend: Java 8-compatible source/bytecode (JDK 17 build), Spring Boot 2.5, MyBatis-Plus, MySQL 5.7.18, JWT.
 - Frontend: Vue 3, Vite, Vue Router, Element Plus, ECharts.
 - Testing: JUnit 5, Mockito, H2 MySQL mode, Node test runner.
 - Deployment: Docker Compose, Nginx, GitHub Actions, GitHub Pages for the static demo.
@@ -149,7 +157,7 @@ Chinese PDF downloads require a CJK font with TrueType (`glyf`) outlines. The ba
 - JDK 17 recommended (source/bytecode target remains Java 8; CI and Docker use 17)
 - Maven 3.8+
 - Node.js 20+
-- MySQL 5.7.18 or 8.0; native 5.7.18 acceptance for the new follow-up remains NOT_RUN
+- MySQL 5.7.18; the complete initializer and runtime workflow contracts require this version
 
 <a id="database-initialization"></a>
 
@@ -163,13 +171,13 @@ CREATE DATABASE family_health CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 mysql -u root -p family_health < src/main/resources/sql/init.sql
 ```
 
-A new empty database needs only the complete [init.sql](src/main/resources/sql/init.sql), which includes all system tables, indexes, roles, permissions and dictionaries. Existing installations need a schema comparison and only applicable changes after a backup; the baseline does not upgrade existing tables. [demo-data.sql](demo/sql/demo-data.sql) is optional local demo data and must not enter production.
+Use [init.sql](src/main/resources/sql/init.sql) as the sole initializer for a new empty database. It includes all system schemas, workflow guards and required seed data, including report review. Historical upgrade and alternative initialization scripts have been consolidated into this file. For an existing installation, back up first, compare its actual schema with `init.sql`, and apply only the missing compatible changes as described in the [setup guide](docs/OFFLINE_DEPLOYMENT.md#medical-review-setup). [demo-data.sql](demo/sql/demo-data.sql) is optional local demo data and must not enter production.
 
 Patient specialty definitions and role/menu seeds are included in `init.sql`. Application startup no longer runs a schema migration. Existing patients are not assigned a specialty automatically; assign the dialysis specialty in the patient editor to enable its navigation.
 
 The complete initialization includes collaborative care plans with UTC `DATETIME(6)` timestamps. Internal `workflow_version=0` plans remain internal until explicitly copied and published. Installing schema does not assign nurses, grant patient access or enable the collaboration feature. Before release, verify the deployed workflow and a complete backup/restore drill on an isolated database. Retain published history when disabling this subsystem.
 
-Both editions share the same schema with localized seed labels; choose one edition per database. The database example uses a MySQL 5.7-compatible collation. CHECK constraints are enforced on 8.0.16+; the new workflow uses service validation and 5.7-compatible guards rather than relying on CHECK. Each init source declares 86 CREATE TABLE statements and 22 alert-owned guards; these are not a measured database inventory. Native 5.7.18 acceptance is pending. Existing installations must use the separate reviewed preflight/upgrade/postcheck in the [operator handoff](docs/OFFLINE_DEPLOYMENT.md), never init.sql. The script creates no administrator account, and reruns may restore deleted seed permissions or dictionaries. MySQL DDL commits implicitly; inspect completed steps after an error.
+Both editions share the same schema with localized seed labels; choose one edition per database. The workflow contracts target MySQL 5.7.18 and use service validation and compatible triggers without relying on CHECK enforcement. Keep both editions' `init.sql` and the runtime `*-schema.json` contracts in sync when changing storage. The initialization script is for an empty database only and creates no administrator account. Existing installations require a reviewed schema comparison as described in the [operator handoff](docs/OFFLINE_DEPLOYMENT.md). MySQL DDL commits implicitly; inspect completed steps after an error.
 
 ### 2. Configure environment variables
 
@@ -218,11 +226,14 @@ Vite normally serves `http://localhost:5174` and proxies `/api` to `http://local
 | `OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` | Optional OCR provider | Keep API keys server-side |
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_API_URL` / `DEEPSEEK_API_MODEL` | Optional AI analysis | Review privacy and retention policies first |
 | `CARE_PLAN_ENABLED` | Opt-in collaborative care plans; defaults to `false` | Activate only after migration, acceptance and an authorized deployment decision |
-| `ALERT_WORKFLOW_ENABLED` | Independent measurement follow-up; defaults to `false` | Current production Compose needs the documented user-applied override; migration never activates it |
+| `MEDICAL_REVIEW_API_ENABLED` / `MEDICAL_REVIEW_ENABLED` | Separate review API and native lifecycle switches; both default to `false` | Requires the complete review schema and current-version source verification |
+| `ALERT_WORKFLOW_ENABLED` | Independent measurement follow-up; defaults to `false` | Production Compose reads it from `.env.production`; migration never activates it |
 | `REPORT_PDF_FONT_PATH` | Optional container/local PDF font path; empty uses installed fonts | Custom host fonts require a read-only container mount and export verification |
 | `DEV_PROXY_TARGET` | Vite development API upstream | Not used by production; production proxies `/api` |
 
 See [.env.example](.env.example) and [application.yml](src/main/resources/application.yml) for the complete list.
+
+The base Hikari configuration passes `characterEncoding=UTF-8` and `characterSetResults=UTF-8` to Connector/J in every profile. This keeps MySQL client, connection and result charsets at `utf8mb4`, as required by the native storage checks. Custom connection/pool overrides must retain that contract; a database URL's encoding settings must not contradict it.
 
 ## Notifications
 
@@ -234,11 +245,11 @@ Webhook URLs and bot secrets are sensitive. They are masked in API responses and
 
 ## Database policy
 
-- New installations run only [init.sql](src/main/resources/sql/init.sql); it includes the complete system schema and seed dictionaries.
+- New installations use the complete [init.sql](src/main/resources/sql/init.sql) for MySQL 5.7.18. It is the only system initialization SQL file in each edition and must not be used as an upgrade for an existing database.
 - [demo/sql/demo-data.sql](demo/sql/demo-data.sql) is optional local demo data and must never be used in production.
 - Application startup does not run schema migrations. Apply reviewed database changes separately; see the [operator handoff](docs/OFFLINE_DEPLOYMENT.md).
 - `init.sql` is not an upgrade or reset tool for a populated database. Back up data before any manual database operation.
-- The current alert workflow supplies a separate dated preflight/upgrade/postcheck. Review and execute it only through the operator handoff; do not use fresh init as an upgrade or assume DDL is atomic.
+- Alert workflow storage and guards are included in `init.sql`. Existing databases require a schema comparison before applying missing changes; do not use fresh init as an upgrade or assume DDL is atomic.
 
 ## Build
 
@@ -284,7 +295,7 @@ make build
 ├── frontend/                       # Vue 3 web application
 ├── src/main/java/                  # Spring Boot API
 ├── src/main/resources/sql/
-│   └── init.sql                    # Complete system initialization
+│   └── init.sql                    # Sole complete system initializer for an empty database
 ├── .env.example                    # Configuration template without real secrets
 ├── .env.production.example         # Existing-database production template
 ├── docker-compose.production.yml   # Bilingual production deployment

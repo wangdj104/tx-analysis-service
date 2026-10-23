@@ -2,6 +2,7 @@
   <el-container class="dialysis-manager">
     <el-main class="main-content">
       <div class="page-inner">
+        <SpecialtyCarePlans :patient-id="currentPatientId" plan-type="DIALYSIS" />
       <div v-show="activeMenu !== 'ai'" class="page-header">
       <div class="top-bar">
         <div class="left">
@@ -666,6 +667,7 @@
 </template>
 
 <script setup>
+import SpecialtyCarePlans from '@/components/care-plan/SpecialtyCarePlans.vue'
 import DOMPurify from 'dompurify';
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';

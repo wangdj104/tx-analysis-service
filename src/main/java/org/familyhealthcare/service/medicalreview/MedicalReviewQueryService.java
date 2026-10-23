@@ -47,12 +47,13 @@ public class MedicalReviewQueryService {
             MedicalReviewContentFingerprint.Content content=sources.readSnapshot(read.source);guard.verify();
             Map<String,Object> original=imports.readMedicalOriginal(patientId,recordId);guard.verify();
             Map<String,Object> display=read.repository.display(read.source,content,read.snapshot,original);guard.verify();
-            Permissions permissions=permissions(read);MedicalRecordValidityProjection.State current=read.frame();
+            Permissions permissions=permissions(read);
             Map<String,Object> prepared=map("expectedContentVersion",read.source.getContentVersion(),"contentFingerprint",content.fingerprint(),"initialLegacyFingerprint",read.sourceHead==null?content.initialLegacyFingerprint():null,"lifecycleFingerprint",read.lifecycle.fingerprint());
+            MedicalRecordValidityProjection.State current=read.frame();
             Map<String,Object> result=map("contractVersion",1,"recordId",recordId,"patientId",patientId,"sourceRecord",display,
                     "reviewSummary",summary(MedicalRecordReviewSummary.fromObservedState(current)),"newCommandsEnabled",enabled,"preparation",prepared,
                     "channels",map("source",channelView(read,Channel.SOURCE,permissions),"doctor",channelView(read,Channel.DOCTOR,permissions)));
-            read.frame();if(!permissions.equals(permissions(read)))throw changed();guard.verify();return result;
+            if(!permissions.equals(permissions(read)))throw changed();guard.verify();return result;
         }catch(IllegalStateException failure){throw sanitized(failure);}
     }
     @Transactional(propagation=Propagation.REQUIRES_NEW,isolation=Isolation.REPEATABLE_READ,readOnly=true,rollbackFor=Exception.class)
@@ -69,7 +70,7 @@ public class MedicalReviewQueryService {
                 if(last.decision!=1){if(rows.size()!=size+1)throw integrity();next=selected.withUpper(last.decision-1).encode();}
                 else if(rows.size()!=count)throw integrity();
             }
-            read.frame();Map<String,Object> result=map("contractVersion",1,"recordId",recordId,"patientId",patientId,"channel",channel.name(),"highWaterDecisionVersion",selected==null?0L:selected.highWater,
+            Map<String,Object> result=map("contractVersion",1,"recordId",recordId,"patientId",patientId,"channel",channel.name(),"highWaterDecisionVersion",selected==null?0L:selected.highWater,
                     "entries",entries,"pageCursor",selected==null?null:selected.encode(),"nextCursor",next);
             read.frame();guard.verify();return result;
         }catch(IllegalStateException failure){throw sanitized(failure);}
@@ -81,7 +82,7 @@ public class MedicalReviewQueryService {
             Read read=new Read(guard,recordId,patientId);requireText(read,channel);Cursor selected=selectCursor(read,channel,supplied.size,supplied);
             if(selected==null||decisionVersion>selected.highWater)throw error(404,"MEDICAL_REVIEW_EVENT_UNAVAILABLE");
             Event event=read.repository.event(recordId,selected.generation,channel,decisionVersion);if(event==null)throw integrity();
-            Map<String,Object> text=read.repository.text(event);guard.verify();read.frame();
+            Map<String,Object> text=read.repository.text(event);guard.verify();
             Map<String,Object> result=map("contractVersion",1,"recordId",recordId,"patientId",patientId,"channel",channel.name(),"event",event.projection(),"text",text);
             read.frame();requireText(read,channel);guard.verify();return result;
         }catch(IllegalStateException failure){throw sanitized(failure);}
@@ -118,12 +119,14 @@ public class MedicalReviewQueryService {
         final Lifecycle lifecycle;final Event sourceHead,doctorHead;
         Read(Guard guard,long id,Long patient){this.guard=guard;repository=new MedicalReviewQueryRepository(guard.connection,guard.holder,guard::verify);
             source=repository.binding(id,patient);guard.verify();access.requireReadAdmission(Collections.singletonList(source),guard.actor);guard.verify();
-            states=validity.open().qualifiedSnapshot(Collections.singleton(id));guard.verify();if(states==null||states.size()!=1||!states.containsKey(id))throw changed();snapshot=states.get(id);
+            states=validity.observeQualified(Collections.singleton(id));guard.verify();if(states==null||states.size()!=1||!states.containsKey(id))throw changed();snapshot=states.get(id);
             checkState(snapshot,MedicalReviewQualificationReader.Semantics.CALLER_TRANSACTION_SNAPSHOT);if(!snapshot.reviewSummaryMetadataAvailable())throw MedicalReviewSchema.notReady();
-            lifecycle=sources.readSnapshotLifecycle(source);guard.verify();sourceHead=head(Channel.SOURCE,snapshot.source);doctorHead=head(Channel.DOCTOR,snapshot.doctor);
+            lifecycle=sources.readQualifiedSnapshotLifecycle(source,guard.connection,snapshot);guard.verify();sourceHead=head(Channel.SOURCE,snapshot.source);doctorHead=head(Channel.DOCTOR,snapshot.doctor);
         }
         private Event head(Channel channel,MedicalReviewQualificationReader.ChannelFacts facts){if(facts==null)return null;Event e=repository.event(source.getId(),lifecycle.getCurrentGeneration(),channel,facts.decisionVersion);if(e==null)throw integrity();e.head(facts);return e;}
         Event head(Channel channel){return channel==Channel.SOURCE?sourceHead:doctorHead;}
+        // Final disclosure boundary: two fresh RC observations plus current authority.
+        // Earlier assembly stays inside the validated RR snapshot; nothing is returned before this check.
         MedicalRecordValidityProjection.State frame(){guard.verify();Map<Long,MedicalRecordValidityProjection.State> frame=access.currentReadFrame(Collections.singletonList(source),states,guard.actor);guard.verify();
             if(frame==null||frame.size()!=1||!frame.containsKey(source.getId()))throw changed();MedicalRecordValidityProjection.State state=frame.get(source.getId());checkState(state,MedicalReviewQualificationReader.Semantics.CURRENT_CHECK);
             if(!snapshot.signature.equals(state.signature))throw changed();return state;}

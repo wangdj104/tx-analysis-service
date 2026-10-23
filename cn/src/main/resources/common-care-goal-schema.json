@@ -580,8 +580,5 @@
     "CREATE: real goal version1; event1; real same-patient receipt binding",
     "other NEW: immutable next event; exact matching goal update; minimal receipt",
     "beforeCommit verifies goal/event/receipt and current authority; rollback all on failure"
-  ],
-  "inputs": {
-    "init_with_medical_record_corrections_20261016.sql": "54bc0a115bfd5e5eded42394d246fd838d1cd01210984a80fee71faf5e5bca3c"
-  }
+  ]
 }

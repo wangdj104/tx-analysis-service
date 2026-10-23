@@ -69,7 +69,7 @@ final class MedicalReviewSourceRepository {
 
     /**
      * Content material only; this method does not inspect READY or authorize access.
-     * The later caller must combine readSnapshotLifecycle on this same transaction
+     * The later caller must combine readQualifiedSnapshotLifecycle on this same transaction
      * and source binding with the required current-authority and fresh-lifecycle
      * checks before exposing an authorized or actionable preview.
      */
@@ -87,9 +87,23 @@ final class MedicalReviewSourceRepository {
         return withConnection(Mode.LOCKED_MUTATION_RC, connection -> readContent(connection, expectedBinding, true));
     }
 
-    Lifecycle readSnapshotLifecycle(MedicalRecord source) {
+    /**
+     * Reuse READY from the qualification just read on the caller's verified RR
+     * connection. The caller retains its guard across both reads and still
+     * performs a fresh current-authority/qualification check before disclosure.
+     * This evidence is local to that read; mutation and fresh readers inspect
+     * storage independently.
+     */
+    Lifecycle readQualifiedSnapshotLifecycle(MedicalRecord source, Connection observedConnection,
+            org.familyhealthcare.service.medicalrecord.MedicalRecordValidityProjection.State observed) {
         return withConnection(Mode.SNAPSHOT_RR, connection -> {
-            ready(connection);
+            if(connection!=observedConnection||source==null||observed==null||!observed.reviewObserved
+                    ||observed.qualificationSemantics!=MedicalReviewQualificationReader.Semantics.CALLER_TRANSACTION_SNAPSHOT
+                    ||observed.checkedAt==null||observed.signature==null||observed.signature.isEmpty()
+                    ||!Long.valueOf(observed.id).equals(source.getId())
+                    ||!Objects.equals(observed.patientId,source.getPatientId())||!Objects.equals(observed.ownerId,source.getUserId())
+                    ||!Objects.equals(observed.version,source.getContentVersion())||!Objects.equals(observed.review,source.getVerificationStatus())
+                    ||!observed.reviewSummaryMetadataAvailable())throw MedicalReviewSchema.notReady();
             NativeBinding current = binding(connection, source);
             current.requireExpected(source, true);
             return sample(connection, current, false).lifecycle();
@@ -118,6 +132,22 @@ final class MedicalReviewSourceRepository {
     Lifecycle readLockedLifecycle(MedicalRecord source) {
         return withConnection(Mode.LOCKED_MUTATION_RC, connection -> {
             ready(connection);
+            NativeBinding current = binding(connection, source);
+            current.requireExpected(source, true);
+            return sample(connection, current, true).lifecycle();
+        });
+    }
+
+    /**
+     * The native lifecycle owns the preceding schema inspection on this exact
+     * RC connection and repeats it before commit. Independent command and
+     * receipt callers still use readLockedLifecycle and inspect for themselves.
+     */
+    Lifecycle readInspectedLockedLifecycle(MedicalRecord source, Connection inspectedConnection,
+            MedicalReviewSchema.Status inspectedStatus) {
+        return withConnection(Mode.LOCKED_MUTATION_RC, connection -> {
+            if (connection != inspectedConnection || inspectedStatus != MedicalReviewSchema.Status.READY)
+                throw MedicalReviewSchema.notReady();
             NativeBinding current = binding(connection, source);
             current.requireExpected(source, true);
             return sample(connection, current, true).lifecycle();

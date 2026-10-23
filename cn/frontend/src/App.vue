@@ -1,6 +1,6 @@
 <template>
   <div class="care-workspace" :class="{ 'care-workspace--guest': route.meta.hideNav }">
-    <div v-if="route.meta.hideNav" class="workspace-guest-actions"><AppearanceSelector /><a class="workspace-language" :href="languageHref" hreflang="en">English</a></div>
+    <div v-if="route.meta.hideNav" class="workspace-guest-actions"><AppearanceSelector :compact="isMobile" /><a class="workspace-language" :href="languageHref" hreflang="en">English</a></div>
     <template v-if="!route.meta.hideNav">
       <a class="skip-content" href="#workspace-content">跳到主要内容</a>
       <aside v-if="!isMobile" class="workspace-sidebar">
@@ -27,13 +27,15 @@
           <span class="workspace-breadcrumb"><strong>{{ activeModule?.label || '健康管理' }}</strong></span>
           <strong v-if="isMobile" class="workspace-mobile-brand">{{ platformBranding.platformName }}</strong>
         </div>
-        <div class="workspace-topbar__actions">
-          <AppearanceSelector />
-          <span class="workspace-date">{{ todayLabel }}</span>
-          <router-link v-if="userInfo.roles?.some(role => role.roleCode === 'doctor')" class="workspace-consultations" to="/care-journey?tab=consultation" aria-label="打开问诊收件箱"><el-icon><ChatDotRound /></el-icon><span v-if="!isMobile">问诊收件箱</span></router-link>
+        <div class="workspace-topbar__patient">
           <PatientSwitcher :model-value="currentPatientId || 0" :patients="route.path === '/care' ? patientList : appPatientList" :allow-all="route.path !== '/care'" @update:model-value="switchPatient" />
-          <a class="workspace-language" :href="languageHref" hreflang="en">English</a>
+          <router-link v-if="userInfo.roles?.some(role => role.roleCode === 'doctor')" class="workspace-consultations" to="/care-journey?tab=consultation" aria-label="打开问诊收件箱" title="问诊收件箱"><el-icon><ChatDotRound /></el-icon><span v-if="!isMobile">问诊收件箱</span></router-link>
           <button v-if="isMobile" type="button" class="workspace-icon-button" data-guide="feature-search" aria-label="查找功能" @click="openSearch"><el-icon :size="20"><Search /></el-icon></button>
+        </div>
+        <div class="workspace-topbar__actions">
+          <span class="workspace-date">{{ todayLabel }}</span>
+          <AppearanceSelector :compact="isMobile" />
+          <a class="workspace-language" :href="languageHref" hreflang="en">English</a>
         </div>
       </header>
 
@@ -60,7 +62,11 @@
       <nav v-if="!route.meta.hideNav && contextTabs.length > 1" class="workspace-tabs" aria-label="模块功能">
         <router-link v-for="item in contextTabs" :key="item.path" :to="item.entryPath || item.path" :class="{ 'is-active': isTabActive(item) }" :aria-current="isTabActive(item) ? 'page' : undefined"><el-icon :size="16"><component :is="item.icon" /></el-icon>{{ item.label }}</router-link>
       </nav>
-      <router-view v-slot="{ Component }"><component :is="Component" :key="route.path === '/login' ? route.fullPath : routerViewKey" /></router-view>
+      <el-alert v-if="privacyAccessBlocked && !route.meta.hideNav" type="warning" :closable="false" role="alert">
+        <template #title>访问权限已变化或暂时无法核验，已清除页面中的健康资料。</template>
+        <el-button :loading="privacyRetrying" @click="retryProtectedAccess">重新核验访问权限</el-button>
+      </el-alert>
+      <router-view v-else v-slot="{ Component }"><component :is="Component" :key="route.path === '/login' ? route.fullPath : routerViewKey" /></router-view>
       <footer v-if="!route.meta.hideNav" class="platform-ownership">{{ platformBranding.ownershipText }}</footer>
     </main>
 
@@ -114,6 +120,7 @@ import { useMobile } from '@/composables/useMobile';
 import { ElMessage } from 'element-plus';
 import { changePassword } from '@/api/user';
 import { platformBranding } from '@/utils/platformBranding';
+import request from '@/utils/request';
 
 const route = useRoute();
 const router = useRouter();
@@ -170,6 +177,9 @@ function authSessionChanged() {
   const actor = localStorage.getItem('userId');
   if (own && own.token === session.token && own.actor === actor &&
       own.revision === session.revision && own.epoch === menuRequestEpoch) return;
+  privacyRecoveryEpoch++;
+  privacyRevision = null;
+  privacyAccessBlocked.value = false;
   navFreshRequired = true;
   resetNavState({ localOnly: true });
   if (appDisposed || !session.token || !actor || route.path === '/login') return;
@@ -182,6 +192,50 @@ function authSessionChanged() {
 
 const systemMenu = ref(null);
 const routerViewKey = ref(getAuthSessionKey());
+const privacyAccessBlocked = ref(false);
+const privacyRetrying = ref(false);
+let privacyRevision = null, privacyTimer = null, privacyChecking = false, privacyCheckQueued = false, privacyViewRevision = 0, privacyRecoveryEpoch = 0;
+function retireProtectedView() {
+  if (route.meta.hideNav) return;
+  privacyRecoveryEpoch++;
+  privacyAccessBlocked.value = true;
+  privacyRevision = null;
+  clearPermissionCache();
+  resetNavState({ localOnly: true });
+}
+async function checkAccessContext() {
+  if (privacyChecking) { privacyCheckQueued = true; return; }
+  if (privacyAccessBlocked.value || route.meta.hideNav || document.visibilityState === 'hidden' || !localStorage.getItem('token')) return;
+  privacyChecking = true;
+  const session = captureAuthSession();
+  try {
+    const response = await request({ url: '/privacy/access-context', privacyInlineErrors: true });
+    if (!isAuthSessionCurrent(session)) return;
+    const next = response.data?.revision;
+    if (typeof next !== 'string' || !/^[a-f0-9]{64}$/.test(next)) throw new Error('ACCESS_CONTEXT_UNAVAILABLE');
+    if (privacyRevision !== null && privacyRevision !== next) window.dispatchEvent(new Event('permissions-changed'));
+    else privacyRevision = next;
+  } catch (error) {
+    if (error.code !== 'ERR_CANCELED' && isAuthSessionCurrent(session)) window.dispatchEvent(new Event('permissions-changed'));
+  } finally {
+    privacyChecking = false;
+    if (privacyCheckQueued) { privacyCheckQueued = false; void checkAccessContext(); }
+  }
+}
+async function retryProtectedAccess() {
+  if (privacyRetrying.value) return;
+  privacyRetrying.value = true;
+  const epoch = ++privacyRecoveryEpoch, session = captureAuthSession(), actor = localStorage.getItem('userId');
+  try {
+    const response = await request({ url: '/privacy/access-context', privacyInlineErrors: true });
+    if (epoch !== privacyRecoveryEpoch || !isAuthSessionCurrent(session) || actor !== localStorage.getItem('userId')) return;
+    if (!/^[a-f0-9]{64}$/.test(response.data?.revision || '')) return;
+    privacyRevision = response.data.revision;
+    await loadUserMenus();
+    if (epoch === privacyRecoveryEpoch && session.token === localStorage.getItem('token') && actor === localStorage.getItem('userId') && !menuLoadError.value && !navFreshRequired) privacyAccessBlocked.value = false;
+  } catch { /* Keep protected views unmounted until a successful explicit check. */ }
+  finally { privacyRetrying.value = false; }
+}
 const userMenus = ref([]);
 const passwordVisible = ref(false);
 const passwordChanging = ref(false);
@@ -325,6 +379,12 @@ function onSearchShortcut(event) {
   }
 }
 onMounted(() => {
+  window.addEventListener('permissions-changed', retireProtectedView);
+  window.addEventListener('protected-access-denied', checkAccessContext);
+  window.addEventListener('focus', checkAccessContext);
+  document.addEventListener('visibilitychange', checkAccessContext);
+  privacyTimer = setInterval(checkAccessContext, 30000);
+  void checkAccessContext();
   window.addEventListener('keydown', onSearchShortcut);
   window.addEventListener('auth-session-cleared', resetNavState);
   window.addEventListener('auth-session-changed', authSessionChanged);
@@ -332,6 +392,11 @@ onMounted(() => {
   window.addEventListener('care-patients-changed', loadPatientList);
 });
 onUnmounted(() => {
+  clearInterval(privacyTimer);
+  window.removeEventListener('permissions-changed', retireProtectedView);
+  window.removeEventListener('protected-access-denied', checkAccessContext);
+  window.removeEventListener('focus', checkAccessContext);
+  document.removeEventListener('visibilitychange', checkAccessContext);
   closePatientSwitchToast();
   carePlanNavController?.abort();
   window.removeEventListener('keydown', onSearchShortcut);
@@ -504,6 +569,7 @@ const loadUserMenus = async () => {
       await loadPatientList();
       if (!isCurrent()) return;
       await refreshSpecialtyScope();
+      void checkAccessContext();
     } else if (res.code === 401) {
       resetNavState();
       router.replace('/login');
@@ -779,6 +845,9 @@ async function submitPasswordChange() {
 
 watch(() => isNarrowCareRoute(route.fullPath), (narrow, previous) => { if (!narrow && previous) setPatientList(appPatientList.value); }, { flush: 'sync' });
 watch([currentPatientId, () => route.fullPath], refreshSpecialtyScope, { immediate: true, flush: 'sync' });
+watch(currentPatientId, () => {
+  if (route.path !== '/care' && !isNarrowCareRoute(route.fullPath)) routerViewKey.value = getAuthSessionKey() + '-patient-' + (++privacyViewRevision);
+}, { flush: 'sync' });
 
 watch(
   () => route.path,

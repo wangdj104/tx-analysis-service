@@ -290,7 +290,7 @@ Send a channel test, verify outbound HTTPS access, webhook security settings, ch
 
 ### The database is empty after startup
 
-On a new empty MySQL database, run the complete `init.sql` as described in the [SQL initialization guide](../README.md#database-initialization). Verify the connection and schema-scoped permissions. Application startup performs no schema migration. For existing databases, back up the complete database and attachments, rehearse restore, then compare columns, indexes and permissions and apply only reviewed differences.
+For a new empty MySQL database, run the sole complete `init.sql` as described in the [SQL initialization guide](../README.md#database-initialization). Verify the connection and schema-scoped permissions. Application startup performs no schema migration. For existing databases, back up the complete database and attachments, rehearse restore, then compare columns, indexes and permissions and apply only reviewed differences.
 
 ## 13. Suggested product tour
 

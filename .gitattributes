@@ -1,0 +1,3 @@
+# SQL trigger fingerprints and shell entry points use canonical line endings.
+*.sql text eol=lf
+*.sh text eol=lf

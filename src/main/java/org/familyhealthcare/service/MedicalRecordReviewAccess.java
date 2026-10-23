@@ -53,7 +53,8 @@ public class MedicalRecordReviewAccess {
         List<Long> owners=jdbc.queryForList("SELECT user_id FROM patient WHERE id=? AND status=1 AND COALESCE(deleted,0)=0",Long.class,patient);
         if(owners.isEmpty()) denied();
         boolean assigned=doctor && count("SELECT COUNT(*) FROM doctor_patient_assignment WHERE doctor_user_id=? AND patient_id=? AND status='ACTIVE'",actor,patient)>0;
-        if(doctorWorkspace) {if(!admin && !assigned) denied();return;}
+        // Administrative authority does not confer an independent clinical opinion.
+        if(doctorWorkspace) {if(!assigned) denied();return;}
         if(admin || assigned || Objects.equals(owners.get(0),actor)) return;
         // Explicit grants replace legacy family membership, including revoked or expired grants.
         List<Map<String,Object>> grants=jdbc.queryForList("SELECT access_level,visible_modules,status,(expires_at IS NULL OR expires_at>CURRENT_TIMESTAMP) AS unexpired FROM care_access_grant WHERE grantee_user_id=? AND patient_id=?",actor,patient);
@@ -187,7 +188,7 @@ public class MedicalRecordReviewAccess {
     }
 
     private Map<Long,State> readQualified(Collection<Long> ids,ReadResource resource) {
-        try {return readValidity.open().qualifiedBatch(ids);}
+        try {return readValidity.observeQualified(ids);}
         catch(org.familyhealthcare.service.workflow.WorkflowException failure) {
             // A reader diagnosis is retained only while its actual current resource remains valid.
             resource.verify();throw failure;
