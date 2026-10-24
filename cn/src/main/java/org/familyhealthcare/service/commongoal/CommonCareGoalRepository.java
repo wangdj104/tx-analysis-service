@@ -14,7 +14,7 @@ import static org.familyhealthcare.service.commongoal.CommonCareGoalContracts.*;
 
 /** 只读本域三表；不接触数值目标、临床计划、病历或授权写入。 */
 @Repository
-public final class CommonCareGoalRepository {
+public class CommonCareGoalRepository {
     static final String GOAL_COLUMNS = "id,patient_id,creator_id,title,goal_text,progress_criterion,responsibility,review_date,nominee_id,state,version,cycle,accepted_by,accepted_at,created_at,updated_at";
     private final JdbcTemplate jdbc;
     public CommonCareGoalRepository(JdbcTemplate jdbc) { this.jdbc = Objects.requireNonNull(jdbc); }
