@@ -6,6 +6,7 @@ import org.familyhealthcare.service.workflow.HouseholdWorkflowSchema;
 import org.familyhealthcare.service.workflow.WorkflowException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.jdbc.support.SQLExceptionSubclassTranslator;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -47,6 +48,8 @@ public final class VisitQuestionSchema {
         if (inspectStorage(connection) != Status.STRUCTURALLY_READY) throw notReady();
         JdbcTemplate sameConnection = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
         sameConnection.setQueryTimeout(5);
+        // Preserve the original JDBC failure without probing a connection that the pool may have evicted.
+        sameConnection.setExceptionTranslator(new SQLExceptionSubclassTranslator());
         if (new HouseholdWorkflowSchema(sameConnection).inspectStorageMetadata().getStatus()
                 != HouseholdWorkflowSchema.StorageStatus.STRUCTURALLY_READY) throw notReady();
         return transport;

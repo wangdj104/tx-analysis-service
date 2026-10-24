@@ -11,6 +11,7 @@ final class SystemMessageCatalog {
     private static final Map<String, String> CHINESE = new LinkedHashMap<>();
     private static final Map<String, String[]> FIELDS = new LinkedHashMap<>();
     static {
+        CHINESE.put("Alert follow-up is not enabled.", "异常随访功能尚未启用。");
         CHINESE.put("Visit follow-up storage must be upgraded before new changes; existing history remains available.", "须先升级就诊随访存储，才能提交新操作；历史仍可查看。");
         // 仅翻译预约跟进系统提示；不处理病历或用户输入的正文。
         CHINESE.put("Invalid appointment follow-up request.", "预约跟进请求格式无效。");

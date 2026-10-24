@@ -1,6 +1,21 @@
 package org.familyhealthcare.controller;
 
 import org.familyhealthcare.config.SensitiveResponseFilter;
+import org.apache.catalina.connector.ClientAbortException;
+import org.familyhealthcare.common.GlobalExceptionHandler;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mock.http.MockHttpInputMessage;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import javax.servlet.Filter;
+import javax.servlet.ServletOutputStream;
+import javax.servlet.WriteListener;
+import javax.servlet.http.HttpServletResponseWrapper;
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.familyhealthcare.service.alertworkflow.*;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
@@ -61,4 +76,72 @@ class AlertWorkflowControllerTest {
         }
     }
     @Test void workflowAdviceIsScopedToItsOwnController() {assertTrue(AlertWorkflowController.class.isAnnotationPresent(AlertWorkflowExceptionAdvice.Api.class));assertFalse(CarePlanController.class.isAnnotationPresent(AlertWorkflowExceptionAdvice.Api.class));}
+
+    @Nested
+    class ClientDisconnectHandling {
+        private MockMvc mvc(Filter... filters) {
+            return MockMvcBuilders.standaloneSetup(new ClientAbortProbeController())
+                    .setControllerAdvice(new GlobalExceptionHandler()).addFilters(filters).build();
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"/abort", "/wrapped-abort", "/state-abort", "/argument-abort", "/validation-abort"})
+        void confirmedDisconnectDoesNotWriteAnErrorBody(String path) throws Exception {
+            mvc().perform(get(path)).andExpect(content().string(""));
+        }
+
+        @Test
+        void disconnectedResponseStreamIsNotWrittenAgainByTheErrorHandler() throws Exception {
+            AtomicInteger writes = new AtomicInteger();
+            Filter disconnected = (request, response, chain) -> chain.doFilter(request,
+                    new HttpServletResponseWrapper((HttpServletResponse) response) {
+                        @Override public ServletOutputStream getOutputStream() {
+                            return new ServletOutputStream() {
+                                @Override public boolean isReady() { return true; }
+                                @Override public void setWriteListener(WriteListener listener) { }
+                                @Override public void write(int value) throws IOException {
+                                    writes.incrementAndGet();
+                                    throw new ClientAbortException(new IOException("Broken pipe"));
+                                }
+                                @Override public void write(byte[] data, int offset, int length) throws IOException {
+                                    writes.incrementAndGet();
+                                    throw new ClientAbortException(new IOException("Broken pipe"));
+                                }
+                            };
+                        }
+                    });
+            assertDoesNotThrow(() -> mvc(disconnected).perform(get("/body")));
+            assertEquals(1, writes.get(), "The error handler must not try writing a second JSON response");
+        }
+
+        @Test
+        void ordinaryIoExceptionsAreNotMistakenForClientDisconnects() throws Exception {
+            mvc().perform(get("/io-failure")).andExpect(jsonPath("$.code").value(500));
+            // The message alone cannot establish that a client disconnected.
+            assertEquals(500, new GlobalExceptionHandler().handleUnknown(new IOException("Broken pipe")).getCode());
+        }
+
+        @Test
+        void normalValidationAndPermissionResponsesRemainUnchanged() {
+            GlobalExceptionHandler handler = new GlobalExceptionHandler();
+            assertEquals(403, handler.handleState(new IllegalStateException("Permission denied")).getCode());
+            assertEquals(400, handler.handleArgument(new IllegalArgumentException("Invalid request")).getCode());
+            assertEquals(400, handler.handleValidation(new HttpMessageNotReadableException(
+                    "Malformed body", new MockHttpInputMessage(new byte[0]))).getCode());
+        }
+    }
+
+    @RestController
+    static class ClientAbortProbeController {
+        private ClientAbortException abort() { return new ClientAbortException(new IOException("Broken pipe")); }
+        @GetMapping("/abort") public void direct() throws IOException { throw abort(); }
+        @GetMapping("/wrapped-abort") public void wrapped() { throw new RuntimeException("Response write failed", abort()); }
+        @GetMapping("/state-abort") public void state() { throw new IllegalStateException("Response write failed", abort()); }
+        @GetMapping("/argument-abort") public void argument() { throw new IllegalArgumentException("Request read failed", abort()); }
+        @GetMapping("/validation-abort") public void validation() {
+            throw new HttpMessageNotReadableException("Request read failed", abort(), new MockHttpInputMessage(new byte[0]));
+        }
+        @GetMapping("/io-failure") public void ioFailure() throws IOException { throw new IOException("Disk read failed"); }
+        @GetMapping("/body") public Map<String, String> body() { return Collections.singletonMap("message", "probe"); }
+    }
 }

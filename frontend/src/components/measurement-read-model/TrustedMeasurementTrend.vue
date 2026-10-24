@@ -14,6 +14,7 @@
    </div>
    <p class="mr-help">{{t('rangeHelp')}}</p>
    <p v-if="busy" role="status">{{t('loading')}}</p>
+   <div v-else-if="state.phase==='disabled'" class="mr-notice" role="status">{{t('disabled')}}</div>
    <div v-else-if="state.phase!=='ready' && state.phase!=='idle'" class="mr-notice mr-error" role="alert"><p>{{t(state.phase)}}</p><button type="button" :disabled="sourceLocked" @click="model.refresh({keepPosition:true})">{{t('retry')}}</button></div>
    <template v-if="state.phase==='ready'">
     <div class="mr-notice" role="status"><strong>{{t('page')}} {{state.page}} · {{state.items.length}} {{t('rows')}}</strong><p>{{t('nonSnapshot')}}</p><p>{{t('dateCoverage')}}</p><p>{{t(state.nextCursor!=null?'more':'last')}}</p></div>

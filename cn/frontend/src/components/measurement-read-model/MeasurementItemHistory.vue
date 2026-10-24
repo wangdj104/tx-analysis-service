@@ -8,6 +8,7 @@
    <div class="mr-controls"><button type="button" :disabled="items.phase==='loading' || sourceLocked" @click="refreshItems">{{t('refresh')}}</button></div>
    <p v-if="blockedPhase" class="mr-notice mr-error" role="alert">{{t(blockedPhase)}}</p>
    <p v-if="items.phase==='loading'" role="status">{{t('loading')}}</p>
+   <p v-else-if="items.phase==='disabled'" class="mr-notice" role="status">{{t('disabled')}}</p>
    <p v-else-if="!['ready','idle'].includes(items.phase)" class="mr-notice mr-error" role="alert">{{t(items.phase)}}</p>
    <template v-if="items.phase==='ready'">
     <div class="mr-notice"><strong>{{t('page')}} {{items.page}} · {{items.items.length}} {{t('items')}}</strong><p>{{t('nonSnapshot')}}</p><p>{{t(items.nextCursor!=null?'more':'last')}}</p></div>
@@ -24,7 +25,7 @@
     <h3 ref="eventHeading" tabindex="-1">{{t('eventTitle')}} · #{{selected.alertId}}</h3>
     <p class="mr-help">{{t('eventOrder')}}</p><p class="mr-help">{{t('summaryOnly')}}</p>
     <div class="mr-controls"><button type="button" :disabled="eventState.phase==='loading' || sourceLocked" @click="eventModel.refresh()">{{t('refresh')}}</button><button type="button" :disabled="sourceLocked" @click="clearSelection">{{t('clearSelection')}}</button></div>
-    <p v-if="eventState.phase==='loading'" role="status">{{t('loading')}}</p><p v-else-if="!['ready','idle'].includes(eventState.phase)" class="mr-notice mr-error" role="alert">{{t(eventState.phase)}}</p>
+    <p v-if="eventState.phase==='loading'" role="status">{{t('loading')}}</p><p v-else-if="eventState.phase==='disabled'" class="mr-notice" role="status">{{t('disabled')}}</p><p v-else-if="!['ready','idle'].includes(eventState.phase)" class="mr-notice mr-error" role="alert">{{t(eventState.phase)}}</p>
     <template v-if="eventState.phase==='ready'">
      <div class="mr-notice"><strong>{{t('page')}} {{eventState.page}} · {{eventState.items.length}} {{t('items')}}</strong><p>{{t('nonSnapshot')}}</p><p>{{t(eventState.nextCursor!=null?'more':'last')}}</p></div>
      <p v-if="!eventState.items.length">{{t('emptyEvents')}}</p>

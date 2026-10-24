@@ -2,17 +2,21 @@ package org.familyhealthcare.service.workflow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import java.io.InputStream;
 import java.sql.Connection;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.jdbc.support.SQLExceptionSubclassTranslator;
 import java.util.*;
 
 /** 只读模式检查。未知/部分安装不能降级到旧写入；不执行迁移，不输出患者内容。 */
 @Component
 public final class HouseholdWorkflowSchema {
+    private static final org.slf4j.Logger LOG=org.slf4j.LoggerFactory.getLogger(HouseholdWorkflowSchema.class);
+    private static final DiagnosticLimiter DIAGNOSTICS=new DiagnosticLimiter();
     public enum Status { ABSENT, READY, INCOMPATIBLE }
     public static final class Readiness {
         private final Status status;
@@ -52,10 +56,15 @@ public final class HouseholdWorkflowSchema {
         private final Profile profile;
         private final List<String> reasons;
         private final Connection connection;
+        private final boolean metadataTimedOut;
         private final Thread thread=Thread.currentThread();
         private volatile boolean live;
         private Compatibility(Profile profile,List<String> reasons,Connection connection) {
+            this(profile,reasons,connection,false);
+        }
+        private Compatibility(Profile profile,List<String> reasons,Connection connection,boolean metadataTimedOut) {
             this.connection=connection;
+            this.metadataTimedOut=metadataTimedOut;
             live=org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()&&org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive();
             if(live)org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){public void afterCompletion(int status){live=false;}});
             this.profile=profile;
@@ -73,15 +82,21 @@ public final class HouseholdWorkflowSchema {
 
     /** One borrowed business connection; one finite shared metadata snapshot; no row reads, cache or migration. */
     public static Compatibility inspectCompatibility(Connection connection) {
-        if(connection==null)return new Compatibility(Profile.INCOMPATIBLE,Collections.singletonList("METADATA_UNREADABLE"),connection);
+        if(connection==null)return incompatible(connection,Collections.singletonList("METADATA_UNREADABLE"),null,MetadataGroup.CONNECTION);
         JdbcTemplate same=new JdbcTemplate(new SingleConnectionDataSource(connection,true));
         same.setQueryTimeout(5);
+        // A timeout may already have evicted this borrowed connection. Translation must not read it again.
+        same.setExceptionTranslator(new SQLExceptionSubclassTranslator());
+        InspectionTrace trace=new InspectionTrace();
         try {
+            trace.group=MetadataGroup.PRESENCE_HOUSEHOLD;
             Long household=same.queryForObject(MetadataQueryPrefilter.indexed(MANIFEST.get("presenceSql").asText()),Long.class);
+            trace.group=MetadataGroup.PRESENCE_FOLLOWUP;
             Long followUp=same.queryForObject(MetadataQueryPrefilter.indexed(FOLLOW_UP_MANIFEST.get("presenceSql").asText()),Long.class);
             if(household==null||followUp==null||household<0||followUp<0)throw new IllegalStateException("Unreadable metadata");
             if(household==0&&followUp==0)return new Compatibility(Profile.ABSENT,Collections.emptyList(),connection);
-            Snapshot snapshot=new Snapshot(same,REMINDER_MANIFEST.get("snapshotQueries"),MANIFEST);
+            Snapshot snapshot=new Snapshot(same,REMINDER_MANIFEST.get("snapshotQueries"),MANIFEST,trace);
+            trace.group=MetadataGroup.CONTRACT_VALIDATION;
             List<String> reasons=new ArrayList<>();
             // OLD/A/B共用同一次11组元数据；每套完整合同独立判定，不能混合逐个守卫。
             snapshot.withContract(FOLLOW_UP_MANIFEST).validateSession(reasons);
@@ -89,7 +104,7 @@ public final class HouseholdWorkflowSchema {
                 snapshot.validate(reasons);
                 snapshot.withContract(FOLLOW_UP_MANIFEST).validatePrerequisites(reasons);
                 snapshot.requireNoLogGuards(reasons);
-                return new Compatibility(reasons.isEmpty()?Profile.EXACT_OLD:Profile.INCOMPATIBLE,reasons,connection);
+                return reasons.isEmpty()?new Compatibility(Profile.EXACT_OLD,reasons,connection):incompatible(connection,reasons,null,trace.group);
             }
             snapshot.withContract(FOLLOW_UP_HOUSEHOLD).validate(reasons);
             snapshot.withContract(FOLLOW_UP_MANIFEST).validate(reasons);
@@ -98,9 +113,67 @@ public final class HouseholdWorkflowSchema {
             snapshot.withContract(REMINDER_MANIFEST).validateSession(reminderReasons);
             snapshot.withContract(REMINDER_HOUSEHOLD).validate(reminderReasons);
             snapshot.withContract(REMINDER_MANIFEST).validate(reminderReasons);
-            return new Compatibility(reminderReasons.isEmpty()?Profile.FULLY_INSTALLED_REMINDER:Profile.INCOMPATIBLE,reminderReasons,connection);
+            return reminderReasons.isEmpty()?new Compatibility(Profile.FULLY_INSTALLED_REMINDER,reminderReasons,connection):incompatible(connection,reminderReasons,null,trace.group);
         } catch(RuntimeException failure) {
-            return new Compatibility(Profile.INCOMPATIBLE,Collections.singletonList("METADATA_UNREADABLE"),connection);
+            return incompatible(connection,Collections.singletonList("METADATA_UNREADABLE"),failure,trace.group);
+        }
+    }
+    private static Compatibility incompatible(Connection connection,List<String> reasons,Throwable failure,MetadataGroup group){
+        logDiagnostic(reasons,failure,group);
+        return new Compatibility(Profile.INCOMPATIBLE,reasons,connection,metadataTimedOut(failure));
+    }
+    private static boolean metadataTimedOut(Throwable failure){
+        for(int depth=0;failure!=null&&depth<16;depth++,failure=failure.getCause())
+            if(failure instanceof java.sql.SQLTimeoutException)return true;
+        return false;
+    }
+    private static void logDiagnostic(List<String> reasons,Throwable failure,MetadataGroup group){
+        if(DIAGNOSTICS.allow(System.nanoTime()))
+            LOG.warn("Household workflow storage verification failed: reasons={}, queryGroup={}, cause={}. Diagnostics are limited to once per minute; readiness is checked on every request.",reasons,group,diagnosticCause(failure));
+    }
+    /** Static identifiers only: never include query text, connection properties or returned values. */
+    private enum MetadataGroup {
+        CONNECTION, PRESENCE_HOUSEHOLD, PRESENCE_FOLLOWUP, CONTRACT_VALIDATION,
+        SNAPSHOT_TABLES, SNAPSHOT_COLUMNS, SNAPSHOT_STATISTICS, SNAPSHOT_KEY_COLUMN_USAGE,
+        SNAPSHOT_REFERENTIAL_CONSTRAINTS, SNAPSHOT_TABLE_CONSTRAINTS, SNAPSHOT_TRIGGERS,
+        SNAPSHOT_ROUTINES, SNAPSHOT_SCHEMA, SNAPSHOT_UNKNOWN;
+        static MetadataGroup snapshot(String key){
+            switch(key){
+                case "tables":return SNAPSHOT_TABLES;
+                case "columns":return SNAPSHOT_COLUMNS;
+                case "statistics":return SNAPSHOT_STATISTICS;
+                case "key_column_usage":return SNAPSHOT_KEY_COLUMN_USAGE;
+                case "referential_constraints":return SNAPSHOT_REFERENTIAL_CONSTRAINTS;
+                case "table_constraints":return SNAPSHOT_TABLE_CONSTRAINTS;
+                case "triggers":return SNAPSHOT_TRIGGERS;
+                case "routines":return SNAPSHOT_ROUTINES;
+                case "schema":return SNAPSHOT_SCHEMA;
+                default:return SNAPSHOT_UNKNOWN;
+            }
+        }
+    }
+    private static final class InspectionTrace { MetadataGroup group=MetadataGroup.CONNECTION; }
+    /** Log codes and exception types only: JDBC messages can contain URLs, SQL or row values. */
+    static String diagnosticCause(Throwable failure){
+        if(failure==null)return "CONTRACT_MISMATCH";
+        String result=failure.getClass().getName();
+        Throwable current=failure;
+        for(int depth=0;current!=null&&depth<16;depth++,current=current.getCause()){
+            if(current instanceof java.sql.SQLException){
+                java.sql.SQLException sql=(java.sql.SQLException)current;
+                String state=sql.getSQLState();
+                return result+"; jdbcType="+sql.getClass().getName()+"; sqlState="+
+                        (state!=null&&state.matches("[A-Za-z0-9]{5}")?state:"UNAVAILABLE")+"; vendorCode="+sql.getErrorCode();
+            }
+        }
+        return result;
+    }
+    /** Throttles diagnostic output only; no metadata, authority or readiness result is cached. */
+    static final class DiagnosticLimiter {
+        private final java.util.concurrent.atomic.AtomicReference<Long> last=new java.util.concurrent.atomic.AtomicReference<>();
+        boolean allow(long now){
+            Long previous=last.get();
+            return (previous==null||now-previous>=java.util.concurrent.TimeUnit.MINUTES.toNanos(1))&&last.compareAndSet(previous,now);
         }
     }
     private final JdbcTemplate jdbc;
@@ -114,15 +187,40 @@ public final class HouseholdWorkflowSchema {
 
     public StorageReadiness inspectStorageMetadata() {
         try {
-        Compatibility compatibility=jdbc.execute((ConnectionCallback<Compatibility>)HouseholdWorkflowSchema::inspectCompatibility);
+        MetadataAttempt first=inspectMetadataAttempt(mayRetryPoolRead());
+        Compatibility compatibility=first==null?null:first.compatibility;
+        // Retry the complete read only after JdbcTemplate released the failed connection.
+        // A caller-pinned connection, transaction, or synchronization must keep its original outcome.
+        if(first!=null&&first.retryAllowed&&compatibility!=null&&compatibility.metadataTimedOut&&mayRetryPoolRead()){
+            MetadataAttempt second=inspectMetadataAttempt(false);
+            compatibility=second==null?null:second.compatibility;
+        }
         if(compatibility==null)return new StorageReadiness(StorageStatus.INCOMPATIBLE,Collections.singletonList("METADATA_UNREADABLE"));
         Profile profile=compatibility.getProfile();
         return new StorageReadiness(profile==Profile.ABSENT?StorageStatus.ABSENT:
                 profile==Profile.EXACT_OLD||profile==Profile.FULLY_INSTALLED||profile==Profile.FULLY_INSTALLED_REMINDER?StorageStatus.STRUCTURALLY_READY:StorageStatus.INCOMPATIBLE,
                 compatibility.getReasons());
         } catch(RuntimeException failure) {
+            logDiagnostic(Collections.singletonList("METADATA_UNREADABLE"),failure,MetadataGroup.CONNECTION);
             return new StorageReadiness(StorageStatus.INCOMPATIBLE,Collections.singletonList("METADATA_UNREADABLE"));
         }
+    }
+    private MetadataAttempt inspectMetadataAttempt(boolean allowRetry){
+        return jdbc.execute((ConnectionCallback<MetadataAttempt>)connection->{
+            // Capture this before inspection: a timeout may replace the pool connection with a closed delegate.
+            boolean retryAllowed=allowRetry&&connection.getAutoCommit();
+            return new MetadataAttempt(inspectCompatibility(connection),retryAllowed);
+        });
+    }
+    private boolean mayRetryPoolRead(){
+        return jdbc.getDataSource() instanceof HikariDataSource
+                &&!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                &&!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()
+                &&org.springframework.transaction.support.TransactionSynchronizationManager.getResourceMap().isEmpty();
+    }
+    private static final class MetadataAttempt {
+        final Compatibility compatibility;final boolean retryAllowed;
+        MetadataAttempt(Compatibility compatibility,boolean retryAllowed){this.compatibility=compatibility;this.retryAllowed=retryAllowed;}
     }
 
     /** 显式全库诊断：与 preflight/postcheck 相同的完整谓词。未完成或失败绝不报告 READY。 */
@@ -255,11 +353,12 @@ public final class HouseholdWorkflowSchema {
         private final Map<String,List<Map<String,Object>>> data;
         private final JsonNode contract;
         private final String schema,collation,version;
-        Snapshot(JdbcTemplate jdbc,JsonNode queryContract,JsonNode contract){
+        Snapshot(JdbcTemplate jdbc,JsonNode queryContract,JsonNode contract,InspectionTrace trace){
             this.data=new HashMap<>();this.contract=contract;
             Iterator<Map.Entry<String,JsonNode>> queries=queryContract.fields();
             while(queries.hasNext()){
                 Map.Entry<String,JsonNode> query=queries.next();List<Map<String,Object>> rows=new ArrayList<>();
+                trace.group=MetadataGroup.snapshot(query.getKey());
                 for(Map<String,Object> raw:jdbc.queryForList(MetadataQueryPrefilter.indexed(query.getValue().asText()))){
                     Map<String,Object> row=new HashMap<>();for(Map.Entry<String,Object> value:raw.entrySet())row.put(value.getKey().toLowerCase(Locale.ROOT),value.getValue());rows.add(row);
                 }

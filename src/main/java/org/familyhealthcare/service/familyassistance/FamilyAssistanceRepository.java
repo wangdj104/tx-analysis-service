@@ -9,10 +9,10 @@ import java.util.*;
 import static org.familyhealthcare.service.workflow.WorkflowData.*;
 import static org.familyhealthcare.service.familyassistance.FamilyAssistanceAuthorizationService.denied;
 @Repository public class FamilyAssistanceRepository {
-    final JdbcTemplate jdbc;
-    final HouseholdAuthorityLocks locks;
-    final HouseholdWorkflowSchema schema;
-    final FamilyAssistanceAuthorizationService auth;
+    private final JdbcTemplate jdbc;
+    private final HouseholdAuthorityLocks locks;
+    private final HouseholdWorkflowSchema schema;
+    private final FamilyAssistanceAuthorizationService auth;
     public FamilyAssistanceRepository(JdbcTemplate jdbc,HouseholdAuthorityLocks locks,HouseholdWorkflowSchema schema,FamilyAssistanceAuthorizationService auth) {
         this.jdbc=jdbc;
         this.locks=locks;

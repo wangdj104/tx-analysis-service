@@ -38,6 +38,14 @@ function monitoringErrorIsInline(config, status) {
     (status === null || (Number.isInteger(status) && status >= 500 && status <= 599));
 }
 
+// These readers already render a localized disabled state. Preserve the rejection
+// without turning this expected configuration state into a global error toast.
+function measurementReadDisabledIsInline(config, status, payload) {
+  return config?.measurementReadModel === true && config.method === 'get' && status === 503 &&
+    /^\/alert-workflows\/read-model\/(?:measurement-trend|measurement-items(?:\/[1-9]\d*\/events)?)$/.test(config.url || '') &&
+    payload?.data?.errorCode === 'FEATURE_DISABLED';
+}
+
 function browserFullPath() { return window.location.pathname + window.location.search + window.location.hash; }
 
 // 旧页面或旧账号的401不能清掉新交接入口；普通页面沿用原失效处理。
@@ -143,7 +151,7 @@ request.interceptors.response.use(
     if (res.code && res.code !== 200) {
       if (Number(res.code) === 403) retireDeniedAccess(response.config);
       if (res.code === 401) requireCurrentAssistanceLogin(response.config);
-      if (!monitoringErrorIsInline(response.config, Number(res.code))) showRequestError(response.config, localizeServerText(res.msg) || '请求失败');
+      if (!monitoringErrorIsInline(response.config, Number(res.code)) && !measurementReadDisabledIsInline(response.config, Number(res.code), res)) showRequestError(response.config, localizeServerText(res.msg) || '请求失败');
 
       // 401: not authorize, skipconvertto Sign Inpage
       if (res.code === 401) redirectExpiredSession(response.config);
@@ -167,6 +175,7 @@ request.interceptors.response.use(
     requireCurrentReport(error.config);
     if (error.response?.status === 401) requireCurrentAssistanceLogin(error.config);
     if (error.response?.status === 403) retireDeniedAccess(error.config);
+    if (measurementReadDisabledIsInline(error.config, Number(error.response?.status), error.response?.data)) return Promise.reject(error);
     logRequestError('response_failed', error);
 
     if (error.response) {

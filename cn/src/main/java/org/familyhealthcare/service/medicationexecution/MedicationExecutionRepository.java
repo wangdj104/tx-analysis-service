@@ -12,10 +12,10 @@ import static org.familyhealthcare.service.medicationexecution.MedicationExecuti
 /** Fixed domain SQL, complete related-row discovery, and explicit typed source links. */
 @Repository
 public class MedicationExecutionRepository {
-    final JdbcTemplate jdbc;
-    final HouseholdAuthorityLocks locks;
-    final HouseholdWorkflowSchema schema;
-    final MedicationExecutionAuthorizationService auth;
+    private final JdbcTemplate jdbc;
+    private final HouseholdAuthorityLocks locks;
+    private final HouseholdWorkflowSchema schema;
+    private final MedicationExecutionAuthorizationService auth;
     public MedicationExecutionRepository(JdbcTemplate jdbc,HouseholdAuthorityLocks locks,HouseholdWorkflowSchema schema,MedicationExecutionAuthorizationService auth) {
         this.jdbc=jdbc;
         this.locks=locks;
